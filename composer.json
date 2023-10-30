@@ -1,0 +1,20 @@
+{
+    "require": {
+        "google/apiclient": "^2.10",
+        "hybridauth/hybridauth" : "~3.0",
+        "vlucas/phpdotenv": "^5.4",
+        "twbs/bootstrap-icons": "^1.10"
+    },
+    "scripts": {
+        "pre-autoload-dump": "Google\\Task\\Composer::cleanup",
+        "test": [
+            "Composer\\Config::disableProcessTimeout",
+            "phpunit"
+        ]
+    },
+    "extra": {
+        "google/apiclient-services": [
+            "Sheets"
+        ]
+    }
+}
