@@ -16,5 +16,8 @@
         "google/apiclient-services": [
             "Sheets"
         ]
+    },
+    "autoload": {
+        "classmap": ["src/classes"]
     }
 }
