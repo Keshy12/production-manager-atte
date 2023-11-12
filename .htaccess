@@ -1,0 +1,16 @@
+DirectoryIndex index.php
+RewriteEngine On
+# Redirect all requests to index.php if the requested file does not exist
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^(.*)＄ index.php
+
+# Rewrite requests without "index.php" in the URL
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ /atte_ms_new/index.php/$1 [L]
+
+# Allow access to JS and CSS files
+RewriteRule \.(css|js)$ - [L]
+
+# Block access to other files besides index.php
+RewriteRule !^(index.php) [F]
