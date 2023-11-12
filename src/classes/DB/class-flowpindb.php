@@ -23,7 +23,6 @@ class FlowpinDB extends BaseDB {
 
         return self::$instance;
     }
-    
     public function getWarehouses() {
         $query = "SELECT Id, Name, Description FROM [dbo].[Warehouses] WHERE CompanyId = 1";
         $result = $this -> query($query);

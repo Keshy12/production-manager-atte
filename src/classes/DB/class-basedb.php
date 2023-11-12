@@ -48,7 +48,8 @@ class BaseDB {
     * @param string $table
     * @param array $columns array of columns to insert into
     * @param array $values corresponding values
-    * @return int|object Inserted ID on success, throw Exception otherwise.
+    * @return int|object Inserted ID on success
+    * @throws \Exception
     */
     public function insert(string $table, array $columns, array $values) {
         $db = $this -> db;

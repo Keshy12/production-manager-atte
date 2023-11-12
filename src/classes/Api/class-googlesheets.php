@@ -82,7 +82,7 @@ class GoogleSheets
     * @param string $sheetName
     * @param string $range syntax X:Y
     * @param array $values to insert
-    * @return int|bool Number of updated cells, or false on failure.
+    * @return int|bool Number of written cells, or false on failure.
     */
     function writeToSheet($spreadsheetId = '',$sheetName = '', $range = '', $values = []) {
         try {
