@@ -1,10 +1,7 @@
 <?php
 namespace Atte\DB;  
 
-require_once(realpath(dirname(__FILE__) . '/class-basedb.php'));
-
 class IbiznesDB extends BaseDB {
-    // Used for singleton
     private static $instance;
 
     // Private constructor to prevent direct instantiation

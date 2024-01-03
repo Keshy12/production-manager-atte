@@ -1,8 +1,6 @@
 <?php
 namespace Atte\DB;  
 
-require_once(realpath(dirname(__FILE__) . '/class-basedb.php'));
-
 class MsaDB extends BaseDB {
     // The single instance
     private static $instance;
@@ -23,5 +21,12 @@ class MsaDB extends BaseDB {
         }
 
         return self::$instance;
+    }
+
+    public function readIdName($table, $id = "id", $name = "name", $add = null) {
+        if($add === null) $add = "ORDER BY $id ASC";
+        $resultId = $this -> query("SELECT $id FROM $table $add", \PDO::FETCH_COLUMN);
+        $resultName = $this -> query("SELECT $name FROM $table $add", \PDO::FETCH_COLUMN);
+        return array_combine($resultId, $resultName);
     }
 }

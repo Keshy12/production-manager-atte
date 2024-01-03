@@ -1,8 +1,6 @@
 <?php
 namespace Atte\DB;  
 
-require_once(realpath(dirname(__FILE__) . '/class-basedb.php'));
-
 class FlowpinDB extends BaseDB {
     private static $instance;
 
