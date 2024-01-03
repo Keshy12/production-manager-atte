@@ -1,6 +1,7 @@
 <?php
-define("ROOT_DIRECTORY", $_SERVER['DOCUMENT_ROOT']."/atte_ms_new");
+define('ROOT_DIRECTORY', $_SERVER['DOCUMENT_ROOT'].'/atte_ms_new');
 require_once ROOT_DIRECTORY.'/vendor/autoload.php';
+session_start();
 
 function includeWithVariables($filePath, $variables = array(), $print = true)
 {
