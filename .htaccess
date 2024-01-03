@@ -1,5 +1,13 @@
 DirectoryIndex index.php
 RewriteEngine On
+
+# Include config.php everywhere
+php_value auto_prepend_file C:/xampp/htdocs/atte_ms_new/config/config.php
+
+RewriteCond %{REQUEST_METHOD} ^POST$
+RewriteRule ^ - [L]
+
+
 # Redirect all requests to index.php if the requested file does not exist
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteRule ^(.*)＄ index.php
@@ -14,3 +22,4 @@ RewriteRule \.(css|js)$ - [L]
 
 # Block access to other files besides index.php
 RewriteRule !^(index.php) [F]
+
