@@ -17,8 +17,8 @@ RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^(.*)$ /atte_ms_new/index.php/$1 [L]
 
-# Allow access to JS and CSS files
-RewriteRule \.(css|js)$ - [L]
+# Allow access to JS and CSS files and similar
+RewriteRule \.(css|js|png|jpg|ico|svg|xml|webmanifest)$ - [L]
 
 # Block access to other files besides index.php
 RewriteRule !^(index.php) [F]

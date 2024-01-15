@@ -88,8 +88,7 @@ class BaseDB {
                 SET ".implode(", ", $columns)." 
                 WHERE `$table`.`$checkColumn` = '$checkValue'";
         $query = $db -> prepare($sql);
-        $query -> execute($values); 
-        return true;
+        return $query -> execute($values); 
     }
     /**
     * Delete row in table by provided id.

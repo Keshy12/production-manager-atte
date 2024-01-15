@@ -1,6 +1,3 @@
-<?php 
-$redirect = $_COOKIE["redirect"] ?? "";
-?>
 <div class="container">
     <div class="container mt-5">
         <div class="row">
@@ -11,7 +8,6 @@ $redirect = $_COOKIE["redirect"] ?? "";
                     </div>
                     <form action="public_html/components/login/login.php" method="POST">
                     <div class="card-body">
-                        <input type="hidden" name="redirect" value="<?=$redirect?>">
                         <input type="text" id="userName" name="userName" class="form-control input-sm chat-input" placeholder="Nazwa Użytkownika" required/>
                         </br>
                         <input type="password" id="userPassword" name="userPassword" class="form-control input-sm chat-input" placeholder="Hasło" required/>

@@ -1,6 +1,11 @@
 <?php
 define('ROOT_DIRECTORY', $_SERVER['DOCUMENT_ROOT'].'/atte_ms_new');
 require_once ROOT_DIRECTORY.'/vendor/autoload.php';
+
+$dotenv = Dotenv\Dotenv::createImmutable(ROOT_DIRECTORY);
+$dotenv->load();
+define("BASEURL", $_ENV["BASEURL"]);
+
 session_start();
 
 function includeWithVariables($filePath, $variables = array(), $print = true)

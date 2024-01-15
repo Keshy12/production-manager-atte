@@ -1,21 +1,16 @@
 <?php
 namespace Atte\Utils;  
 
-require_once(realpath(dirname(__FILE__) . '/class-notification.php'));
-
-use Atte\DB\BaseDB;
+use Atte\DB\MsaDB;
 use Atte\Utils\Notification;
 
 class NotificationRepository {
     private $MsaDB;
 
-    public function __construct(BaseDB $MsaDB){
+    public function __construct(MsaDB $MsaDB){
         $this -> MsaDB = $MsaDB;
     }
 
-    public function isTransactionOpen(){
-        return $this -> MsaDB -> isInTransaction();
-    }
     public function getNotificationById($id) {
         $database = $this -> MsaDB;
         $query = "SELECT * FROM `notification__list` WHERE `id` = $id";

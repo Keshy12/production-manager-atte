@@ -9,25 +9,24 @@ $userPassword = hash('sha256',$_POST["userPassword"]) ?? "";
 $user = $MsaDB -> query("SELECT user_id, isAdmin FROM user 
 WHERE login = '$userName' AND password = '$userPassword'");
 
+$location = "http://".BASEURL."/login";
+
 //If credentials are correct
 if(!empty($user)){
     unset($_SESSION['info']);
     list($id, $isAdmin) = $user[0];
+
     $_SESSION["userid"] = $id;
     $_SESSION['isAdmin'] = (bool)$isAdmin;
 
-    //Redirect to previously accessed page.
-    if(!empty($_POST["redirect"])) {
-        header("Location: ".$_POST['redirect']."");
-        unset($_COOKIE["redirect"]);
-        die();
-    }
+    $location = "http://".BASEURL;
 
-    header("Location: /atte_ms_new");
-    die();
+    //Redirect to previously accessed page.
+    if(isset($_COOKIE["redirect"])) {
+        $location = $_COOKIE["redirect"];
+        setcookie("redirect", "", (-1)*time()+3600, '/');
+    }
 }
 
-header('Location: /atte_ms_new/login');
-die();
-
+header("Location: ".$location);
 

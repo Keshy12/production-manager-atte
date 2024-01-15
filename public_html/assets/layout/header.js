@@ -1,10 +1,13 @@
+
 function getFlowpinDate() {
     $.ajax({
         type: "POST",
         url: "/atte_ms/get-flowpin-date.php",
         data: {},
         success: function(data) {
-          $("#flowpinDate").html(data);
+          let result = JSON.parse(data);
+          $("#flowpinDate").html(result.flowpin);
+          $("#GSWarehouseDate").html(result.gs);
         }
     });
   }
@@ -24,6 +27,7 @@ function getFlowpinDate() {
   }
 
   $(document).ready(function(){
+    $('.selectpicker').selectpicker();
     $('.dropdown-submenu a.test').on("click", function(e){
       $('.dropdown-submenu .dropdown-menu').hide();
       $(this).next('.dropdown-menu').toggle();
