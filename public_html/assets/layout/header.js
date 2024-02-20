@@ -1,4 +1,6 @@
 
+const COMPONENTS_PATH = "/atte_ms_new/public_html/components"
+
 function getFlowpinDate() {
     $.ajax({
         type: "POST",
@@ -72,3 +74,10 @@ function getFlowpinDate() {
     e.preventDefault();
     $('#logoutModal').modal('show');
   });
+  
+// disable mousewheel on a input number field when in focus
+document.addEventListener("wheel", function(event){
+  if(document.activeElement.type === "number"){
+      document.activeElement.blur();
+  }
+});
