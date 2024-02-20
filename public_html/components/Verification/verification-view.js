@@ -17,7 +17,7 @@ function renderCards(deviceTypes) {
 $("#verifyType").change(function(){
     $.ajax({
         type: "POST",
-        url: "/atte_ms_new/public_html/components/verification/get-verification-values.php",
+        url: COMPONENTS_PATH+"/verification/get-verification-values.php",
         data: {deviceType: this.value},
         success: function(data) {
             let result = JSON.parse(data);
@@ -41,7 +41,7 @@ $('body').on('click', ".verificationSubmit", function(){
     let id = this.value;
     $.ajax({
         type: "POST",
-        url: '/atte_ms_new/public_html/components/verification/verify.php',
+        url: COMPONENTS_PATH+'/verification/verify.php',
         data: {deviceType: deviceType, id: id, comment: comment, quantity: quantity, commissionId: commissionId, deviceId: deviceId},
         success: function(data)
         {
@@ -49,4 +49,9 @@ $('body').on('click', ".verificationSubmit", function(){
             $("#verifyType").change();
         }
     });
+});
+
+$('body').on('change', ".correct", function(){
+    let $cardbody = $(this).parent().parent().parent();
+    $cardbody.find(".quantity").prop("readonly", !($(this).prop('checked')))
 });

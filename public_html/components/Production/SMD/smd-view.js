@@ -1,6 +1,12 @@
 
 function generateLastProduction(deviceId){
-    $("#lastProduction").load('../public_html/components/production/last-production-table.php', {deviceType: 'smd', deviceId: deviceId});
+    let lastId = $("#lastProduction").attr("data-last-id");
+    $("#lastProduction").load('../public_html/components/production/last-production-table.php', 
+    {deviceType: 'smd', deviceId: deviceId, lastId: lastId},
+    function(){
+        let lastIdNew = $("#lastProductionTable").attr("data-last-id");
+        $("#lastProduction").attr("data-last-id", lastIdNew);
+    });
 }
 
 function generateVersionSelect(possibleVersions){
@@ -85,4 +91,13 @@ $("#form").submit(function(e) {
         }
     });
 
+});
+
+$(document).ready(function(){
+    let autoSelectValues = JSON.parse($("#list__device").attr("data-auto-select"));
+    if(autoSelectValues.length) {
+        $("#list__device").selectpicker('val', autoSelectValues[0]).change();
+        $("#laminate").selectpicker('val', autoSelectValues[1]).change();
+        $("#version").selectpicker('val', autoSelectValues[2]).change();
+    }
 });

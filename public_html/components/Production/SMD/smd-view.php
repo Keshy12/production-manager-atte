@@ -1,11 +1,23 @@
 <?php
 use Atte\DB\MsaDB;
 use Atte\Utils\UserRepository;
+use Atte\Utils\BomRepository;
 use Atte\Utils\ComponentRenderer\SelectRenderer;
 
 $MsaDB = MsaDB::getInstance();
 $userRepository = new UserRepository($MsaDB);
 $selectRenderer = new SelectRenderer($MsaDB);
+
+$bomValues = "";
+//If redirected from index
+if (isset($_GET['redirect']) && $_GET['redirect'] === 'true') {
+    $bomRepository = new BomRepository($MsaDB);
+    $bom = $bomRepository -> getBomById("smd", $_POST["device_id"]);
+    $bomValues = [$bom -> deviceId, $bom -> laminateId, $bom -> version];
+    $headerDir = ROOT_DIRECTORY.'/public_html/assets/layout/header.php';
+    includeWithVariables($headerDir, array('title' => 'Produkcja SMD'));
+    echo("<script>history.replaceState({},'','/atte_ms_new/production/smd');</script>");
+}
 
 $userId = $_SESSION["userid"];
 $user = $userRepository -> getUserById($userId);
@@ -42,7 +54,7 @@ $used__smd = $user -> getDevicesUsed("smd");
             <input type="hidden" name="user_id" value="<?=$userId?>">
             <label for="list__device">Wybierz urządzenie</label>
             <div class="d-flex">
-                <select class="form-control selectpicker" title="Wybierz urządzenie..." name="device_id" id="list__device" data-live-search="true" data-width="80%" required>
+                <select class="form-control selectpicker" title="Wybierz urządzenie..." name="device_id" id="list__device" data-auto-select='<?=json_encode($bomValues)?>' data-live-search="true" data-width="80%" required>
                     <?php $selectRenderer -> renderSMDBOMSelect($used__smd); ?>
                 </select>
                 <select class="form-control selectpicker" title="Lam..." name="laminate" id="laminate" data-width="10%" style="width: 10%;" required></select>
@@ -71,7 +83,7 @@ $used__smd = $user -> getDevicesUsed("smd");
     </form>
 </div>
 
-<div id="lastProduction" class="d-flex align-items-center justify-content-center">
+<div id="lastProduction" data-last-id="" class="d-flex align-items-center justify-content-center">
 </div>
 
 <script src="http://<?=BASEURL?>/public_html/components/production/smd/smd-view.js"></script>
