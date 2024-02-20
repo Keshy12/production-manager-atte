@@ -8,6 +8,7 @@ switch ($request) {
     case '':
     case '/':
         includeWithVariables($headerDir, array('title' => 'Strona Główna', 'skip' => true));
+        if(isset($_SESSION["userid"])) require $viewDir . '/index/active-commissions-view.php';
         break;
 
     case 'production/tht':
