@@ -5,14 +5,14 @@ use Atte\DB\MsaDB;
 use Atte\Utils\Bom;
 
 class BomRepository {
-    private $database;
+    private $MsaDB;
 
-    public function __construct(MsaDB $database){
-        $this -> database = $database;
+    public function __construct(MsaDB $MsaDB){
+        $this -> database = $MsaDB;
     }
 
     public function getBomById($deviceType, $id) {
-        $database = $this -> database;
+        $MsaDB = $this -> database;
         $laminate = $deviceType == 'smd' ? 'laminate_id as laminateId,' : ''; 
         $query = "SELECT id, 
                         {$deviceType}_id as deviceId, 
@@ -22,7 +22,7 @@ class BomRepository {
                     FROM bom__{$deviceType} 
                     WHERE id = $id";
 
-        $result = $database -> query($query, \PDO::FETCH_CLASS, "Atte\\Utils\\Bom", [$database]);
+        $result = $MsaDB -> query($query, \PDO::FETCH_CLASS, "Atte\\Utils\\Bom", [$MsaDB]);
         if(isset($result[0])) {
             $result[0] -> deviceType = $deviceType;
             return $result[0];
@@ -32,7 +32,7 @@ class BomRepository {
     }
 
     private function getBomByValuesLaminate($deviceType, $deviceId, $laminateId, $version) {
-        $database = $this -> database;
+        $MsaDB = $this -> database;
         $query = "SELECT id, 
                         {$deviceType}_id as deviceId, 
                         laminate_id as laminateId, 
@@ -43,7 +43,7 @@ class BomRepository {
                     AND laminate_id = $laminateId 
                     AND version = '$version'";
 
-        $result = $database -> query($query, \PDO::FETCH_CLASS, "Atte\\Utils\\Bom", [$database]);
+        $result = $MsaDB -> query($query, \PDO::FETCH_CLASS, "Atte\\Utils\\Bom", [$MsaDB]);
         if(isset($result[0])) {
             $result[0] -> deviceType = $deviceType;
             return $result[0];
@@ -53,7 +53,7 @@ class BomRepository {
     }
 
     private function getBomByValuesNoLaminate($deviceType, $deviceId, $version) {
-        $database = $this -> database;
+        $MsaDB = $this -> database;
         $query = "SELECT id, 
                         {$deviceType}_id as deviceId, 
                         version, 
@@ -62,7 +62,7 @@ class BomRepository {
                     WHERE {$deviceType}_id = $deviceId 
                     AND version = '$version'";
 
-        $result = $database -> query($query, \PDO::FETCH_CLASS, "Atte\\Utils\\Bom", [$database]);
+        $result = $MsaDB -> query($query, \PDO::FETCH_CLASS, "Atte\\Utils\\Bom", [$MsaDB]);
         if(isset($result[0])) {
             $result[0] -> deviceType = $deviceType;
             return $result[0];

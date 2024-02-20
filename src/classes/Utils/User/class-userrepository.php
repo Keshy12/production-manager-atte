@@ -6,17 +6,17 @@ use Atte\Utils\User;
 use \PDO;
 
 class UserRepository {
-    private $database;
+    private $MsaDB;
 
-    public function __construct(BaseDB $database){
-        $this -> database = $database;
+    public function __construct(BaseDB $MsaDB){
+        $this -> database = $MsaDB;
     }
 
     public function getUserById($id) {
-        $database = $this -> database;
+        $MsaDB = $this -> database;
         $query = "SELECT user_id as userId, login, name, surname, email, isAdmin, sub_magazine_id as subMagazineId 
                     FROM `user` WHERE `user_id` = '$id'";
-        $result = $database -> query($query, PDO::FETCH_CLASS, "Atte\\Utils\\User", [$database]);
+        $result = $MsaDB -> query($query, PDO::FETCH_CLASS, "Atte\\Utils\\User", [$MsaDB]);
         if(isset($result[0])) {
             return $result[0];
         } else {
@@ -25,10 +25,10 @@ class UserRepository {
     }
 
     public function getUserByEmail($email) {
-        $database = $this -> database;
+        $MsaDB = $this -> database;
         $query = "SELECT user_id as userId, login, name, surname, email, isAdmin, sub_magazine_id as subMagazineId 
                     FROM `user` WHERE `email` = '$email'";
-        $result = $database -> query($query, PDO::FETCH_CLASS, "Atte\\Utils\\User", [$database]);
+        $result = $MsaDB -> query($query, PDO::FETCH_CLASS, "Atte\\Utils\\User", [$MsaDB]);
         if(isset($result[0])) {
             return $result[0];
         } else {

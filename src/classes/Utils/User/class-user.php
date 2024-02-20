@@ -6,7 +6,7 @@ use \PDO;
 
 class User 
 {
-    private $database;
+    private $MsaDB;
     public int $userId;
     public string $login;
     public string $name;
@@ -15,8 +15,8 @@ class User
     public bool $isAdmin;
     public int $subMagazineId; 
 
-    public function __construct(BaseDB $database){
-        $this->database = $database;
+    public function __construct(BaseDB $MsaDB){
+        $this->database = $MsaDB;
     }
 
     public function isAdmin(){
@@ -24,14 +24,14 @@ class User
     }
 
     public function getUserInfo(){
-        $database = $this -> database;
+        $MsaDB = $this -> database;
         $id = $this -> userId;
         $sql = "SELECT * 
                 FROM user u 
                 JOIN magazine__list s 
                 ON u.sub_magazine_id = s.sub_magazine_id 
                 WHERE user_id = $id";
-        $result = $database -> query($sql, PDO::FETCH_ASSOC);
+        $result = $MsaDB -> query($sql, PDO::FETCH_ASSOC);
         return $result[0];
     }
 
@@ -41,10 +41,10 @@ class User
     * @return array Array of Commission classes
     */
     public function getActiveCommissions(){
-        $database = $this -> database;
+        $MsaDB = $this -> database;
         $id = $this->userId;
         $result = [];
-        $queryResult = $database -> query("SELECT commission_id 
+        $queryResult = $MsaDB -> query("SELECT commission_id 
                                            FROM `commission__receivers` cr 
                                            JOIN commission__list cl 
                                            ON cr.commission_id = cl.id 
@@ -54,7 +54,7 @@ class User
                                            ORDER BY priority DESC", 
                                            PDO::FETCH_COLUMN);
         if(empty($queryResult)) return $result;
-        $commissionRepository = new \Atte\Utils\CommissionRepository($database);
+        $commissionRepository = new \Atte\Utils\CommissionRepository($MsaDB);
         foreach($queryResult as $commissionId)
         {
             $result[] = $commissionRepository -> getCommissionById($commissionId);
@@ -63,9 +63,9 @@ class User
     }
 
     public function getDevicesUsed($deviceType){
-        $database = $this -> database;
+        $MsaDB = $this -> database;
         $userId = $this -> userId;
-        return $database -> query("SELECT {$deviceType}_id 
+        return $MsaDB -> query("SELECT {$deviceType}_id 
                                    FROM `used__{$deviceType}` 
                                    WHERE user_id = '{$userId}'", 
                                    PDO::FETCH_COLUMN);

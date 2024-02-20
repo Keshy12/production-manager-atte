@@ -12,38 +12,38 @@ class NotificationRepository {
     }
 
     public function getNotificationById($id) {
-        $database = $this -> MsaDB;
+        $MsaDB = $this -> MsaDB;
         $query = "SELECT * FROM `notification__list` WHERE `id` = $id";
-        $result = $database -> query($query, \PDO::FETCH_ASSOC);
+        $result = $MsaDB -> query($query, \PDO::FETCH_ASSOC);
         if(isset($result[0])) {
-            return new Notification($database, $result[0]);
+            return new Notification($MsaDB, $result[0]);
         } else {
             throw new \Exception("There is no notification with given id($id)");
         }
     }
     public function getUnresolvedNotifications(){
-        $database = $this -> MsaDB;
-        $dbresult = $database -> query("SELECT * FROM `notification__list` 
+        $MsaDB = $this -> MsaDB;
+        $dbresult = $MsaDB -> query("SELECT * FROM `notification__list` 
                                         WHERE isResolved = 0");
         $result = [];
         foreach($dbresult as $row) {
-            $result[] = new Notification($database, $row);
+            $result[] = new Notification($MsaDB, $row);
         }
         return $result;
     }
 
 
     public function createNotification($actionNeeded, $row, $valueForAction, $exceptionValues, $flowpinQueryTypeId) {
-        $database = $this -> MsaDB;
+        $MsaDB = $this -> MsaDB;
         $valueForActionClause = isset($valueForAction) ? "AND value_for_action = '$valueForAction'" : " ";
-        $dbresult = $database -> query("SELECT id FROM `notification__list` 
+        $dbresult = $MsaDB -> query("SELECT id FROM `notification__list` 
                                         WHERE action_needed_id = $actionNeeded 
                                         $valueForActionClause
                                         AND isResolved = 0", 
                                         \PDO::FETCH_COLUMN);
-        $notificationId = isset($dbresult[0]) ? $dbresult[0] : $database -> insert("notification__list", ["action_needed_id", "value_for_action"], [$actionNeeded, $valueForAction]);
-        $values = $database -> query("SELECT * FROM `notification__list` WHERE id = $notificationId")[0];
-        $notification = new Notification($database, $values);
+        $notificationId = isset($dbresult[0]) ? $dbresult[0] : $MsaDB -> insert("notification__list", ["action_needed_id", "value_for_action"], [$actionNeeded, $valueForAction]);
+        $values = $MsaDB -> query("SELECT * FROM `notification__list` WHERE id = $notificationId")[0];
+        $notification = new Notification($MsaDB, $values);
         $notification -> addValuesToResolve($row, $exceptionValues, $flowpinQueryTypeId);
         return $notification;
     }

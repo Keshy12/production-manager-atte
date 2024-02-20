@@ -4,7 +4,7 @@ namespace Atte\Utils;
 use Atte\DB\MsaDB;
 
 class Bom {
-    private $database;
+    private $MsaDB;
     public string $deviceType;
     public int $id;
     public int $deviceId;
@@ -13,15 +13,15 @@ class Bom {
     public bool $isActive;
 
 
-    public function __construct(MsaDB $database){
-        $this -> database = $database;
+    public function __construct(MsaDB $MsaDB){
+        $this -> database = $MsaDB;
     }
 
     public function getComponents($quantity) {
-        $database = $this -> database;
+        $MsaDB = $this -> database;
         $id = $this -> id;
         $deviceType = $this -> deviceType;
-        $components = $database -> query("SELECT sku_id, tht_id, smd_id, parts_id, quantity*{$quantity} as qty FROM bom__flat WHERE bom_{$deviceType}_id = '{$id}'");
+        $components = $MsaDB -> query("SELECT sku_id, tht_id, smd_id, parts_id, quantity*{$quantity} as qty FROM bom__flat WHERE bom_{$deviceType}_id = '{$id}'");
         $result = array();
         foreach($components as $component){
             $type = "sku";
@@ -44,12 +44,12 @@ class Bom {
     }
 
     public function getNameAndDescription(){
-        $database = $this -> database;
+        $MsaDB = $this -> database;
         $id = $this -> id;
         $deviceId = $this -> deviceId;
         $laminateId = $this -> laminateId;
         $deviceType = $this -> deviceType;
-        $query = $database -> query("SELECT name, 
+        $query = $MsaDB -> query("SELECT name, 
                                             description 
                                      FROM list__{$deviceType} 
                                      WHERE id = {$deviceId}");
@@ -57,7 +57,7 @@ class Bom {
         $this -> description = $query[0]['description'];
         if($deviceType == 'smd')
         {
-            $query = $database -> query("SELECT name
+            $query = $MsaDB -> query("SELECT name
                                             FROM list__laminate 
                                             WHERE id = {$laminateId}");
             $this -> laminateName = $query[0]['name'];

@@ -17,9 +17,9 @@ class MagazineRepository {
     * @return Magazine Magazine class
     */
     public function getMagazineById($id) {
-        $database = $this -> MsaDB;
+        $MsaDB = $this -> MsaDB;
         $query = "SELECT sub_magazine_id as id, sub_magazine_name as name, type_id as typeId FROM `magazine__list` WHERE `sub_magazine_id` = $id";
-        $queryResult = $database -> query($query, \PDO::FETCH_CLASS, "Atte\\Utils\\Magazine", [$database]);
+        $queryResult = $MsaDB -> query($query, \PDO::FETCH_CLASS, "Atte\\Utils\\Magazine", [$MsaDB]);
         if(isset($queryResult[0])) {
             return $queryResult[0];
         } else {

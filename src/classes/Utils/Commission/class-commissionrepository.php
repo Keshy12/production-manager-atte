@@ -17,9 +17,9 @@ class CommissionRepository {
     * @return Commission Commission class
     */
     public function getCommissionById($id) {
-        $database = $this -> MsaDB;
+        $MsaDB = $this -> MsaDB;
         $query = "SELECT * FROM `commission__list` WHERE `id` = $id";
-        $queryResult = $database -> query($query, \PDO::FETCH_ASSOC);
+        $queryResult = $MsaDB -> query($query, \PDO::FETCH_ASSOC);
         if(isset($queryResult[0])) {
             $row = $queryResult[0];
             $row = array_filter($row, fn ($value) => !is_null($value));
@@ -28,7 +28,7 @@ class CommissionRepository {
             $type = isset($row["bom_tht_id"]) ? "tht" : $type;
             $type = isset($row["bom_smd_id"]) ? "smd" : $type;
             $row["deviceBomId"] = $row["bom_{$type}_id"];
-            $commission = new Commission($database);
+            $commission = new Commission($MsaDB);
             $commission -> deviceType = $type;
             $commission -> commissionValues = $row;
             return $commission;

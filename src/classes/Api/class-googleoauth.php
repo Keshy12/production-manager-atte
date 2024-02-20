@@ -5,7 +5,7 @@ require_once ROOT_DIRECTORY."/config/config-google-sheets.php";
 
 class GoogleOAuth
 {
-    private $database;
+    private $MsaDB;
 
     public function __construct(){
         $this -> database = \Atte\DB\MsaDB::getInstance();

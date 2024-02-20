@@ -8,21 +8,21 @@ use \PDO;
 
 
 class Magazine {
-    private $database;
+    private $MsaDB;
     public int $id;
     public string $name;
     public int $typeId; 
 
 
-    public function __construct(MsaDB $database){
-        $this -> database = $database;
+    public function __construct(MsaDB $MsaDB){
+        $this -> database = $MsaDB;
     }
 
     public function getActiveCommissions(){
-        $database = $this -> database;
+        $MsaDB = $this -> database;
         $id = $this->id;
         $result = [];
-        $queryResult = $database -> query("SELECT id 
+        $queryResult = $MsaDB -> query("SELECT id 
                                            FROM `commission__list` 
                                            WHERE magazine_to = $id
                                            AND isCancelled = 0
@@ -30,7 +30,7 @@ class Magazine {
                                            ORDER BY priority DESC", 
                                            PDO::FETCH_COLUMN);
         if(empty($queryResult)) return $result;
-        $commissionRepository = new CommissionRepository($database);
+        $commissionRepository = new CommissionRepository($MsaDB);
         foreach($queryResult as $commissionId)
         {
             $result[] = $commissionRepository -> getCommissionById($commissionId);
@@ -43,8 +43,8 @@ class Magazine {
     public function getComponentsReserved(){
         $activeCommissions = $this -> getActiveCommissions();
         $result = array();
-        $database = $this -> database;
-        $bomRepository = new BomRepository($database);
+        $MsaDB = $this -> database;
+        $bomRepository = new BomRepository($MsaDB);
         foreach($activeCommissions as $activeCommission)
         {
             $deviceType = $activeCommission -> deviceType;
