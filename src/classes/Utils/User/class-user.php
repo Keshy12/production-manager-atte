@@ -50,6 +50,7 @@ class User
                                            ON cr.commission_id = cl.id 
                                            WHERE cl.isCancelled = 0 
                                            AND cr.user_id = $id 
+                                           AND cl.state_id != 3
                                            ORDER BY priority DESC", 
                                            PDO::FETCH_COLUMN);
         if(empty($queryResult)) return $result;
