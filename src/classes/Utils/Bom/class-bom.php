@@ -9,7 +9,7 @@ class Bom {
     public int $id;
     public int $deviceId;
     public ?int $laminateId = null;
-    public string $version; 
+    public ?string $version = null; 
     public bool $isActive;
 
 
@@ -41,5 +41,26 @@ class Bom {
             $result[] = ["type" => $type, "componentId" => $device_id, "quantity" => $component["qty"]];
         }
         return $result;
-    } 
+    }
+
+    public function getNameAndDescription(){
+        $database = $this -> database;
+        $id = $this -> id;
+        $deviceId = $this -> deviceId;
+        $laminateId = $this -> laminateId;
+        $deviceType = $this -> deviceType;
+        $query = $database -> query("SELECT name, 
+                                            description 
+                                     FROM list__{$deviceType} 
+                                     WHERE id = {$deviceId}");
+        $this -> name = $query[0]['name'];
+        $this -> description = $query[0]['description'];
+        if($deviceType == 'smd')
+        {
+            $query = $database -> query("SELECT name
+                                            FROM list__laminate 
+                                            WHERE id = {$laminateId}");
+            $this -> laminateName = $query[0]['name'];
+        }
+    }
 }
