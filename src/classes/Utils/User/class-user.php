@@ -16,7 +16,7 @@ class User
     public int $subMagazineId; 
 
     public function __construct(BaseDB $MsaDB){
-        $this->database = $MsaDB;
+        $this->MsaDB = $MsaDB;
     }
 
     public function isAdmin(){
@@ -24,7 +24,7 @@ class User
     }
 
     public function getUserInfo(){
-        $MsaDB = $this -> database;
+        $MsaDB = $this -> MsaDB;
         $id = $this -> userId;
         $sql = "SELECT * 
                 FROM user u 
@@ -41,7 +41,7 @@ class User
     * @return array Array of Commission classes
     */
     public function getActiveCommissions(){
-        $MsaDB = $this -> database;
+        $MsaDB = $this -> MsaDB;
         $id = $this->userId;
         $result = [];
         $queryResult = $MsaDB -> query("SELECT commission_id 
@@ -63,7 +63,7 @@ class User
     }
 
     public function getDevicesUsed($deviceType){
-        $MsaDB = $this -> database;
+        $MsaDB = $this -> MsaDB;
         $userId = $this -> userId;
         return $MsaDB -> query("SELECT {$deviceType}_id 
                                    FROM `used__{$deviceType}` 

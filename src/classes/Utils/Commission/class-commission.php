@@ -11,24 +11,24 @@ class Commission
     public array $commissionValues;
 
     public function __construct(BaseDB $MsaDB){
-        $this->database = $MsaDB;
+        $this->MsaDB = $MsaDB;
     }
 
     public function updatePriority($priority){
-        $MsaDB = $this -> database;
+        $MsaDB = $this -> MsaDB;
         $id = $this->commissionValues["id"];
         $MsaDB -> update('commission__list', ['priority' => $priority], "id", $id);
         $this->commissionValues["priority"] = $priority;
     }
     public function cancel(){
-        $MsaDB = $this -> database;
+        $MsaDB = $this -> MsaDB;
         $id = $this->commissionValues["id"];
         if($this -> commissionValues["isCancelled"] == 1) throw new \Exception("This commission is already cancelled.");
         $MsaDB -> update('commission__list', ['isCancelled' => 1], "id", $id);
         $this->commissionValues["isCancelled"] = 1;
     }
     public function updateStateId($stateId){
-        $MsaDB = $this -> database;
+        $MsaDB = $this -> MsaDB;
         $id = $this->commissionValues["id"];
         $now = date("Y-m-d H:i:s",time());
         $finished = $stateId == 3 ? $now : null;
@@ -47,7 +47,7 @@ class Commission
         $this -> updateStateId($state_id);
     }
     public function getReceivers(){
-        $MsaDB = $this -> database;
+        $MsaDB = $this -> MsaDB;
         $id = $this->commissionValues["id"];
         $receivers = $MsaDB -> query("SELECT user_id 
                                             FROM commission__receivers 
@@ -56,7 +56,7 @@ class Commission
         return $receivers;
     }
     public function updateReceivers($receivers){
-        $MsaDB = $this -> database;
+        $MsaDB = $this -> MsaDB;
         $id = $this->commissionValues["id"];
         $MsaDB -> query("DELETE FROM commission__receivers
                             WHERE `commission_id` = $id");

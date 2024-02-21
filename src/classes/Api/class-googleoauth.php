@@ -8,7 +8,7 @@ class GoogleOAuth
     private $MsaDB;
 
     public function __construct(){
-        $this -> database = \Atte\DB\MsaDB::getInstance();
+        $this -> MsaDB = \Atte\DB\MsaDB::getInstance();
     }
 
     public function regenerateToken(){
@@ -30,7 +30,7 @@ class GoogleOAuth
     }
 
     private function is_table_empty() {
-        $result = $this->database->query("SELECT id FROM google_oauth WHERE provider = 'google'");     
+        $result = $this->MsaDB->query("SELECT id FROM google_oauth WHERE provider = 'google'");     
         if(count($result)) {
             return false;
         }
@@ -38,7 +38,7 @@ class GoogleOAuth
     }
 
     public function get_access_token() {
-        $result = $this->database->query("SELECT provider_value FROM google_oauth WHERE provider = 'google'");
+        $result = $this->MsaDB->query("SELECT provider_value FROM google_oauth WHERE provider = 'google'");
         return json_decode($result[0]['provider_value']);
     }
 
@@ -49,9 +49,9 @@ class GoogleOAuth
 
     public function update_access_token($token) {
         if($this->is_table_empty()) {
-            $this->database->insert("google_oauth", ["provider, provider_values"], ['google', $token]);
+            $this->MsaDB->insert("google_oauth", ["provider, provider_values"], ['google', $token]);
             return;
         }
-        $this->database->update("google_oauth", ["provider_value" => $token], "provider", "google");
+        $this->MsaDB->update("google_oauth", ["provider_value" => $token], "provider", "google");
     }
 }

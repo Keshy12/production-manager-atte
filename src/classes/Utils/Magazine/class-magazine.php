@@ -15,11 +15,11 @@ class Magazine {
 
 
     public function __construct(MsaDB $MsaDB){
-        $this -> database = $MsaDB;
+        $this -> MsaDB = $MsaDB;
     }
 
     public function getActiveCommissions(){
-        $MsaDB = $this -> database;
+        $MsaDB = $this -> MsaDB;
         $id = $this->id;
         $result = [];
         $queryResult = $MsaDB -> query("SELECT id 
@@ -43,7 +43,7 @@ class Magazine {
     public function getComponentsReserved(){
         $activeCommissions = $this -> getActiveCommissions();
         $result = array();
-        $MsaDB = $this -> database;
+        $MsaDB = $this -> MsaDB;
         $bomRepository = new BomRepository($MsaDB);
         foreach($activeCommissions as $activeCommission)
         {

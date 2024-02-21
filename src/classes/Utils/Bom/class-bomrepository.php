@@ -8,11 +8,11 @@ class BomRepository {
     private $MsaDB;
 
     public function __construct(MsaDB $MsaDB){
-        $this -> database = $MsaDB;
+        $this -> MsaDB = $MsaDB;
     }
 
     public function getBomById($deviceType, $id) {
-        $MsaDB = $this -> database;
+        $MsaDB = $this -> MsaDB;
         $laminate = $deviceType == 'smd' ? 'laminate_id as laminateId,' : ''; 
         $query = "SELECT id, 
                         {$deviceType}_id as deviceId, 
@@ -32,7 +32,7 @@ class BomRepository {
     }
 
     private function getBomByValuesLaminate($deviceType, $deviceId, $laminateId, $version) {
-        $MsaDB = $this -> database;
+        $MsaDB = $this -> MsaDB;
         $query = "SELECT id, 
                         {$deviceType}_id as deviceId, 
                         laminate_id as laminateId, 
@@ -53,7 +53,7 @@ class BomRepository {
     }
 
     private function getBomByValuesNoLaminate($deviceType, $deviceId, $version) {
-        $MsaDB = $this -> database;
+        $MsaDB = $this -> MsaDB;
         $query = "SELECT id, 
                         {$deviceType}_id as deviceId, 
                         version, 

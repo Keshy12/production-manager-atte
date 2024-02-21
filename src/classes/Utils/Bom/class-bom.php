@@ -14,11 +14,11 @@ class Bom {
 
 
     public function __construct(MsaDB $MsaDB){
-        $this -> database = $MsaDB;
+        $this -> MsaDB = $MsaDB;
     }
 
     public function getComponents($quantity) {
-        $MsaDB = $this -> database;
+        $MsaDB = $this -> MsaDB;
         $id = $this -> id;
         $deviceType = $this -> deviceType;
         $components = $MsaDB -> query("SELECT sku_id, tht_id, smd_id, parts_id, quantity*{$quantity} as qty FROM bom__flat WHERE bom_{$deviceType}_id = '{$id}'");
@@ -44,7 +44,7 @@ class Bom {
     }
 
     public function getNameAndDescription(){
-        $MsaDB = $this -> database;
+        $MsaDB = $this -> MsaDB;
         $id = $this -> id;
         $deviceId = $this -> deviceId;
         $laminateId = $this -> laminateId;

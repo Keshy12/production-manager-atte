@@ -9,11 +9,11 @@ class UserRepository {
     private $MsaDB;
 
     public function __construct(BaseDB $MsaDB){
-        $this -> database = $MsaDB;
+        $this -> MsaDB = $MsaDB;
     }
 
     public function getUserById($id) {
-        $MsaDB = $this -> database;
+        $MsaDB = $this -> MsaDB;
         $query = "SELECT user_id as userId, login, name, surname, email, isAdmin, sub_magazine_id as subMagazineId 
                     FROM `user` WHERE `user_id` = '$id'";
         $result = $MsaDB -> query($query, PDO::FETCH_CLASS, "Atte\\Utils\\User", [$MsaDB]);
@@ -25,7 +25,7 @@ class UserRepository {
     }
 
     public function getUserByEmail($email) {
-        $MsaDB = $this -> database;
+        $MsaDB = $this -> MsaDB;
         $query = "SELECT user_id as userId, login, name, surname, email, isAdmin, sub_magazine_id as subMagazineId 
                     FROM `user` WHERE `email` = '$email'";
         $result = $MsaDB -> query($query, PDO::FETCH_CLASS, "Atte\\Utils\\User", [$MsaDB]);
