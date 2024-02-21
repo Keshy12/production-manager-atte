@@ -47,7 +47,12 @@ $used__tht = $user -> getDevicesUsed("tht");
 
 <h1 class="text-center mt-4">Produkcja THT</h1>
 <h4 id="raportAs" class="text-center font-weight-light">Raport jako: <?=$userinfo["login"]?></h4>
-<div id="image"></div>
+<div>
+    <div class="mx-auto d-block">
+        <div id="marking" style="width:500px; max-width:100%;" class="d-flex mx-auto">
+        </div>
+    </div>
+</div>
 
 <div class="container mt-5">
     <form id="form" method="post" action="http://<?=BASEURL?>/public_html/components/production/tht/tht-production.php">

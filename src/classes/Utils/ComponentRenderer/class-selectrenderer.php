@@ -44,7 +44,10 @@ class SelectRenderer {
                                                 l.id, 
                                                 l.name, 
                                                 l.description, 
-                                                b.version 
+                                                b.version,
+                                                l.circle_checked,
+                                                l.triangle_checked,
+                                                l.square_checked
                                               FROM `list__tht` l 
                                               JOIN bom__tht b 
                                               ON l.id = b.tht_id 
@@ -52,8 +55,15 @@ class SelectRenderer {
                                               AND b.isActive = 1
                                               ORDER BY version ASC;");
         foreach($possibleVer as $row){
-            list($id, $name, $description, $version) = $row;
-            if(!isset($result[$id])) $result[$id] = [$name, $description, "versions" => []];
+            list($id, $name, $description, $version, $circleMark, $triangleMark, $squareMark) = $row;
+            if(!isset($result[$id])) {
+                $result[$id] = [
+                    $name, 
+                    $description, 
+                    "versions" => [], 
+                    "marking" => [$circleMark, $triangleMark, $squareMark]
+                ];
+            }
             $result[$id]["versions"][] = $version;
         }
         return $result;
@@ -111,11 +121,14 @@ class SelectRenderer {
             $row = $values[$id];
             list($name, $description) = $row;
             $versions = $row["versions"];
+            $marking = $row["marking"];
             $jsonVersions = json_encode($versions, JSON_FORCE_OBJECT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
+            $jsonMarking = json_encode($marking, JSON_FORCE_OBJECT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
             echo "<option data-subtext='$description'
             data-tokens='$name $description' 
             value='$id' data-jsonVersions = '$jsonVersions'
-            >$name</option>";
+            data-jsonMarking='$jsonMarking'>
+            $name</option>";
         } 
     }
 }

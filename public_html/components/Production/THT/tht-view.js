@@ -9,6 +9,24 @@ function generateLastProduction(deviceId){
     });
 }
 
+function generateMarking(marking){
+    console.log(marking);
+    $("#marking").empty();
+    for (let mark in marking)
+    {
+        mark = parseInt(mark);
+        let bMarking = marking[mark];
+        let fileName = (mark+1)+"off.png";
+        if(bMarking) fileName = (mark+1)+"on.png";
+
+        $("#marking").append(`<img style='width:33%;' 
+                                   class='img-fluid mt-4' 
+                                   src='/atte_ms_new/public_html/assets/img/production/tht/marking/`+fileName+`' 
+                                   alt='oznaczenie'>`);
+    } 
+
+}
+
 function generateVersionSelect(possibleVersions){
     $("#version").empty();
     if(Object.keys(possibleVersions).length == 1) {
@@ -32,9 +50,11 @@ $("#list__device").change(function(){
     $("#laminate, #version").empty();
     $("#laminate, #version").selectpicker('refresh');
     let possibleVersions = $("#list__device option:selected").data("jsonversions");
+    let marking = $("#list__device option:selected").data("jsonmarking");
     let deviceDescription = $("#list__device option:selected").data("subtext");
     $("#device_description").val(deviceDescription);
     generateVersionSelect(possibleVersions);
+    generateMarking(marking);
     generateLastProduction(this.value);
 });
 
@@ -60,6 +80,7 @@ $("#form").submit(function(e) {
             $("#send").html("Wyślij");
             $("#send").prop("disabled", false);
             generateLastProduction($("#list__device option:selected").val());
+            generateMarking($("#list__device option:selected").val());
         }
     });
 
