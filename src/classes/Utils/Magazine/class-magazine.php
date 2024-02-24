@@ -2,8 +2,7 @@
 namespace Atte\Utils;  
 
 use Atte\DB\MsaDB;
-use Atte\Utils\CommissionRepository;
-use Atte\Utils\BomRepository;
+use Atte\Utils\{CommissionRepository, BomRepository};
 use \PDO;
 
 

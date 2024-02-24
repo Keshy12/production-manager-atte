@@ -37,16 +37,9 @@ $users_submag = $MsaDB -> readIdName('user', 'user_id', 'sub_magazine_id');
                     <div class="input-group-prepend">
                         <span class="input-group-text" id="">Subkontraktorzy: </span>
                     </div>
-                    <select class="selectpicker" id='editSubcontractors' multiple data-selected-text-format="count > 2"
-                        data-actions-box="true"></select>
-                </div>
-                <div class="input-group">
-                    <div class="input-group-prepend">
-                        <span class="input-group-text" id="">Grupy: </span>
-                    </div>
-                    <select class="selectpicker" id='input-groups'>
-                        <option style="display: none;" value="0">Wybierz grupę</option>
-
+                    <select class="selectpicker" id='editSubcontractors' multiple 
+                            data-selected-text-format="count > 2"
+                            data-actions-box="true">
                     </select>
                 </div>
             </div>

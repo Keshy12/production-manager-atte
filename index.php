@@ -23,6 +23,10 @@ switch ($request) {
         includeWithVariables($headerDir, array('title' => 'Weryfikacja'));
         require $viewDir . '/verification/verification-view.php';
         break;
+    case 'archive':
+        includeWithVariables($headerDir, array('title' => 'Archiwum'));
+        require $viewDir . '/archive/archive-view.php';
+        break;
     case 'login':
         includeWithVariables($headerDir, array('title' => 'Logowanie', 'skip' => true));
         require $viewDir . '/login/login-view.php';

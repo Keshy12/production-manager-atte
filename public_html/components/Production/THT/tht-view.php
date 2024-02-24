@@ -1,7 +1,6 @@
 <?php
 use Atte\DB\MsaDB;
-use Atte\Utils\UserRepository;
-use Atte\Utils\BomRepository;
+use Atte\Utils\{UserRepository, BomRepository};
 use Atte\Utils\ComponentRenderer\SelectRenderer;
 
 $MsaDB = MsaDB::getInstance();

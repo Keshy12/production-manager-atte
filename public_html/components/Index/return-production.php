@@ -1,7 +1,6 @@
 <?php
 
-use Atte\Utils\CommissionRepository;
-use Atte\Utils\MagazineRepository;
+use Atte\Utils\{CommissionRepository, MagazineRepository};
 
 $MsaDB = Atte\DB\MsaDB::getInstance();
 $MsaDB -> db -> beginTransaction();

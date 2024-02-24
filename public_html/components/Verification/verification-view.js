@@ -45,7 +45,6 @@ $('body').on('click', ".verificationSubmit", function(){
         data: {deviceType: deviceType, id: id, comment: comment, quantity: quantity, commissionId: commissionId, deviceId: deviceId},
         success: function(data)
         {
-            console.log(data);
             $("#verifyType").change();
         }
     });
