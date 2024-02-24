@@ -1,12 +1,7 @@
 
-function generateLastProduction(deviceId){
-    let lastId = $("#lastProduction").attr("data-last-id");
+function generateLastProduction(deviceId, lastId){
     $("#lastProduction").load('../public_html/components/production/last-production-table.php', 
-    {deviceType: 'smd', deviceId: deviceId, lastId: lastId},
-    function(){
-        let lastIdNew = $("#lastProductionTable").attr("data-last-id");
-        $("#lastProduction").attr("data-last-id", lastIdNew);
-    });
+    {deviceType: 'smd', deviceId: deviceId, lastId: lastId});
 }
 
 function generateVersionSelect(possibleVersions){
@@ -85,12 +80,12 @@ $("#form").submit(function(e) {
         data: $form.serialize(), // serializes the form's elements.
         success: function(data)
         {
+            let lastId = JSON.parse(data);
             $("#send").html("Wyślij");
             $("#send").prop("disabled", false);
-            generateLastProduction($("#list__device option:selected").val());
+            generateLastProduction($("#list__device option:selected").val(), lastId);
         }
     });
-
 });
 
 $(document).ready(function(){

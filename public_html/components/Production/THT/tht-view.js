@@ -1,16 +1,10 @@
 
-function generateLastProduction(deviceId){
-    let lastId = $("#lastProduction").attr("data-last-id");
+function generateLastProduction(deviceId, lastId){
     $("#lastProduction").load('../public_html/components/production/last-production-table.php', 
-    {deviceType: 'tht', deviceId: deviceId, lastId: lastId},
-    function(){
-        let lastIdNew = $("#lastProductionTable").attr("data-last-id");
-        $("#lastProduction").attr("data-last-id", lastIdNew);
-    });
+    {deviceType: 'tht', deviceId: deviceId, lastId: lastId});
 }
 
 function generateMarking(marking){
-    console.log(marking);
     $("#marking").empty();
     for (let mark in marking)
     {
@@ -18,7 +12,6 @@ function generateMarking(marking){
         let bMarking = marking[mark];
         let fileName = (mark+1)+"off.png";
         if(bMarking) fileName = (mark+1)+"on.png";
-
         $("#marking").append(`<img style='width:33%;' 
                                    class='img-fluid mt-4' 
                                    src='/atte_ms_new/public_html/assets/img/production/tht/marking/`+fileName+`' 
@@ -77,13 +70,12 @@ $("#form").submit(function(e) {
         data: $form.serialize(), // serializes the form's elements.
         success: function(data)
         {
+            let lastId = JSON.parse(data);
             $("#send").html("Wyślij");
             $("#send").prop("disabled", false);
-            generateLastProduction($("#list__device option:selected").val());
-            generateMarking($("#list__device option:selected").val());
+            generateLastProduction($("#list__device option:selected").val(), lastId);
         }
     });
-
 });
 
 
