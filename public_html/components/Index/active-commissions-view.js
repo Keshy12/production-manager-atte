@@ -27,11 +27,6 @@ $('body').on('click', '.cancelCommission', function() {
     $("#cancelCommissionSubmit").attr("data-id", id);
     $("#cancelCommissionModal").modal("show");
 });
-$('#user').selectpicker({
-    countSelectedText: "Wybrano {0}",
-    selectAllText: "Zaznacz wszystkie",
-    deselectAllText: "Odznacz wszystkie"
-});
 $("#editCommissionSubmit").click(function() {
     let commissionid = $(this).attr("data-id");
     let commissionpriority = $("#editPriority").val();

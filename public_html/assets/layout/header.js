@@ -29,6 +29,11 @@ function getFlowpinDate() {
   }
 
   $(document).ready(function(){
+    $('.selectpicker[multiple]').selectpicker({
+        countSelectedText: "Wybrano {0}",
+        selectAllText: "Zaznacz wszystkie",
+        deselectAllText: "Odznacz wszystkie"
+    });
     $('.selectpicker').selectpicker();
     $('.dropdown-submenu a.test').on("click", function(e){
       $('.dropdown-submenu .dropdown-menu').hide();
