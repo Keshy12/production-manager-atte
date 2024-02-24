@@ -69,6 +69,19 @@ class SelectRenderer {
         return $result;
     }
 
+    public function renderPartsSelect() {
+        $MsaDB = $this -> MsaDB;
+        $list__parts = $MsaDB -> readIdName('list__parts', 'id', 'name', 'WHERE isActive = 1');
+        $list__parts_desc = $MsaDB -> readIdName('list__parts', 'id', 'description', 'WHERE isActive = 1');
+        foreach($list__parts as $id => $name) {
+            $description = $list__parts_desc[$id];
+            echo '<option data-subtext="'.$description.'"
+            data-tokens="'.$name.' '.$description.'" 
+            value="'.$id.'">'.$name.'</option>';
+        } 
+    }
+
+
     public function renderSMDSelect(?array $used__smd = null) {
         $MsaDB = $this -> MsaDB;
         $list__smd = $MsaDB -> readIdName('list__smd','id', 'name', 'WHERE isActive = 1');
@@ -91,6 +104,20 @@ class SelectRenderer {
         foreach($used__tht as $id) {
             $name = $list__tht[$id];
             $description = $list__tht_desc[$id];
+            echo '<option data-subtext="'.$description.'"
+            data-tokens="'.$name.' '.$description.'" 
+            value="'.$id.'">'.$name.'</option>';
+        } 
+    }
+
+    public function renderSKUSelect(?array $used__sku = null) {
+        $MsaDB = $this -> MsaDB;
+        $list__sku = $MsaDB -> readIdName('list__sku', 'id', 'name', 'WHERE isActive = 1');
+        $list__sku_desc = $MsaDB -> readIdName('list__sku', 'id', 'description', 'WHERE isActive = 1');
+        $used__sku = is_null($used__sku) ? array_keys($list__sku) : $used__sku;
+        foreach($used__sku as $id) {
+            $name = $list__sku[$id];
+            $description = $list__sku_desc[$id];
             echo '<option data-subtext="'.$description.'"
             data-tokens="'.$name.' '.$description.'" 
             value="'.$id.'">'.$name.'</option>';
@@ -129,6 +156,28 @@ class SelectRenderer {
             value='$id' data-jsonVersions = '$jsonVersions'
             data-jsonMarking='$jsonMarking'>
             $name</option>";
+        } 
+    }
+
+    public function renderUserSelect() {
+        $MsaDB = $this -> MsaDB;
+        $users_name = $MsaDB -> readIdName('user', 'user_id', 'name');
+        $users_surname = $MsaDB -> readIdName('user', 'user_id', 'surname');    
+        foreach($users_name as $id => $name) {
+            $surname = $users_surname[$id];
+            echo "<option value=\"$id\">".$name." ".$surname."</option>";
+        } 
+    }
+
+    /**
+    * Render select options from a simple array
+    * Key is the value of an option
+    * Corresponding value is the text of an option.
+    * @return void Returns nothing, prints options
+    */
+    public function renderArraySelect(array $array) {
+        foreach($array as $id => $value) {
+            echo "<option value='$id'>$value</option>";
         } 
     }
 }
