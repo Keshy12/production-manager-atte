@@ -33,8 +33,8 @@ if($quantityReturned > $quantityProduced) {
     throw new \Exception('Cannot make returned quantity higher than produced quantity.');
 }
 
-$MsaDB -> insert("inventory__".$deviceType, [$deviceType."_id", "commission_id", "user_id", "sub_magazine_id", "quantity", "input_type_id", "comment"], 
-[$deviceId, $commissionId, $userId, $magazineTo, $quantityBeingReturned*-1, $inputTypeId, $comment]);
+$MsaDB -> insert("inventory__".$deviceType, [$deviceType."_id", $deviceType."_bom_id", "commission_id", "user_id", "sub_magazine_id", "quantity", "input_type_id", "comment"], 
+[$deviceId, $bomId, $commissionId, $userId, $magazineTo, $quantityBeingReturned*-1, $inputTypeId, $comment]);
 
 if($MsaDB -> update("commission__list", ["quantity_returned" => $quantityReturned], "id", $commissionId)){
     $currentCommission -> commissionValues['quantity_returned'] = $quantityReturned;
@@ -75,16 +75,16 @@ if($classMagazineFrom -> typeId == 2 && $magazineFrom != $magazineTo) {
             $quantityBeingReturned += $quantityBeingReturned*(-1);
         }
         $quantity_produced = $commissionValues["quantity_produced"] + $quantity_needed;
-        $MsaDB -> insert("inventory__".$deviceType, [$deviceType."_id", "commission_id", "user_id", "sub_magazine_id", "quantity", "input_type_id", "comment", "isVerified"], 
-        [$deviceId, $commissionId, $userId, $magazineFrom, $quantity_needed, $inputTypeId, 'Automatyczna inkrementacja zlecenia nr '.$commission_id.', dostarczenie zlecenia do magazynu subkontraktora', '0']);
+        $MsaDB -> insert("inventory__".$deviceType, [$deviceType."_id", $deviceType."_bom_id", "commission_id", "user_id", "sub_magazine_id", "quantity", "input_type_id", "comment", "isVerified"], 
+        [$deviceId, $bomId, $commissionId, $userId, $magazineFrom, $quantity_needed, $inputTypeId, 'Automatyczna inkrementacja zlecenia nr '.$commission_id.', dostarczenie zlecenia do magazynu subkontraktora', '0']);
         $MsaDB -> update("commission__list", ["quantity_produced" => $quantity_produced], "id", $commission_id);
         $commission -> updateStateIdAuto();
     }
 }
 
 if($quantityBeingReturned != 0) {
-    $MsaDB -> insert("inventory__".$deviceType, [$deviceType."_id", "commission_id", "user_id", "sub_magazine_id", "quantity", "input_type_id", "comment", "isVerified"], 
-    [$deviceId, $commissionId, $userId, $magazineFrom, $quantityBeingReturned, $inputTypeId, $comment, 0]);                    
+    $MsaDB -> insert("inventory__".$deviceType, [$deviceType."_id", $deviceType."_bom_id", "commission_id", "user_id", "sub_magazine_id", "quantity", "input_type_id", "comment", "isVerified"], 
+    [$deviceId, $bomId, $commissionId, $userId, $magazineFrom, $quantityBeingReturned, $inputTypeId, $comment, 0]);                    
 } 
 
 
