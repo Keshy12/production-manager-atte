@@ -4,14 +4,14 @@ function loadarchive()
     $("#archiveTable").empty();
     let device_type = $("#magazine").val();
     let page = parseInt($("#currentpage").text());
-    let input_type = $("#input_type").val();
+    let input_type_id = $("#input_type").val();
     let limit = $("#limit").val();
     let user_ids = $("#user").val();
     let device_ids = $("#list__device").val();
     $.ajax({
         type: "POST",
         url:  COMPONENTS_PATH+"/archive/archive-table.php",
-        data: {device_type: device_type, user_ids: user_ids, device_ids: device_ids, page: page, input_type: input_type, limit: limit},
+        data: {device_type: device_type, user_ids: user_ids, device_ids: device_ids, page: page, input_type_id: input_type_id, limit: limit},
         success: function(data) {
             let archiveData = JSON.parse(data)[0];
             let nextPageAvailable = JSON.parse(data)[1];
