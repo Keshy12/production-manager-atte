@@ -11,7 +11,6 @@ function renderCards(deviceTypes) {
             return verifyCard.map(render(item)).join('');
         }));
     }
-
 }
 
 $("#verifyType").change(function(){

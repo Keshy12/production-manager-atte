@@ -55,7 +55,7 @@ $list__input_type = $MsaDB -> readIdName("inventory__input_type");
 
 <div class="d-flex justify-content-center mt-4">
     <button id="previouspage" class="btn btn-light" disabled><b>&lsaquo;</b></button>
-    <button id="currentpage" class="btn btn-light" disabled><b>1</b></button>
+    <button id="currentpage" class="btn btn-light" disabled>1</button>
     <button id="nextpage" class="btn btn-light" disabled><b>&rsaquo;</b></button>
 </div>
 
