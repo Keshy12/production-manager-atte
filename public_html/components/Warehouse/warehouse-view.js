@@ -117,3 +117,52 @@ $('#list__components').on('hide.bs.select', function () {
 $(document).ready(function() {
     loadMagazine();
 });
+
+$('body').on('click', '.magazineCorrection', function () {
+    let values = JSON.parse($(this).attr("data-values"));
+    let device_id = $(this).attr("data-device_id");
+    $("#correctMagazineSubmit").attr("data-device_id", device_id);
+    $("#correctMagazineModal").modal('show');
+    $("#correctMagazineInputGroup").empty();
+    for (const item in values) {
+        let input_group = `
+        <div class="input-group">
+            <div class="input-group-prepend">
+                <span class="input-group-text"">
+                `+ values[item]['name'] + `: </span>
+            </div>
+            <input type="number" data-magazine_id="`+ item + `" 
+            data-previous_value="` + values[item]['quantity'] + `" 
+            class="form-control correctionInput" 
+            value="` + values[item]['quantity'] + `" />
+        </div>
+        `
+        $("#correctMagazineInputGroup").append(input_group);
+    }
+});
+
+$("#correctMagazineSubmit").click(function () {
+    let result = [];
+    let device_id = $(this).attr("data-device_id");
+    let type = $("#magazinecomponent").val();
+    $("#correctMagazineInputGroup .input-group .correctionInput").each(function () {
+        let $correctionInput = $(this);
+        let magazine_id = $correctionInput.attr("data-magazine_id");
+        let quantity = parseFloat($correctionInput.val());
+        let previousQuantity = parseFloat($correctionInput.attr("data-previous_value"));
+        let difference = quantity - previousQuantity;
+        if (difference != 0) result.push([magazine_id, difference]);
+    });
+    $.ajax({
+        type: "POST",
+        url: COMPONENTS_PATH+"/warehouse/correct-warehouse.php",
+        data: {
+            result: result,
+            type: type,
+            device_id: device_id
+        },
+        success: function (data) {
+            loadMagazine();
+        }
+    });
+});
