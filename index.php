@@ -31,6 +31,10 @@ switch ($request) {
         includeWithVariables($headerDir, array('title' => 'Magazyn'));
         require $viewDir . '/warehouse/warehouse-view.php';
         break;
+    case 'commissions':
+        includeWithVariables($headerDir, array('title' => 'Zlecenia'));
+        require $viewDir . '/commissions/commissions-view.php';
+        break;
     case 'login':
         includeWithVariables($headerDir, array('title' => 'Logowanie', 'skip' => true));
         require $viewDir . '/login/login-view.php';

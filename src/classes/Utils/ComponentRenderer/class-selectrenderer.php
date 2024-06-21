@@ -10,6 +10,66 @@ class SelectRenderer {
         $this -> MsaDB = $MsaDB;
     }
 
+    public function getSKUBOMValuesForSelect(){
+        $MsaDB = $this -> MsaDB;
+        $result = [];
+        $possibleVer = $MsaDB -> query("SELECT 
+                                                l.id, 
+                                                l.name, 
+                                                l.description, 
+                                                b.version
+                                            FROM `list__sku` l 
+                                            JOIN bom__sku b 
+                                            ON l.id = b.sku_id 
+                                            WHERE l.isActive = 1 
+                                            AND b.isActive = 1
+                                            ORDER BY l.id, version ASC;");
+        foreach($possibleVer as $row){
+            list($id, $name, $description, $version) = $row;
+            if(!isset($result[$id])) {
+                $result[$id] = [
+                    $name, 
+                    $description, 
+                    "versions" => []
+                ];
+            }
+            $result[$id]["versions"][] = $version;
+        }
+        return $result;
+    }
+
+    public function getTHTBOMValuesForSelect(){
+        $MsaDB = $this -> MsaDB;
+        $result = [];
+        $possibleVer = $MsaDB -> query("SELECT 
+                                            l.id, 
+                                            l.name, 
+                                            l.description, 
+                                            b.version,
+                                            l.circle_checked,
+                                            l.triangle_checked,
+                                            l.square_checked
+                                        FROM `list__tht` l 
+                                        JOIN bom__tht b 
+                                        ON l.id = b.tht_id 
+                                        WHERE l.isActive = 1 
+                                        AND b.isActive = 1
+                                        ORDER BY l.id, version ASC;");
+        foreach($possibleVer as $row){
+            list($id, $name, $description, $version, $circleMark, $triangleMark, $squareMark) = $row;
+            if(!isset($result[$id])) {
+                $result[$id] = [
+                    $name, 
+                    $description, 
+                    "versions" => [], 
+                    "marking" => [$circleMark, $triangleMark, $squareMark]
+                ];
+            }
+            $result[$id]["versions"][] = $version;
+        }
+        return $result;
+    }
+
     public function getSMDBOMValuesForSelect(){
         $MsaDB = $this -> MsaDB;
         $result = [];
@@ -25,7 +85,7 @@ class SelectRenderer {
                                               ON l.id = b.smd_id 
                                               WHERE l.isActive = 1 
                                               AND b.isActive = 1
-                                              ORDER BY version ASC;");
+                                              ORDER BY l.id, version ASC;");
         foreach($possibleLamAndVer as $row){
             list($id, $name, $description, $laminate_id, $version) = $row;
             if(!isset($result[$id]))
@@ -33,38 +93,6 @@ class SelectRenderer {
             if(!isset($result[$id]["laminate_id"][$laminate_id])) 
                 $result[$id]["laminate_id"][$laminate_id] = [$list__laminate[$laminate_id], "versions" => []];
             $result[$id]["laminate_id"][$laminate_id]["versions"][] = $version;
-        }
-        return $result;
-    }
-
-    public function getTHTBOMValuesForSelect(){
-        $MsaDB = $this -> MsaDB;
-        $result = [];
-        $possibleVer = $MsaDB -> query("SELECT 
-                                                l.id, 
-                                                l.name, 
-                                                l.description, 
-                                                b.version,
-                                                l.circle_checked,
-                                                l.triangle_checked,
-                                                l.square_checked
-                                              FROM `list__tht` l 
-                                              JOIN bom__tht b 
-                                              ON l.id = b.tht_id 
-                                              WHERE l.isActive = 1 
-                                              AND b.isActive = 1
-                                              ORDER BY version ASC;");
-        foreach($possibleVer as $row){
-            list($id, $name, $description, $version, $circleMark, $triangleMark, $squareMark) = $row;
-            if(!isset($result[$id])) {
-                $result[$id] = [
-                    $name, 
-                    $description, 
-                    "versions" => [], 
-                    "marking" => [$circleMark, $triangleMark, $squareMark]
-                ];
-            }
-            $result[$id]["versions"][] = $version;
         }
         return $result;
     }
@@ -155,6 +183,22 @@ class SelectRenderer {
             data-tokens='$name $description' 
             value='$id' data-jsonVersions = '$jsonVersions'
             data-jsonMarking='$jsonMarking'>
+            $name</option>";
+        } 
+    }
+
+    public function renderSKUBOMSelect(?array $used__sku = null) {
+        $values = $this -> getSKUBOMValuesForSelect();
+        $used__sku = is_null($used__sku) ? array_keys($values) : $used__sku;
+        foreach($used__sku as $id) {
+            if(!isset($values[$id])) continue;
+            $row = $values[$id];
+            list($name, $description) = $row;
+            $versions = $row["versions"];
+            $jsonVersions = json_encode($versions, JSON_FORCE_OBJECT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
+            echo "<option data-subtext='$description'
+            data-tokens='$name $description' 
+            value='$id' data-jsonVersions = '$jsonVersions'>
             $name</option>";
         } 
     }
