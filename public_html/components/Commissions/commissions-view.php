@@ -2,6 +2,7 @@
 use Atte\DB\MsaDB;
 use Atte\Utils\ComponentRenderer\SelectRenderer;
 include('modals.php');
+include('commissions-card-template.php');
 
 $MsaDB = MsaDB::getInstance();
 
@@ -14,8 +15,6 @@ $users_submag = $MsaDB -> readIdName('user', 'user_id', 'sub_magazine_id');
 $currentUser = isset($_SESSION["userid"]) ? $_SESSION["userid"] : "";
 
 $submag_list = $MsaDB -> readIdName("magazine__list", "sub_magazine_id", "sub_magazine_name", "ORDER BY type_id ASC");
-
-include("commissions-card-template.php");
 
 ?>
 
