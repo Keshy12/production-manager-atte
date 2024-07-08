@@ -60,7 +60,7 @@ class BomRepository {
                         isActive 
                     FROM bom__{$deviceType} 
                     WHERE {$deviceType}_id = $deviceId 
-                    AND version = '$version'";
+                    AND version <=> $version";
 
         $result = $MsaDB -> query($query, \PDO::FETCH_CLASS, "Atte\\Utils\\Bom", [$MsaDB]);
         if(isset($result[0])) {

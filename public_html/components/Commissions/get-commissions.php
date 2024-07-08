@@ -52,10 +52,12 @@ if(!empty($device)) {
     if($version == 'n/d') $version = "NULL";
     if($type && $device_id && $version) {
         if($type == "smd" && $laminate_id) { 
-            $bom_id = $bomRepository -> getBomByValues($type, $device_id, $laminate_id, $version);
+            $bom = $bomRepository -> getBomByValues($type, $device_id, $laminate_id, $version);
+            $bom_id = $bom -> id;
         }
         else {
-            $bom_id = $bomRepository -> getBomByValues($type, $device_id, $version);
+            $bom = $bomRepository -> getBomByValues($type, $device_id, $version);
+            $bom_id = $bom -> id;
         }
     }
 }
@@ -109,15 +111,7 @@ foreach($commissions as $commission) {
     $type = $commission -> deviceType;
     $row = $commission -> commissionValues;
     $colors = ["none", "green", "yellow", "red"];
-    $color = $colors[$row["priority"]];
-    $id = $row["id"];
-    $magazineFrom = $magazines[$row["magazine_from"]];
-    $magazineTo = $magazines[$row["magazine_to"]];
     $bomId = $row["bom_".$type."_id"];
-    $quantity = $row["quantity"];
-    $quantity_produced = $row["quantity_produced"];
-    $quantity_returned = $row["quantity_returned"];
-    $timestamp_created = $row["timestamp_created"];
     $state_id = $row["state_id"];
     $deviceBom = $bomRepository -> getBomById($type, $bomId);
     $device_id = $deviceBom -> deviceId;
@@ -125,39 +119,36 @@ foreach($commissions as $commission) {
     $device_laminate_id = $deviceBom -> laminateId;
     $device_laminate = !is_null($deviceBom -> laminateId) ? "Laminat: <b>".$list__laminate[$device_laminate_id]."</b>" : "" ;
     $device_laminate_and_version = $device_laminate." Wersja: <b>".$device_version."</b>";
-    $device_name = ${"list__".$type}[$device_id];
-    $device_description = ${"list__".$type."_desc"}[$device_id];
     $isCancelled = $row["isCancelled"];
     $receivers = $commission -> getReceivers();
-    $receiversName = array();
     $classes = ['list-group-item-primary', '', 'list-group-item-secondary', 'bg-secondary'];
     $class = $classes[$state_id];
     if($isCancelled == 1 ) $class = 'list-group-item-danger';
+    $receiversName = array();
     foreach($receivers as $receiver) {
         $receiversName[] = $users[$receiver];
     }
-    $push = [
+    $result[] = [
         "class" => $class,
         "class2" => ($state_id!=3) ? 'text-muted' : '',
         "class3" => ($state_id!=1||$isCancelled==1)?'table-light':'',
         "isHidden" => $isCancelled == 1 ? "hidden" : "",
-        "color" => $color,
-        "magazineFrom" => $magazineFrom,
-        "magazineTo" => $magazineTo,
+        "color" => $colors[$row["priority"]],
+        "magazineFrom" => $magazines[$row["magazine_from"]],
+        "magazineTo" => $magazines[$row["magazine_to"]],
         "isCancelled" => $isCancelled,
-        "id" => $id,
+        "id" => $row["id"],
         "receivers" => implode(", ", $receivers),
         "priority" => $row['priority'],
-        "deviceDescription" => $device_description,
-        "deviceName" => $device_name,
+        "deviceDescription" => ${"list__".$type."_desc"}[$device_id],
+        "deviceName" => ${"list__".$type}[$device_id],
         "deviceLaminateAndVersion" => $device_laminate_and_version,
         "stateId" => $state_id,
         "receiversName" => implode(", ", $receiversName),
-        "quantity" => $quantity,
-        "quantityProduced" => $quantity_produced,
-        "quantityReturned" => $quantity_returned,
-        "timestampCreated" => $timestamp_created
+        "quantity" => $row["quantity"],
+        "quantityProduced" => $row["quantity_produced"],
+        "quantityReturned" => $row["quantity_returned"],
+        "timestampCreated" => $row["timestamp_created"]
     ];
-    $result[] = $push;
 }
 echo json_encode([$result, $nextPageAvailable]);

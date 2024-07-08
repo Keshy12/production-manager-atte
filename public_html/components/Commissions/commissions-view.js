@@ -118,7 +118,9 @@ $("#list__device").change(function(){
         generateVersionSelect(possibleVersions);
     } else {
         $("#version").selectpicker('destroy');
-        $("#version").html("<option value=\"n/d\">n/d</option>");
+        $("#version").html("<option value=\"n/d\" selected>n/d</option>");
+        $("#version").prop('disabled', false);
+        renderCommissions();
     }
     $("#version, #laminate").selectpicker('refresh');
 });
