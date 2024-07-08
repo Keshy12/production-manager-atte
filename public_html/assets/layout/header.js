@@ -35,7 +35,7 @@ function getFlowpinDate() {
         deselectAllText: "Odznacz wszystkie"
     });
     $('.selectpicker').selectpicker();
-    $('.dropdown-submenu a.test').on("click", function(e){
+    $('.dropdown-submenu a.sub-dropdown').on("click", function(e){
       $('.dropdown-submenu .dropdown-menu').hide();
       $(this).next('.dropdown-menu').toggle();
       e.stopPropagation();
