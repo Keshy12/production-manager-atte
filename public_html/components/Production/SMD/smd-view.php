@@ -20,7 +20,7 @@ if (isset($_GET['redirect']) && $_GET['redirect'] === 'true') {
 
 $userId = $_SESSION["userid"];
 $user = $userRepository -> getUserById($userId);
-$userinfo = $user -> getUserInfo();
+$userInfo = $user -> getUserInfo();
 
 $used__smd = $user -> getDevicesUsed("smd");
 
@@ -44,7 +44,7 @@ $used__smd = $user -> getDevicesUsed("smd");
 </div>
 
 <h1 class="text-center mt-4">Produkcja SMD</h1>
-<h4 id="raportAs" class="text-center font-weight-light">Raport jako: <?=$userinfo["login"]?></h4>
+<h4 id="raportAs" class="text-center font-weight-light">Raport jako: <?=$userInfo["login"]?></h4>
 <div id="image"></div>
 
 <div class="container mt-5">

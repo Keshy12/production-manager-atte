@@ -14,7 +14,7 @@ $users_surname = $MsaDB -> readIdName('user', 'user_id', 'surname');
 $users_submag = $MsaDB -> readIdName('user', 'user_id', 'sub_magazine_id');
 $currentUser = isset($_SESSION["userid"]) ? $_SESSION["userid"] : "";
 
-$submag_list = $MsaDB -> readIdName("magazine__list", "sub_magazine_id", "sub_magazine_name", "ORDER BY type_id ASC");
+$submagazine_list = $MsaDB -> readIdName("magazine__list", "sub_magazine_id", "sub_magazine_name", "ORDER BY type_id ASC");
 
 ?>
 
@@ -35,10 +35,10 @@ $submag_list = $MsaDB -> readIdName("magazine__list", "sub_magazine_id", "sub_ma
     <div class="card mt-4 p-2">
         <div class="d-flex justify-content-center">    
             <select id="transferFrom" data-title="Zlecenie z:" class="selectpicker mx-1">
-                <?= $selectRenderer -> renderArraySelect($submag_list) ?>
+                <?= $selectRenderer -> renderArraySelect($submagazine_list) ?>
             </select>     
             <select id="transferTo" data-title="Zlecenie do:" class="selectpicker mx-1">
-                <?= $selectRenderer -> renderArraySelect($submag_list) ?>
+                <?= $selectRenderer -> renderArraySelect($submagazine_list) ?>
             </select>
             <button type="button" id="clearMagazine" class="close" aria-label="Close">
                 <span aria-hidden="true">×</span>

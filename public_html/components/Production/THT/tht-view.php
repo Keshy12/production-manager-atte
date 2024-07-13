@@ -21,7 +21,7 @@ if (isset($_GET['redirect']) && $_GET['redirect'] === 'true') {
 
 $userId = $_SESSION["userid"];
 $user = $userRepository -> getUserById($userId);
-$userinfo = $user -> getUserInfo();
+$userInfo = $user -> getUserInfo();
 
 $used__tht = $user -> getDevicesUsed("tht");
 
@@ -45,7 +45,7 @@ $used__tht = $user -> getDevicesUsed("tht");
 </div>
 
 <h1 class="text-center mt-4">Produkcja THT</h1>
-<h4 id="raportAs" class="text-center font-weight-light">Raport jako: <?=$userinfo["login"]?></h4>
+<h4 id="raportAs" class="text-center font-weight-light">Raport jako: <?=$userInfo["login"]?></h4>
 <div>
     <div class="mx-auto d-block">
         <div id="marking" style="width:500px; max-width:100%;" class="d-flex mx-auto">

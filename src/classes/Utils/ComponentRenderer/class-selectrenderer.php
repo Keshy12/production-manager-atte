@@ -217,7 +217,7 @@ class SelectRenderer {
     * Render select options from a simple array
     * Key is the value of an option
     * Corresponding value is the text of an option.
-    * @return void Returns nothing, prints options
+    * @return void Returns nothing, renders options
     */
     public function renderArraySelect(array $array) {
         foreach($array as $id => $value) {

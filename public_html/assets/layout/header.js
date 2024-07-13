@@ -41,6 +41,9 @@ function getFlowpinDate() {
       e.stopPropagation();
       e.preventDefault();
     });
+    $('.dropdown-button').on('hide.bs.dropdown', function () {
+      $('.dropdown-submenu .dropdown-menu').hide();
+    })
     //Auto close popup on mouseup anywhere on the page.
     $("html").on("mouseup", function (e) {
         var l = $(e.target);

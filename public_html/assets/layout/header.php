@@ -84,7 +84,7 @@ if(!isset($_SESSION["userid"]) && !isset($skip))
         <a class="nav-link btn btn-light skip" href="http://<?=BASEURL?>">Strona Główna</a>
       </li>
       <?php if(isset($_SESSION['userid'])) :?>
-          <li class="nav-item dropdown">
+          <li class="nav-item dropdown dropdown-button">
           <a class="nav-link dropdown-toggle btn btn-light skip" href="#" id="navbarDropdown" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
           Formularze
           </a>
@@ -125,37 +125,44 @@ if(!isset($_SESSION["userid"]) && !isset($skip))
         <div id="notificationDropdown" class="dropdown-menu" style="width:500px; max-height: 500px; overflow-y: auto;" aria-labelledby="showNotifications">
         </div>
       </li>
-      <li class="nav-item dropdown">
+      <li class="nav-item dropdown dropdown-button">
         <a class="nav-link btn btn-light skip" data-toggle="dropdown">Admin</a>
-        <div class="dropdown-menu" aria-labelledby="navbarDropdown">
+        <div class="dropdown-menu dropdown-menu-right" aria-labelledby="navbarDropdown">
             <div class="dropdown-submenu dropdown-submenu-left">
               <a class="dropdown-item dropdown-arrow sub-dropdown" href="#">BOM<span class="caret"></span></a>
               <div class="dropdown-menu bg-light" style="right: 100%" aria-labelledby="submenu">
-                <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/insert-bom">Wczytaj BOM</a>
-                <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/edit-bom">Edytuj BOM</a>
-                <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/edit-dictionary">Edytuj Słownik</a>
+                <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/bom/insert">Wczytaj BOM</a>
+                <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/bom/edit">Edytuj BOM</a>
+                <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/bom/dictionary">Edytuj Słownik</a>
               </div>
             </div>
             <div class="dropdown-submenu dropdown-submenu-left">
               <a class="dropdown-item dropdown-arrow sub-dropdown" href="#">Profile<span class="caret"></span></a>
               <div class="dropdown-menu bg-light" style="right: 100%" aria-labelledby="submenu">
-                <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/edit-profile">Edytuj Profil</a>
-                <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/edit-bom">Konfiguruj Grupy</a>
+                <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/profiles/edit">Edytuj Profile</a>
+                <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/profiles/groups">Konfiguruj Grupy</a>
               </div>
             </div>
             <div class="dropdown-submenu dropdown-submenu-left">
               <a class="dropdown-item dropdown-arrow sub-dropdown" href="#">Komponenty<span class="caret"></span></a>
               <div class="dropdown-menu bg-light" style="right: 100%" aria-labelledby="submenu">
-                <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/edit-bom">Aktualizuj Parts</a>
-                <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/edit-bom">Pobierz z Zamówień</a>
+                <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/components/update-parts">Aktualizuj Parts</a>
+                <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/components/from-orders">Pobierz z Zamówień</a>
               </div>
             </div>
-            <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/edit-profile">Dodaj/Usuń Produkty</a>
+            <a class="dropdown-item" href="http://<?=BASEURL?>/admin/products/edit">Dodaj/Edytuj Produkty</a>
         </div>
       </li>
     <?php endif; ?>
     <?php if(isset($_SESSION['userid'])) :?>
-        <a class="nav-link btn btn-light skip" href="http://<?=BASEURL?>/profile">Profil</a>
+      <li class="nav-item dropdown">
+        <a class="nav-link btn btn-light skip dropdown-button" data-toggle="dropdown">Profil</a>
+        <div class="dropdown-menu dropdown-menu-right" aria-labelledby="navbarDropdown">
+          <a class="dropdown-item" href="http://<?=BASEURL?>/profile">Mój Profil</a>
+          <a class="dropdown-item" href="http://<?=BASEURL?>/profile/warehouse">Mój Magazyn</a>
+          <a class="dropdown-item" href="http://<?=BASEURL?>/profile/devices-produced">Produkowane Urządzenia</a>
+        </div>
+      </li>
         <a id="logout" class="nav-link btn btn-secondary skip text-white" href="http://<?=BASEURL?>/logout">Wyloguj</a>
     <?php else: ?>
         <a class="nav-link btn btn-light skip" href="http://<?=BASEURL?>/login">Logowanie</a>
@@ -164,7 +171,7 @@ if(!isset($_SESSION["userid"]) && !isset($skip))
   </div>
 </nav>
 <?php if(isset($_SESSION['isAdmin']) && $_SESSION['isAdmin'] == true) :?>
-<div class="text-right" style="position: absolute; top: 70px; float: right; right: 10px; z-index: 9999;">
+<div class="text-left" style="position: absolute; top: 70px; float: left; left: 10px; z-index: 9999;">
     <button id="toggleFlowpinUpdate" class="btn btn-primary">Pokaż</button>
     <br>
     <small>aktualizacja z flowpin</small>

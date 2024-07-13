@@ -2,51 +2,61 @@
 
 $headerDir = 'public_html/assets/layout/header.php';
 $request = str_replace('/atte_ms_new/','',$_SERVER['REQUEST_URI']);
-$viewDir = ROOT_DIRECTORY .'/public_html/components';
+$componentsDir = ROOT_DIRECTORY .'/public_html/components';
 
 switch ($request) {
     case '':
     case '/':
         includeWithVariables($headerDir, array('title' => 'Strona Główna', 'skip' => true));
-        if(isset($_SESSION["userid"])) require $viewDir . '/index/active-commissions-view.php';
+        if(isset($_SESSION["userid"])) require $componentsDir . '/index/active-commissions-view.php';
         break;
 
     case 'production/tht':
         includeWithVariables($headerDir, array('title' => 'Produkcja THT'));
-        require $viewDir . '/production/tht/tht-view.php';
+        require $componentsDir . '/production/tht/tht-view.php';
         break;
     case 'production/smd':
         includeWithVariables($headerDir, array('title' => 'Produkcja SMD'));
-        require $viewDir . '/production/smd/smd-view.php';
+        require $componentsDir . '/production/smd/smd-view.php';
+        break;
+    case 'transfer':
+        includeWithVariables($headerDir, array('title' => 'Transfer'));
+        require $componentsDir . '/transfer/transfer-view.php';
         break;
     case 'verification':
         includeWithVariables($headerDir, array('title' => 'Weryfikacja'));
-        require $viewDir . '/verification/verification-view.php';
+        require $componentsDir . '/verification/verification-view.php';
         break;
     case 'archive':
         includeWithVariables($headerDir, array('title' => 'Archiwum'));
-        require $viewDir . '/archive/archive-view.php';
+        require $componentsDir . '/archive/archive-view.php';
         break;
     case 'warehouse':
         includeWithVariables($headerDir, array('title' => 'Magazyn'));
-        require $viewDir . '/warehouse/warehouse-view.php';
+        require $componentsDir . '/warehouse/warehouse-view.php';
         break;
     case 'commissions':
         includeWithVariables($headerDir, array('title' => 'Zlecenia'));
-        require $viewDir . '/commissions/commissions-view.php';
+        require $componentsDir . '/commissions/commissions-view.php';
         break;
+    case 'profile':
+        includeWithVariables($headerDir, array('title' => 'Mój Profil'));
+        require $componentsDir . '/profile/profile-view.php';
+        break;
+
     case 'login':
         includeWithVariables($headerDir, array('title' => 'Logowanie', 'skip' => true));
-        require $viewDir . '/login/login-view.php';
+        if(!isset($_SESSION["userid"])) require $componentsDir . '/login/login-view.php';
+        else echo '<h1 class="text-center"> Jesteś już zalogowany </h1>';
         break;
     case 'logout':
-        require $viewDir . '/login/logout.php';
+        require $componentsDir . '/login/logout.php';
         break;
 
     default:
         includeWithVariables($headerDir, array('title' => 'Nie znaleziono takiej witryny.', 'skip' => true));
         http_response_code(404);
-        require $viewDir . '/error/404.php';
+        require $componentsDir . '/error/404.php';
         break;
 }
 ?>
