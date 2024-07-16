@@ -70,8 +70,6 @@ $sql = "SELECT device_id,
 
 $queryResult = $MsaDB -> query($sql, PDO::FETCH_BOTH);
 
-$tableRowCounter = 1;
-
 foreach($queryResult as $row) {
     list($deviceId, $warehouseId, $warehouseTypeId, $quantity) = $row;
 

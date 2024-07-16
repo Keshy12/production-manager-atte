@@ -104,12 +104,8 @@ class BaseDB {
     }
 
     // Prevent cloning of the instance
-    public function __clone()
-    {
-    }
+    public function __clone(){}
 
     // Prevent unserialization of the instance
-    public function __wakeup()
-    {
-    }
+    public function __wakeup(){}
 }

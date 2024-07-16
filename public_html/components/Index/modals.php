@@ -62,7 +62,7 @@ $users_submag = $MsaDB -> readIdName('user', 'user_id', 'sub_magazine_id');
                 </button>
             </div>
             <div class="modal-body">
-                Czy na pewno chcesz usunąć zlecenie?
+                Czy na pewno chcesz anulować zlecenie?
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-dismiss="modal">Anuluj</button>

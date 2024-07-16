@@ -62,7 +62,7 @@ $list__priority = array_reverse($MsaDB -> readIdName("commission__priority"), tr
                 </button>
             </div>
             <div class="modal-body">
-                Czy na pewno chcesz usunąć zlecenie?
+                Czy na pewno chcesz anulować zlecenie?
             </div>
             <div class="modal-footer">
             <button type="button" class="btn btn-secondary" data-dismiss="modal">Anuluj</button>
