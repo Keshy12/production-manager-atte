@@ -32,7 +32,7 @@ $("#editCommissionSubmit").click(function() {
     let commissionpriority = $("#editPriority").val();
     let commissionsubcontractors = $("#editSubcontractors").val();
     let $card = $('.card'+commissionid);
-    let commissioneditbtn = card.find(".editCommission");
+    let commissioneditbtn = $card.find(".editCommission");
     $.ajax({
         type: "POST",
         url: COMPONENTS_PATH+"/index/edit-commission.php",

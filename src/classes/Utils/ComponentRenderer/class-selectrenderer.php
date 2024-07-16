@@ -97,11 +97,13 @@ class SelectRenderer {
         return $result;
     }
 
-    public function renderPartsSelect() {
+    public function renderPartsSelect(?array $used__parts = null) {
         $MsaDB = $this -> MsaDB;
         $list__parts = $MsaDB -> readIdName('list__parts', 'id', 'name', 'WHERE isActive = 1');
         $list__parts_desc = $MsaDB -> readIdName('list__parts', 'id', 'description', 'WHERE isActive = 1');
-        foreach($list__parts as $id => $name) {
+        $used__parts = is_null($used__parts) ? array_keys($list__parts) : $used__parts;
+        foreach($used__parts as $id) {
+            $name = $list__parts[$id];
             $description = $list__parts_desc[$id];
             echo '<option data-subtext="'.$description.'"
             data-tokens="'.$name.' '.$description.'" 

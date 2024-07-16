@@ -1,11 +1,11 @@
 <?php
 use Atte\DB\MsaDB;
 use Atte\Utils\ComponentRenderer\SelectRenderer;
+include('warehouse-table-item-template.php');
 
 $MsaDB = MsaDB::getInstance();
 
 $selectRenderer = new SelectRenderer($MsaDB);
-
 ?>
 
 <select id="list__sku" hidden><!--sku list-->
@@ -20,35 +20,6 @@ $selectRenderer = new SelectRenderer($MsaDB);
 <select id="list__parts" hidden><!--parts list-->
     <?= $selectRenderer -> renderPartsSelect() ?>
 </select>
-
-<script type="text/template" data-template="warehouseTableItem">
-<tr class="tablerowcollapse" data-toggle="collapse" data-target=".collapse${key}" href=".collapse${key}">
-    <td style="width: 30%"> ${componentName} <br/>
-        <small class="text-wrap">
-            ${componentDescription}
-        </small>
-    </td>
-    <td style="width: 30%">
-        ${sumType1}
-    </td>
-    <td style="width: 30%">
-        ${sumType2}
-    </td>
-    <td style="width: 10%">
-        ${sumAll}
-    </td>
-</tr>
-<tr>
-    <td class="tdcollapse"></td>
-    <td class="tdcollapse">
-        <div class="collapse${key} collapse mx-1 mainWarehouses"></div>
-    </td>
-    <td class="tdcollapse">
-        <div class="collapse${key} collapse mx-1 otherWarehouses"></div>
-    </td>
-    <td class="tdcollapse"></td>
-</tr>
-</script>
 
 <div class="modal fade" id="correctMagazineModal" tabindex="-1" role="dialog">
     <div class="modal-dialog">
