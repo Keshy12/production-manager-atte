@@ -43,6 +43,14 @@ switch ($request) {
         includeWithVariables($headerDir, array('title' => 'Mój Profil'));
         require $componentsDir . '/profile/profile-view.php';
         break;
+    case 'profile/warehouse':
+        includeWithVariables($headerDir, array('title' => 'Mój Magazyn'));
+        require $componentsDir . '/profile/warehouse/warehouse-view.php';
+        break;
+    case 'profile/devices-produced':
+        includeWithVariables($headerDir, array('title' => 'Produkowane Urządzenia'));
+        require $componentsDir . '/profile/devicesproduced/devices-produced-view.php';
+        break;
 
     case 'login':
         includeWithVariables($headerDir, array('title' => 'Logowanie', 'skip' => true));
