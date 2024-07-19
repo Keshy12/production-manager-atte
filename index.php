@@ -51,6 +51,10 @@ switch ($request) {
         includeWithVariables($headerDir, array('title' => 'Produkowane Urządzenia'));
         require $componentsDir . '/profile/devicesproduced/devices-produced-view.php';
         break;
+    case 'admin/profiles/edit':
+        includeWithVariables($headerDir, array('title' => 'Edytuj profile'));
+        require $componentsDir . '/admin/profiles/edit/edit-profile-view.php';
+        break;
 
     case 'login':
         includeWithVariables($headerDir, array('title' => 'Logowanie', 'skip' => true));

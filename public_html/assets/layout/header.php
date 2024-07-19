@@ -126,10 +126,10 @@ if(!isset($_SESSION["userid"]) && !isset($skip))
         </div>
       </li>
       <li class="nav-item dropdown dropdown-button">
-        <a class="nav-link btn btn-light skip" data-toggle="dropdown">Admin</a>
+        <a class="nav-link dropdown-toggle btn btn-light skip" data-toggle="dropdown">Admin</a>
         <div class="dropdown-menu dropdown-menu-right" aria-labelledby="navbarDropdown">
             <div class="dropdown-submenu dropdown-submenu-left">
-              <a class="dropdown-item dropdown-arrow sub-dropdown" href="#">BOM<span class="caret"></span></a>
+              <a class="dropdown-item dropdown-arrow sub-dropdown" href="#">BOM</a>
               <div class="dropdown-menu bg-light" style="right: 100%" aria-labelledby="submenu">
                 <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/bom/insert">Wczytaj BOM</a>
                 <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/bom/edit">Edytuj BOM</a>
@@ -137,14 +137,14 @@ if(!isset($_SESSION["userid"]) && !isset($skip))
               </div>
             </div>
             <div class="dropdown-submenu dropdown-submenu-left">
-              <a class="dropdown-item dropdown-arrow sub-dropdown" href="#">Profile<span class="caret"></span></a>
+              <a class="dropdown-item dropdown-arrow sub-dropdown" href="#">Profile</a>
               <div class="dropdown-menu bg-light" style="right: 100%" aria-labelledby="submenu">
-                <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/profiles/edit">Edytuj Profile</a>
+                <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/profiles/edit">Edytuj Profil</a>
                 <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/profiles/groups">Konfiguruj Grupy</a>
               </div>
             </div>
             <div class="dropdown-submenu dropdown-submenu-left">
-              <a class="dropdown-item dropdown-arrow sub-dropdown" href="#">Komponenty<span class="caret"></span></a>
+              <a class="dropdown-item dropdown-arrow sub-dropdown" href="#">Komponenty</a>
               <div class="dropdown-menu bg-light" style="right: 100%" aria-labelledby="submenu">
                 <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/components/update-parts">Aktualizuj Parts</a>
                 <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/components/from-orders">Pobierz z Zamówień</a>
@@ -156,7 +156,7 @@ if(!isset($_SESSION["userid"]) && !isset($skip))
     <?php endif; ?>
     <?php if(isset($_SESSION['userid'])) :?>
       <li class="nav-item dropdown">
-        <a class="nav-link btn btn-light skip dropdown-button" data-toggle="dropdown">Profil</a>
+        <a class="nav-link dropdown-toggle btn btn-light skip dropdown-button" data-toggle="dropdown">Profil</a>
         <div class="dropdown-menu dropdown-menu-right" aria-labelledby="navbarDropdown">
           <a class="dropdown-item" href="http://<?=BASEURL?>/profile">Mój Profil</a>
           <a class="dropdown-item" href="http://<?=BASEURL?>/profile/warehouse">Mój Magazyn</a>

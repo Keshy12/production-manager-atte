@@ -5,7 +5,7 @@ $MsaDB = MsaDB::getInstance();
 
 $deviceType = $_POST["type"];
 $deviceIds = $_POST["device_id"] ?? [];
-$userId = $_SESSION["userid"];
+$userId = $_POST["userid"] ?? $_SESSION["userid"];
 
 $list__device = $MsaDB -> readIdName("list__{$deviceType}");
 $list__device_desc = $MsaDB -> readIdName("list__{$deviceType}", "id", "description");
@@ -15,13 +15,13 @@ $insertedDevices = [];
 foreach($deviceIds as $deviceId)
 {
     $insertedDevices[] = "
-    <div class='tht-{$deviceId} mt-3'>
-        <b>{$list__device[$deviceId]}</b>
+    <div class='{$deviceType}-{$deviceId} mt-3'>
+        <b class='name'>{$list__device[$deviceId]}</b>
         <button type='button' data-type='{$deviceType}' data-id='{$deviceId}' class='close removeDevice' aria-label='Close'>
             <span aria-hidden='true'>×</span>
         </button>
         <br>
-        <small>{$list__device_desc[$deviceId]}</small>
+        <small class='description'>{$list__device_desc[$deviceId]}</small>
         <br>
     </div>";
     $insertValues[] = "('{$userId}', '{$deviceId}')";
@@ -30,6 +30,7 @@ $insertValues = implode(",", $insertValues);
 
 $query = "INSERT INTO `used__{$deviceType}` (`user_id`, `{$deviceType}_id`) VALUES {$insertValues}";
 
+$caught = false;
 $result = [];
 try {
     $MsaDB -> query($query);
@@ -44,8 +45,9 @@ catch(\Exception $e) {
     </div>
     ';
     $result = [$queryResult];
+    $caught = true;
 }
-finally {
+if(!$caught) {
     $queryResult = '
     <div class="alert alert-success alert-dismissible fade show" role="alert">
         Dodano z powodzeniem.
