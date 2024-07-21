@@ -10,12 +10,12 @@ $page = $_POST['page'] ?? 1;
 $list__device = $MsaDB -> readIdName('list__'.$deviceType);
 $list__device_desc = $MsaDB -> readIdName('list__'.$deviceType, 'id', 'description');
 
-$components = empty($components) ? array_keys($list__device) : $components;
+$components = empty($components) 
+                ? array_slice(array_keys($list__device), (($page-1)*$limit), $limit+1) 
+                : $components;
 
-$components = array_slice($components, (($page-1)*$limit), $limit+1);
 $nextPageAvailable = isset($components[$limit]);
 if($nextPageAvailable) unset($components[$limit]);
-
 
 $list__warehouse = $MsaDB -> readIdName('magazine__list', 'sub_magazine_id', 'sub_magazine_name');
 $list__warehouse_type_id = $MsaDB -> readIdName('magazine__list', 'sub_magazine_id', 'type_id');

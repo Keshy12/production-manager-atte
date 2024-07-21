@@ -9,10 +9,11 @@ function loadMagazine() {
     let components = $("#list__components").val();
     let page = parseInt($("#currentpage").text());
     let type = $("#magazinecomponent").val();
+    let items = components.slice((page - 1) * 10, ((page - 1) * 10) + 11);
     $.ajax({
         type: "POST",
         url: COMPONENTS_PATH+"/warehouse/warehouse-table.php",
-        data: { type: type, components: components, page: page },
+        data: { type: type, components: items, page: page },
         success: function (data) {
             let result = JSON.parse(data);
             let items = result[0];
