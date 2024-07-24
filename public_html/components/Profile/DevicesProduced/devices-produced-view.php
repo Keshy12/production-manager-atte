@@ -50,7 +50,7 @@ $smdUnused = array_diff(array_keys($list__smd), $smdUsed);
                     <hr>
                     <div class="d-flex">
                     <input type="search" data-deviceType="tht" class="form-control rounded mr-2 my-1 filter" placeholder="Szukaj">
-                        <button data-deviceType="tht" class="btn btn-sm mr-2 my-1 btn-outline-danger text-nowrap delete">Usuń widoczne</button>
+                        <button data-deviceType="tht" class="btn btn-sm mr-2 my-1 btn-outline-danger text-nowrap deleteAllDevices">Usuń widoczne</button>
                     </div>
                     <hr>
                     <span id="thtUsed">
@@ -88,7 +88,7 @@ $smdUnused = array_diff(array_keys($list__smd), $smdUsed);
                     <hr>
                     <div class="d-flex">
                         <input type="search" data-deviceType="smd" class="form-control rounded mr-2 my-1 filter" placeholder="Szukaj">
-                        <button data-deviceType="smd" class="btn btn-sm mr-2 my-1 btn-outline-danger text-nowrap delete">Usuń widoczne</button>
+                        <button data-deviceType="smd" class="btn btn-sm mr-2 my-1 btn-outline-danger text-nowrap deleteAllDevices">Usuń widoczne</button>
                     </div>
                     <hr>
                     <span id="smdUsed">
