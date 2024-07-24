@@ -1,7 +1,3 @@
-$(document).ready(function() {
-
-});
-
 function addDevices(devices, type)
 {
     $.ajax({
@@ -99,7 +95,7 @@ $(".filter").on('input', function(){
     });
 });
 
-$(".delete").click(function(){
+$(".deleteAllDevices").click(function(){
     let type = $(this).attr("data-deviceType");
     const devicesToDelete = [];
     $("#"+type+"Used div").each(function(){
