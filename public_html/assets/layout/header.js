@@ -1,5 +1,6 @@
 
 const COMPONENTS_PATH = "/atte_ms_new/public_html/components"
+const ROOT_DIR = "/atte_ms_new"
 
 function getFlowpinDate() {
     $.ajax({

@@ -23,10 +23,10 @@ $list__submag = $MsaDB -> readIdName("magazine__list",
 </div>
 
 <select id="list__tht_hidden" hidden>
-    <?= $selectRenderer -> renderTHTSelect() ?>
+    <?= $selectRenderer -> renderTHTSelect('WHERE isActive = 1') ?>
 </select>
 <select id="list__smd_hidden" hidden>
-    <?= $selectRenderer -> renderSMDSelect() ?>
+    <?= $selectRenderer -> renderSMDSelect('WHERE isActive = 1') ?>
 </select>
 
 <div class="d-flex justify-content-center my-4">
@@ -48,7 +48,7 @@ $list__submag = $MsaDB -> readIdName("magazine__list",
         Imię: <input id="name" name="name" class="form-control rounded mx-2" disabled required>
         Nazwisko: <input id="surname" name="surname" class="form-control rounded mx-2" disabled>
         Email: <input id="email" name="email" class="form-control rounded mx-2" disabled>
-        Magazyn: <select name="sub_magazine_id" data-style-base="form-control" 
+        Magazyn: <select name="sub_magazine_id" data-style="" data-style-base="form-control" 
                         data-title="Wybierz magazyn..." id="list__submag" 
                         class="selectpicker form-control rounded mx-2" disabled required>
             <?php $selectRenderer -> renderArraySelect($list__submag) ?>

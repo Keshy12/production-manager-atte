@@ -20,16 +20,16 @@ $available__parts = $MsaDB -> query("SELECT parts_id FROM `inventory__parts` WHE
 
 ?>
 <select id="list__sku" hidden><!--sku list-->
-    <?= $selectRenderer -> renderSKUSelect($available__sku) ?>
+    <?= $selectRenderer -> renderSKUSelect('', $available__sku) ?>
 </select>
 <select id="list__tht" hidden><!--tht list-->
-    <?= $selectRenderer -> renderTHTSelect($available__tht) ?>
+    <?= $selectRenderer -> renderTHTSelect('', $available__tht) ?>
 </select>
 <select id="list__smd" hidden><!--smd list-->
-    <?= $selectRenderer -> renderSMDSelect($available__smd) ?>
+    <?= $selectRenderer -> renderSMDSelect('', $available__smd) ?>
 </select>
 <select id="list__parts" hidden><!--parts list-->
-    <?= $selectRenderer -> renderPartsSelect($available__parts) ?>
+    <?= $selectRenderer -> renderPartsSelect('', $available__parts) ?>
 </select>
 
 <div class="d-flex flex-column align-items-center justify-content-center mt-4">

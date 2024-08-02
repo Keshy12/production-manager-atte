@@ -97,10 +97,10 @@ class SelectRenderer {
         return $result;
     }
 
-    public function renderPartsSelect(?array $used__parts = null) {
+    public function renderPartsSelect($additionalClause = "", ?array $used__parts = null) {
         $MsaDB = $this -> MsaDB;
-        $list__parts = $MsaDB -> readIdName('list__parts', 'id', 'name', 'WHERE isActive = 1');
-        $list__parts_desc = $MsaDB -> readIdName('list__parts', 'id', 'description', 'WHERE isActive = 1');
+        $list__parts = $MsaDB -> readIdName('list__parts', 'id', 'name', $additionalClause);
+        $list__parts_desc = $MsaDB -> readIdName('list__parts', 'id', 'description', $additionalClause);
         $used__parts = is_null($used__parts) ? array_keys($list__parts) : $used__parts;
         foreach($used__parts as $id) {
             $name = $list__parts[$id];
@@ -112,10 +112,10 @@ class SelectRenderer {
     }
 
 
-    public function renderSMDSelect(?array $used__smd = null) {
+    public function renderSMDSelect($additionalClause = "", ?array $used__smd = null) {
         $MsaDB = $this -> MsaDB;
-        $list__smd = $MsaDB -> readIdName('list__smd','id', 'name', 'WHERE isActive = 1');
-        $list__smd_desc = $MsaDB -> readIdName('list__smd', 'id', 'description', 'WHERE isActive = 1');
+        $list__smd = $MsaDB -> readIdName('list__smd','id', 'name', $additionalClause);
+        $list__smd_desc = $MsaDB -> readIdName('list__smd', 'id', 'description', $additionalClause);
         $used__smd = is_null($used__smd) ? array_keys($list__smd) : $used__smd;
         foreach($used__smd as $id) {
             $name = $list__smd[$id];
@@ -126,10 +126,10 @@ class SelectRenderer {
         } 
     }
 
-    public function renderTHTSelect(?array $used__tht = null) {
+    public function renderTHTSelect($additionalClause = "", ?array $used__tht = null) {
         $MsaDB = $this -> MsaDB;
-        $list__tht = $MsaDB -> readIdName('list__tht', 'id', 'name', 'WHERE isActive = 1');
-        $list__tht_desc = $MsaDB -> readIdName('list__tht', 'id', 'description', 'WHERE isActive = 1');
+        $list__tht = $MsaDB -> readIdName('list__tht', 'id', 'name', $additionalClause);
+        $list__tht_desc = $MsaDB -> readIdName('list__tht', 'id', 'description', $additionalClause);
         $used__tht = is_null($used__tht) ? array_keys($list__tht) : $used__tht;
         foreach($used__tht as $id) {
             $name = $list__tht[$id];
@@ -140,10 +140,10 @@ class SelectRenderer {
         } 
     }
 
-    public function renderSKUSelect(?array $used__sku = null) {
+    public function renderSKUSelect($additionalClause = "", ?array $used__sku = null) {
         $MsaDB = $this -> MsaDB;
-        $list__sku = $MsaDB -> readIdName('list__sku', 'id', 'name', 'WHERE isActive = 1');
-        $list__sku_desc = $MsaDB -> readIdName('list__sku', 'id', 'description', 'WHERE isActive = 1');
+        $list__sku = $MsaDB -> readIdName('list__sku', 'id', 'name', $additionalClause);
+        $list__sku_desc = $MsaDB -> readIdName('list__sku', 'id', 'description', $additionalClause);
         $used__sku = is_null($used__sku) ? array_keys($list__sku) : $used__sku;
         foreach($used__sku as $id) {
             $name = $list__sku[$id];
@@ -224,6 +224,25 @@ class SelectRenderer {
     public function renderArraySelect(array $array) {
         foreach($array as $id => $value) {
             echo "<option value='$id'>$value</option>";
+        } 
+    }
+
+    /**
+    * Render select options from a simple array
+    * Key is the value of an option
+    * Second array is for subtext
+    * Second array needs to be the same length as initial array.
+    * Second array needs to have the same keys as initial array.
+    * Corresponding value is the text of an option.
+    * @return void Returns nothing, renders options
+    */
+    public function renderArraySelectWithSubtext(array $array, array $subText) {
+        if(count($array) != count($subText)) throw new \Exception("Arrays are not the same size");
+        if(array_keys($array) != array_keys($subText)) throw new \Exception("Arrays have different keys.");
+        foreach($array as $id => $value) {
+            echo "<option data-subtext='{$subText[$id]}' 
+                    data-tokens='{$value} {$subText[$id]}'
+                    value='$id'>$value</option>";
         } 
     }
 }

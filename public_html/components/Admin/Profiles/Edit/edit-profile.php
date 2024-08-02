@@ -13,7 +13,7 @@ $userInfo = [
 ];
 
 
-$resultMessage = "Zedytowano dane pomyślnie";
+$result = "Zedytowano dane pomyślnie";
 $wasSuccessful = true;
 try
 {
@@ -21,9 +21,9 @@ try
 }
 catch(\Throwable $e)
 {
-    $resultMessage = "Wystąpił błąd. Treść błędu: ".$e->getMessage();
+    $result = "Wystąpił błąd. Treść błędu: ".$e->getMessage();
     $wasSuccessful = false;
 }
 
-echo json_encode([$resultMessage, $wasSuccessful], JSON_FORCE_OBJECT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
+echo json_encode([$result, $wasSuccessful], JSON_FORCE_OBJECT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
 

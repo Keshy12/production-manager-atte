@@ -2,3 +2,4 @@ composer.phar
 /vendor/
 
 .env
+/public_html/assets/img/items

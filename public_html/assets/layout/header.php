@@ -146,11 +146,11 @@ if(!isset($_SESSION["userid"]) && !isset($skip))
             <div class="dropdown-submenu dropdown-submenu-left">
               <a class="dropdown-item dropdown-arrow sub-dropdown" href="#">Komponenty</a>
               <div class="dropdown-menu bg-light" style="right: 100%" aria-labelledby="submenu">
+                <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/components/edit">Dodaj/Edytuj Komponenty</a>
                 <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/components/update-parts">Aktualizuj Parts</a>
                 <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/components/from-orders">Pobierz z Zamówień</a>
               </div>
             </div>
-            <a class="dropdown-item" href="http://<?=BASEURL?>/admin/products/edit">Dodaj/Edytuj Produkty</a>
         </div>
       </li>
     <?php endif; ?>

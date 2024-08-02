@@ -39,7 +39,7 @@ $smdUnused = array_diff(array_keys($list__smd), $smdUsed);
                     data-selected-text-format="count > 3"
                     class="form-control selectpicker mt-4" 
                     multiple>
-                <?= $selectRenderer -> renderTHTSelect($thtUnused) ?>
+                <?= $selectRenderer -> renderTHTSelect('WHERE isActive = 1', $thtUnused) ?>
             </select>
             <div class="text-center">
                 <button id="addTHT" class="btn btn-primary mt-2">Dodaj</button>
@@ -77,7 +77,7 @@ $smdUnused = array_diff(array_keys($list__smd), $smdUsed);
                     data-selected-text-format="count > 3"
                     class="form-control selectpicker mt-4" 
                     multiple>
-                <?= $selectRenderer -> renderSMDSelect($smdUnused) ?>
+                <?= $selectRenderer -> renderSMDSelect('WHERE isActive = 1', $smdUnused) ?>
             </select>
             <div class="text-center">
                 <button id="addSMD" class="btn btn-primary mt-2">Dodaj</button>

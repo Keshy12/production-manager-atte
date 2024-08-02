@@ -52,9 +52,14 @@ switch ($request) {
         require $componentsDir . '/profile/devicesproduced/devices-produced-view.php';
         break;
     case 'admin/profiles/edit':
-        includeWithVariables($headerDir, array('title' => 'Edytuj profile'));
+        includeWithVariables($headerDir, array('title' => 'Edycja Profili'));
         require $componentsDir . '/admin/profiles/edit/edit-profile-view.php';
         break;
+    case 'admin/components/edit':
+        includeWithVariables($headerDir, array('title' => 'Edycja Komponentów'));
+        require $componentsDir . '/admin/components/edit/edit-component-view.php';
+        break;
+    
 
     case 'login':
         includeWithVariables($headerDir, array('title' => 'Logowanie', 'skip' => true));
