@@ -131,7 +131,7 @@ if(!isset($_SESSION["userid"]) && !isset($skip))
             <div class="dropdown-submenu dropdown-submenu-left">
               <a class="dropdown-item dropdown-arrow sub-dropdown" href="#">BOM</a>
               <div class="dropdown-menu bg-light" style="right: 100%" aria-labelledby="submenu">
-                <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/bom/insert">Wczytaj BOM</a>
+                <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/bom/upload">Wczytaj BOM</a>
                 <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/bom/edit">Edytuj BOM</a>
                 <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/bom/dictionary">Edytuj Słownik</a>
               </div>
