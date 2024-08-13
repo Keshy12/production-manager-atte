@@ -16,7 +16,13 @@ $comment = !empty($_POST["comment"]) ? $_POST["comment"] : 'Produkcja przez Form
 $productionDate = !empty($_POST["prod_date"]) ? "'".$_POST["prod_date"]."'" : NULL; 
 $deviceType = "tht";
 $bomRepository = new BomRepository($MsaDB);
-$bom = $bomRepository -> getBomByValues($deviceType, $deviceId, $version);
+$bomValues = [
+    $deviceType."_id" => $deviceId,
+    "version" => $version
+];
+$bomsFound = $bomRepository -> getBomByValues($deviceType, $bomValues);
+if(count($bomsFound) > 1) throw new \Exception("Multiple BOM records found for the provided values. Unable to proceed with the production.");
+$bom = $bomsFound[0];
 $bomId = $bom -> id;
 //get components for 1 device, so we can just multiple it by quantity needed
 $bomComponents = $bom -> getComponents(1);

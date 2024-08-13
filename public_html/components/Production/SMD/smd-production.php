@@ -11,13 +11,20 @@ $userInfo = $user -> getUserInfo();
 $sub_magazine_id = $userInfo["sub_magazine_id"];
 $deviceId = $_POST["device_id"];
 $version = $_POST["version"];
-$laminate_id = $_POST["laminate"];
+$laminateId = $_POST["laminate"];
 $quantity = $_POST["qty"];
 $comment = !empty($_POST["comment"]) ? $_POST["comment"] : 'Produkcja przez Formularz Produkcja SMD'; 
 $productionDate = !empty($_POST["prod_date"]) ? "'".$_POST["prod_date"]."'" : NULL; 
 $deviceType = "smd";
 $bomRepository = new BomRepository($MsaDB);
-$bom = $bomRepository -> getBomByValues($deviceType, $deviceId, $laminate_id, $version);
+$bomValues = [
+    $deviceType."_id" => $deviceId,
+    "laminate_id" => $laminateId,
+    "version" => $version
+];
+$bomsFound = $bomRepository -> getBomByValues($deviceType, $bomValues);
+if(count($bomsFound) > 1) throw new \Exception("Multiple BOM records found for the provided values. Unable to proceed with the production.");
+$bom = $bomsFound[0];
 $bomId = $bom -> id;
 //get components for 1 device, so we can just multiple it by quantity needed
 $bomComponents = $bom -> getComponents(1);

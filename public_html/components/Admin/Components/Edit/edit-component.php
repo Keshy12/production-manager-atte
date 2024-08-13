@@ -95,7 +95,7 @@ if($fileUploaded)
         $fileTmpPath = $file['tmp_name'];
         $fileName = $file['name'];
         $fileSize = $file['size'];
-        $fileType = $file['type'];
+        $fileExtension = $file['type'];
     
         $fileExtension = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
     

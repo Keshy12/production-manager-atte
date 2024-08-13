@@ -13,10 +13,10 @@ class BomRepository {
 
     public function getBomById($deviceType, $id) {
         $MsaDB = $this -> MsaDB;
-        $laminate = $deviceType == 'smd' ? 'laminate_id as laminateId,' : ''; 
+        $laminateCond = $deviceType == 'smd' ? 'laminate_id as laminateId,' : '';  
         $query = "SELECT id, 
                         {$deviceType}_id as deviceId, 
-                        {$laminate} 
+                        {$laminateCond} 
                         version, 
                         isActive 
                     FROM bom__{$deviceType} 
@@ -31,55 +31,42 @@ class BomRepository {
         }
     }
 
-    private function getBomByValuesLaminate($deviceType, $deviceId, $laminateId, $version) {
+    /**
+    * Get bom by values
+    * Values are an array, where key is column name.
+    * @param string $deviceType
+    * @param array $values syntax: ['columnName' => valueToCheck]
+    * @return ?object Object of class BOM on success, null otherwise.
+    */
+    public function getBomByValues($deviceType, $values)
+    {
         $MsaDB = $this -> MsaDB;
+        $laminateCond = $deviceType == 'smd' ? 'laminate_id as laminateId,' : ''; 
         $query = "SELECT id, 
                         {$deviceType}_id as deviceId, 
-                        laminate_id as laminateId, 
+                        {$laminateCond} 
                         version, 
                         isActive 
-                    FROM bom__{$deviceType} 
-                    WHERE {$deviceType}_id = $deviceId 
-                    AND laminate_id = $laminateId 
-                    AND version = '$version'";
+                    FROM bom__{$deviceType}";
 
-        $result = $MsaDB -> query($query, \PDO::FETCH_CLASS, "Atte\\Utils\\Bom", [$MsaDB]);
-        if(isset($result[0])) {
-            $result[0] -> deviceType = $deviceType;
-            return $result[0];
-        } else {
-            throw new \Exception("There is no bom with given values.", 9);
+        $conditions = [];
+        $params = [];
+
+        foreach ($values as $column => $value) {
+            $conditions[] = "{$column} <=> :{$column}";
+            $params[":{$column}"] = $value;
         }
-    }
-
-    private function getBomByValuesNoLaminate($deviceType, $deviceId, $version) {
-        $MsaDB = $this -> MsaDB;
-        $query = "SELECT id, 
-                        {$deviceType}_id as deviceId, 
-                        version, 
-                        isActive 
-                    FROM bom__{$deviceType} 
-                    WHERE {$deviceType}_id = $deviceId 
-                    AND version <=> $version";
-
-        $result = $MsaDB -> query($query, \PDO::FETCH_CLASS, "Atte\\Utils\\Bom", [$MsaDB]);
-        if(isset($result[0])) {
-            $result[0] -> deviceType = $deviceType;
-            return $result[0];
-        } else {
-            throw new \Exception("There is no bom with given values.", 9);
+        
+        $query .= " WHERE ".implode(' AND ', $conditions);
+        $stmt = $MsaDB->db->prepare($query);
+        
+        foreach ($params as $param => $val) {
+            $stmt->bindValue($param, $val);
         }
-    }
-
-
-    public function __call($method, $arguments) {
-        if($method == 'getBomByValues') {
-            if(count($arguments) == 3) {
-                return call_user_func_array(array($this,'getBomByValuesNoLaminate'), $arguments);
-            }
-            else if(count($arguments) == 4) {
-                return call_user_func_array(array($this,'getBomByValuesLaminate'), $arguments);
-            }
-      }
+        
+        $stmt->execute();
+        $result = $stmt->fetchAll(\PDO::FETCH_CLASS, 'Atte\\Utils\\Bom', [$MsaDB]);
+        foreach($result as $item) $item -> deviceType = $deviceType;
+        return $result !== false ? $result : null;
     }
 }

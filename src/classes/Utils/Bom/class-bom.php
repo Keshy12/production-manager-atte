@@ -38,7 +38,7 @@ class Bom {
                 $type = "parts";
                 $device_id = $component[3];
             }
-            $result[] = ["type" => $type, "componentId" => $device_id, "quantity" => $component["qty"]];
+            $result[] = ["type" => $type, "componentId" => $device_id, "quantity" => $component["qty"]+0];
         }
         return $result;
     }

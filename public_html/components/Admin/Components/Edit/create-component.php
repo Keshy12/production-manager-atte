@@ -96,7 +96,7 @@ if($fileUploaded && $addSuccessful)
         $fileTmpPath = $file['tmp_name'];
         $fileName = $file['name'];
         $fileSize = $file['size'];
-        $fileType = $file['type'];
+        $fileExtension = $file['type'];
     
         $fileExtension = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
     
@@ -114,10 +114,3 @@ if($fileUploaded && $addSuccessful)
 
 echo json_encode([$addResult, $addSuccessful, $imageUploadResult, $imageUploadSuccessful, $insertedId]
                         , JSON_FORCE_OBJECT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
-
-
- 
-
-
-
-

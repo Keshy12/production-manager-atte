@@ -1,3 +1,7 @@
+.user-select-all {
+    -webkit-user-select: all;
+    user-select: all;
+}
 
 .dropdown-submenu .dropdown-arrow::after {
     display: inline-block;

@@ -45,24 +45,29 @@ $bomRepository = new BomRepository($MsaDB);
  */
 $bom_id = false;
 if(!empty($device)) {
-    $type = $device[0] ?? false;
-    $device_id = $device[1] ?? false;
-    $laminate_id = $device[2] ?? false;
-    $version = $device[3] ?? false;
-    if($version == 'n/d') $version = "NULL";
-    if($type && $device_id && $version) {
-        if($type == "smd" && $laminate_id) { 
-            $bom = $bomRepository -> getBomByValues($type, $device_id, $laminate_id, $version);
-            $bom_id = $bom -> id;
-        }
-        else {
-            $bom = $bomRepository -> getBomByValues($type, $device_id, $version);
-            $bom_id = $bom -> id;
-        }
+    $type = $device[0] ?? null;
+    $deviceId = $device[1] ?? null;
+    $laminateId = $device[2] ?? null;
+    $version = $device[3] ?? null;
+
+    $bomValues = [
+        $type."_id" => $deviceId,
+        "laminate_id" => $laminateId,
+        "version" => $version
+    ];
+
+    $bomValues = array_filter($bomValues, function($value) {
+        return !is_null($value);
+    });
+    if($bomValues['version'] == 'n/d') $bomValues['version'] = NULL;
+    
+    $bomsFound = $bomRepository -> getBomByValues($type, $bomValues);
+    foreach($bomsFound as $bom)
+    {
+        $bom_id = $bom -> id;
+        $statements[] = "bom_".$type."_id = ".$bom_id;
     }
-}
-if($bom_id) {
-    $statements[] = "bom_".$type."_id = ".$bom_id;
+
 }
 
 if($receivers) {
