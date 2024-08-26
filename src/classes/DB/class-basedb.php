@@ -74,7 +74,7 @@ class BaseDB {
     * @param array $updateValues syntax: ['columnName' => 'newValue']
     * @param string $checkColumn Column to check in WHERE
     * @param mixed $checkValue Value to check in WHERE
-    * @return bool|object True on success, throw Exception otherwise.
+    * @return bool True on success, false otherwise.
     */
     public function update(string $table, array $updateValues, string $checkColumn, $checkValue) {
         $db = $this -> db;

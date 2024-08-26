@@ -31,7 +31,6 @@ $csvAsArray = array_values($csvAsArray);
 
 $csvDeviceNameKey = array_search("NAZWA_URZADZENIA_OPIS",array_column($csvAsArray, 3));
 $csvDeviceName = $csvAsArray[$csvDeviceNameKey][1];
-unset($csvAsArray[$csvDeviceNameKey]);
 
 // Included file generates fatal and non fatal errors,
 // pushes them to variables defined.

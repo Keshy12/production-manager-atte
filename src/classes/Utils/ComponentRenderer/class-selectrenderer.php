@@ -97,7 +97,7 @@ class SelectRenderer {
         return $result;
     }
 
-    public function renderPartsSelect($additionalClause = "", ?array $used__parts = null) {
+    public function renderPartsSelect($additionalClause = "ORDER BY id ASC", ?array $used__parts = null) {
         $MsaDB = $this -> MsaDB;
         $list__parts = $MsaDB -> readIdName('list__parts', 'id', 'name', $additionalClause);
         $list__parts_desc = $MsaDB -> readIdName('list__parts', 'id', 'description', $additionalClause);
@@ -112,7 +112,7 @@ class SelectRenderer {
     }
 
 
-    public function renderSMDSelect($additionalClause = "", ?array $used__smd = null) {
+    public function renderSMDSelect($additionalClause = "ORDER BY id ASC", ?array $used__smd = null) {
         $MsaDB = $this -> MsaDB;
         $list__smd = $MsaDB -> readIdName('list__smd','id', 'name', $additionalClause);
         $list__smd_desc = $MsaDB -> readIdName('list__smd', 'id', 'description', $additionalClause);
@@ -126,7 +126,7 @@ class SelectRenderer {
         } 
     }
 
-    public function renderTHTSelect($additionalClause = "", ?array $used__tht = null) {
+    public function renderTHTSelect($additionalClause = "ORDER BY id ASC", ?array $used__tht = null) {
         $MsaDB = $this -> MsaDB;
         $list__tht = $MsaDB -> readIdName('list__tht', 'id', 'name', $additionalClause);
         $list__tht_desc = $MsaDB -> readIdName('list__tht', 'id', 'description', $additionalClause);
@@ -140,7 +140,7 @@ class SelectRenderer {
         } 
     }
 
-    public function renderSKUSelect($additionalClause = "", ?array $used__sku = null) {
+    public function renderSKUSelect($additionalClause = "ORDER BY id ASC", ?array $used__sku = null) {
         $MsaDB = $this -> MsaDB;
         $list__sku = $MsaDB -> readIdName('list__sku', 'id', 'name', $additionalClause);
         $list__sku_desc = $MsaDB -> readIdName('list__sku', 'id', 'description', $additionalClause);
