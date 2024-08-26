@@ -52,5 +52,9 @@ function getMultiplier($value)
 {
     $multiplier = explode(' x ', $value);
     $multiplier = count($multiplier) > 1 ? array_pop($multiplier) : 1;
+    if (strpos($multiplier, ',') !== false) {
+        $multiplier = str_replace(',', '.', $multiplier);
+    }
+    $multiplier = floatval($multiplier);
     return $multiplier;
 }
