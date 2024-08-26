@@ -28,9 +28,9 @@
                 <th class="w-50" colspan="2" scope="col">Dane z pliku CSV.</th>
             </tr>
             <tr class="text-center">
-                <th scope="col">Nazwa</th>  
+                <th scope="col">Komponent</th>  
                 <th scope="col">Ilość</th>
-                <th scope="col">Nazwa</th>  
+                <th scope="col">Komponent</th>  
                 <th scope="col">Ilość</th>
             </tr>
         </thead>
@@ -46,9 +46,9 @@
                 <th class="w-50" colspan="2" scope="col">Dane z pliku CSV.</th>
             </tr>
             <tr class="text-center">
-                <th scope="col">Nazwa</th>  
+                <th scope="col">Komponent</th>  
                 <th scope="col">Ilość</th>
-                <th scope="col">Nazwa</th>  
+                <th scope="col">Komponent</th>  
                 <th scope="col">Ilość</th>
             </tr>
         </thead>
