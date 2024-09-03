@@ -38,7 +38,7 @@ function addDictionaryRow(data)
 {
     $.ajax({
         type: "POST",
-        url: COMPONENTS_PATH+"/admin/bom/dictionary/add-dictionary-row.php",
+        url: COMPONENTS_PATH+"/admin/bom/dictionary/add-row.php",
         async: false,
         data: data,
         success: function (data) {
@@ -101,7 +101,7 @@ function removeDictionaryRow(data)
 {
     $.ajax({
         type: "POST",
-        url: COMPONENTS_PATH+"/admin/bom/dictionary/remove-dictionary-row.php",
+        url: COMPONENTS_PATH+"/admin/bom/dictionary/remove-row.php",
         async: false,
         data: data,
         success: function (data) {
@@ -172,7 +172,7 @@ function editDictionaryRow(data)
 {
     $.ajax({
         type: "POST",
-        url: COMPONENTS_PATH+"/admin/bom/dictionary/edit-dictionary-row.php",
+        url: COMPONENTS_PATH+"/admin/bom/dictionary/edit-row.php",
         async: false,
         data: data,
         success: function (data) {

@@ -46,6 +46,16 @@ function renderCommissions(){
 function generateVersionSelect(possibleVersions){
     $("#version").empty();
     if(Object.keys(possibleVersions).length == 1) {
+        if(possibleVersions[0] == null)
+        {
+            $("#version").selectpicker('destroy');
+            $("#version").html("<option value=\"n/d\" selected>n/d</option>");
+            $("#version").prop('disabled', false);
+            $("#version").selectpicker('refresh');
+            $("#currentpage").text(1);
+            renderCommissions();
+            return;
+        }
         let version_id = Object.keys(possibleVersions)[0];
         let version = possibleVersions[version_id][0];
         let option = "<option value='"+version+"' selected>"+version+"</option>";

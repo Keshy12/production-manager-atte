@@ -11,7 +11,7 @@
                 Czy na pewno chcesz usunąć ten element?
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Nie</button>
                 <button type="button" id="confirmDelete" class="btn btn-primary">Tak</button>
             </div>
         </div>

@@ -55,6 +55,10 @@ switch ($request) {
         includeWithVariables($headerDir, array('title' => 'Wczytywanie BOM'));
         require $componentsDir . '/admin/bom/upload/upload-bom-view.php';
         break;
+    case 'admin/bom/edit':
+        includeWithVariables($headerDir, array('title' => 'Edycja BOM'));
+        require $componentsDir . '/admin/bom/edit/edit-bom-view.php';
+        break;
     case 'admin/bom/dictionary':
         includeWithVariables($headerDir, array('title' => 'Edycja słownika ValuePackage'));
         require $componentsDir . '/admin/bom/dictionary/edit-dictionary-view.php';
