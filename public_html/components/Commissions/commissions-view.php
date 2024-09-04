@@ -17,10 +17,13 @@ $currentUser = isset($_SESSION["userid"]) ? $_SESSION["userid"] : "";
 $submagazine_list = $MsaDB -> readIdName("magazine__list", "sub_magazine_id", "sub_magazine_name", "ORDER BY type_id ASC");
 
 ?>
+<div class="d-flex justify-content-center">
+    <div id="ajaxResult" class="my-4 position-fixed" 
+        style="z-index: 100; 
+        max-width: 75%;">
+    </div>
+</div>
 
-<select id="list__users" hidden><!--users list-->
-    <?= $selectRenderer -> renderUserSelect() ?>
-</select>
 <select id="list__sku" hidden><!--sku list-->
     <?= $selectRenderer -> renderSKUBomSelect() ?>
 </select>
@@ -58,10 +61,14 @@ $submagazine_list = $MsaDB -> readIdName("magazine__list", "sub_magazine_id", "s
             </button>
         </div>
         <div class="d-flex justify-content-center mt-2">    
-            <select class="selectpicker" id="user" title="Zlecono dla:" multiple data-selected-text-format="count > 2" data-actions-box="true">
-            <?php foreach($users_name as $id => $user){
-                echo "<option data-submag=\"$users_submag[$id]\" value=\"$id\">".$user." ".$users_surname[$id]."</option>";
-            } ?>
+            <select class="selectpicker" id="user" title="Zlecono dla:" multiple 
+                    data-selected-text-format="count > 2" data-actions-box="true"
+                    data-hide-disabled="true">
+            <?php foreach($users_name as $id => $name) {
+                    $surname = $users_surname[$id];
+                    $submag = $users_submag[$id];
+                    echo "<option data-submag-id=\"$submag\" value=\"$id\">".$name." ".$surname."</option>";
+                }  ?>
             </select>
         </div>
         <div class="d-flex justify-content-center mt-2">    
