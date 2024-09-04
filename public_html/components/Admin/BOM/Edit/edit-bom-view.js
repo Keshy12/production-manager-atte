@@ -18,7 +18,7 @@ $("#bomTypeSelect").change(function(){
 
 function showAdditionalFields(type)
 {
-    $("#laminateField, #versionField").hide();
+    $("#laminateField, #versionField, #createNewBomFields, #isActiveField").hide();
     if(type == "tht")
     {
         $("#versionField").show();
@@ -86,6 +86,7 @@ function generateVersionSelect(possibleVersions){
             $("#versionSelect").selectpicker('destroy');
             $("#versionSelect").html("<option value=\"n/d\" selected>n/d</option>");
             $("#versionSelect").prop('disabled', false);
+            $("#versionField").hide();
             $("#versionSelect").selectpicker('refresh');
             generateBomTable();
             return;
@@ -118,7 +119,7 @@ $("#laminateSelect").change(function(){
 function generateBomTable()
 {
     let isEditable = true;
-    $("#editButtonsCol").show();
+    $("#editButtonsCol, #createNewBomFields, #isActiveField").show();
     $TBody = $("#editBomTBody");
     $TBody.empty();
     let bomType = $("#bomTypeSelect").val();
@@ -141,13 +142,29 @@ function generateBomTable()
         async: false,
         data: {bomType: bomType, bomValues: bomValues},
         success: function (data) {
-            let components = JSON.parse(data);
+            let result = JSON.parse(data);
+            let components = result[0];
+            let bomId = result[1];
+            let isActive = result[2];
+            let wasSuccessful = result[3];
+            let errorMessage = result[4];
+            if(!wasSuccessful) {
+                let resultAlert = `<tr>
+                <td colspan="3"><div class="alert alert-danger" role="alert">
+                    `+errorMessage+`
+                </div></td>
+                </tr>`;
+
+                $TBody.append(resultAlert);
+            }
+            $("#createNewBomFields").attr('data-bom-id', bomId);
+            $("#isActive").prop('checked', isActive);
             for(const [key, item] of Object.entries(components))
             {
                 let renderedItem = bomEditTableRow_template.map(render(item)).join('');
                 let $renderedItem = $(renderedItem);
                 if(!isEditable) {
-                    $("#editButtonsCol").hide();
+                    $("#editButtonsCol, #createNewBomFields, #isActiveField").hide();
                     $renderedItem.find('.editButtons').remove();
                 }
                 $TBody.append($renderedItem);
@@ -210,7 +227,7 @@ function generateComponentSelect($row, componentType, componentId)
         <option value="tht">THT</option>
         <option value="smd">SMD</option>
         <option value="parts">Parts</option>
-    </select>`).val(componentType);
+    </select>`);
 
     let $componentInfoDeviceSelect = $(`<select data-title="Wybierz urządzenie..." data-live-search="true" data-width="80%" class="selectpicker componentDeviceSelect">
         </select>`);
@@ -218,6 +235,7 @@ function generateComponentSelect($row, componentType, componentId)
     $('#list__'+componentType+'_hidden option').clone().appendTo($componentInfoDeviceSelect);
     $componentInfo.append($componentInfoTypeSelect).append($componentInfoDeviceSelect);
     $('.selectpicker').selectpicker('refresh');
+    $componentInfoTypeSelect.selectpicker('val', componentType);
     $componentInfoDeviceSelect.selectpicker('val', componentId);
 }
 
@@ -239,11 +257,18 @@ $('body').on('click', '.applyChanges', function(){
     let componentType = $row.find('select.componentTypeSelect').val();
     let componentId = $row.find('select.componentDeviceSelect').val();
     let quantity = $row.find('.quantityInput').val();
+    const data = {rowId: rowId, componentType: componentType, componentId: componentId, quantity: quantity};
+    editBomRow(data);
+    generateBomTable();
+});
+
+function editBomRow(data)
+{
     $.ajax({
         type: "POST",
         url: COMPONENTS_PATH+"/admin/bom/edit/edit-row.php",
         async: false,
-        data: {rowId: rowId, componentType: componentType, componentId: componentId, quantity: quantity},
+        data: data,
         success: function (data) {
             let wasSuccessful = JSON.parse(data);
             let resultMessage = wasSuccessful ? 
@@ -263,7 +288,159 @@ $('body').on('click', '.applyChanges', function(){
             setTimeout(function() {
                 $(".alert-success").alert('close');
             }, 2000);
-            generateBomTable();
         }
     });
+}
+
+$('body').on('click', '.removeBomRow', function() {
+    let rowId = $(this).attr('data-id');
+    $("#confirmDelete").attr('data-id', rowId);
+    $("#confirmDeleteModal").modal('show');
+});
+
+$("#confirmDelete").click(function() {
+    let rowId = $(this).attr('data-id');
+    const data = {rowId: rowId};
+    removeBomRow(data);
+    $("#confirmDeleteModal").modal('hide');
+    generateBomTable();
+});
+
+function removeBomRow(data)
+{
+    $.ajax({
+        type: "POST",
+        url: COMPONENTS_PATH+"/admin/bom/edit/remove-row.php",
+        async: false,
+        data: data,
+        success: function (data) {
+            let wasSuccessful = JSON.parse(data);
+            let resultMessage = wasSuccessful ? 
+                        "Usunięcie danych powiodło się." : 
+                        "Coś poszło nie tak, dane nie zostały usunięte";
+            let resultAlertType = wasSuccessful ? 
+                        "alert-success" : 
+                        "alert-danger";
+
+            let resultAlert = `<div class="alert `+resultAlertType+` alert-dismissible fade show" role="alert">
+                `+resultMessage+`
+                <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>`;
+            $("#ajaxResult").append(resultAlert);
+            setTimeout(function() {
+                $(".alert-success").alert('close');
+            }, 2000);
+        }
+    });
+}
+
+$("#createNewBomFields").click(function(){
+    let $TBody = $("#editBomTBody");
+    let renderedItem = bomEditTableRow_template.join('');
+    let $renderedItem = $(renderedItem);
+
+    generateQuantityInput($renderedItem, '');
+    
+    generateComponentSelect($renderedItem, '', '');
+
+    generateSaveCancelButtons($renderedItem, '');
+    $TBody.append($renderedItem);
+});
+
+$("body").on("click", '.createNewRow', function(){
+    let $row = $(this).closest('tr');
+    let bomId = $("#createNewBomFields").attr('data-bom-id');
+    let bomType = $("#bomTypeSelect").val();
+    let componentType = $row.find('select.componentTypeSelect').val();
+    let componentId = $row.find('select.componentDeviceSelect').val();
+    let quantity = $row.find('.quantityInput').val();
+    const data = {bomId: bomId, bomType: bomType, componentType: componentType, componentId: componentId, quantity: quantity};
+    createNewBomRow(data);
+    generateBomTable();
+});
+
+function createNewBomRow(data)
+{
+    $.ajax({
+        type: "POST",
+        url: COMPONENTS_PATH+"/admin/bom/edit/add-row.php",
+        async: false,
+        data: data,
+        success: function (data) {
+            let wasSuccessful = JSON.parse(data);
+            let resultMessage = wasSuccessful ? 
+                        "Dodawanie danych powiodło się." : 
+                        "Coś poszło nie tak, dane nie zostały edytowane";
+            let resultAlertType = wasSuccessful ? 
+                        "alert-success" : 
+                        "alert-danger";
+
+            let resultAlert = `<div class="alert `+resultAlertType+` alert-dismissible fade show" role="alert">
+                `+resultMessage+`
+                <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>`;
+            $("#ajaxResult").append(resultAlert);
+            setTimeout(function() {
+                $(".alert-success").alert('close');
+            }, 2000);
+        }
+    });
+}
+
+$("#isActive").change(function(){
+    let isActive = $(this).prop('checked');
+    let bomId = $("#createNewBomFields").attr('data-bom-id');
+    let bomType = $("#bomTypeSelect").val();
+    const data = {bomType: bomType, bomId: bomId, isActive: isActive};
+    setIsActiveBom(data);
+    generateBomTable();
+});
+
+function setIsActiveBom(data)
+{
+    $.ajax({
+        type: "POST",
+        url: COMPONENTS_PATH+"/admin/bom/edit/set-isActive.php",
+        async: false,
+        data: data,
+        success: function (data) {
+            let wasSuccessful = JSON.parse(data);
+            let resultMessage = wasSuccessful ? 
+                        "Dodawanie danych powiodło się." : 
+                        "Coś poszło nie tak, dane nie zostały edytowane";
+            let resultAlertType = wasSuccessful ? 
+                        "alert-success" : 
+                        "alert-danger";
+
+            let resultAlert = `<div class="alert `+resultAlertType+` alert-dismissible fade show" role="alert">
+                `+resultMessage+`
+                <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>`;
+            $("#ajaxResult").append(resultAlert);
+            setTimeout(function() {
+                $(".alert-success").alert('close');
+            }, 2000);
+        }
+    });
+}
+
+$("#previousBom").click(function(){
+    let $selectedOption = $("#list__device option:selected");
+    $selectedOption.prop('selected', false)
+                    .prev().prop('selected', true);
+    $("#list__device").selectpicker('refresh').change();
+});
+
+$("#nextBom").click(function(){
+    let $selectedOption = $("#list__device option:selected");
+    $selectedOption.prop('selected', false)
+                    .next()
+                    .prop('selected', true);
+    $("#list__device").selectpicker('refresh').change();
 });

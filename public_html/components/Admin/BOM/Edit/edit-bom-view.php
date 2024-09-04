@@ -7,6 +7,7 @@ $MsaDB = MsaDB::getInstance();
 $selectRenderer = new SelectRenderer($MsaDB);
 
 include('table-row-template.php');
+include('modals.php');  
 
 ?>
 
@@ -46,16 +47,29 @@ include('table-row-template.php');
     <button id="nextBom" class="btn btn-light mx-2" disabled><b>&rsaquo;</b></button>
 </div>
 
-<div class="d-flex justify-content-center mt-4">
-    <span id="laminateField" style="display:none;">
+<div class="d-flex justify-content-center">
+    <span id="laminateField" class="mt-4" style="display:none;">
         <select id="laminateSelect" data-width="100px" 
                 data-title="Laminat..." class="selectpicker" disabled>
         </select>
     </span>
-    <span id="versionField" style="display:none;">
+    <span id="versionField" class="mt-4" style="display:none;">
         <select id="versionSelect" data-width="100px" 
                 data-title="Wersja..." class="selectpicker" disabled>
         </select>
+    </span>
+</div>
+
+<div class="d-flex justify-content-center">
+    <button id="createNewBomFields" class="btn btn-outline-secondary mt-4" style="display:none;">
+        Dodaj nową pozycję
+    </button>
+</div>
+
+<div class="d-flex justify-content-center">
+    <span class="mt-4" id="isActiveField" style="display:none;">
+        <input type="checkbox" id="isActive">
+        <label for="isActive">Aktywny?</label>
     </span>
 </div>
 

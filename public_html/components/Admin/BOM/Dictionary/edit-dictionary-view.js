@@ -30,11 +30,11 @@ $('body').on('click', '.createNewRow', function() {
     }
 
     const data = {dictionaryType: dictionaryType, newRowValues: newRow};
-    addDictionaryRow(data);
+    createNewDictionaryRow(data);
     generateDictionaryView();
 });
 
-function addDictionaryRow(data)
+function createNewDictionaryRow(data)
 {
     $.ajax({
         type: "POST",
@@ -44,7 +44,7 @@ function addDictionaryRow(data)
         success: function (data) {
             let wasSuccessful = JSON.parse(data);
             let resultMessage = wasSuccessful ? 
-                        "Edytowanie danych powiodło się." : 
+                        "Dodawanie danych powiodło się." : 
                         "Coś poszło nie tak, dane nie zostały edytowane";
             let resultAlertType = wasSuccessful ? 
                         "alert-success" : 
@@ -65,20 +65,21 @@ function addDictionaryRow(data)
 }
 
 $("#createNewDictionaryRow").click(function() {
+    let dictionaryType = $("#dictionarySelect").val();
+    let template = $('script[data-template="'+dictionaryType+'_template"]').text().split(/\$\{(.+?)\}/g);
+    let renderedItem = template.join('');
+    let $newRow = $(renderedItem);
+    let $TBody = $("#dictionaryTBody");
+
     $("#currentpage").text(1);
     generateDictionaryView();
-    let dictionaryType = $("#dictionarySelect").val();
-    let $TBody = $("#dictionaryTBody");
-    let $newRow = $TBody.find('tr').first().clone();
-    $newRow.find('.dictionaryValue').html('');
-    $newRow.find('.componentInfo').html('');
-    $TBody.prepend($newRow);
     
     generateDictionaryTextInput($newRow);
-
+    
     generateComponentSelect($newRow, '' , '');
-
+    
     generateSaveCancelButtons($newRow, '');
+    $TBody.prepend($newRow);
     $(".editPackageExclude, .editValuePackage, .removeDictionaryItem").prop('disabled', true);
 });
 
@@ -241,7 +242,7 @@ function generateComponentSelect($row, componentType, componentId)
     let $componentInfoTypeSelect = $(`<select data-width="20%" class="selectpicker componentTypeSelect">
         <option value="tht">THT</option>
         <option value="parts">Parts</option>
-    </select>`).val(componentType);
+    </select>`);
 
     let $componentInfoDeviceSelect = $(`<select data-title="Wybierz urządzenie..." data-live-search="true" data-width="80%" class="selectpicker componentDeviceSelect">
         </select>`);
@@ -249,6 +250,7 @@ function generateComponentSelect($row, componentType, componentId)
     $('#list__'+componentType+'_hidden option').clone().appendTo($componentInfoDeviceSelect);
     $componentInfo.append($componentInfoTypeSelect).append($componentInfoDeviceSelect);
     $('.selectpicker').selectpicker('refresh');
+    $componentInfoTypeSelect.selectpicker('val', componentType);
     $componentInfoDeviceSelect.selectpicker('val', componentId);
 }
 
@@ -256,6 +258,7 @@ function generateDictionaryTextInput($row)
 {
     let $valuePackage = $row.find('.dictionaryValue');
     let valuePackage = $valuePackage.text();
+    valuePackage = valuePackage == 'ValuePackage' ? '' : valuePackage;
     $valuePackage.empty();
 
     let $valuePackageInput = $('<input>', {
