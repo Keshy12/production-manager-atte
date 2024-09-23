@@ -30,9 +30,6 @@ class GoogleSheets
         try {
             $response = $this -> service->spreadsheets_values->get($spreadsheetId, $sheetName.'!'.$range);
             $values = $response->getValues();
-            //To make array start with key 1.
-            array_unshift($values, "placeholder");
-            unset($values[0]);
             return $values;
         } catch(\Exception $e) {
             if( 401 == $e->getCode() ) {

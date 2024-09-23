@@ -71,7 +71,15 @@ switch ($request) {
         includeWithVariables($headerDir, array('title' => 'Edycja Komponentów'));
         require $componentsDir . '/admin/components/edit/edit-component-view.php';
         break;
+    case 'admin/components/detect-new-parts':
+        includeWithVariables($headerDir, array('title' => 'Aktualizuj Parts'));
+        require $componentsDir . '/admin/components/detectnewparts/detect-parts-view.php';
+        break;
     
+    case 'test':
+        includeWithVariables($headerDir, array('title' => 'Test'));
+        require $componentsDir . '/tests/test1.php';
+        break;
 
     case 'login':
         includeWithVariables($headerDir, array('title' => 'Logowanie', 'skip' => true));

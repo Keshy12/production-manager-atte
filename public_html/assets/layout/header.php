@@ -147,7 +147,7 @@ if(!isset($_SESSION["userid"]) && !isset($skip))
               <a class="dropdown-item dropdown-arrow sub-dropdown" href="#">Komponenty</a>
               <div class="dropdown-menu bg-light" style="right: 100%" aria-labelledby="submenu">
                 <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/components/edit">Dodaj/Edytuj Komponenty</a>
-                <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/components/update-parts">Aktualizuj Parts</a>
+                <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/components/detect-new-parts">Aktualizuj Parts</a>
                 <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/components/from-orders">Pobierz z Zamówień</a>
               </div>
             </div>
