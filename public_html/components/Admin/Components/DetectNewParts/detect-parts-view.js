@@ -9,6 +9,12 @@ $(document).ready(async function() {
     const newPartsObj = parseNewPartsJSON(newParts);
     $("#loadingMessage").hide();
     if(newPartsObj === null) return;
+    if(Object.keys(newPartsObj).length === 0) {
+        $("#tableContainer").append(`<div class="alert alert-info" role="alert">
+            Nie wykryto żadnych nowych części.
+        </div>`);
+        return;
+    }
     $("#detectPartsTable, #uploadNewParts").show();
     const $TBody = $('#detectPartsTBody');
     renderTableRows($TBody, newPartsObj);
@@ -42,7 +48,21 @@ function uploadNewParts(newPartsJson) {
         type: 'POST',
         data: {newParts: newPartsJson},
         success: function(response) {
-            console.log(response);
+            const result = JSON.parse(response);
+            const wasSuccessful = result['wasSuccessful'];
+            const errorMessage = result['errorMessage'];
+
+            const resultMessage = wasSuccessful ? 
+                        "Edytowanie danych powiodło się." : 
+                        "Coś poszło nie tak.<br> Error: "+errorMessage;
+            const resultAlertType = wasSuccessful ? 
+                        "alert-success" :
+                        "alert-danger";
+
+            const resultAlert = `<div class="alert `+resultAlertType+`" role="alert">
+                `+resultMessage+`
+            </div>`;
+            $("#tableContainer").empty().append(resultAlert);
         }
     });
 }
@@ -59,7 +79,7 @@ function editRowApply($row, newPartsObj) {
         1: componentName,
         2: componentDescription,
         3: partGroup,
-        4: partType,
+        4: partType == "Brak" ? "" : partType,
         5: partUnit
     }
     newPartsObj[rowId] = newData;
@@ -192,7 +212,6 @@ function renderTableRows($TBody, newPartsJson) {
         $TBody.append($renderedItem);
     }
 }
-
 
 
 // Request using fetch, because Ajax causes session cookie to be sent.

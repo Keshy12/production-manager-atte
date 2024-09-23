@@ -44,6 +44,35 @@ class BaseDB {
     }
 
     /**
+    * Insert values into table using parameterized queries in bulk.
+    * @param string $table
+    * @param array $columns array of columns to insert into
+    * @param array $rows Array of rows corresponding to columns
+    * @return array Array of inserted IDs on success
+    * @throws \Exception
+    */
+    public function insertBulk(string $table, array $columns, array $rows) {
+        $db = $this -> db;
+        $countColumns = count($columns);
+
+        // Make an array with "?" parameter, to use for prepared pdo statement.
+        $questionMarkParam = array_fill(0, $countColumns, "?");
+        $sql = "INSERT INTO $table (".implode(", ", $columns).") VALUES (".implode(", ", $questionMarkParam).");";
+        $query = $db -> prepare($sql);
+        $ids = [];
+        foreach($rows as $row)
+        {
+            $countValues = count($row);
+            if($countValues != $countColumns) {
+                throw new \Exception('Different number of elements in $columns and $values');
+            }
+            $query -> execute($row); 
+            $ids[] = $db -> lastInsertId();
+        }
+        return $ids;
+    }
+
+    /**
     * Insert values into table using parameterized queries.
     * @param string $table
     * @param array $columns array of columns to insert into

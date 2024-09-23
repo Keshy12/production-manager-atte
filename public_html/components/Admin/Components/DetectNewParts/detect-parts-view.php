@@ -32,7 +32,7 @@ include('modals.php');
     </div>
 </div>
 
-<div class="d-flex flex-column align-items-center mt-4">
+<div id="tableContainer" class="d-flex flex-column align-items-center mt-4">
     <table id="detectPartsTable" class="table table-bordered table-sm text-center" style="max-width: 1300px; display: none;">
         <thead>
             <tr>
