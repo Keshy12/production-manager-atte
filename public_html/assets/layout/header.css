@@ -3,6 +3,11 @@
     user-select: all;
 }
 
+.form-control.disabled {
+    background-color: #e9ecef;
+    opacity: 1;
+}
+
 .dropdown-submenu .dropdown-arrow::after {
     display: inline-block;
     content: "";

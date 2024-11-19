@@ -8,15 +8,20 @@ class GoogleSheets
     private $service;
 
     public function __construct(){
-        $client = new \Google_Client();
         $OAuth = new GoogleOAuth();
         $arr_token = (array) $OAuth->get_access_token();
+        $client = $this -> getClient($arr_token);
+        $this -> service = new \Google_Service_Sheets($client);      
+    }
+
+    private function getClient($arr_token){
+        $client = new \Google_Client();
         $accessToken = array(
             'access_token' => $arr_token['access_token'],
             'expires_in' => $arr_token['expires_in'],
         );
         $client->setAccessToken($accessToken);
-        $this -> service = new \Google_Service_Sheets($client);      
+        return $client;
     }
 
     /**
@@ -35,6 +40,9 @@ class GoogleSheets
             if( 401 == $e->getCode() ) {
                 $OAuth = new GoogleOAuth();
                 $OAuth -> regenerateToken();
+                $arr_token = (array) $OAuth->get_access_token();
+                $client = $this -> getClient($arr_token);
+                $this -> service = new \Google_Service_Sheets($client);
                 return $this -> readSheet($spreadsheetId,$sheetName,$range);
             } else {
                 print_r($e->getMessage());
@@ -65,6 +73,9 @@ class GoogleSheets
             if( 401 == $e->getCode() ) {
                 $OAuth = new GoogleOAuth();
                 $OAuth -> regenerateToken();
+                $arr_token = (array) $OAuth->get_access_token();
+                $client = $this -> getClient($arr_token);
+                $this -> service = new \Google_Service_Sheets($client);
                 return $this -> appendToSheet($spreadsheetId, $sheetName, $range, $values);
             } else {
                 print_r($e->getMessage());
@@ -97,6 +108,9 @@ class GoogleSheets
             if( 401 == $e->getCode() ) {
                 $OAuth = new GoogleOAuth();
                 $OAuth -> regenerateToken();
+                $arr_token = (array) $OAuth->get_access_token();
+                $client = $this -> getClient($arr_token);
+                $this -> service = new \Google_Service_Sheets($client);
                 return $this -> writeToSheet($spreadsheetId, $sheetName, $range, $values);
             } else {
                 print_r($e->getMessage());

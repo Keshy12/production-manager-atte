@@ -139,7 +139,7 @@ $("#list__laminate").change(function(){
     generateVersionSelect(possibleVersions);
     $("#version").prop('disabled', false);
     $("#version").selectpicker('refresh');
-})
+});
 
 $("#clearDevice").click(function(){
     $("#currentpage").text(1);

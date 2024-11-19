@@ -12,6 +12,18 @@ class UserRepository {
         $this -> MsaDB = $MsaDB;
     }
 
+    public function getAllUsers()
+    {
+        $MsaDB = $this -> MsaDB;
+        $query = "SELECT user_id as userId, 
+                        login, name, surname, 
+                        email, isAdmin, 
+                        sub_magazine_id as subMagazineId 
+                    FROM `user` ORDER BY user_id ASC";
+        $result = $MsaDB -> query($query, PDO::FETCH_CLASS, "Atte\\Utils\\User", [$MsaDB]);
+        return $result;
+    }
+
     public function getUserById($id) {
         $MsaDB = $this -> MsaDB;
         $query = "SELECT user_id as userId, login, name, surname, email, isAdmin, sub_magazine_id as subMagazineId 
