@@ -12,14 +12,14 @@ $currentUser = $userRepository -> getUserById($_SESSION['userid']);
 $currentMagazine = $currentUser -> subMagazineId;
 $isCurrUserAdmin = $currentUser -> isAdmin();
 
-$list__warehouse = $MsaDB -> readIdName('magazine__list', 'sub_magazine_id', 'sub_magazine_name', 'ORDER BY type_id, sub_magazine_id ASC');
+$list__warehouse = $MsaDB -> readIdName(table: 'magazine__list', 
+                                        id: 'sub_magazine_id', 
+                                        name: 'sub_magazine_name', 
+                                        add: 'ORDER BY type_id, sub_magazine_id ASC');
 $list__priority = array_reverse($MsaDB -> readIdName("commission__priority"), true);
 
 $allUsers = $userRepository -> getAllUsers();
-
-
-
-
+$magazineRepo = new Atte\Utils\MagazineRepository($MsaDB);
 include('modals.php');
 include('table-row-template.php');
 ?>
@@ -141,10 +141,10 @@ include('table-row-template.php');
     </div>
 </div>
 
-<div id="commissionTableContainer" style="display: none;">
-    <h4 class="text-center mt-4 mb-2">Tworzone zlecenia</h4>
+<div id="commissionTableContainer" style="">
+    <h4 class="text-center mt-4 mb-2"><button class="btn btn-lg btn-link dropdown-toggle" data-toggle="collapse" data-target="#commissionTable">Tworzone zlecenia</button></h4>
     <div class="d-flex flex-column align-items-center justify-content-center">
-        <table class="table table-bordered table-sm table-hover text-center w-75">
+        <table id="commissionTable" class="table table-bordered table-sm table-hover collapse show text-center w-50">
             <thead>
                 <th>Odbiorca</th>
                 <th>Urządzenie</th>
@@ -193,7 +193,7 @@ include('table-row-template.php');
                     <th>W magazynie docelowym</t>
                     <th>Potrzebne do zlecenia</th>
                     <th>Przekazywana ilość</th>
-                    <th>XXXXX</th>
+                    <th></th>
                 </tr>
             </thead>
             <tbody id="transferTBody"></tbody>

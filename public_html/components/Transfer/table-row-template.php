@@ -26,10 +26,10 @@
 
 
 <script type="text/template" data-template="transferComponentsTableRow_template">
-    <tr>
+    <tr data-key="${key}">
         <td class="componentInfo">
-            <b>${deviceName}</b><br>
-            <small>${deviceDescription}</small>
+            <b>${componentName}</b><br>
+            <small>${componentDescription}</small>
         </td>
         <td class="warehouseFrom" data-reserved="${warehouseFromReserved}">
             ${warehouseFromQty}
@@ -40,11 +40,13 @@
         <td>
             ${neededForCommissionQty}
         </td>
-        <td>
-            
+        <td class="d-flex flex-column">
+            <input type="number" class="form-control form-control-sm text-center mx-auto w-75 transferQty" 
+                    data-key="${key}" value="${neededForCommissionQty}">
+            <button class="btn btn-secondary w-75 btn-sm mx-auto insertDifference">Różnica</button>
         </td>
         <td class="align-middle">
-            <button data-id="${key}" class="removeTransferRow btn btn-light">
+            <button data-key="${key}" class="removeTransferRow btn btn-light">
                 <i class="bi bi-trash"></i>
             </button>
         </td>

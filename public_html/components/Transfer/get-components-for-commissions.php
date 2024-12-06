@@ -3,11 +3,10 @@ use Atte\DB\MsaDB;
 use Atte\Utils\BomRepository;
 
 $MsaDB = MsaDB::getInstance();
-$MsaDB -> db -> beginTransaction();
 
 $bomRepository = new BomRepository($MsaDB);
 
-$commissions = array_filter($_POST['commissions']);
+$commissions = array_filter($_POST['commissions'] ?? []);
 $transferFrom = $_POST['transferFrom'];
 $transferTo = $_POST['transferTo'];
 
@@ -21,7 +20,6 @@ foreach($commissions as $commission)
         'isActive' => 1
     ];
     if(!empty($commission['laminateId'])) $bomValues['laminate_id'] = $commission['laminateId'];
-    var_dump($bomValues);
     
     $bomsFound = $bomRepository -> getBomByValues($deviceType, $bomValues);
     
@@ -29,8 +27,19 @@ foreach($commissions as $commission)
     if(count($bomsFound) > 1) throw new \Exception("Multiple BOMs found");
     
     $bom = $bomsFound[0];
+    foreach($bom->getComponents($commission['quantity']) as $bomComponent)
+    {
+        $bomType = $bomComponent['type'];
+        $bomComponentId = $bomComponent['componentId'];
+        $bomComponentQty = $bomComponent['quantity'];
 
-    $components[] = $bom -> getComponents($commission['quantity']);
+        $components[] = [
+            'type' => $bomType,
+            'componentId' => $bomComponentId,
+            'neededForCommissionQty' => $bomComponentQty,
+        ];
+    }
 }
 
-var_dump($components); 
+echo json_encode($components
+                ,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);

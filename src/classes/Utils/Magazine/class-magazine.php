@@ -17,6 +17,19 @@ class Magazine {
         $this -> MsaDB = $MsaDB;
     }
 
+    function getWarehouseQty($deviceType, $deviceId) {
+        $query = "SELECT sum(quantity) as quantity
+                    FROM `inventory__{$deviceType}`
+                    WHERE {$deviceType}_id = $deviceId
+                    AND sub_magazine_id = {$this->id}
+                    GROUP BY {$deviceType}_id";
+        $queryResult = $this -> MsaDB -> query($query);
+        if(empty($queryResult)) return 0;
+        if(count($queryResult) == 0) return 0;
+        if(count($queryResult) > 1) throw new \Exception("Multiple rows found");
+        return $queryResult[0]['quantity'];
+    }
+
     public function getActiveCommissions(){
         $MsaDB = $this -> MsaDB;
         $id = $this->id;
@@ -41,7 +54,12 @@ class Magazine {
     //Get which components are reserved to be used for active commissions
     public function getComponentsReserved(){
         $activeCommissions = $this -> getActiveCommissions();
-        $result = array();
+        $result = [
+            'sku' => [],
+            'tht'=> [],
+            'smd'=> [],
+            'parts'=> []
+        ];
         $MsaDB = $this -> MsaDB;
         $bomRepository = new BomRepository($MsaDB);
         foreach($activeCommissions as $activeCommission)
@@ -56,20 +74,14 @@ class Magazine {
             $components = $bom -> getComponents($qty);
             foreach($components as $component)
             {
-                $foundDeviceId = array_keys(array_column($result, 1), $component['componentId']);
-                foreach($foundDeviceId as $deviceId)
-                {
-                    if($result[$deviceId][0] == $component['type']){
-                        $result[$deviceId][2] += $component['quantity'];
-                    } 
-                    else{
-                        $result[] = $component;
-                    }
+                $componentType = $component['type'];
+                $componentId = $component['componentId'];
+                
+                if(!isset($result[$componentType][$componentId])) {
+                    $result[$componentType][$componentId]['quantity'] = 0;
                 }
-                if(empty($foundDeviceId))
-                {
-                    $result[] = $component;
-                }
+
+                $result[$componentType][$componentId]['quantity'] += $component['quantity'];
             }
         }
         return $result;

@@ -1,9 +1,10 @@
 const transferCommissionTableRow_template = $('script[data-template="transferCommissionTableRow_template"]').text().split(/\$\{(.+?)\}/g);
 
+const commissions = [];
+
 $(document).ready(function() {
     $("#list__priority").val(0).selectpicker('refresh');
 
-    const commissions = [];
     $("#addCommission").click(function() {
         const commissionValues = getCommissionRowValues();
         const $TBody = $('#commissionTBody');
@@ -22,44 +23,69 @@ $(document).ready(function() {
     $("#submitCommissions").click(function() {
         const transferFrom = $("#transferFrom").val();
         const transferTo = $("#transferTo").val();
-        getComponentsForCommissions(commissions, transferFrom, transferTo);
+        const commissionComponents = getComponentsForCommissions(commissions, transferFrom, transferTo);
+        //components, getComponentValues and addComponentsRow is defined in transfer-view.js
+        const componentValues = getComponentValues(commissionComponents, transferFrom, transferTo);
+        const $TBody = $('#transferTBody');
+        components.push(...componentValues);
+        for (const key in componentValues) {
+            if (componentValues.hasOwnProperty(key)) {
+                componentValues[key]['key'] = key;
+                addComponentsRow(componentValues[key], $TBody);
+            }
+        }
     });
 });
 
 function getComponentsForCommissions(commissions, transferFrom, transferTo) {
     const data = { commissions: commissions, transferFrom: transferFrom, transferTo: transferTo };
+    let result = [];
     $.ajax({
         type: "POST",
         url: COMPONENTS_PATH+"/transfer/get-components-for-commissions.php",
         async: false,
         data: data,
         success: function (data) {
-            console.log(data);
+            result = JSON.parse(data);
         }
     });
+    return result;
 }
 
 function getCommissionRowValues() {
     const colors = ['none', 'green', 'yellow', 'red'];
-    return {
+    const values = {
         receiversIds: $('#userSelect').val(),
         receivers: $('#userSelect option:selected').toArray().map(item => item.text).join(', '),
         priorityId: $('#list__priority').val(),
-        priority: $('#list__priority option:selected').text().trim(),
+        priority: $('#list__priority option:selected').text(),
         priorityColor: colors[$('#list__priority').val()],
         deviceType: $('#deviceType').val(),
         deviceId: $('#list__device').val(),
-        deviceName: $('#list__device option:selected').text().trim(),
-        deviceDescription: $('#list__device option:selected').attr('data-subtext').trim(),
+        deviceName: $('#list__device option:selected').text(),
+        deviceDescription: $('#list__device option:selected').attr('data-subtext'),
         version: $('#version').val(),
-        laminateId: $('#list__laminate').val(),
-        laminate: $('#list__laminate option:selected').text().trim(),
         quantity: $('#quantity').val()
     };
+
+    if(values['deviceType'] === 'smd') {
+        values['laminateId'] = $('#list__laminate').val();
+        values['laminate'] = $('#list__laminate option:selected').text();
+    }
+
+    for (const key in values) {
+        if (typeof values[key] === 'string') {
+            values[key] = values[key].trim();
+        }
+        if (values[key] === '' || values[key] === null || values[key] === undefined) {
+            throw new Error(`The field ${key} is required and cannot be empty.`);
+        }
+    }
+
+    return values;
 }
 
-function addCommissionRow(commissionValues, $TBody)
-{
+function addCommissionRow(commissionValues, $TBody) {
     const $tr = $(transferCommissionTableRow_template.map(render(commissionValues)).join(''));
     $TBody.append($tr);
 }
@@ -189,12 +215,21 @@ $("#userSelect").change(function(){
     $("#list__device").empty();
     const anyUserSelected = usersSelected.length;
     $("#deviceType").val('').prop('disabled', !anyUserSelected);
+    const deviceTypes = ['sku', 'tht', 'smd'];
+    deviceTypes.forEach(function(deviceType) {
+        const usedDevices = getUsedDevices(usersSelected, deviceType);
+        const usedDevicesCommon = getCommonElements(usedDevices);
+        const commonDevicesFound = usedDevicesCommon.length !== 0;
+        $("#deviceType").find('option[value="'+deviceType+'"]').prop('disabled', !commonDevicesFound);
+    });
+
+
     $("#deviceType, #list__device").selectpicker('refresh');
 });
 
 function clearAddCommissionFields()
 {
-    $("#userSelect #list__device, #version, #list__laminate, #quantity, #deviceType").val('');
+    $("#userSelect, #list__device, #version, #list__laminate, #quantity, #deviceType").val('');
     $("#list__priority").val(0);
     $("#versionSelect, #laminateSelect").hide();
     $("#list__device, #version, #list__laminate").empty();
