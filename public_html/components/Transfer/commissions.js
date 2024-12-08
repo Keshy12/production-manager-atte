@@ -3,6 +3,7 @@ const transferCommissionTableRow_template = $('script[data-template="transferCom
 const commissions = [];
 
 $(document).ready(function() {
+    
     $("#list__priority").val(0).selectpicker('refresh');
 
     $("#addCommission").click(function() {
@@ -15,25 +16,34 @@ $(document).ready(function() {
     });
 
     $('body').on('click', '.removeCommissionRow', function() {
-        const key = $(this).data('id');
+        const key = $(this).data('key');
         delete commissions[key];
         $(this).closest('tr').remove();
-    });
+    }); 
 
     $("#submitCommissions").click(function() {
-        const transferFrom = $("#transferFrom").val();
-        const transferTo = $("#transferTo").val();
-        const commissionComponents = getComponentsForCommissions(commissions, transferFrom, transferTo);
-        //components, getComponentValues and addComponentsRow is defined in transfer-view.js
-        const componentValues = getComponentValues(commissionComponents, transferFrom, transferTo);
-        const $TBody = $('#transferTBody');
-        components.push(...componentValues);
-        for (const key in componentValues) {
-            if (componentValues.hasOwnProperty(key)) {
-                componentValues[key]['key'] = key;
-                addComponentsRow(componentValues[key], $TBody);
+        $("#submitCommissions, #moreOptionsCard").hide();
+        $("#commissionTable").removeClass('show');
+        $(".removeCommissionRow").remove();
+        $(".commissionSubmitSpinner").show();
+        //Timeout of 0ms, to allow the DOM to update before getting the components via AJAX
+        setTimeout(() => {
+            const transferFrom = $("#transferFrom").val();
+            const transferTo = $("#transferTo").val();
+            const commissionComponents = getComponentsForCommissions(commissions, transferFrom, transferTo);
+            //components, getComponentValues and addComponentsRow is defined in transfer-view.js
+            const componentValues = getComponentValues(commissionComponents, transferFrom, transferTo);
+            const $TBody = $('#transferTBody');
+            components.push(...componentValues);
+            for (const key in componentValues) {
+                if (componentValues.hasOwnProperty(key)) {
+                    componentValues[key]['key'] = key;
+                    addComponentsRow(componentValues[key], $TBody);
+                }
             }
-        }
+            $(".commissionSubmitSpinner").hide();
+            $("#transferTableContainer").show();
+        }, 0);
     });
 });
 
@@ -89,6 +99,15 @@ function addCommissionRow(commissionValues, $TBody) {
     const $tr = $(transferCommissionTableRow_template.map(render(commissionValues)).join(''));
     $TBody.append($tr);
 }
+
+$("#createCommission, #dontCreateCommission").click(function() {
+    $("#transferFrom, #transferTo").prop('disabled', true).selectpicker('refresh');
+    $("#createCommissionCard").hide();
+});
+
+$("#createCommission").click(function() {
+    $("#moreOptionsCard, #commissionTableContainer").show();
+});
 
 $('select#deviceType').change(function(){
     const deviceType = this.value;

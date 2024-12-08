@@ -17,7 +17,7 @@
             ${quantity}
         </td>
         <td class="align-middle">
-            <button data-id="${key}" class="removeCommissionRow btn btn-light">
+            <button data-key="${key}" class="removeCommissionRow btn btn-light">
                 <i class="bi bi-trash"></i>
             </button>
         </td>

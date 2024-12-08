@@ -141,8 +141,10 @@ include('table-row-template.php');
     </div>
 </div>
 
-<div id="commissionTableContainer" style="">
-    <h4 class="text-center mt-4 mb-2"><button class="btn btn-lg btn-link dropdown-toggle" data-toggle="collapse" data-target="#commissionTable">Tworzone zlecenia</button></h4>
+<div id="commissionTableContainer" style="display: none;">
+    <h4 class="text-center mt-4 mb-2">
+        <button class="btn btn-lg btn-link dropdown-toggle" data-toggle="collapse" data-target="#commissionTable">Tworzone zlecenia</button>
+    </h4>
     <div class="d-flex flex-column align-items-center justify-content-center">
         <table id="commissionTable" class="table table-bordered table-sm table-hover collapse show text-center w-50">
             <thead>
@@ -159,7 +161,12 @@ include('table-row-template.php');
     </div>
 </div>
 
-<div id="transferTableContainer">
+<div class="d-flex flex-column align-items-center justify-content-center">
+    <span class="commissionSubmitSpinner" style="display:none">Wczytywanie potrzebnych komponentów...</span>
+    <div class="spinner-border mt-1 text-center commissionSubmitSpinner" style="display:none"></div>
+</div>
+
+<div id="transferTableContainer" style="display:none">
     <h4 class="text-center mt-4 mb-2">Przesyłane komponenty</h4>
     <div class="d-flex flex-column align-items-center justify-content-center">
         <table class="table table-bordered table-sm table-hover text-center w-75">

@@ -77,10 +77,16 @@ $("#subtractPartsMagazineTo").change(function() {
     addOrSubtractComponentsReserved(checked, ".warehouseTo");
 });
 
-$('body').on('click', '.removeTransferRow', function() {
+$("#deleteFromTransfer").click(function() {
     const key = $(this).data('key');
     delete components[key];
-    $(this).closest('tr').remove();
+    $('.removeTransferRow[data-key="' + key + '"]').closest('tr').remove();
+});
+
+
+$('body').on('click', '.removeTransferRow', function() {
+    $("#deleteComponentRowModal").modal('show');
+    $("#deleteFromTransfer").data('key', $(this).data('key'));
 });
 
 $("#transferFrom, #transferTo").change(function() {
@@ -106,12 +112,3 @@ function disableUserSelectOptions(warehouseId)
     });
     $("#transferTo").selectpicker('refresh');
 }
-
-$("#createCommission, #dontCreateCommission").click(function() {
-    $("#transferFrom, #transferTo").prop('disabled', true).selectpicker('refresh');
-    $("#createCommissionCard").hide();
-});
-
-$("#createCommission").click(function() {
-    $("#moreOptionsCard, #commissionTableContainer").show();
-});
