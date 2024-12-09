@@ -40,10 +40,12 @@
         <td>
             ${neededForCommissionQty}
         </td>
-        <td class="d-flex flex-column">
-            <input type="number" class="form-control form-control-sm text-center mx-auto w-75 transferQty" 
-                    data-key="${key}" value="${neededForCommissionQty}">
-            <button class="btn btn-secondary w-75 btn-sm mx-auto insertDifference">Różnica</button>
+        <td class="align-items-stretch">
+            <div class="d-flex flex-column">
+                <input type="number" class="form-control form-control-sm text-center mx-auto w-75 transferQty" 
+                        data-key="${key}" value="${neededForCommissionQty}">
+                <button class="btn btn-secondary w-75 btn-sm mx-auto insertDifference">Różnica</button>
+            </div>
         </td>
         <td class="align-middle">
             <button data-key="${key}" class="removeTransferRow btn btn-light">
