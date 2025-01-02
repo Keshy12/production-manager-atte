@@ -30,13 +30,16 @@ function getComponentValues(components, transferFrom, transferTo) {
  
 function addComponentsRow(componentValues, $TBody) {
     const $tr = $(transferComponentsTableRow_template.map(render(componentValues)).join(''));
+    if(componentValues['neededForCommissionQty'] == '<span class="text-light">n/d</span>') {
+        $tr.find('.insertDifference').remove();
+    }
     $TBody.append($tr);
 }
 
 function addOrSubtractComponentsReserved(checked, tableCellClass){
     $(tableCellClass).each(function() {
         const reserved = $(this).data('reserved');
-        let value = parseInt($(this).text(), 10);
+        let value = parseFloat($(this).text(), 10);
         if (!checked) {
             value += reserved;
             $(this).text(value);
@@ -46,6 +49,50 @@ function addOrSubtractComponentsReserved(checked, tableCellClass){
         $(this).text(value);
     });
 }
+
+function validateAddComponentForm(magazineComponent, listComponents, transferQty) {
+    if (magazineComponent == '' 
+        || listComponents == '' 
+        || transferQty == '') {
+        return false;
+    }
+    return true;
+}
+
+function clearAddComponentForm(){
+    $("#magazineComponent, #list__components, #qtyComponent").val('');
+    $("#magazineComponent, #list__components").selectpicker('refresh');
+}
+
+$("#addTransferComponent").click(function() {    
+    const componentType = $("#magazineComponent").val();
+    const listComponentsVal = $("#list__components").val();
+    const transferQty = $("#qtyComponent").val();
+    if(!validateAddComponentForm(componentType, listComponentsVal, transferQty)) {
+        $("#addTransferComponent").popover('show');   
+        return;
+    }
+    clearAddComponentForm();
+    const component = {
+        type: componentType,
+        componentId: listComponentsVal,
+        neededForCommissionQty: '<span class="text-light">n/d</span>',
+        transferQty: transferQty
+    }
+    const componentValues = getComponentValues([component], $("#transferFrom").val(), $("#transferTo").val());
+    const pushedKey = components.push(componentValues[0]) - 1;
+    componentValues[0]['key'] = pushedKey;
+    addComponentsRow(componentValues[0], $("#transferTBody"));
+    console.log(components);
+});
+
+$("#magazineComponent").change(function() {
+    let option = $(this).val();
+    $("#list__components").empty();
+    $('#list__' + option + '_hidden option').clone().appendTo('#list__components');
+    $("#list__components").prop("disabled", false);
+    $("#list__components").selectpicker('refresh');
+});
 
 
 $("#insertDifferenceAll").click(function() {

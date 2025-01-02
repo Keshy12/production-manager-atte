@@ -33,6 +33,10 @@ include('table-row-template.php');
 <select id="list__smd_hidden" hidden>
     <?= $selectRenderer->renderSMDBomSelect() ?>
 </select>
+<select id="list__parts_hidden" hidden>
+    <?= $selectRenderer->renderPartsSelect() ?>
+</select>
+
 
 <div class="d-flex flex-column align-items-center justify-content-center mt-4">
     <div class="d-flex w-75" id="selectWarehouses">
@@ -205,11 +209,34 @@ include('table-row-template.php');
             </thead>
             <tbody id="transferTBody"></tbody>
         </table>
-        <button id="submitTransfer" class="btn btn-primary mt-2 mb-3">Prześlij</button>
+        <div class="d-flex justify-content-center mx-auto w-75">
+            <select id="magazineComponent" data-width="10%" data-title="Typ:" class="form-control selectpicker">
+                <option value="sku">SKU</option>
+                <option value="tht">THT</option>
+                <option value="smd">SMD</option>
+                <option value="parts">Parts</option>
+            </select>
+            <select id="list__components" data-title="Urządzenie:" data-live-search="true"
+                    data-width="70%" class="form-control selectpicker" disabled></select>
+            <input type="number" style="width: 75px; padding: 3px; text-align: center;" class="form-control mx-1"
+                id="qtyComponent">
+            <a tabindex="0" id="addTransferComponent" class="btn btn-primary" data-toggle="popover" data-trigger="manual"
+                data-content="Uzupełnij dane"><i class="bi bi-plus-lg"></i></a>
+        </div>
+        <button id="submitTransfer" data-toggle="popover" data-trigger="manual"
+                data-content="Wpisz przekazywaną ilość dla każdego z komponentów" class="btn btn-primary mt-2 mb-3">
+                Prześlij
+        </button>
     </div>
 </div>
 
+<div class="d-flex flex-column align-items-center justify-content-center">
+    <span class="transferSubmitSpinner" style="display:none">Wczytywanie potrzebnych komponentów...</span>
+    <div class="spinner-border mt-1 text-center transferSubmitSpinner" style="display:none"></div>
+</div>
 
+<?php include('transfer-confirmation-template.php'); ?>
 
 <script src="http://<?=BASEURL?>/public_html/components/transfer/transfer-view.js"></script>
 <script src="http://<?=BASEURL?>/public_html/components/transfer/commissions.js"></script>
+<script src="http://<?=BASEURL?>/public_html/components/transfer/submit.js"></script>

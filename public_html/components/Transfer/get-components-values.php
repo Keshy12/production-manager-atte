@@ -33,6 +33,7 @@ $result = array_map(function($item) use ($reservedFrom, $reservedTo,
                                                     $list__parts, $list__parts_desc){       
     $type = $item['type'];
     $componentId = $item['componentId'];
+    $item['transferQty'] = $item['transferQty'] ?? $item['neededForCommissionQty'];
     $item['warehouseFromReserved'] = $reservedFrom[$type][$componentId]['quantity'] ?? 0;
     $item['warehouseFromQty'] = $magazineFrom -> getWarehouseQty($type, $componentId)+0;
     $item['warehouseToReserved'] = $reservedTo[$type][$componentId]['quantity'] ?? 0;

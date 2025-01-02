@@ -119,7 +119,7 @@ foreach($commissions as $commission) {
     $bomId = $row["bom_".$type."_id"];
     $state_id = $row["state_id"];
     $deviceBom = $bomRepository -> getBomById($type, $bomId);
-    $device_id = $deviceBom -> deviceId;
+    $deviceId = $deviceBom -> deviceId;
     $device_version = $deviceBom -> version;
     $device_laminate_id = $deviceBom -> laminateId;
     $device_laminate = !is_null($deviceBom -> laminateId) ? "Laminat: <b>".$list__laminate[$device_laminate_id]."</b>" : "" ;
@@ -145,8 +145,8 @@ foreach($commissions as $commission) {
         "id" => $row["id"],
         "receivers" => implode(", ", $receivers),
         "priority" => $row['priority'],
-        "deviceDescription" => ${"list__".$type."_desc"}[$device_id],
-        "deviceName" => ${"list__".$type}[$device_id],
+        "deviceDescription" => ${"list__".$type."_desc"}[$deviceId],
+        "deviceName" => ${"list__".$type}[$deviceId],
         "deviceLaminateAndVersion" => $device_laminate_and_version,
         "stateId" => $state_id,
         "receiversName" => implode(", ", $receiversName),
