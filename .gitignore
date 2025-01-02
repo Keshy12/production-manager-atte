@@ -3,3 +3,4 @@ composer.phar
 
 .env
 /public_html/assets/img/items
+/.vscode
