@@ -10,6 +10,10 @@ $GoogleSheets = new GoogleSheets();
 
 $sheetResult = $GoogleSheets -> readSheet("1F-uzgUWxYfUYaFNPhfcMyGpd8qrkMyXVBb6V_TlYnKA", "to_warehouse", "A".$startCell.":P");
 
+if($sheetResult === null) $sheetResult = [];
+
+$lastCell = $startCell + count($sheetResult);
+
 $list__parts = $MsaDB -> readIdName('list__parts');
 $list__parts_lookup = array_flip($list__parts);
 
@@ -41,6 +45,5 @@ $transformRow = function ($row) use ($list__parts_lookup, &$missingParts) {
 
 
 $result = array_map($transformRow, $sheetResult);
-if(!empty($missingParts)) $result = [];
 
-echo json_encode([$result, $missingParts], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
+echo json_encode([$result, $missingParts, $lastCell], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
