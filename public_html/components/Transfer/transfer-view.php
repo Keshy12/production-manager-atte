@@ -231,7 +231,7 @@ include('table-row-template.php');
 </div>
 
 <div class="d-flex flex-column align-items-center justify-content-center">
-    <span class="transferSubmitSpinner" style="display:none">Wczytywanie potrzebnych komponentów...</span>
+    <span class="transferSubmitSpinner" style="display:none">Przesyłanie komponentów...</span>
     <div class="spinner-border mt-1 text-center transferSubmitSpinner" style="display:none"></div>
 </div>
 

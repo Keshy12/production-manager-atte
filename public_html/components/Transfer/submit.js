@@ -1,4 +1,5 @@
-const componentResultTableRow_template = $('script[data-template="componentResultTableRow_template"]').text().split(/\$\{(.+?)\}/g);
+const componentResultTableRow_template = $('script[data-template="resultComponentTableRow_template"]').text().split(/\$\{(.+?)\}/g);
+const commissionResultTableRow_template = $('script[data-template="resultCommissionTableRow_template"]').text().split(/\$\{(.+?)\}/g);
 
 function render(props) {
     return function(tok, i) { return (i % 2) ? props[tok] : tok; };
@@ -11,14 +12,17 @@ function submitTransfer(transferFrom, transferTo, components, commissions) {
         transferFrom: transferFrom,
         transferTo: transferTo
     };
-    let result = [];
+    const result = [];
     $.ajax({
         type: "POST",
         url: COMPONENTS_PATH+"/transfer/transfer-components.php",
         async: false,
         data: data,
         success: function (data) {
-            result = JSON.parse(data);
+            ajaxResult = JSON.parse(data);
+            const commissionResult = ajaxResult[0];
+            const componentResult = ajaxResult[1];
+            result.push(commissionResult, componentResult);
         }
     });
     return result;
@@ -46,20 +50,25 @@ $("#submitTransfer").click(function() {
     const transferTo = $("#transferTo").val();
     // components[] and commissions[] are arrays of objects
     // defined in public_html/components/Transfer/transfer-view.js
-    // const transferResult = submitTransfer(transferFrom, transferTo, components, commissions);
     if(!getTransferedQty()) { 
         $(this).popover('show');
         return ;
     };
     $("#transferTableContainer, #commissionTableContainer").hide();
     $(".transferSubmitSpinner").show();
-    console.log(commissions);
-    console.log(components);
-    return;
     //Timeout of 0ms, to allow the DOM to update before getting the components via AJAX
     setTimeout(() => {
         const result = submitTransfer(transferFrom, transferTo, components, commissions);
+        const [commissionResult, componentResult] = result;
         $(".transferSubmitSpinner").hide();
+        commissionResult.forEach(commission => {
+            const row = commissionResultTableRow_template.map(render(commission)).join('');
+            $("#commissionResultTBody").append(row);
+        });
+        componentResult.forEach(commission => {
+            const row = componentResultTableRow_template.map(render(commission)).join('');
+            $("#componentResultTBody").append(row);
+        });
         $("#transferResult").show();
     }, 0);
 
