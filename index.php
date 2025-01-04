@@ -75,6 +75,10 @@ switch ($request) {
         includeWithVariables($headerDir, array('title' => 'Aktualizuj Parts'));
         require $componentsDir . '/admin/components/detectnewparts/detect-parts-view.php';
         break;
+    case 'admin/components/from-orders':
+        includeWithVariables($headerDir, array('title' => 'Pobierz z zamówień'));
+        require $componentsDir . '/admin/components/fromorders/from-orders-view.php';
+        break;
     
     case 'test':
         includeWithVariables($headerDir, array('title' => 'Test'));

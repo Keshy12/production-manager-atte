@@ -8,7 +8,10 @@ class Locker
 
     public function __construct( string $filename )
     {
-        $this->_filename = realpath(dirname(__FILE__))."\\".$filename;
+        $this->_filename = realpath(dirname(__FILE__, 4))."/public_html/var/locks/".$filename;
+        if (!is_dir(dirname($this->_filename))) {
+            mkdir(dirname($this->_filename), 0777, true);
+        }
     }
 
     public function __destruct()
