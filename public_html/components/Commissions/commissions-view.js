@@ -152,8 +152,9 @@ $("#clearDevice").click(function(){
 
 $("#clearMagazine").click(function(){
     $("#currentpage").text(1);
-    $('#transferFrom, #transferTo').val('') 
+    $('#transferFrom, #transferTo').val('')
     $('#transferFrom, #transferTo').selectpicker('refresh');
+    generateUserSelect('');
     renderCommissions();
 });
 
@@ -183,3 +184,131 @@ $("#nextpage").click(function () {
     $("#currentpage").text(page);
     renderCommissions();
 });
+
+$("#transferTo").change(function(){
+    const transferTo = this.value;
+    generateUserSelect(transferTo);
+});
+
+function generateUserSelect(submagId)
+{
+    $("#user option").each(function() {
+        $(this)
+        .prop("disabled", 
+            (submagId !== '' &&
+            $(this).attr("data-submag-id") !== submagId ))
+        .prop("selected", false);
+    });
+    $(".selectpicker").selectpicker('refresh');
+}
+
+$("body").on('click', '.editCommission', function(){
+    let id = $(this).attr("data-id");
+    let receivers = $(this).attr("data-receivers");
+    let submagId = $(this).attr("data-submag-id");
+    let priority = $(this).attr("data-priority");
+    $("#editPriority").val(priority);
+    $("#editSubcontractors").empty();
+    $("#user option").each(function(){
+        if($(this).attr("data-submag-id") == submagId) {
+            $(this).clone().appendTo('#editSubcontractors');
+        }
+    });
+    $("#editSubcontractors").selectpicker('refresh');
+    receivers = receivers.split(',');
+    receivers = $.map(receivers, $.trim);
+    $("#editSubcontractors").selectpicker('val', receivers)
+    $("#editCommissionModal").modal("show");
+    $(".selectpicker").selectpicker('refresh');
+    $("#editCommissionSubmit").attr("data-id", id);
+});
+
+$("#editCommissionSubmit").click(function(){
+    const commissionId = $(this).attr("data-id");
+    const commissionPriority = $("#editPriority").val();
+    const commissionSubcontractors = $("#editSubcontractors").val();
+    const data = {id: commissionId, priority: commissionPriority, receivers: commissionSubcontractors};
+    editCommission(data);
+    $("#editCommissionModal").modal("hide");
+    renderCommissions();
+}); 
+
+function editCommission(data)
+{
+    $.ajax({
+        type: "POST",
+        url: COMPONENTS_PATH+"/commissions/edit-commission.php",
+        data: data,
+        async: true,
+        success: function(response)
+        {
+            const result = JSON.parse(response);
+            const wasSuccessful = result[0];
+            const errorMessage = result[1];
+            let resultMessage = wasSuccessful ? 
+                        "Edytowanie danych powiodło się." : 
+                        errorMessage;
+            let resultAlertType = wasSuccessful ? 
+                        "alert-success" : 
+                        "alert-danger";
+
+            let resultAlert = `<div class="alert `+resultAlertType+` alert-dismissible fade show" role="alert">
+                `+resultMessage+`
+                <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>`;
+            $("#ajaxResult").append(resultAlert);
+            setTimeout(function() {
+                $(".alert-success").alert('close');
+            }, 2000);
+        }
+    });
+}
+
+$('body').on('click', '.cancelCommission', function() {
+    let id = $(this).attr("data-id");
+    $("#cancelCommissionSubmit").attr("data-id", id);
+    $("#cancelCommissionModal").modal("show");
+});
+
+$("#cancelCommissionSubmit").click(function(){
+    let commissionId = $(this).attr("data-id");
+    const data = {id: commissionId};
+    cancelCommission(data);
+    $("#cancelCommissionModal").modal("hide");
+    renderCommissions();
+}); 
+
+function cancelCommission(data)
+{
+    $.ajax({
+        type: "POST",
+        url: COMPONENTS_PATH+"/commissions/cancel-commission.php",
+        data: data,
+        async: true,
+        success: function(response)
+        {
+            const result = JSON.parse(response);
+            const wasSuccessful = result[0];
+            const errorMessage = result[1];
+            let resultMessage = wasSuccessful ? 
+                        "Edytowanie danych powiodło się." : 
+                        errorMessage;
+            let resultAlertType = wasSuccessful ? 
+                        "alert-success" : 
+                        "alert-danger";
+
+            let resultAlert = `<div class="alert `+resultAlertType+` alert-dismissible fade show" role="alert">
+                `+resultMessage+`
+                <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>`;
+            $("#ajaxResult").append(resultAlert);
+            setTimeout(function() {
+                $(".alert-success").alert('close');
+            }, 2000);
+        }
+    });
+}
