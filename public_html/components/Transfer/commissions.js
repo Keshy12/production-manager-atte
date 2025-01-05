@@ -2,6 +2,8 @@ const transferCommissionTableRow_template = $('script[data-template="transferCom
 
 const commissions = [];
 
+
+
 $(document).ready(function() {
     
     $("#list__priority").val(0).selectpicker('refresh');
@@ -25,6 +27,11 @@ $(document).ready(function() {
         $("#submitCommissions, #moreOptionsCard").hide();
         $("#commissionTable").removeClass('show');
         $(".removeCommissionRow").remove();
+        const isNoTransfer = $(this).data('noTransfer');
+        if(isNoTransfer === true) {
+            $("#submitTransfer").click();
+            return;
+        }
         $(".commissionSubmitSpinner").show();
         //Timeout of 0ms, to allow the DOM to update before getting the components via AJAX
         setTimeout(() => {
@@ -100,13 +107,35 @@ function addCommissionRow(commissionValues, $TBody) {
     $TBody.append($tr);
 }
 
-$("#createCommission, #dontCreateCommission").click(function() {
+$("#dontCreateCommission").click(function() {
+    $("#transferWithoutCommissionModal").modal('show');
+});
+
+$("#createCommission").click(function() {
+    const transferFrom = $("#transferFrom").val();
+    const transferTo = $("#transferTo").val();
+    if(transferFrom === transferTo) {
+        $("#commissionWithoutTransferModal").modal('show');
+        return;
+    }
+    $("#moreOptionsCard, #commissionTableContainer").show();
     $("#transferFrom, #transferTo").prop('disabled', true).selectpicker('refresh');
     $("#createCommissionCard").hide();
 });
 
-$("#createCommission").click(function() {
+$("#commissionNoTransfer").click(function() {
+    $("#commissionWithoutTransferModal").modal('hide');
+    $("#transferFrom, #transferTo").prop('disabled', true).selectpicker('refresh');
+    $("#createCommissionCard").hide();
     $("#moreOptionsCard, #commissionTableContainer").show();
+    $("#submitCommissions").data('noTransfer', true);
+});
+
+$("#transferNoCommission").click(function() {
+    $("#transferWithoutCommissionModal").modal('hide');
+    $("#transferFrom, #transferTo").prop('disabled', true).selectpicker('refresh');
+    $("#createCommissionCard").hide();
+    $("#transferTableContainer").show();
 });
 
 $('select#deviceType').change(function(){

@@ -39,7 +39,7 @@ if (!empty($commissions)) {
     $bomRepository = new BomRepository($MsaDB);
     foreach ($commissions as $commission) {
         $type = $commission['deviceType'];
-        $priority = $commission['priority'];
+        $priorityId = $commission['priorityId'];
         $qty = $commission['quantity'];
         $version = $commission['version'];
         $laminateId = $commission['laminateId'] ?? null;
@@ -51,7 +51,7 @@ if (!empty($commissions)) {
         $bomId = $bom->id;
         $commission_id = $MsaDB -> insert("commission__list", 
                 ["user_id", "magazine_from", "magazine_to", "bom_" . $type . "_id", "quantity", "timestamp_created", "state_id", "priority"], 
-                [$userid, $transferFrom, $transferTo, $bomId, $qty, $now, '1', $priority]
+                [$userid, $transferFrom, $transferTo, $bomId, $qty, $now, '1', $priorityId]
             );
         $bom -> getNameAndDescription();
         $commissionResult[] = [
@@ -79,6 +79,7 @@ if (!empty($components)) {
         $type = $component['type'];
         $deviceId = $component['componentId'];
         $qty = $component['transferQty'];
+        $commission_id = $commission_id ?? null;
         $MsaDB -> insert("inventory__".$type, [$type."_id", "commission_id", "user_id", "sub_magazine_id", "quantity", "timestamp", "input_type_id", "comment"], [$deviceId, $commission_id, $userid, $transferFrom, $qty*-1, $now, $input_type_id, $comment]);
         $MsaDB -> insert("inventory__".$type, [$type."_id", "commission_id", "user_id", "sub_magazine_id", "quantity", "timestamp", "input_type_id", "comment"], [$deviceId, $commission_id, $userid, $transferTo, $qty, $now, $input_type_id, $comment]);
         $componentsResult[] = [
