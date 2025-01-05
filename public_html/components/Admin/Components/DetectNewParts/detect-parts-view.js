@@ -36,6 +36,11 @@ $(document).ready(async function() {
         $TBody.empty();
         renderTableRows($TBody, newPartsObj);
     });
+    $('body').on('click', '.declineChanges', function() {
+        const $row = $(this).closest('tr');
+        $TBody.empty();
+        renderTableRows($TBody, newPartsObj);
+    });
     $("#uploadNewParts").click(function() {
         const newPartsJson = JSON.stringify(newPartsObj);
         uploadNewParts(newPartsJson);
