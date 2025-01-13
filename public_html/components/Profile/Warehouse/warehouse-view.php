@@ -1,35 +1,33 @@
 <?php
 use Atte\DB\MsaDB;
-use Atte\Utils\ComponentRenderer\SelectRenderer;
 use Atte\Utils\UserRepository;
+use Atte\Utils\ComponentRenderer\SelectRenderer;
 include('warehouse-table-item.php');
 
 $MsaDB = MsaDB::getInstance();
 $selectRenderer = new SelectRenderer($MsaDB);
-$userRepository = new UserRepository($MsaDB);
 
-$user = $userRepository -> getUserById($_SESSION["userid"]);
-$userInfo = $user -> getUserInfo();
-$userSubmagazineId = $userInfo["sub_magazine_id"];
+// $available is getting data from get-available-components-func.php
+$available = [];
+include('get-available-components-func.php');
 
-$available__sku = $MsaDB -> query("SELECT sku_id FROM `inventory__sku` WHERE sub_magazine_id = $userSubmagazineId GROUP BY sku_id", PDO::FETCH_COLUMN);
-$available__tht = $MsaDB -> query("SELECT tht_id FROM `inventory__tht` WHERE sub_magazine_id = $userSubmagazineId GROUP BY tht_id", PDO::FETCH_COLUMN);
-$available__smd = $MsaDB -> query("SELECT smd_id FROM `inventory__smd` WHERE sub_magazine_id = $userSubmagazineId GROUP BY smd_id", PDO::FETCH_COLUMN);
-$available__parts = $MsaDB -> query("SELECT parts_id FROM `inventory__parts` WHERE sub_magazine_id = $userSubmagazineId GROUP BY parts_id", PDO::FETCH_COLUMN);
+$used__sku = $user -> getDevicesUsed("sku");
+$used__tht = $user -> getDevicesUsed("tht"); 
+$used__smd = $user -> getDevicesUsed("smd"); 
 
 
 ?>
 <select id="list__sku" hidden><!--sku list-->
-    <?= $selectRenderer -> renderSKUSelect('', $available__sku) ?>
+    <?= $selectRenderer -> renderSKUSelect('', $available['sku']) ?>
 </select>
 <select id="list__tht" hidden><!--tht list-->
-    <?= $selectRenderer -> renderTHTSelect('', $available__tht) ?>
+    <?= $selectRenderer -> renderTHTSelect('', $available['tht']) ?>
 </select>
 <select id="list__smd" hidden><!--smd list-->
-    <?= $selectRenderer -> renderSMDSelect('', $available__smd) ?>
+    <?= $selectRenderer -> renderSMDSelect('', $available['smd']) ?>
 </select>
 <select id="list__parts" hidden><!--parts list-->
-    <?= $selectRenderer -> renderPartsSelect('', $available__parts) ?>
+    <?= $selectRenderer -> renderPartsSelect('', $available['parts']) ?>
 </select>
 
 <div class="d-flex flex-column align-items-center justify-content-center mt-4">
@@ -79,4 +77,6 @@ $available__parts = $MsaDB -> query("SELECT parts_id FROM `inventory__parts` WHE
 </div>
 
 <script src="http://<?=BASEURL?>/public_html/components/profile/warehouse/warehouse-view.js"></script>
+
+<
 
