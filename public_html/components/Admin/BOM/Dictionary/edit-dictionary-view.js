@@ -5,6 +5,18 @@ function render(props) {
     return function(tok, i) { return (i % 2) ? props[tok] : tok; };
 }
 
+$(document).ready(function(){
+    const isAutoPick = $("#dictionarySelect").attr('data-autoPick');
+    if(isAutoPick === "true") autoPickValues();
+});
+
+function autoPickValues() {
+    const $dictionarySelect = $("#dictionarySelect");
+    const autoPickDictionary = $dictionarySelect.attr('data-autoPickDictionary');
+    $dictionarySelect.val(autoPickDictionary).change();
+    $("#createNewDictionaryRow").click();
+}
+
 $("#searchDictionaryForm").submit(function(e) {
     e.preventDefault();
     $form = $(this);
@@ -73,8 +85,9 @@ $("#createNewDictionaryRow").click(function() {
 
     $("#currentpage").text(1);
     generateDictionaryView();
-    
-    generateDictionaryTextInput($newRow);
+
+    const autoPick = $(this).attr('data-autoPickValue');
+    generateDictionaryTextInput($newRow, autoPick);
     
     generateComponentSelect($newRow, '' , '');
     
@@ -254,18 +267,18 @@ function generateComponentSelect($row, componentType, componentId)
     $componentInfoDeviceSelect.selectpicker('val', componentId);
 }
 
-function generateDictionaryTextInput($row)
+function generateDictionaryTextInput($row, inputValue = '')
 {
     let $valuePackage = $row.find('.dictionaryValue');
     let valuePackage = $valuePackage.text();
-    valuePackage = valuePackage == 'ValuePackage' ? '' : valuePackage;
+    valuePackage = valuePackage == 'ValuePackage' || valuePackage == 'name'? inputValue : valuePackage;
     $valuePackage.empty();
-
     let $valuePackageInput = $('<input>', {
         type: 'text',
         class: 'dictionaryItemInput form-control text-center',
         value: valuePackage
     });
+    console.log(valuePackage);
 
     $valuePackage.html($valuePackageInput);
 }

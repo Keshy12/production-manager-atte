@@ -65,9 +65,11 @@ $missingValuePackages = $csvBomFlat['MissingValuePackage'];
 foreach($missingValuePackages as $missingVP)
 {
     $fatalErrors[] = 'Brak <b class="user-select-all">'
-    .$missingVP
-    .'</b> w słowniku ref__valuePackage lub ref__packageExclude.
-    Dodaj go, a następnie prześlij BOM ponownie.';
+        .$missingVP
+        .'</b> w słowniku '
+        .'<a href="http://'.BASEURL.'/admin/bom/dictionary?dictionary=ref__valuepackage&value='.$missingVP.'" target="_blank">ref__valuePackage</a> lub '
+        .'<a href="http://'.BASEURL.'/admin/bom/dictionary?dictionary=ref__package_exclude&value='.$missingVP.'" target="_blank">ref__packageExclude</a>.
+        Dodaj go, a następnie prześlij BOM ponownie.';
 }
 // Variables in if statement defined in validate-device-with-db.php
 if($csvHasSMD && $dbSMDIdFound) $csvTHTBomFlat[] = [

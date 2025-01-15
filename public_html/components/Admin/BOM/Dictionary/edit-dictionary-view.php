@@ -9,6 +9,10 @@ $selectRenderer = new SelectRenderer($MsaDB);
 include('table-row-templates.php');
 include('modals.php');
 
+$ifAutoPick = isset($_GET['dictionary'], $_GET['value']) ? "true" : "false";
+$dictionary = $_GET['dictionary'] ?? null;
+$value = $_GET['value'] ?? null;
+
 ?>
 
 <select id="list__tht_hidden" hidden>
@@ -19,7 +23,8 @@ include('modals.php');
 </select>
 
 <div class="d-flex justify-content-center my-4">
-    <select data-title="Wybierz słownik..." data-width="500px" id="dictionarySelect" class="selectpicker">
+    <select data-title="Wybierz słownik..." data-width="500px" id="dictionarySelect" class="selectpicker"
+            data-autoPick="<?= $ifAutoPick ?>" data-autoPickDictionary="<?= $dictionary ?>"">
         <option value="ref__valuepackage" data-subtext="Słownik określający, jaki komponent odpowiada wartości ValuePackage z pliku CSV podczas przesyłania BOM.">ref__ValuePackage</option>
         <option value="ref__package_exclude" data-subtext="Słownik określający na podstawie package, jakie wartości powinny być ignorowane w CSV.">ref__Package_exclude</option>
     </select>
@@ -40,7 +45,7 @@ include('modals.php');
         <button id="nextpage" class="btn btn-light"><b>&rsaquo;</b></button>
     </div>
     <div class="d-flex justify-content-center my-4">
-        <button id="createNewDictionaryRow" class="btn btn-outline-secondary">Dodaj nową pozycję</button>
+        <button id="createNewDictionaryRow" data-autoPickValue="<?= $value ?>" class="btn btn-outline-secondary">Dodaj nową pozycję</button>
     </div>
 
     <table class="table table-bordered table-sm text-center" style="max-width: 1300px;">

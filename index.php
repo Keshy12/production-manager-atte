@@ -1,7 +1,7 @@
 <?php
 
 $headerDir = 'public_html/assets/layout/header.php';
-$request = str_replace('/atte_ms_new/','',$_SERVER['REQUEST_URI']);
+$request = strtok(str_replace('/atte_ms_new/', '', $_SERVER['REQUEST_URI']), '?');
 $componentsDir = ROOT_DIRECTORY .'/public_html/components';
 
 switch ($request) {

@@ -4,24 +4,24 @@ use Atte\DB\MsaDB;
 $MsaDB = MsaDB::getInstance();
 
 $dictionaryType = $_POST['dictionaryType'];
-$valuesToInsert = $_POST['newRowValues'];
+$_valuesToInsert = $_POST['newRowValues'];
 
 switch($dictionaryType)
 {
     case 'ref__valuepackage':
-        $valuePackage = $valuesToInsert[0];
+        $valuePackage = $_valuesToInsert[0];
         $valuesToInsert = [
             'ValuePackage' => $valuePackage, 
             'parts_id' => null,
             'tht_id' => null
         ];
-        $componentType = $valuesToInsert[1];
-        $componentId = $valuesToInsert[2];
+        $componentType = $_valuesToInsert[1];
+        $componentId = $_valuesToInsert[2];
 
         $valuesToInsert[$componentType.'_id'] = $componentId;
         break;
     case 'ref__package_exclude':
-        $packageToExclude = $valuesToInsert[0];
+        $packageToExclude = $_valuesToInsert[0];
         $valuesToInsert = [
             'name' => $packageToExclude
         ];

@@ -16,7 +16,7 @@ $list__parts_desc = $MsaDB -> readIdName('list__parts', 'id', 'description');
 
 $searchValue = $_POST['searchValue'];
 
-// Using LIKE BINARY for it to be case sensitive
+// Using LIKE BINARY for it to be case-sensitive
 $whereClause = 'WHERE '
                 .($dictionaryType == 'ref__valuepackage' 
                     ? 'ValuePackage'
