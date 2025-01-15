@@ -5,3 +5,4 @@ composer.phar
 /public_html/assets/img/items
 /.vscode
 /public_html/var/locks
+/.idea
