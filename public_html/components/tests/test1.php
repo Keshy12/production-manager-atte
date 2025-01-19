@@ -1,37 +1,34 @@
 <?php
 use Atte\DB\MsaDB;
+use Atte\Api\GoogleSheets;
 use Atte\Utils\MagazineRepository;
+use Atte\Utils\UserRepository;
 
-?>
+$googleSheets = new GoogleSheets();
 
-<div id="commissionResult" class="d-flex flex-column justify-content-center align-items-center">
-    <div class="d-flex justify-content-center align-items-center">
-        <div id="commissionResultTableContainer">
-            <h4 class="text-center my-4">
-                Tworzone zlecenia
-            </h4>
-            <table id="commissionTable" class="table table-bordered table-sm table-hover text-center w-50">
-                <thead>
-                    <th>Odbiorca</th>
-                    <th>Urządzenie</th>
-                    <th>Laminat</th>
-                    <th>Wersja</t>
-                    <th>Ilość</th>
-                </thead>
-                <tbody id="commissionResultTBody"></tbody>
-            </table>
-        </div>
-    </div>
-    <div id="componentListResult" class="mt-4">
-        <table class="table table-striped">
-            <thead>
-                <tr class="text-center">
-                    <th scope="col">Komponent</th>
-                    <th scope="col">Ilość przekazywana</th>
-                </tr>
-            </thead>
-            <tbody class="text-center" id="componentstableResult">
-            </tbody>
-        </table>
-    </div>
-</div>
+$ref_mag_parts_sheet = getRefMagParts($googleSheets);
+
+function getRefMagParts($googleSheets){
+    $result = $googleSheets -> readSheet('1OowYceg8hWtuCmnqPiqCyg5N3rVaAngEvmnGRhjeOew', 'ref_mag_parts', 'H:M');
+    // Remove header row
+    unset($result[0]);
+    $MsaDB = MsaDB::getInstance();
+    $list__parts = $MsaDB -> readIdName('list__parts', 'id', 'description');
+    array_walk($result, function(&$row) use ($MsaDB, $list__parts){
+        $row[0] = (int)$row[0];
+        if(isset($list__parts[$row[0]])){
+            if($row[2] !== $list__parts[$row[0]]){
+                var_dump([$row[0], $row[2]]);
+            }
+        }
+//        if($MsaDB->update('list__parts', ['description' => $row[2]], 'id', $row[0])){
+//            var_dump([$row[0], $row[2]]);
+//            echo "\n";
+//        } else {
+//            echo "<h4>ŹLE!</h4>";
+//            var_dump($row);
+//            echo "\n";
+//        }
+    });
+    return 0;
+}

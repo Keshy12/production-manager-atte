@@ -27,6 +27,9 @@ switch($dictionaryType)
         ];
         break;
 
+    default:
+        $valuesToInsert = [];
+        break;
 }
 $columnsToInsert = array_keys($valuesToInsert);
 $valuesToInsert = array_values($valuesToInsert);
