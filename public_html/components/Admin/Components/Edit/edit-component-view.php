@@ -84,14 +84,21 @@ $list__laminate_desc = $MsaDB -> readIdName("list__laminate", "id", "description
             <label>Opis</label>
             <textarea class="form-control" id="description" name="description" rows="3"></textarea>
         </div>
+
         <div id="thtAdditionalFields" style="display: none;" class="text-center">
             <div class="d-inline">
-                <label for="circleCheckbox"><img style="max-width: 100px;" class="img-fluid m-1" src="/atte_ms/img/marking/marking1.png"></label>
+                <label for="circleCheckbox"><img style="max-width: 100px;" class="img-fluid m-1" src="/atte_ms_new/public_html/assets/img/production/tht/marking/marking1.png"></label>
                 <input class="form-check-input" type="checkbox" name="marking[]" value="circle_checked" id="circleCheckbox">
-                <label for="triangleCheckbox"><img style="max-width: 100px;" class="img-fluid m-1" src="/atte_ms/img/marking/marking2.png"></label>
+                <label for="triangleCheckbox"><img style="max-width: 100px;" class="img-fluid m-1" src="/atte_ms_new/public_html/assets/img/production/tht/marking/marking2.png"></label>
                 <input class="form-check-input" type="checkbox" name="marking[]" value="triangle_checked" id="triangleCheckbox">
-                <label for="squareCheckbox"><img style="max-width: 100px;" class="img-fluid m-1" src="/atte_ms/img/marking/marking3.png"></label>
+                <label for="squareCheckbox"><img style="max-width: 100px;" class="img-fluid m-1" src="/atte_ms_new/public_html/assets/img/production/tht/marking/marking3.png"></label>
                 <input class="form-check-input" type="checkbox" name="marking[]" value="square_checked" id="squareCheckbox">
+            </div>
+        </div>
+        <div class="mt-2 text-center" id="autoProduceFields" style="display: none;">
+            <div class="d-inline justify-content-center">
+                <input class="form-check-input" type="checkbox" name="autoProduce" value="autoProduce" id="autoProduceCheckbox">
+                <label for="autoProduceCheckbox">Automatycznie produkuj w przypadku braku na magazynie</label>
             </div>
         </div>
         <div id="partsAdditionalFields" style="display: none;">
@@ -121,7 +128,7 @@ $list__laminate_desc = $MsaDB -> readIdName("list__laminate", "id", "description
             <label for="file-input">
                 <img id="deviceImage" class="border border-secondary" 
                         style="max-width: 500px;" 
-                        src="http://<?=BASEURL?>/public_html/assets/img/items/default.webp"/>
+                        src="http://<?=BASEURL?>/public_html/assets/img/production/default.webp"/>
             </label>
             <input class="d-none" id="file-input" name="image" type="file" />
         </div>

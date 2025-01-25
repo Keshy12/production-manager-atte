@@ -5,9 +5,9 @@ function clearForm()
     $("#header").text("Dodaj komponent")
     $("#name, #description, #partGroup, #partType, #jm, #file-input").val('');
     $("#partGroup, #partType, #jm").selectpicker('refresh');
-    $("#circleCheckbox, #triangleCheckbox, #squareCheckbox").prop('checked', false);
+    $("#circleCheckbox, #triangleCheckbox, #squareCheckbox, #autoProduceCheckbox").prop('checked', false);
     $("#list__device").val('').selectpicker('refresh');
-    $("#deviceImage").attr('src', ROOT_DIR+"/public_html/assets/img/items/default.webp");
+    $("#deviceImage").attr('src', ROOT_DIR+"/public_html/assets/img/production/default.webp");
     
 }
 
@@ -18,8 +18,11 @@ $("#deviceType").change(function(){
     $("#list__device").prop('disabled', false).selectpicker('refresh');
     $("#previousItem, #nextItem, #deselect").prop('disabled', false)
     $("#componentFormContainer, #cloneDevice").show();
-    $("#thtAdditionalFields, #partsAdditionalFields, #saveChange, #cloneSelect").hide();
-    $("#"+deviceType+"AdditionalFields").show(); 
+    $("#thtAdditionalFields, #partsAdditionalFields, #saveChange, #cloneSelect, #autoProduceFields").hide();
+    $("#"+deviceType+"AdditionalFields").show();
+    if(deviceType === 'tht' || deviceType === 'sku') {
+        $("#autoProduceFields").show();
+    }
     clearForm();
     showAddFields();
     $("#partGroup, #partType, #jm").prop('required', (deviceType == 'parts'));
@@ -59,14 +62,16 @@ function selectOptionsInForm(values)
 
 function selectCheckboxesInForm(values)
 {
-    let triangleChecked = values.triangle_checked == true;
-    let circleChecked = values.circle_checked == true;
-    let squareChecked = values.square_checked == true;
-    let isActive = values.isActive == true;
+    const triangleChecked = values.triangle_checked == true;
+    const circleChecked = values.circle_checked == true;
+    const squareChecked = values.square_checked == true;
+    const isActive = values.isActive == true;
+    const isAutoProduced = values.isAutoProduced == true;
     $("#triangleCheckbox").prop('checked', triangleChecked);
     $("#circleCheckbox").prop('checked', circleChecked);
     $("#squareCheckbox").prop('checked', squareChecked);
     $("#isActiveCheckbox").prop('checked', isActive);
+    $("#autoProduceCheckbox").prop('checked', isAutoProduced);
 }
 
 function showEditFields()
@@ -85,8 +90,8 @@ function showAddFields()
 
 function loadDevicePicture(deviceType, deviceId)
 {
-    let defaultSrc = ROOT_DIR+"/public_html/assets/img/items/default.webp";
-    let toLoadSrc = ROOT_DIR+"/public_html/assets/img/items/"+deviceType+"/"+deviceId+".jpg?v=" + (new Date()).getTime();
+    let defaultSrc = ROOT_DIR+"/public_html/assets/img/production/default.webp";
+    let toLoadSrc = ROOT_DIR+"/public_html/assets/img/production/"+deviceType+"/"+deviceId+".jpg?v=" + (new Date()).getTime();
     $("#deviceImage").attr('src', toLoadSrc)
                         .on('error', function(){
                             $(this).attr('src', defaultSrc);

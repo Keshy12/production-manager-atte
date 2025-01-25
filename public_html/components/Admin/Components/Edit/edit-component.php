@@ -16,6 +16,9 @@ $componentValues = [
 
 switch($deviceType)
 {
+    case "sku":
+        $componentValues['isAutoProduced'] = isset($_POST['autoProduce']);
+        break;
     case "tht":
         // Only checked checkboxes are posted, so make false the default state
         // and change accordingly.
@@ -23,7 +26,7 @@ switch($deviceType)
         $defaultValues = array_fill_keys($defaultKeys, false);
         $newValues = array_fill_keys($_POST["marking"], true);
         $markingValues = array_merge($defaultValues, $newValues);
-
+        $componentValues['isAutoProduced'] = isset($_POST['autoProduce']);
         $componentValues = array_merge($componentValues, $markingValues);
         break;
     case "parts":
