@@ -21,7 +21,23 @@ class Bom {
         $MsaDB = $this -> MsaDB;
         $id = $this -> id;
         $deviceType = $this -> deviceType;
-        $components = $MsaDB -> query("SELECT id, sku_id, tht_id, smd_id, parts_id, quantity*{$quantity} as qty FROM bom__flat WHERE bom_{$deviceType}_id = '{$id}'");
+        $components = $MsaDB -> query("SELECT 
+                                                b.id, 
+                                                b.sku_id, 
+                                                b.tht_id, 
+                                                b.smd_id, 
+                                                b.parts_id, 
+                                                b.quantity * {$quantity} AS qty,
+                                                IF(t.isAutoProduced = 1 OR s.isAutoProduced = 1, 1, 0) AS isAutoProduced
+                                            FROM 
+                                                bom__flat AS b
+                                            LEFT JOIN 
+                                                list__tht AS t ON b.tht_id = t.id
+                                            LEFT JOIN 
+                                                list__sku AS s ON b.sku_id = s.id
+                                            WHERE 
+                                                b.bom_{$deviceType}_id = '{$id}'
+                                            ");
         $result = array();
         foreach($components as $component){
             $rowId = $component[0];
@@ -39,7 +55,7 @@ class Bom {
                 $type = "parts";
                 $device_id = $component[4];
             }
-            $result[] = ["rowId" => $rowId, "type" => $type, "componentId" => $device_id, "quantity" => $component["qty"]+0];
+            $result[] = ["rowId" => $rowId, "type" => $type, "componentId" => $device_id, "quantity" => $component["qty"]+0, "autoProduce" => $component["isAutoProduced"]];
         }
         return $result;
     }
