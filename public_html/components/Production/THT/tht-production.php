@@ -16,7 +16,7 @@ try {
     $user = $userRepository->getUserById($userId);
     $firstInsertedId = handleProduction($MsaDB, $user, $deviceId, $version, $quantity, $comment, $productionDate);
 } catch (Exception $e) {
-
+    echo $e->getMessage();
 }
 echo json_encode($firstInsertedId);
 $MsaDB->db->commit();
@@ -24,6 +24,7 @@ $MsaDB->db->commit();
 
 function handleProduction($MsaDB, $user, $deviceId, $version, $quantity, $comment, $productionDate) {
     $userInfo = $user->getUserInfo();
+    $userId = $userInfo['user_id'];
     $sub_magazine_id = $userInfo["sub_magazine_id"];
     $deviceType = "tht";
     $bomRepository = new BomRepository($MsaDB);
