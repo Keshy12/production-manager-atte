@@ -82,6 +82,10 @@ $used__smd = $user -> getDevicesUsed("smd");
     </form>
 </div>
 
+<div class="d-flex align-items-center justify-content-center mt-2">
+    <div id="alerts" class="w-50"></div>
+</div>
+
 <div id="lastProduction" data-last-id="" class="d-flex align-items-center justify-content-center">
 </div>
 

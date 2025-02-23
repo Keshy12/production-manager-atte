@@ -15,8 +15,8 @@ $MsaDB->db->beginTransaction();
 try {
     $productionManager = new ProductionManager($MsaDB);
     $firstInsertedId = $productionManager->produce($userId, $deviceId, $version, $quantity, $comment, $productionDate, 'smd', $laminateId);
-    $negativeQuantityItems = $productionManager->checkLowStock($userId);
-    echo json_encode($firstInsertedId);
+    $negativeQuantityItemsAlerts = $productionManager->checkLowStock($userId);
+    echo json_encode([$firstInsertedId, $negativeQuantityItemsAlerts]);
     $MsaDB->db->commit();
 } catch (Exception $e) {
     echo $e->getMessage();

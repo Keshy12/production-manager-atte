@@ -154,46 +154,49 @@ class ProductionManager {
 
 
     /**
-     * Checks for low stock items for all device types and auto-produces them if allowed.
+     * Checks for low stock items for all device types and auto-produces them if allowed,
+     * returning bootstrap alert elements.
      *
      * This method retrieves low stock items from the lowstock tables (joined with the corresponding list tables)
-     * for the user's sub_magazine. For each item with negative total_quantity, it checks the isAutoProduce flag.
-     * If auto production is enabled, it triggers production using default parameters; otherwise, it adds the item's
-     * identifier to a result array.
+     * for the user's sub_magazine. For each item with negative total_quantity, it checks the isAutoProduced flag.
+     * If auto production is enabled, it triggers production using default parameters and returns an alert element
+     * with class "alert-success" displaying the device name. Otherwise, it returns an alert element with class
+     * "alert-danger" displaying the device name.
      *
-     * The returned array is structured as follows:
+     * Device names are retrieved using the readIdName() method for the respective device type tables.
+     *
+     * The returned array is a list of HTML string alerts, for example:
      * [
-     *   "sku"   => [<sku_ids>],
-     *   "tht"   => [<tht_ids>],
-     *   "smd"   => [<smd_ids>],
-     *   "parts" => [<parts_ids>]
+     *   '<div class="alert alert-success">Auto-produced: DeviceName</div>',
+     *   '<div class="alert alert-danger">Low stock: DeviceName</div>'
      * ]
      *
-     * @param int $userId The ID of the user to check low stock for.
-     * @return array An associative array listing low stock item IDs by device type.
-     * @throws Exception Optionally, you might choose to throw an exception if auto production is disabled.
+     * @param int $userId The ID of the user for whom to check low stock.
+     * @return string[] An array of bootstrap alert HTML elements as strings.
+     * @throws Exception If an error occurs during production.
      */
     public function checkLowStock($userId): array {
         // Retrieve user information
         $user = $this->userRepository->getUserById($userId);
         $sub_magazine_id = $user->getUserInfo()["sub_magazine_id"];
 
-        // Initialize result array for each device type
-        $lowStockIds = [
-            "sku"   => [],
-            "tht"   => [],
-            "smd"   => [],
-            "parts" => []
+        // Get device name mappings
+        $list__sku   = $this->MsaDB->readIdName("list__sku");
+        $list__tht   = $this->MsaDB->readIdName("list__tht");
+        $list__smd   = $this->MsaDB->readIdName("list__smd");
+        $list__parts = $this->MsaDB->readIdName("list__parts");
+
+        $nameMap = [
+            "sku"   => $list__sku,
+            "tht"   => $list__tht,
+            "smd"   => $list__smd,
+            "parts" => $list__parts
         ];
 
-        $lowStockIdsAutoProduced = [
-            "sku"   => [],
-            "tht"   => [],
-            "smd"   => [],
-            "parts" => []
-        ];
+        // This will store the bootstrap alert strings.
+        $alerts = [];
 
-        // Mapping each device type to its lowstock and list table, plus the identifier column
+        // Mapping each device type to its lowstock and list table, plus the identifier column.
         $deviceTypes = [
             "sku"   => [
                 "lowstockTable" => "lowstock__sku",
@@ -225,39 +228,38 @@ class ProductionManager {
 
             if (in_array($deviceType, ['smd', 'parts'])) {
                 // For SMD and Parts, there is no isAutoProduce column.
-                // Set it to 0 (false) by default.
                 $sql = "SELECT {$idColumn} AS id, total_quantity, 0 AS isAutoProduced 
-                FROM {$lowstockTable} 
-                WHERE sub_magazine_id = {$sub_magazine_id} AND total_quantity < 0";
+                    FROM {$lowstockTable} 
+                    WHERE sub_magazine_id = {$sub_magazine_id} AND total_quantity < 0";
             } else {
                 // For sku and tht, join to retrieve isAutoProduce.
-                $sql = "SELECT ls.{$idColumn} AS id, ls.total_quantity, l.isAutoProduced 
-                FROM {$lowstockTable} ls 
-                JOIN {$listTable} l ON l.id = ls.{$idColumn}
-                WHERE ls.sub_magazine_id = {$sub_magazine_id} AND ls.total_quantity < 0";
+                $sql = "SELECT ls.{$idColumn} AS id, ls.total_quantity, l.isAutoProduced, l.autoProduceVersion
+                    FROM {$lowstockTable} ls 
+                    JOIN {$listTable} l ON l.id = ls.{$idColumn}
+                    WHERE ls.sub_magazine_id = {$sub_magazine_id} AND ls.total_quantity < 0";
             }
 
             $items = $this->MsaDB->query($sql, \PDO::FETCH_ASSOC);
 
             foreach ($items as $item) {
-                $identifier     = $item["id"];
+                $identifier     = $item['id'];
                 $neededQuantity = abs($item["total_quantity"]);
+                // Use the device name instead of the identifier (if available)
+                $deviceName = $nameMap[$deviceType][$identifier] ?? $identifier;
 
                 if ($item["isAutoProduced"]) {
-                    $version        = 'A';
+                    // Auto produce the low stock item.
+                    $version        = $item["autoProduceVersion"];
                     $comment        = "Automatyczna produkcja wygenerowana przez ujemne ilości magazynowe.";
                     $productionDate = "'" . date("Y-m-d") . "'";
                     $this->produce($userId, $identifier, $version, $neededQuantity, $comment, $productionDate, $deviceType);
-                    $lowStockIdsAutoProduced[$deviceType][] = $identifier;
+                    $alerts[] = '<div class="alert alert-success" role="alert">Automatycznie wyprodukowano: <b>' . htmlspecialchars($deviceName) . ' w ilości '.$neededQuantity.'</b></div>';
                 } else {
-                    $lowStockIds[$deviceType][] = $identifier;
+                    $alerts[] = '<div class="alert alert-danger" role="alert">Ujemne wartości magazynowe dla: <b>' . htmlspecialchars($deviceName) . '</b></div>';
                 }
             }
         }
 
-        return [
-            "lowStockIds" => $lowStockIds,
-            "lowStockIdsAutoProduced" => $lowStockIdsAutoProduced
-        ];
+        return $alerts;
     }
 }

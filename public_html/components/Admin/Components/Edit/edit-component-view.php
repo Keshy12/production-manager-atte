@@ -14,10 +14,10 @@ $list__laminate_desc = $MsaDB -> readIdName("list__laminate", "id", "description
 ?>
 
 <select id="list__sku_hidden" hidden>
-    <?= $selectRenderer->renderSKUSelect() ?>
+    <?= $selectRenderer->renderSKUBomSelect() ?>
 </select>
 <select id="list__tht_hidden" hidden>
-    <?= $selectRenderer->renderTHTSelect() ?>
+    <?= $selectRenderer->renderTHTBomSelect() ?>
 </select>
 <select id="list__smd_hidden" hidden>
     <?= $selectRenderer->renderSMDSelect() ?>
@@ -95,11 +95,17 @@ $list__laminate_desc = $MsaDB -> readIdName("list__laminate", "id", "description
                 <input class="form-check-input" type="checkbox" name="marking[]" value="square_checked" id="squareCheckbox">
             </div>
         </div>
-        <div class="mt-2 text-center" id="autoProduceFields" style="display: none;">
+        <div class="mt-2 text-center" id="autoProduceFields" style="">
             <div class="d-inline justify-content-center">
                 <input class="form-check-input" type="checkbox" name="autoProduce" value="autoProduce" id="autoProduceCheckbox">
                 <label for="autoProduceCheckbox">Automatycznie produkuj w przypadku braku na magazynie</label>
             </div>
+            <br>
+            <span id="autoProduceVersionField" class="mt-4" style="display: none;">
+                <select id="autoProduceVersionSelect" data-width="100px"
+                        data-title="Wersja..." class="selectpicker" name="autoProduceVersion">
+                </select>
+            </span>
         </div>
         <div id="partsAdditionalFields" style="display: none;">
             <div class="d-flex justify-content-center form-inline">

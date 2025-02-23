@@ -40,7 +40,7 @@ function generateVersionSelect(possibleVersions){
 }
 
 $("#list__device").change(function(){
-    $("#laminate, #version").empty();
+    $("#laminate, #version, #alerts").empty();
     $("#laminate, #version").selectpicker('refresh');
     let possibleVersions = $("#list__device option:selected").data("jsonversions");
     let marking = $("#list__device option:selected").data("jsonmarking");
@@ -70,10 +70,18 @@ $("#form").submit(function(e) {
         data: $form.serialize(), // serializes the form's elements.
         success: function(data)
         {
-            let lastId = JSON.parse(data);
+            const result = JSON.parse(data);
+            let lastId = result[0];
+            let alerts = result[1];
             $("#send").html("Wyślij");
             $("#send").prop("disabled", false);
             generateLastProduction($("#list__device option:selected").val(), lastId);
+
+            $("#alerts").empty();
+
+            alerts.forEach(function(alert) {
+                $("#alerts").append(alert);
+            });
         }
     });
 });

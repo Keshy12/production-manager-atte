@@ -25,7 +25,7 @@ $("#deviceType").change(function(){
     }
     clearForm();
     showAddFields();
-    $("#partGroup, #partType, #jm").prop('required', (deviceType == 'parts'));
+    $("#partGroup, #partType, #jm").prop('required', (deviceType === 'parts'));
 });
 
 function getDeviceValues(deviceType, deviceId)
@@ -74,6 +74,10 @@ function selectCheckboxesInForm(values)
     $("#autoProduceCheckbox").prop('checked', isAutoProduced);
 }
 
+$("#autoProduceCheckbox").change(function() {
+    $("#autoProduceVersionField").toggle(this.checked);
+});
+
 function showEditFields()
 {
     $("#addDevice, #cloneField").hide();
@@ -106,11 +110,20 @@ $("#list__device").change(function(){
     }
     let deviceType = $("#deviceType").val();
     let deviceId = this.value;
-    let deviceValues = getDeviceValues(deviceType, deviceId); 
+    let deviceValues = getDeviceValues(deviceType, deviceId);
     writeValuesToForm(deviceValues);
     showEditFields();
+    generateAdditionalFields(deviceType);
     loadDevicePicture(deviceType, deviceId);
 });
+
+function generateAdditionalFields(type)
+{
+    if(type === 'sku' || type === "tht") {
+        let possibleVersions = $("#list__device option:selected").data("jsonversions");
+        generateVersionSelect(possibleVersions);
+    }
+}
 
 $("#previousItem").click(function(){
     let $selectedOption = $("#list__device option:selected");
@@ -302,3 +315,30 @@ $("#list__device_to_clone").change(function(){
     let deviceValues = getDeviceValues(deviceType, deviceId); 
     writeValuesToForm(deviceValues);
 });
+
+function generateVersionSelect(possibleVersions){
+    let $versionSelect = $("#autoProduceVersionSelect");
+    $versionSelect.empty();
+    if(Object.keys(possibleVersions).length == 1) {
+        if(possibleVersions[0] == null)
+        {
+            $versionSelect.selectpicker('destroy');
+            $versionSelect.html("<option value=\"n/d\" selected>n/d</option>");
+            $versionSelect.selectpicker('refresh');
+            return;
+        }
+        let version_id = Object.keys(possibleVersions)[0];
+        let version = possibleVersions[version_id][0];
+        let option = "<option value='"+version+"' selected>"+version+"</option>";
+        $versionSelect.append(option);
+        $versionSelect.selectpicker('destroy');
+    } else {
+        for (let version_id in possibleVersions)
+        {
+            let version = possibleVersions[version_id][0];
+            let option = "<option value='"+version+"'>"+version+"</option>";
+            $versionSelect.append(option);
+        }
+    }
+    $versionSelect.selectpicker('refresh');
+}
