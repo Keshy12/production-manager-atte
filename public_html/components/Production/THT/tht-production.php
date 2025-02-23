@@ -13,8 +13,7 @@ $productionDate = !empty($_POST["prod_date"]) ? "'".$_POST["prod_date"]."'" : NU
 $MsaDB->db->beginTransaction();
 try {
     $productionManager = new ProductionManager($MsaDB);
-    $firstInsertedId = $productionManager->produce($userId, $deviceId, $version, $quantity, $comment, $productionDate, 'tht');
-    $negativeQuantityItemsAlerts = $productionManager->checkLowStock($userId);
+    list($firstInsertedId, $negativeQuantityItemsAlerts) = $productionManager->produce($userId, $deviceId, $version, $quantity, $comment, $productionDate, 'tht');
     echo json_encode([$firstInsertedId, $negativeQuantityItemsAlerts]);
     $MsaDB->db->commit();
 } catch (Exception $e) {

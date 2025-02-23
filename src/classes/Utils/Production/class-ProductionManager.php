@@ -33,10 +33,10 @@ class ProductionManager {
      * @param string $deviceType     'smd' or 'tht'.
      * @param mixed  $laminateId     (Optional) Required if $deviceType is 'smd'.
      *
-     * @return int|object|null The ID of the first inserted inventory record.
+     * @return array The ID of the first inserted inventory record.
      * @throws Exception If errors occur during production.
      */
-    public function produce($userId, $deviceId, $version, $quantity, $comment, $productionDate, $deviceType, $laminateId = null): object|int|null
+    public function produce($userId, $deviceId, $version, $quantity, $comment, $productionDate, $deviceType, $laminateId = null): array
     {
         try {
             // Retrieve user information
@@ -145,8 +145,9 @@ class ProductionManager {
                     $firstInsertedId = $insertedId;
                 }
             }
-
-            return $firstInsertedId;
+            $bomComponentIds = $this -> prepareComponents($bomComponents);
+            $negativeStockAlerts = $this -> checkLowStock($userId, $sub_magazine_id, $bomComponentIds);
+            return [$firstInsertedId, $negativeStockAlerts];
         } catch (\Exception $e) {
             throw $e;
         }
@@ -175,12 +176,33 @@ class ProductionManager {
      * @return string[] An array of bootstrap alert HTML elements as strings.
      * @throws Exception If an error occurs during production.
      */
-    public function checkLowStock($userId): array {
-        // Retrieve user information
-        $user = $this->userRepository->getUserById($userId);
-        $sub_magazine_id = $user->getUserInfo()["sub_magazine_id"];
+    /**
+     * Checks for low stock items for only the specified BOM component IDs and auto-produces them if allowed,
+     * returning bootstrap alert elements.
+     *
+     * This method retrieves low stock items (joined with the corresponding list tables where applicable)
+     * for the given sub_magazine, but only for the component IDs provided in $bomComponents.
+     * For each item with negative total_quantity, it checks the isAutoProduced flag.
+     * If auto production is enabled, it triggers production using default parameters and returns an alert element
+     * with class "alert-success" displaying the device name and needed quantity. Otherwise, it returns an alert element
+     * with class "alert-danger" displaying the device name.
+     *
+     * Device names are retrieved using the readIdName() method for the respective device type tables.
+     *
+     * The returned array is a list of HTML string alerts, for example:
+     * [
+     *   '<div class="alert alert-success" role="alert">Automatycznie wyprodukowano: <b>DeviceName w ilości 5</b></div>',
+     *   '<div class="alert alert-danger" role="alert">Ujemne wartości magazynowe dla: <b>DeviceName</b></div>'
+     * ]
+     *
+     * @param int   $sub_magazine_id The magazine id for which to check low stock.
+     * @param array $bomComponents   An associative array with keys "sku", "tht", "smd", "parts" containing arrays of component IDs.
+     * @return string[] An array of bootstrap alert HTML elements as strings.
+     * @throws Exception If an error occurs during production.
+     */
+    private function checkLowStock($userId, $sub_magazine_id, $bomComponents): array {
 
-        // Get device name mappings
+        // Get device name mappings.
         $list__sku   = $this->MsaDB->readIdName("list__sku");
         $list__tht   = $this->MsaDB->readIdName("list__tht");
         $list__smd   = $this->MsaDB->readIdName("list__smd");
@@ -222,21 +244,34 @@ class ProductionManager {
 
         // Loop over each device type and process low stock items
         foreach ($deviceTypes as $deviceType => $tables) {
+            // Only proceed if there are BOM component IDs for this device type.
+            if (!isset($bomComponents[$deviceType]) || empty($bomComponents[$deviceType])) {
+                continue;
+            }
+
+            // Prepare a comma-separated list of IDs. (Assumes IDs are integers.)
+            $ids = implode(',', $bomComponents[$deviceType]);
+
             $lowstockTable = $tables["lowstockTable"];
             $listTable     = $tables["listTable"];
             $idColumn      = $tables["idColumn"];
 
+            // Build the SQL query based on device type.
             if (in_array($deviceType, ['smd', 'parts'])) {
-                // For SMD and Parts, there is no isAutoProduce column.
+                // For SMD and Parts, there is no isAutoProduced column.
                 $sql = "SELECT {$idColumn} AS id, total_quantity, 0 AS isAutoProduced 
                     FROM {$lowstockTable} 
-                    WHERE sub_magazine_id = {$sub_magazine_id} AND total_quantity < 0";
+                    WHERE sub_magazine_id = {$sub_magazine_id} 
+                      AND total_quantity < 0 
+                      AND {$idColumn} IN ({$ids})";
             } else {
-                // For sku and tht, join to retrieve isAutoProduce.
+                // For sku and tht, join to retrieve isAutoProduced.
                 $sql = "SELECT ls.{$idColumn} AS id, ls.total_quantity, l.isAutoProduced, l.autoProduceVersion
                     FROM {$lowstockTable} ls 
                     JOIN {$listTable} l ON l.id = ls.{$idColumn}
-                    WHERE ls.sub_magazine_id = {$sub_magazine_id} AND ls.total_quantity < 0";
+                    WHERE ls.sub_magazine_id = {$sub_magazine_id} 
+                      AND ls.total_quantity < 0 
+                      AND ls.{$idColumn} IN ({$ids})";
             }
 
             $items = $this->MsaDB->query($sql, \PDO::FETCH_ASSOC);
@@ -244,7 +279,7 @@ class ProductionManager {
             foreach ($items as $item) {
                 $identifier     = $item['id'];
                 $neededQuantity = abs($item["total_quantity"]);
-                // Use the device name instead of the identifier (if available)
+                // Use the device name from the mapping, if available.
                 $deviceName = $nameMap[$deviceType][$identifier] ?? $identifier;
 
                 if ($item["isAutoProduced"]) {
@@ -252,8 +287,9 @@ class ProductionManager {
                     $version        = $item["autoProduceVersion"];
                     $comment        = "Automatyczna produkcja wygenerowana przez ujemne ilości magazynowe.";
                     $productionDate = "'" . date("Y-m-d") . "'";
+                    // Assumes $userId is available (e.g. as a property or previously defined variable).
                     $this->produce($userId, $identifier, $version, $neededQuantity, $comment, $productionDate, $deviceType);
-                    $alerts[] = '<div class="alert alert-success" role="alert">Automatycznie wyprodukowano: <b>' . htmlspecialchars($deviceName) . ' w ilości '.$neededQuantity.'</b></div>';
+                    $alerts[] = '<div class="alert alert-success" role="alert">Automatycznie wyprodukowano: <b>' . htmlspecialchars($deviceName) . ' w ilości ' . $neededQuantity . '</b></div>';
                 } else {
                     $alerts[] = '<div class="alert alert-danger" role="alert">Ujemne wartości magazynowe dla: <b>' . htmlspecialchars($deviceName) . '</b></div>';
                 }
@@ -262,4 +298,27 @@ class ProductionManager {
 
         return $alerts;
     }
+
+    private function prepareComponents($bomComponents)
+    {
+        // Initialize the result array with empty arrays for each type.
+        $result = [
+            'sku'   => [],
+            'tht'   => [],
+            'smd'   => [],
+            'parts' => [],
+        ];
+
+        // Loop through each component.
+        foreach ($bomComponents as $component) {
+            if (isset($component['type'], $component['componentId'])) {
+                if (array_key_exists($component['type'], $result)) {
+                    $result[$component['type']][] = $component['componentId'];
+                }
+            }
+        }
+
+        return $result;
+    }
+
 }
