@@ -9,8 +9,8 @@ $selectRenderer = new SelectRenderer($MsaDB);
 $userRepository = new UserRepository($MsaDB);
 
 $currentUser = $userRepository -> getUserById($_SESSION['userid']);
-$currentMagazine = $currentUser -> subMagazineId;
 $isCurrUserAdmin = $currentUser -> isAdmin();
+$currentMagazine = $isCurrUserAdmin ? '' : $currentUser -> subMagazineId;
 
 $list__warehouse = $MsaDB -> readIdName(table: 'magazine__list', 
                                         id: 'sub_magazine_id', 
@@ -155,7 +155,7 @@ include('table-row-template.php');
                 <th>Odbiorca</th>
                 <th>Urządzenie</th>
                 <th>Laminat</th>
-                <th>Wersja</t>
+                <th>Wersja</th>
                 <th>Ilość</th>
                 <th></th>
             </thead>
@@ -201,7 +201,7 @@ include('table-row-template.php');
                 <tr>
                     <th style="width: 45%;">Komponent</th>
                     <th>Dostępne na magazynie</th>
-                    <th>W magazynie docelowym</t>
+                    <th>W magazynie docelowym</th>
                     <th>Potrzebne do zlecenia</th>
                     <th>Przekazywana ilość</th>
                     <th></th>
