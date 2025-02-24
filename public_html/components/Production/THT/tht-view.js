@@ -24,8 +24,13 @@ function generateVersionSelect(possibleVersions){
     $("#version").empty();
     if(Object.keys(possibleVersions).length == 1) {
         let version_id = Object.keys(possibleVersions)[0];
-        let version = possibleVersions[version_id][0];
-        let option = "<option value='"+version+"' selected>"+version+"</option>";
+        let version = possibleVersions[version_id];
+        let option = null;
+        if(version === null) {
+            option = "<option value='n/d' selected>n/d</option>";
+        } else {
+            option = "<option value='"+version[0]+"' selected>"+version[0]+"</option>";
+        }
         $("#version").append(option);
         $("#version").selectpicker('destroy');
     } else {

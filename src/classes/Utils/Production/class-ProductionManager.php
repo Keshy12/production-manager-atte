@@ -45,7 +45,8 @@ class ProductionManager {
             $sub_magazine_id = $userInfo["sub_magazine_id"];
 
             // Build BOM filter values. SMD requires an additional laminate_id.
-            $bomValues = [ $deviceType . "_id" => $deviceId, "version" => $version ];
+            $bomValues = [ $deviceType . "_id" => $deviceId, "version" => $version == 'n/d' ? null : $version];
+
             if ($deviceType === "smd") {
                 if ($laminateId === null) {
                     throw new \Exception("Laminate ID is required for SMD production.");
