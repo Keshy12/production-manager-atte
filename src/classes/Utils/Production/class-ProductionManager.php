@@ -92,7 +92,7 @@ class ProductionManager {
                 if ($quantity < 0) {
                     $state_id = 1;
                     $quantity_needed += $quantity; // Adjust for over-allocation
-                    $quantity = abs($quantity);
+                    $quantity = 0;
                 }
 
                 // Deduct each BOM component from inventory (components table names are prefixed with "inventory__")
