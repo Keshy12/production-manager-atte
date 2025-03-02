@@ -12,10 +12,10 @@ include('modals.php');
 ?>
 
 <select id="list__sku_hidden" hidden>
-    <?= $selectRenderer->renderSKUBomSelect() ?>
+    <?= $selectRenderer->renderSKUBomSelect(isLeftJoin: true) ?>
 </select>
 <select id="list__tht_hidden" hidden>
-    <?= $selectRenderer->renderTHTBomSelect() ?>
+    <?= $selectRenderer->renderTHTBomSelect(isLeftJoin: true) ?>
 </select>
 <select id="list__smd_hidden" hidden>
     <?= $selectRenderer->renderSMDBomSelect() ?>
@@ -72,6 +72,8 @@ include('modals.php');
         <label for="isActive">Aktywny?</label>
     </span>
 </div>
+
+<div class="d-flex justify-content-center mt-2" id="alerts"></div>
 
 <div class="d-flex justify-content-center mt-4">
     <table class="table table-bordered table-sm text-center" style="max-width: 800px;">

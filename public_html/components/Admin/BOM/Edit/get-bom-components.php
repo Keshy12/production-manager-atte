@@ -23,6 +23,11 @@ $bomValues = [
     $bomType.'_id' => $_POST['bomValues'][0]
 ];
 
+if($bomType == 'sku') {
+    $bomValues['version'] = $_POST['bomValues'][1];
+    $bomValues['version'] = $bomValues['version'] == 'n/d' ? null : $bomValues['version'];
+}
+
 if($bomType == 'tht') {
     $bomValues['version'] = $_POST['bomValues'][1];
     $bomValues['version'] = $bomValues['version'] == 'n/d' ? null : $bomValues['version'];
@@ -33,45 +38,56 @@ if($bomType == 'smd') {
     $bomValues['version'] = $_POST['bomValues'][2];
 }
 
+$createNewBom = $_POST['createBom'] == "true";
+if($createNewBom) {
+    $bomValues['deviceId'] = $_POST['bomValues'][0];
+    $bomRepository->createBom($bomType, $bomValues);
+    unset($bomValues['deviceId']);
+}
 $bomsFound = $bomRepository->getBomByValues($bomType, $bomValues);
 
 try {
-    if(count($bomsFound) < 1) throw new \Exception("BOM not found");
-    if(count($bomsFound) > 1) throw new \Exception("Multiple BOMs found");    
+    if(count($bomsFound) < 1) throw new \Exception("Nie znaleziono BOM");
+    if(count($bomsFound) > 1) throw new \Exception("Znaleziono wiele BOM dla podanych parametrów");
 } catch(\Exception $e) {
     $wasSuccessful = false;
     $errorMessage = $e -> getMessage();
 }
 
-$bom = $bomsFound[0];
-$bomId = $bom -> id;
-$bomIsActive = $bom -> isActive;
-$bomComponents = $bom -> getComponents(1);
+$bomComponents = [];
+$bomId = null;
+$bomIsActive = false;
 
-$generateComponentInfo = function(&$row) use (
-        $list__sku, $list__sku_desc,
-        $list__tht, $list__tht_desc, 
-        $list__smd, $list__smd_desc, 
-        $list__parts, $list__parts_desc) {
-    $componentType = $row['type'];
-    $componentId = $row['componentId'];
-    if(!isset(${'list__'.$componentType}[$componentId]) 
-        || !isset(${'list__'.$componentType.'_desc'}[$componentId]))
-    {
-        throw new \Exception("ERROR Component not found, type: $componentType, id: $componentId");
+if($wasSuccessful) {
+    $bom = $bomsFound[0];
+    $bomId = $bom -> id;
+    $bomIsActive = $bom -> isActive;
+    $bomComponents = $bom -> getComponents(1);
+
+    $generateComponentInfo = function(&$row) use (
+            $list__sku, $list__sku_desc,
+            $list__tht, $list__tht_desc,
+            $list__smd, $list__smd_desc,
+            $list__parts, $list__parts_desc) {
+        $componentType = $row['type'];
+        $componentId = $row['componentId'];
+        if(!isset(${'list__'.$componentType}[$componentId])
+            || !isset(${'list__'.$componentType.'_desc'}[$componentId]))
+        {
+            throw new \Exception("ERROR Component not found, type: $componentType, id: $componentId");
+        }
+
+        $row['componentName'] = ${'list__'.$componentType}[$componentId];
+        $row['componentDescription'] = ${'list__'.$componentType.'_desc'}[$componentId];
+        return $row;
+    };
+
+    try {
+        array_walk($bomComponents, $generateComponentInfo);
+    } catch(\Exception $e) {
+        $wasSuccessful = false;
+        $errorMessage = $e -> getMessage();
     }
-
-    $row['componentName'] = ${'list__'.$componentType}[$componentId];
-    $row['componentDescription'] = ${'list__'.$componentType.'_desc'}[$componentId];
-    return $row;
-};
-
-try {
-    array_walk($bomComponents, $generateComponentInfo);
-} catch(\Exception $e) {
-    $bomComponents = [];
-    $wasSuccessful = false;
-    $errorMessage = $e -> getMessage();
 }
 
 echo json_encode([$bomComponents, $bomId, $bomIsActive, $wasSuccessful, $errorMessage]

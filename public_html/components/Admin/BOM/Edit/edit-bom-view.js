@@ -5,7 +5,7 @@ function render(props) {
 }
 
 $("#bomTypeSelect").change(function(){
-    $("#list__device, #versionSelect, #laminateSelect, #editBomTBody").empty();
+    $("#list__device, #versionSelect, #laminateSelect, #editBomTBody, #alerts").empty();
     $('#list__'+this.value+'_hidden option').clone()
                                             .appendTo('#list__device');
     $('#list__device, #previousBom, #nextBom').prop("disabled", false)
@@ -35,7 +35,7 @@ $("#versionSelect").change(function(){
 });
 
 $("#list__device").change(function(){
-    $("#editBomTBody").empty();
+    $("#editBomTBody, #alerts").empty();
     let bomType = $("#bomTypeSelect").val();
     $("#versionSelect, #laminateSelect").empty();
     generateAdditionalFields(bomType);
@@ -83,8 +83,9 @@ function generateVersionSelect(possibleVersions){
     if(Object.keys(possibleVersions).length == 1) {
         if(possibleVersions[0] == null)
         {
+            let version = 'n/d';
             $("#versionSelect").selectpicker('destroy');
-            $("#versionSelect").html("<option value=\"n/d\" selected>n/d</option>");
+            $("#versionSelect").html('<option value="'+version+'" selected>n/d</option>');
             $("#versionSelect").prop('disabled', false);
             $("#versionField").hide();
             $("#versionSelect").selectpicker('refresh');
@@ -127,20 +128,34 @@ function generateBomTable()
     let version = $("#versionSelect").val();
     let laminate = $("#laminateSelect").val();
     const bomValues = [deviceId];
-    if(bomType == "tht") {
-        let deviceName = $("#list__device option:selected").text().trim();
-        isEditable = !deviceName.startsWith("THT.")
-        bomValues.push(version);
-    }
-    else if(bomType == "smd") {
-        isEditable = false;
-        bomValues.push(laminate, version);
+    let createNewBom = false;
+    switch (bomType) {
+        case "sku": {
+            const bomIds = $("#list__device option:selected").data("bomids");
+            createNewBom = bomIds[0] === null;
+            bomValues.push(version === "" ? "n/d" : version);
+            console.log(version);
+            break;
+        }
+        case "tht": {
+            let deviceName = $("#list__device option:selected").text().trim();
+            const bomIds = $("#list__device option:selected").data("bomids");
+            isEditable = !deviceName.startsWith("THT.");
+            createNewBom = bomIds[0] === null && isEditable;
+            bomValues.push(version);
+            break;
+        }
+        case "smd": {
+            isEditable = false;
+            bomValues.push(laminate, version);
+            break;
+        }
     }
     $.ajax({
         type: "POST",
         url: COMPONENTS_PATH+"/admin/bom/edit/get-bom-components.php",
         async: false,
-        data: {bomType: bomType, bomValues: bomValues},
+        data: {bomType: bomType, bomValues: bomValues, createBom: createNewBom},
         success: function (data) {
             let result = JSON.parse(data);
             let components = result[0];
@@ -154,8 +169,9 @@ function generateBomTable()
                     `+errorMessage+`
                 </div></td>
                 </tr>`;
-
-                $TBody.append(resultAlert);
+                $("#editButtonsCol, #createNewBomFields, #isActiveField").hide();
+                $("#alerts").append(resultAlert);
+                return;
             }
             $("#createNewBomFields").attr('data-bom-id', bomId);
             $("#isActive").prop('checked', isActive);
