@@ -10,62 +10,75 @@ class SelectRenderer {
         $this -> MsaDB = $MsaDB;
     }
 
-    public function getSKUBOMValuesForSelect(){
+    public function getSKUBOMValuesForSelect($isLeftJoin = false){
         $MsaDB = $this -> MsaDB;
         $result = [];
-        $possibleVer = $MsaDB -> query("SELECT 
-                                                l.id, 
-                                                l.name, 
-                                                l.description, 
+        $leftJoinStatement = $isLeftJoin ? " LEFT " : "";
+        $possibleVer = $MsaDB -> query("SELECT
+                                                l.id,
+                                                b.id,
+                                                l.name,
+                                                l.description,
                                                 b.version
-                                            FROM `list__sku` l 
-                                            JOIN bom__sku b 
-                                            ON l.id = b.sku_id 
-                                            WHERE l.isActive = 1 
-                                            AND b.isActive = 1
-                                            ORDER BY l.id, version ASC;");
+                                            FROM list__sku l
+                                                     {$leftJoinStatement} JOIN bom__sku b
+                                                               ON l.id = b.sku_id AND b.isActive = 1
+                                            WHERE l.isActive = 1
+                                            ORDER BY l.id, b.version ASC;");
         foreach($possibleVer as $row){
-            list($id, $name, $description, $version) = $row;
+            list($id, $bomId, $name, $description, $version) = $row;
             if(!isset($result[$id])) {
                 $result[$id] = [
                     $name, 
                     $description, 
-                    "versions" => []
+                    "versions" => [],
+                    "bomIds" => []
                 ];
             }
             $result[$id]["versions"][] = $version;
+            $result[$id]["bomIds"][] = $bomId;
         }
         return $result;
     }
 
-    public function getTHTBOMValuesForSelect(){
+    public function getTHTBOMValuesForSelect($isLeftJoin = false){
         $MsaDB = $this -> MsaDB;
         $result = [];
-        $possibleVer = $MsaDB -> query("SELECT 
-                                            l.id, 
-                                            l.name, 
-                                            l.description, 
-                                            b.version,
-                                            l.circle_checked,
-                                            l.triangle_checked,
-                                            l.square_checked
-                                        FROM `list__tht` l 
-                                        JOIN bom__tht b 
-                                        ON l.id = b.tht_id 
-                                        WHERE l.isActive = 1 
-                                        AND b.isActive = 1
-                                        ORDER BY l.id, version ASC;");
+        $leftJoinStatement = $isLeftJoin ? " LEFT " : "";
+        $possibleVer = $MsaDB -> query("SELECT
+                                                l.id,
+                                                b.id as bom_id,
+                                                l.name,
+                                                l.description,
+                                                b.version,
+                                                l.circle_checked,
+                                                l.triangle_checked,
+                                                l.square_checked
+                                            FROM
+                                                list__tht l
+                                                    {$leftJoinStatement} JOIN
+                                                bom__tht b
+                                                ON l.id = b.tht_id
+                                                    AND b.isActive = 1
+                                            WHERE
+                                                l.isActive = 1
+                                            ORDER BY
+                                                l.id,
+                                                b.version ASC;
+                                            ");
         foreach($possibleVer as $row){
-            list($id, $name, $description, $version, $circleMark, $triangleMark, $squareMark) = $row;
+            list($id, $bomId, $name, $description, $version, $circleMark, $triangleMark, $squareMark) = $row;
             if(!isset($result[$id])) {
                 $result[$id] = [
-                    $name, 
-                    $description, 
-                    "versions" => [], 
-                    "marking" => [$circleMark, $triangleMark, $squareMark]
+                    $name,
+                    $description,
+                    "versions" => [],
+                    "marking" => [$circleMark, $triangleMark, $squareMark],
+                    "bomIds" => []
                 ];
             }
             $result[$id]["versions"][] = $version;
+            $result[$id]["bomIds"][] = $bomId;
         }
         return $result;
     }
@@ -170,8 +183,8 @@ class SelectRenderer {
         } 
     }
 
-    public function renderTHTBOMSelect(?array $used__tht = null) {
-        $values = $this -> getTHTBOMValuesForSelect();
+    public function renderTHTBOMSelect(?array $used__tht = null, $isLeftJoin = false) {
+        $values = $this -> getTHTBOMValuesForSelect($isLeftJoin);
         $used__tht = is_null($used__tht) ? array_keys($values) : $used__tht;
         foreach($used__tht as $id) {
             if(!isset($values[$id])) continue;
@@ -179,27 +192,32 @@ class SelectRenderer {
             list($name, $description) = $row;
             $versions = $row["versions"];
             $marking = $row["marking"];
+            $bomIds = $row["bomIds"];
             $jsonVersions = json_encode($versions, JSON_FORCE_OBJECT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
             $jsonMarking = json_encode($marking, JSON_FORCE_OBJECT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
+            $jsonBomIds = json_encode($bomIds, JSON_FORCE_OBJECT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
             echo "<option data-subtext='$description'
             data-tokens='$name $description' 
             value='$id' data-jsonVersions = '$jsonVersions'
-            data-jsonMarking='$jsonMarking'>
+            data-jsonMarking='$jsonMarking'
+            data-bomIds='$jsonBomIds'>
             $name</option>";
         } 
     }
 
-    public function renderSKUBOMSelect(?array $used__sku = null) {
-        $values = $this -> getSKUBOMValuesForSelect();
+    public function renderSKUBOMSelect(?array $used__sku = null, $isLeftJoin = false) {
+        $values = $this -> getSKUBOMValuesForSelect($isLeftJoin);
         $used__sku = is_null($used__sku) ? array_keys($values) : $used__sku;
         foreach($used__sku as $id) {
             if(!isset($values[$id])) continue;
             $row = $values[$id];
             list($name, $description) = $row;
             $versions = $row["versions"];
+            $bomIds = $row["bomIds"];
             $jsonVersions = json_encode($versions, JSON_FORCE_OBJECT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
+            $jsonBomIds = json_encode($bomIds, JSON_FORCE_OBJECT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
             echo "<option data-subtext='$description'
-            data-tokens='$name $description' 
+            data-tokens='$name $description' data-bomIds='$jsonBomIds' 
             value='$id' data-jsonVersions = '$jsonVersions'>
             $name</option>";
         } 

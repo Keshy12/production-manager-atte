@@ -69,4 +69,58 @@ class BomRepository {
         foreach($result as $item) $item -> deviceType = $deviceType;
         return $result !== false ? $result : null;
     }
+
+    public function createBom($deviceType, array $data) {
+        $MsaDB = $this->MsaDB;
+        $table = "bom__{$deviceType}";
+        $columns = [];
+        $placeholders = [];
+        $params = [];
+
+        if (!isset($data['deviceId'])) {
+            throw new \Exception("deviceId is required for BOM creation.");
+        }
+        $columns[] = "{$deviceType}_id";
+        $placeholders[] = ":deviceId";
+        $params[':deviceId'] = $data['deviceId'];
+
+        if ($deviceType === 'smd') {
+            if (!isset($data['laminateId'])) {
+                throw new \Exception("laminateId is required for BOM creation for smd device type.");
+            }
+            $columns[] = "laminate_id";
+            $placeholders[] = ":laminateId";
+            $params[':laminateId'] = $data['laminateId'];
+        }
+
+        if (!isset($data['version']) && !is_null($data['version'])) {
+            throw new \Exception("version is required for BOM creation.");
+        }
+        $columns[] = "version";
+        $placeholders[] = ":version";
+        $params[':version'] = $data['version'];
+
+        $columns[] = "isActive";
+        $placeholders[] = ":isActive";
+        $params[':isActive'] = 1;
+
+        // Build the query
+        $columnsStr = implode(', ', $columns);
+        $placeholdersStr = implode(', ', $placeholders);
+        $query = "INSERT INTO {$table} ({$columnsStr}) VALUES ({$placeholdersStr})";
+
+        $stmt = $MsaDB->db->prepare($query);
+        foreach ($params as $key => $val) {
+            $stmt->bindValue($key, $val);
+        }
+
+        if (!$stmt->execute()) {
+            $errorInfo = $stmt->errorInfo();
+            throw new \Exception("Failed to create BOM: " . $errorInfo[2]);
+        }
+
+        // Retrieve the newly created BOM record using lastInsertId
+        $id = $MsaDB->db->lastInsertId();
+        return $this->getBomById($deviceType, $id);
+    }
 }
