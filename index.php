@@ -39,6 +39,10 @@ switch ($request) {
         includeWithVariables($headerDir, array('title' => 'Zlecenia'));
         require $componentsDir . '/commissions/commissions-view.php';
         break;
+    case 'notification':
+        includeWithVariables($headerDir, array('title' => 'Powiadomienie'));
+        require $componentsDir . '/notification/notification-view.php';
+        break;
     case 'profile':
         includeWithVariables($headerDir, array('title' => 'Mój Profil'));
         require $componentsDir . '/profile/profile-view.php';
