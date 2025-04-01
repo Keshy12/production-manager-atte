@@ -1,4 +1,4 @@
-<?php 
+<?php
 $MsaDB = Atte\DB\MsaDB::getInstance();
 
 $limit = $_POST["limit"] ?? 10;
@@ -32,12 +32,14 @@ $conditions[] = implode(" OR ", $inputTypesIds);
 $conditions = "(".implode(") AND (", $conditions).")";
 
 
-$inventory__device = $MsaDB -> query("SELECT CONCAT(u.name, ' ', u.surname), l.name, CAST(i.quantity as float), i.timestamp 
+$inventory__device = $MsaDB -> query("SELECT CONCAT(u.name, ' ', u.surname), m.sub_magazine_name, l.name, CAST(i.quantity as float), i.timestamp 
                                       FROM `inventory__$deviceType` i
                                       JOIN `list__$deviceType` l
-                                      ON i.{$deviceType}_id = l.id
+                                          ON i.{$deviceType}_id = l.id
                                       JOIN `user` u
-                                      ON i.user_id = u.user_id
+                                          ON i.user_id = u.user_id
+                                      JOIN magazine__list m 
+                                          ON i.sub_magazine_id = m.sub_magazine_id
                                       WHERE $conditions 
                                       ORDER BY i.timestamp DESC 
                                       LIMIT $limit OFFSET $offset",

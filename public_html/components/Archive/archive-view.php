@@ -64,6 +64,7 @@ $list__input_type = $MsaDB -> readIdName("inventory__input_type");
         <thead class="thead-light">
             <tr>
                 <th scope="col">Użytkownik</th>
+                <th scope="col">Magazyn</th>
                 <th scope="col">Urządzenie</th>
                 <th scope="col">Ilość</th>
                 <th scope="col">Data</th>
