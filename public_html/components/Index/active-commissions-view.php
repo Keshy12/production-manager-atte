@@ -192,4 +192,3 @@ echo '</div>';
 
 ?>
 <script src="http://<?=BASEURL?>/public_html/components/index/active-commissions-view.js"></script>
-

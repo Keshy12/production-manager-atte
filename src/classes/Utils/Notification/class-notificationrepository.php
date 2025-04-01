@@ -34,18 +34,41 @@ class NotificationRepository {
 
 
     public function createNotification($actionNeeded, $row, $valueForAction, $exceptionValues, $flowpinQueryTypeId) {
-        $MsaDB = $this -> MsaDB;
-        $valueForActionClause = isset($valueForAction) ? "AND value_for_action = '$valueForAction'" : " ";
-        $dbresult = $MsaDB -> query("SELECT id FROM `notification__list` 
-                                        WHERE action_needed_id = $actionNeeded 
-                                        $valueForActionClause
-                                        AND isResolved = 0", 
-                                        \PDO::FETCH_COLUMN);
-        $notificationId = isset($dbresult[0]) ? $dbresult[0] : $MsaDB -> insert("notification__list", ["action_needed_id", "value_for_action"], [$actionNeeded, $valueForAction]);
-        $values = $MsaDB -> query("SELECT * FROM `notification__list` WHERE id = $notificationId")[0];
+        $MsaDB = $this->MsaDB;
+        $valueForActionClause = isset($valueForAction) ? "AND value_for_action = '$valueForAction'" : "";
+        $dbresult = $MsaDB->query("SELECT id FROM `notification__list` 
+                                WHERE action_needed_id = $actionNeeded 
+                                $valueForActionClause
+                                AND isResolved = 0", \PDO::FETCH_COLUMN);
+        $notificationId = isset($dbresult[0]) ? $dbresult[0] : $MsaDB->insert("notification__list", ["action_needed_id", "value_for_action"], [$actionNeeded, $valueForAction]);
+        $values = $MsaDB->query("SELECT * FROM `notification__list` WHERE id = $notificationId")[0];
         $notification = new Notification($MsaDB, $values);
-        $notification -> addValuesToResolve($row, $exceptionValues, $flowpinQueryTypeId);
+
+        $notification->addValuesToResolve($row, $exceptionValues, $flowpinQueryTypeId);
         return $notification;
+    }
+
+    /**
+     * Helper method to simplify an exception by removing bulky 'args' from its trace.
+     *
+     * @param \Throwable $exception
+     * @return array
+     */
+    private function simplifyException(\Throwable $exception) {
+        $trace = array_map(function($frame) {
+            if (isset($frame['args'])) {
+                unset($frame['args']);
+            }
+            return $frame;
+        }, $exception->getTrace());
+
+        return [
+            'message' => $exception->getMessage(),
+            'code'    => $exception->getCode(),
+            'file'    => $exception->getFile(),
+            'line'    => $exception->getLine(),
+            'trace'   => $trace,
+        ];
     }
 
     /**
@@ -70,7 +93,7 @@ class NotificationRepository {
     }
     private function createNotificationFromPDOException(\PDOException $exception, $row, $flowpinQueryTypeId) {
         $exceptionCode = $exception -> getCode();
-        $exceptionValues = serialize($exception);
+        $exceptionValues = serialize($this->simplifyException($exception));
         switch($exceptionCode) {
             case 23000:
                 $actionNeeded = 1;
@@ -88,7 +111,8 @@ class NotificationRepository {
 
     private function createNotificationFromCustomException(\Exception $exception, $row, $flowpinQueryTypeId) {
         $exceptionCode = $exception -> getCode();
-        $exceptionValues = serialize($exception);
+        $exceptionValues = $this->simplifyException($exception);
+        $exceptionValues = serialize($exceptionValues);
         switch($exceptionCode) {
             case 1:
                 $actionNeeded = 1;

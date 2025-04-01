@@ -36,7 +36,7 @@ class BomRepository {
     * Values are an array, where key is column name.
     * @param string $deviceType
     * @param array $values syntax: ['columnName' => valueToCheck]
-    * @return ?object Object of class BOM on success, null otherwise.
+    * @return ?array Object of class BOM on success, null otherwise.
     */
     public function getBomByValues($deviceType, $values)
     {

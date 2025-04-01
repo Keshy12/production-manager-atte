@@ -191,3 +191,4 @@ if(!isset($_SESSION["userid"]) && !isset($skip))
 </div>
 <?php endif; ?>
 <script src="http://<?=BASEURL?>/public_html/assets/layout/header.js"></script>
+<script src="http://<?=BASEURL?>/public_html/assets/layout/side-menu/menu.js"></script>
