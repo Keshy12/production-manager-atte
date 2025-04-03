@@ -5,24 +5,24 @@ $MsaDB = MsaDB::getInstance();
 
 $dictionaryType = $_POST['dictionaryType'];
 $rowId = $_POST['rowId'];
-$valuesToInsert = $_POST['newRowValues'];
+$newRowValues = $_POST['newRowValues'];
 
 switch($dictionaryType)
 {
     case 'ref__valuepackage':
-        $valuePackage = $valuesToInsert[0];
+        $valuePackage = $newRowValues[0];
         $valuesToInsert = [
             'ValuePackage' => $valuePackage, 
             'parts_id' => null,
             'tht_id' => null
         ];
-        $componentType = $valuesToInsert[1];
-        $componentId = $valuesToInsert[2];
+        $componentType = $newRowValues[1];
+        $componentId = $newRowValues[2];
 
         $valuesToInsert[$componentType.'_id'] = $componentId;
         break;
     case 'ref__package_exclude':
-        $packageToExclude = $valuesToInsert[0];
+        $packageToExclude = $newRowValues[0];
         $valuesToInsert = [
             'name' => $packageToExclude
         ];
