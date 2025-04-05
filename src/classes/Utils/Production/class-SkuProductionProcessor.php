@@ -164,21 +164,139 @@ class SkuProductionProcessor {
     }
 
     /**
-     * Process production data and execute queries directly
+     * Process production data and execute queries directly with better error handling
      *
      * @param array $production Production data from FlowPin
      * @param string|null $productionDate Optional production date
-     * @return int The highest event ID processed
+     * @return int The highest event ID processed successfully
      */
     public function processAndExecuteProduction(array $production, $productionDate = null) {
         $queries = $this->processProduction($production, $productionDate);
         $lastEventId = 0;
+        $processedEvents = [];
+
+        // First, organize queries by event ID and type
+        $bulkOperations = [];
 
         foreach ($queries as $eventId => $queryList) {
+            if ($queryList[0] === "SELECT 1") continue;
+
             foreach ($queryList as $query) {
-                $this->MsaDB->query($query);
+                // For each event, organize queries by table and operation type
+                if (preg_match('/INSERT INTO `([\w_]+)`/', $query, $tableMatch)) {
+                    $table = $tableMatch[1];
+
+                    // Extract column names
+                    preg_match('/\((.*?)\) VALUES/', $query, $columnsMatch);
+                    $columns = $columnsMatch[1];
+
+                    // Extract values
+                    preg_match('/VALUES \((.*)\)/', $query, $valuesMatch);
+                    if (isset($valuesMatch[1])) {
+                        if (!isset($bulkOperations[$table])) {
+                            $bulkOperations[$table] = [
+                                'columns' => $columns,
+                                'values' => [],
+                                'events' => []
+                            ];
+                        }
+                        $bulkOperations[$table]['values'][] = $valuesMatch[1];
+                        if (!in_array($eventId, $bulkOperations[$table]['events'])) {
+                            $bulkOperations[$table]['events'][] = $eventId;
+                        }
+                    }
+                }
+                elseif (preg_match('/UPDATE `commission__list` SET (.*) WHERE `commission__list`\.`id` = (\d+)/', $query, $updateMatch)) {
+                    $table = 'commission__list_updates';
+                    $id = $updateMatch[2];
+                    $updates = $updateMatch[1];
+
+                    if (!isset($bulkOperations[$table])) {
+                        $bulkOperations[$table] = [
+                            'updates' => [],
+                            'events' => []
+                        ];
+                    }
+
+                    $bulkOperations[$table]['updates'][] = [
+                        'id' => $id,
+                        'data' => $updates
+                    ];
+
+                    if (!in_array($eventId, $bulkOperations[$table]['events'])) {
+                        $bulkOperations[$table]['events'][] = $eventId;
+                    }
+                }
             }
-            $lastEventId = max($eventId, $lastEventId);
+        }
+
+        // Now execute bulk operations with proper error handling
+        foreach ($bulkOperations as $table => $data) {
+            try {
+                if ($table === 'commission__list_updates') {
+                    // Handle commission list updates
+                    $updateCases = [
+                        'quantity_produced' => [],
+                        'state_id' => []
+                    ];
+
+                    $ids = [];
+                    foreach ($data['updates'] as $update) {
+                        $id = $update['id'];
+                        $ids[] = $id;
+
+                        if (preg_match('/`quantity_produced` = \'(\d+)\'/', $update['data'], $qtyMatch)) {
+                            $updateCases['quantity_produced'][] = "WHEN $id THEN {$qtyMatch[1]}";
+                        }
+
+                        if (preg_match('/state_id = \'(\d+)\'/', $update['data'], $stateMatch)) {
+                            $updateCases['state_id'][] = "WHEN $id THEN {$stateMatch[1]}";
+                        }
+                    }
+
+                    if (!empty($ids)) {
+                        $sql = "UPDATE `commission__list` SET ";
+                        $sets = [];
+
+                        foreach ($updateCases as $column => $cases) {
+                            if (!empty($cases)) {
+                                $sets[] = "`$column` = CASE `id` " . implode(' ', $cases) . " ELSE `$column` END";
+                            }
+                        }
+
+                        $sql .= implode(', ', $sets) . " WHERE `id` IN (" . implode(',', $ids) . ")";
+                        $this->MsaDB->query($sql);
+
+                        // Mark events as processed on success
+                        foreach ($data['events'] as $eventId) {
+                            $processedEvents[$eventId] = true;
+                        }
+                    }
+                }
+                else {
+                    // Handle inserts
+                    $chunks = array_chunk($data['values'], 100); // Split into chunks to avoid huge queries
+
+                    foreach ($chunks as $chunk) {
+                        $sql = "INSERT INTO `$table` ({$data['columns']}) VALUES (" . implode('), (', $chunk) . ")";
+                        $this->MsaDB->query($sql);
+                    }
+
+                    // Mark events as processed on success
+                    foreach ($data['events'] as $eventId) {
+                        $processedEvents[$eventId] = true;
+                    }
+                }
+            } catch (\Exception $e) {
+                // Log error but continue with other operations
+                error_log("Error executing bulk operation for table $table: " . $e->getMessage());
+                // Don't mark these events as processed
+            }
+        }
+
+        // Update lastEventId based on successfully processed events only
+        foreach (array_keys($processedEvents) as $eventId) {
+            $lastEventId = max($lastEventId, (int)$eventId);
         }
 
         return $lastEventId;
