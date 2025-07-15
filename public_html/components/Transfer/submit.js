@@ -5,10 +5,11 @@ function render(props) {
     return function(tok, i) { return (i % 2) ? props[tok] : tok; };
 }
 
-function submitTransfer(transferFrom, transferTo, components, commissions) {
+function submitTransfer(transferFrom, transferTo, components, commissions, existingCommissions) {
     const data = {
         components: components,
         commissions: commissions,
+        existingCommissions: existingCommissions,
         transferFrom: transferFrom,
         transferTo: transferTo
     };
@@ -58,7 +59,7 @@ $("#submitTransfer").click(function() {
     $(".transferSubmitSpinner").show();
     //Timeout of 0ms, to allow the DOM to update before getting the components via AJAX
     setTimeout(() => {
-        const result = submitTransfer(transferFrom, transferTo, components, commissions);
+        const result = submitTransfer(transferFrom, transferTo, components, commissions, existingCommissions);
         const [commissionResult, componentResult] = result;
         $(".transferSubmitSpinner").hide();
         commissionResult.forEach(commission => {

@@ -43,7 +43,7 @@
         <td class="align-items-stretch">
             <div class="d-flex flex-column">
                 <input type="number" class="form-control form-control-sm text-center mx-auto w-75 transferQty" 
-                        data-key="${key}" value="${transferQty}">
+                        data-key="${key}" data-commission-key="${commissionKey}" value="${transferQty}">
                 <button class="btn btn-secondary w-75 btn-sm mx-auto insertDifference">Różnica</button>
             </div>
         </td>

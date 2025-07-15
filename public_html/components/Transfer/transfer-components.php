@@ -2,12 +2,14 @@
 use Atte\DB\MsaDB;
 use Atte\Utils\BomRepository;
 
-$MsaDB = Atte\DB\MsaDB::getInstance();
+$MsaDB = MsaDB::getInstance();
 $MsaDB -> db -> beginTransaction();
 
 //Get and filter components and commissions
 $components = isset($_POST["components"]) ? array_filter($_POST["components"]) : "";
 $commissions = isset($_POST["commissions"]) ? array_filter($_POST["commissions"]) : "";
+$existingCommissions = isset($_POST["existingCommissions"]) ? array_filter($_POST["existingCommissions"]) : [];
+$existingCommissionsIds = array_column($existingCommissions, 0, 3);
 
 $userid = $_SESSION["userid"];
 $now = date("Y/m/d H:i:s", time());
@@ -49,8 +51,8 @@ if (!empty($commissions)) {
                                                         Unable to proceed with the production.");
         $bom = $bomsFound[0];
         $bomId = $bom->id;
-        $commission_id = $MsaDB -> insert("commission__list", 
-                ["user_id", "magazine_from", "magazine_to", "bom_" . $type . "_id", "quantity", "timestamp_created", "state_id", "priority"], 
+        $commission_id = $MsaDB -> insert("commission__list",
+                ["user_id", "magazine_from", "magazine_to", "bom_" . $type . "_id", "quantity", "timestamp_created", "state_id", "priority"],
                 [$userid, $transferFrom, $transferTo, $bomId, $qty, $now, '1', $priorityId]
             );
         $bom -> getNameAndDescription();

@@ -83,7 +83,6 @@ $("#addTransferComponent").click(function() {
     const pushedKey = components.push(componentValues[0]) - 1;
     componentValues[0]['key'] = pushedKey;
     addComponentsRow(componentValues[0], $("#transferTBody"));
-    console.log(components);
 });
 
 $("#magazineComponent").change(function() {

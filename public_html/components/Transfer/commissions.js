@@ -1,7 +1,7 @@
 const transferCommissionTableRow_template = $('script[data-template="transferCommissionTableRow_template"]').text().split(/\$\{(.+?)\}/g);
 
 const commissions = [];
-
+const existingCommissions = [];
 
 
 $(document).ready(function() {
@@ -37,8 +37,22 @@ $(document).ready(function() {
         setTimeout(() => {
             const transferFrom = $("#transferFrom").val();
             const transferTo = $("#transferTo").val();
-            const commissionComponents = getComponentsForCommissions(commissions, transferFrom, transferTo);
-            //components, getComponentValues and addComponentsRow is defined in transfer-view.js
+            const [commissionComponents, foundExistingCommissions] = getComponentsForCommissions(commissions, transferFrom, transferTo);
+            if (foundExistingCommissions.length > 0) {
+                $(".commissionSubmitSpinner").hide();
+                existingCommissions.push(...foundExistingCommissions)
+                const items = foundExistingCommissions
+                    .map(ec => `<li>ID: ${ec[0]} - ${ec[1]} <small>(stworzono: ${ec[2]})</small></li>`)
+                    .join('');
+                const $alert = $(`<div class="alert alert-warning alert-dismissible fade show" role="alert">
+                                      <strong>Wykryto duplikacje zlecenia:</strong>
+                                      <ul>${items}</ul>
+                                      <strong>Powyższe pozycje zostaną rozszerzone o odpowiednią ilość.</strong>
+                                    </div>
+                                  `);
+
+                $("#transferTableContainer").before($alert);
+            }
             const componentValues = getComponentValues(commissionComponents, transferFrom, transferTo);
             const $TBody = $('#transferTBody');
             components.push(...componentValues);
