@@ -53,8 +53,8 @@ $("#submitTransfer").click(function() {
     // defined in public_html/components/Transfer/transfer-view.js
     if(!getTransferedQty()) { 
         $(this).popover('show');
-        return ;
-    };
+        return;
+    }
     $("#transferTableContainer, #commissionTableContainer").hide();
     $(".transferSubmitSpinner").show();
     //Timeout of 0ms, to allow the DOM to update before getting the components via AJAX
@@ -70,6 +70,7 @@ $("#submitTransfer").click(function() {
             const row = componentResultTableRow_template.map(render(commission)).join('');
             $("#componentResultTBody").append(row);
         });
+        $('.alert-existing-commission').remove();
         $("#transferResult").show();
     }, 0);
 

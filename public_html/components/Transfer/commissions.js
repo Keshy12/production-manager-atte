@@ -44,7 +44,7 @@ $(document).ready(function() {
                 const items = foundExistingCommissions
                     .map(ec => `<li>ID: ${ec[0]} - ${ec[1]} <small>(stworzono: ${ec[2]})</small></li>`)
                     .join('');
-                const $alert = $(`<div class="alert alert-warning alert-dismissible fade show" role="alert">
+                const $alert = $(`<div class="alert-existing-commission alert alert-warning alert-dismissible fade show" role="alert">
                                       <strong>Wykryto duplikacje zlecenia:</strong>
                                       <ul>${items}</ul>
                                       <strong>Powyższe pozycje zostaną rozszerzone o odpowiednią ilość.</strong>
