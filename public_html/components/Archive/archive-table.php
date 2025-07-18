@@ -2,14 +2,17 @@
 $MsaDB = Atte\DB\MsaDB::getInstance();
 
 $limit = $_POST["limit"] ?? 10;
-if($limit<1) $limit = 1;
-$limit++;
+if ($limit < 1) $limit = 1;
 
-$offset = ($_POST["page"]-1)*$limit;
-$deviceType = $_POST["device_type"];
-$userIds = $_POST["user_ids"] ?? [];
-$deviceIds = $_POST["device_ids"] ?? [];
-$inputTypesIds = $_POST["input_type_id"] ?? [];
+// ask for one extra row to peek if there’s a next page
+$peek = $limit + 1;
+
+$offset = ($_POST["page"] - 1) * $limit;
+$deviceType   = $_POST["device_type"];
+$userIds      = $_POST["user_ids"]      ?? [];
+$deviceIds    = $_POST["device_ids"]    ?? [];
+$inputTypesIds= $_POST["input_type_id"] ?? [];
+
 
 foreach($userIds as $key => $userId) {
     $userIds[$key] = "i.user_id = ".$userId;
@@ -42,10 +45,15 @@ $inventory__device = $MsaDB -> query("SELECT CONCAT(u.name, ' ', u.surname), m.s
                                           ON i.sub_magazine_id = m.sub_magazine_id
                                       WHERE $conditions 
                                       ORDER BY i.timestamp DESC 
-                                      LIMIT $limit OFFSET $offset",
+                                      LIMIT $peek OFFSET $offset",
                                       PDO::FETCH_NUM);
 
-$nextPageAvailable = isset($inventory__device[$limit-1]);
-if($nextPageAvailable) unset($inventory__device[$limit-1]);
+$nextPageAvailable = isset($inventory__device[$limit]);
+if ($nextPageAvailable) {
+    unset($inventory__device[$limit]);
+}
 
-echo json_encode([$inventory__device, $nextPageAvailable], JSON_FORCE_OBJECT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
+echo json_encode(
+    [$inventory__device, $nextPageAvailable],
+    JSON_FORCE_OBJECT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+);
