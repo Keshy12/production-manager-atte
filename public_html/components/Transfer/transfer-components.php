@@ -1,20 +1,23 @@
 <?php
 use Atte\DB\MsaDB;
 use Atte\Utils\BomRepository;
+use Atte\Utils\CommissionRepository;
 
-$MsaDB = Atte\DB\MsaDB::getInstance();
-$MsaDB -> db -> beginTransaction();
+$MsaDB = MsaDB::getInstance();
+$MsaDB->db->beginTransaction();
 
-//Get and filter components and commissions
+// Get and filter components and commissions
 $components = isset($_POST["components"]) ? array_filter($_POST["components"]) : "";
 $commissions = isset($_POST["commissions"]) ? array_filter($_POST["commissions"]) : "";
+$existingCommissions = isset($_POST["existingCommissions"]) ? array_filter($_POST["existingCommissions"]) : [];
+$existingCommissionsIds = array_column($existingCommissions, 0, 3);
 
 $userid = $_SESSION["userid"];
 $now = date("Y/m/d H:i:s", time());
 
-//Warehouse that components are transfered from
+// Warehouse that components are transferred from
 $transferFrom = $_POST["transferFrom"];
-//Warehouse that is being transfered components
+// Warehouse that is being transferred components
 $transferTo = $_POST["transferTo"];
 
 function getBomValues($bomType, $bomId, $bomVer, $bomLamId) {
@@ -30,14 +33,14 @@ function getBomValues($bomType, $bomId, $bomVer, $bomLamId) {
     return $bomValues;
 }
 
+$commissionRepository = new CommissionRepository($MsaDB);
+$bomRepository = new BomRepository($MsaDB);
+
 $commissionResult = [];
-// In case of existing commissions
 if (!empty($commissions)) {
     $comment = "Przekazanie materiałów do zlecenia";
-    //Input type: Przekazanie materiałów do produkcji
     $input_type_id = 8;
-    $bomRepository = new BomRepository($MsaDB);
-    foreach ($commissions as $commission) {
+    foreach ($commissions as $index => $commission) {
         $type = $commission['deviceType'];
         $priorityId = $commission['priorityId'];
         $qty = $commission['quantity'];
@@ -49,11 +52,22 @@ if (!empty($commissions)) {
                                                         Unable to proceed with the production.");
         $bom = $bomsFound[0];
         $bomId = $bom->id;
-        $commission_id = $MsaDB -> insert("commission__list", 
-                ["user_id", "magazine_from", "magazine_to", "bom_" . $type . "_id", "quantity", "timestamp_created", "state_id", "priority"], 
+
+        if (isset($existingCommissionsIds[$index])) {
+            $existingId = $existingCommissionsIds[$index];
+            $commissionObj = $commissionRepository->getCommissionById($existingId);
+            $commissionObj->addToQuantity($qty);
+            $newQty = $commissionObj->commissionValues['quantity'];
+            $commission_id = $existingId;
+        } else {
+            $commission_id = $MsaDB->insert("commission__list",
+                ["user_id", "magazine_from", "magazine_to", "bom_" . $type . "_id", "quantity", "timestamp_created", "state_id", "priority"],
                 [$userid, $transferFrom, $transferTo, $bomId, $qty, $now, '1', $priorityId]
             );
-        $bom -> getNameAndDescription();
+            $newQty = $qty;
+        }
+
+        $bom->getNameAndDescription();
         $commissionResult[] = [
             "priorityColor" => $commission["priorityColor"],
             "receivers" => $commission["receivers"],
@@ -61,17 +75,19 @@ if (!empty($commissions)) {
             "deviceDescription" => $bom->description,
             "laminate" => $bom->laminateName ?? "",
             "version" => $bom->version ?? "",
-            "quantity" => $qty
+            "quantity" => $newQty
         ];
-        $receivers = $commission['receiversIds'];
-        foreach ($receivers as $user) {
-            $MsaDB -> insert("commission__receivers", ["commission_id", "user_id"], [$commission_id, $user]);
+
+        if (!isset($existingCommissionsIds[$index])) {
+            $receivers = $commission['receiversIds'];
+            foreach ($receivers as $user) {
+                $MsaDB->insert("commission__receivers", ["commission_id", "user_id"], [$commission_id, $user]);
+            }
         }
     }
 }
 
 $componentsResult = [];
-//Input type: Przekazanie materiałow pomiedzy magazynami
 $input_type_id = 2;
 $comment = "Przekazanie materiałów";
 if (!empty($components)) {
@@ -80,8 +96,8 @@ if (!empty($components)) {
         $deviceId = $component['componentId'];
         $qty = $component['transferQty'];
         $commission_id = $commission_id ?? null;
-        $MsaDB -> insert("inventory__".$type, [$type."_id", "commission_id", "user_id", "sub_magazine_id", "quantity", "timestamp", "input_type_id", "comment"], [$deviceId, $commission_id, $userid, $transferFrom, $qty*-1, $now, $input_type_id, $comment]);
-        $MsaDB -> insert("inventory__".$type, [$type."_id", "commission_id", "user_id", "sub_magazine_id", "quantity", "timestamp", "input_type_id", "comment"], [$deviceId, $commission_id, $userid, $transferTo, $qty, $now, $input_type_id, $comment]);
+        $MsaDB->insert("inventory__".$type, [$type."_id", "commission_id", "user_id", "sub_magazine_id", "quantity", "timestamp", "input_type_id", "comment"], [$deviceId, $commission_id, $userid, $transferFrom, $qty*-1, $now, $input_type_id, $comment]);
+        $MsaDB->insert("inventory__".$type, [$type."_id", "commission_id", "user_id", "sub_magazine_id", "quantity", "timestamp", "input_type_id", "comment"], [$deviceId, $commission_id, $userid, $transferTo, $qty, $now, $input_type_id, $comment]);
         $componentsResult[] = [
             "deviceName" => $component['componentName'],
             "deviceDescription" => $component['componentDescription'],
@@ -92,4 +108,4 @@ if (!empty($components)) {
 
 echo json_encode([$commissionResult, $componentsResult], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
 
-$MsaDB -> db -> commit();
+$MsaDB->db->commit();

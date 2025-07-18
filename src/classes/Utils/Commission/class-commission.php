@@ -64,5 +64,12 @@ class Commission
             $MsaDB -> insert('commission__receivers', ['commission_id', 'user_id'], [$id, $receiver]);
         }
     }
-
+    public function addToQuantity($amount) {
+        $currentQty = $this->commissionValues['quantity'];
+        $newQty = $currentQty + $amount;
+        $id = $this->commissionValues['id'];
+        $this->MsaDB->update('commission__list', ['quantity' => $newQty], 'id', $id);
+        $this->commissionValues['quantity'] = $newQty;
+        $this->updateStateIdAuto();
+    }
 }
