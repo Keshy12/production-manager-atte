@@ -34,7 +34,7 @@ function getUsedComponents($user, $componentType) {
     foreach($allBomIds as $bomId) {
         $bom = $bomRepo->getBomById($componentType, $bomId);
         $usedComponents = $bom -> getComponents(1);
-        $usedComponentIds = [
+        $usedComponentsIds = [
             "sku" => [],
             "tht" => [],
             "smd" => [],

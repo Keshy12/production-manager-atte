@@ -18,16 +18,16 @@ $used__smd = $user -> getDevicesUsed("smd");
 
 ?>
 <select id="list__sku" hidden><!--sku list-->
-    <?= $selectRenderer -> renderSKUSelect('', $available['sku']) ?>
+    <?= $selectRenderer -> renderSKUSelect(used__sku: $available['sku']) ?>
 </select>
 <select id="list__tht" hidden><!--tht list-->
-    <?= $selectRenderer -> renderTHTSelect('', $available['tht']) ?>
+    <?= $selectRenderer -> renderTHTSelect(used__tht: $available['tht']) ?>
 </select>
 <select id="list__smd" hidden><!--smd list-->
-    <?= $selectRenderer -> renderSMDSelect('', $available['smd']) ?>
+    <?= $selectRenderer -> renderSMDSelect(used__smd: $available['smd']) ?>
 </select>
 <select id="list__parts" hidden><!--parts list-->
-    <?= $selectRenderer -> renderPartsSelect('', $available['parts']) ?>
+    <?= $selectRenderer -> renderPartsSelect(used__parts: $available['parts']) ?>
 </select>
 
 <div class="d-flex flex-column align-items-center justify-content-center mt-4">
@@ -54,7 +54,7 @@ $used__smd = $user -> getDevicesUsed("smd");
                 data-selected-text-format="count > 3"
                 class="form-control selectpicker" 
                 multiple>
-            <?= $selectRenderer -> renderPartsSelect($available__parts) ?>           
+            <?= $selectRenderer -> renderPartsSelect(used__parts: $available['parts']) ?>
         </select>
     </div>
     <div class="d-flex justify-content-center mt-4">
@@ -77,6 +77,3 @@ $used__smd = $user -> getDevicesUsed("smd");
 </div>
 
 <script src="http://<?=BASEURL?>/public_html/components/profile/warehouse/warehouse-view.js"></script>
-
-<
-

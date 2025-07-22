@@ -19,6 +19,7 @@ $list__device = $MsaDB -> readIdName('list__'.$deviceType);
 $list__device_desc = $MsaDB -> readIdName('list__'.$deviceType, 'id', 'description');
 
 $components = empty($components) ? [] : $components;
+$selected = array_map('intval', $components);
 
 $components = array_map(function ($deviceId) use ($deviceType) {
     return "{$deviceType}_id = " . intval($deviceId);
@@ -47,6 +48,17 @@ foreach($queryResult as $row) {
     $result[$deviceId]['componentName'] = $list__device[$deviceId];
     $result[$deviceId]['componentDescription'] = $list__device_desc[$deviceId];
     $result[$deviceId]['sumQuantity'] = $quantity+0;
+}
+
+foreach ($selected as $deviceId) {
+    if (!isset($result[$deviceId])) {
+        $result[$deviceId] = [
+            'deviceType'           => $deviceType,
+            'componentName'        => $list__device[$deviceId] ?? '',
+            'componentDescription' => $list__device_desc[$deviceId] ?? '',
+            'sumQuantity'          => 0,
+        ];
+    }
 }
 
 echo json_encode([$result, $nextPageAvailable], JSON_FORCE_OBJECT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
