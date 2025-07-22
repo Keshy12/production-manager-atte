@@ -9,6 +9,7 @@ $selectRenderer = new SelectRenderer($MsaDB);
 
 // $available is getting data from get-available-components-func.php
 $available = [];
+$user = null;
 include('get-available-components-func.php');
 
 $used__sku = $user -> getDevicesUsed("sku");
@@ -18,25 +19,25 @@ $used__smd = $user -> getDevicesUsed("smd");
 
 ?>
 <select id="list__sku" hidden><!--sku list-->
-    <?= $selectRenderer -> renderSKUSelect(used__sku: $available['sku']) ?>
+    <?php $selectRenderer -> renderSKUSelect(used__sku: $available['sku']) ?>
 </select>
 <select id="list__tht" hidden><!--tht list-->
-    <?= $selectRenderer -> renderTHTSelect(used__tht: $available['tht']) ?>
+    <?php $selectRenderer -> renderTHTSelect(used__tht: $available['tht']) ?>
 </select>
 <select id="list__smd" hidden><!--smd list-->
-    <?= $selectRenderer -> renderSMDSelect(used__smd: $available['smd']) ?>
+    <?php $selectRenderer -> renderSMDSelect(used__smd: $available['smd']) ?>
 </select>
 <select id="list__parts" hidden><!--parts list-->
-    <?= $selectRenderer -> renderPartsSelect(used__parts: $available['parts']) ?>
+    <?php $selectRenderer -> renderPartsSelect(used__parts: $available['parts']) ?>
 </select>
 
 <div class="d-flex flex-column align-items-center justify-content-center mt-4">
     <div class="d-flex w-75">
         <div class="btn-group" role="group">
-            <button type="button" value="sku" class="magazineoption btn btn-outline-secondary">SKU</option>
-            <button type="button" value="tht" class="magazineoption btn btn-outline-secondary">THT</option>
-            <button type="button" value="smd" class="magazineoption btn btn-outline-secondary">SMD</option>
-            <button type="button" value="parts" class="magazineoption btn btn-secondary">Parts</option>
+            <button type="button" value="sku" class="magazineoption btn btn-outline-secondary">SKU</button>
+            <button type="button" value="tht" class="magazineoption btn btn-outline-secondary">THT</button>
+            <button type="button" value="smd" class="magazineoption btn btn-outline-secondary">SMD</button>
+            <button type="button" value="parts" class="magazineoption btn btn-secondary">Parts</button>
         </div>
         <select id="magazinecomponent" 
                 data-title="Typ:" 
