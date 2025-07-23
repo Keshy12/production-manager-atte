@@ -1,7 +1,14 @@
-
-function generateLastProduction(deviceId, lastId){
-    $("#lastProduction").load('../public_html/components/production/last-production-table.php', 
-    {deviceType: 'smd', deviceId: deviceId, lastId: lastId});
+function generateLastProduction(deviceId, lastId, lastIdRange){
+    let data = {deviceType: 'smd', deviceId: deviceId};
+    if (lastIdRange) {
+        data.lastIdRange = lastIdRange;
+    } else if (lastId) {
+        data.lastId = lastId;
+    }
+    $("#lastProduction").load('../public_html/components/production/last-production-table.php', data, function() {
+        // Update button state after table loads
+        updateRollbackButtonState();
+    });
 }
 
 function generateVersionSelect(possibleVersions){
@@ -13,7 +20,7 @@ function generateVersionSelect(possibleVersions){
         $("#version").append(option);
         $("#version").selectpicker('destroy');
     } else {
-        for (let version_id in possibleVersions) 
+        for (let version_id in possibleVersions)
         {
             let version = possibleVersions[version_id][0];
             let option = "<option value='"+version+"'>"+version+"</option>";
@@ -22,7 +29,6 @@ function generateVersionSelect(possibleVersions){
     }
     $("#version").selectpicker('refresh');
 }
-
 
 function generateLaminateSelect(possibleLaminates){
     if(Object.keys(possibleLaminates).length == 1) {
@@ -35,7 +41,7 @@ function generateLaminateSelect(possibleLaminates){
         $("#laminate").selectpicker('');
         generateVersionSelect(possibleLaminates[laminate_id]['versions']);
     } else {
-        for (let laminate_id in possibleLaminates) 
+        for (let laminate_id in possibleLaminates)
         {
             let laminate_name = possibleLaminates[laminate_id][0];
             let versions = JSON.stringify(possibleLaminates[laminate_id]['versions']);
@@ -44,6 +50,71 @@ function generateLaminateSelect(possibleLaminates){
         }
     }
     $("#laminate").selectpicker('refresh');
+}
+
+function rollbackLastProduction() {
+    let deviceId = $("#list__device").val();
+    if (!deviceId) {
+        alert("Najpierw wybierz urządzenie");
+        return;
+    }
+
+    // Get highlighted row IDs
+    let highlightedIds = [];
+    $('.highlighted-row').each(function() {
+        highlightedIds.push($(this).data('row-id'));
+    });
+
+    if (highlightedIds.length === 0) {
+        alert("Brak zaznaczonych wpisów do cofnięcia");
+        return;
+    }
+
+    if (!confirm("Czy na pewno chcesz cofnąć zaznaczone wpisy produkcji (" + highlightedIds.length + " szt.)?")) {
+        return;
+    }
+
+    $("#rollbackBtn").html("Cofanie...").prop("disabled", true);
+
+    $.ajax({
+        type: "POST",
+        url: "../public_html/components/production/rollback-production.php",
+        data: {
+            deviceType: 'smd',
+            deviceId: deviceId,
+            rollbackIds: highlightedIds.join(',')
+        },
+        success: function(data) {
+            const result = JSON.parse(data);
+            $("#rollbackBtn").html("Cofnij ostatnią").prop("disabled", true);
+
+            if (result.success) {
+                generateLastProduction(deviceId, null, result.rollbackIdRange);
+                $("#alerts").empty();
+                $("#alerts").append('<div class="alert alert-success alert-dismissible fade show" role="alert">' +
+                    result.message +
+                    '<button type="button" class="close" data-dismiss="alert">&times;</button></div>');
+
+                if (result.alerts && result.alerts.length > 0) {
+                    result.alerts.forEach(function(alert) {
+                        $("#alerts").append(alert);
+                    });
+                }
+            } else {
+                $("#alerts").empty();
+                $("#alerts").append('<div class="alert alert-danger alert-dismissible fade show" role="alert">' +
+                    result.message +
+                    '<button type="button" class="close" data-dismiss="alert">&times;</button></div>');
+            }
+        },
+        error: function() {
+            $("#rollbackBtn").html("Cofnij ostatnią").prop("disabled", true);
+            $("#alerts").empty();
+            $("#alerts").append('<div class="alert alert-danger alert-dismissible fade show" role="alert">' +
+                'Błąd podczas cofania produkcji' +
+                '<button type="button" class="close" data-dismiss="alert">&times;</button></div>');
+        }
+    });
 }
 
 $("#list__device").change(function(){
@@ -81,11 +152,15 @@ $("#form").submit(function(e) {
         success: function(data)
         {
             const result = JSON.parse(data);
-            let lastId = result[0];
-            let alerts = result[1];
+            let firstId = result[0];
+            let lastId = result[1];
+            let alerts = result[2];
             $("#send").html("Wyślij");
             $("#send").prop("disabled", false);
-            generateLastProduction($("#list__device option:selected").val(), lastId);
+
+            // Create ID range for highlighting
+            let idRange = (firstId === lastId) ? firstId : firstId + '-' + lastId;
+            generateLastProduction($("#list__device option:selected").val(), null, idRange);
 
             $("#alerts").empty();
 
@@ -96,7 +171,21 @@ $("#form").submit(function(e) {
     });
 });
 
+function updateRollbackButtonState() {
+    var highlightedRows = $('.highlighted-row').length;
+    var $rollbackBtn = $('#rollbackBtn');
+
+    if (highlightedRows > 0) {
+        $rollbackBtn.prop('disabled', false).removeClass('btn-secondary').addClass('btn-warning');
+        $rollbackBtn.text('Cofnij zaznaczone (' + highlightedRows + ')');
+    } else {
+        $rollbackBtn.prop('disabled', true).removeClass('btn-warning').addClass('btn-secondary');
+        $rollbackBtn.text('Cofnij ostatnią');
+    }
+}
+
 $(document).ready(function(){
+    updateRollbackButtonState();
     let autoSelectValues = JSON.parse($("#list__device").attr("data-auto-select"));
     if(autoSelectValues.length) {
         $("#list__device").selectpicker('val', autoSelectValues[0]).change();

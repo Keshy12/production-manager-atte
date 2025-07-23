@@ -77,7 +77,7 @@ $used__smd = $user -> getDevicesUsed("smd");
             <input class="form-control" type="date" name="prod_date" id="date">
         </div>
         <div class="d-flex align-items-center justify-content-center">
-        <button id="send" class="btn btn-primary" type="submit">Wyślij</button>
+            <button id="send" class="btn btn-primary" type="submit">Wyślij</button>
         </div>
     </form>
 </div>
