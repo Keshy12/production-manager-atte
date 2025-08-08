@@ -46,11 +46,37 @@ class SkuProductionProcessor {
                 $idToDel = $eventId;
             }
 
+            // Validate deviceId before using it in SQL query
+            if (empty($deviceId) || !is_numeric($deviceId)) {
+                $exception = new Exception("Invalid or empty deviceId: " . var_export($deviceId, true), 2);
+                if ($isResolving) {
+                    $this->notificationRepository->createNotificationFromException($exception, $row[1], $this->flowpinQueryTypeId);
+                } else {
+                    $this->notificationRepository->createNotificationFromException($exception, $row, $this->flowpinQueryTypeId);
+                }
+                $result[$idToDel] = ["SELECT 1"];
+                continue;
+            }
+
             // Check if SKU exists and insert if not
-            $MsaId = $this->MsaDB->query("SELECT id FROM list__sku WHERE id = $deviceId", PDO::FETCH_COLUMN);
+            $MsaId = $this->MsaDB->query("SELECT id FROM list__sku WHERE id = " . (int)$deviceId, PDO::FETCH_COLUMN);
             if (empty($MsaId)) {
-                $newSKU = $this->FlowpinDB->query("SELECT Symbol, Description FROM ProductTypes WHERE Id = $deviceId")[0];
-                $this->MsaDB->insert("list__sku", ["id", "name", "description", "isActive"], [$deviceId, $newSKU["Symbol"], $newSKU["Description"], 1]);
+                try {
+                    $newSKU = $this->FlowpinDB->query("SELECT Symbol, Description FROM ProductTypes WHERE Id = " . (int)$deviceId);
+                    if (empty($newSKU)) {
+                        throw new Exception("SKU with ID $deviceId not found in FlowPin database", 3);
+                    }
+                    $newSKU = $newSKU[0];
+                    $this->MsaDB->insert("list__sku", ["id", "name", "description", "isActive"], [$deviceId, $newSKU["Symbol"], $newSKU["Description"], 1]);
+                } catch (\Throwable $exception) {
+                    if ($isResolving) {
+                        $this->notificationRepository->createNotificationFromException($exception, $row[1], $this->flowpinQueryTypeId);
+                    } else {
+                        $this->notificationRepository->createNotificationFromException($exception, $row, $this->flowpinQueryTypeId);
+                    }
+                    $result[$idToDel] = ["SELECT 1"];
+                    continue;
+                }
             }
 
             try {
@@ -165,140 +191,234 @@ class SkuProductionProcessor {
 
     /**
      * Process production data and execute queries directly with better error handling
+     * Can handle single row or multiple rows with detailed results for each
      *
-     * @param array $production Production data from FlowPin
+     * @param array $production Production data from FlowPin (single row or array of rows)
      * @param string|null $productionDate Optional production date
-     * @return int The highest event ID processed successfully
+     * @return array Array containing overall results and individual row results
+     *               Format: [
+     *                  'overall' => ['success' => bool, 'processedCount' => int, 'errorCount' => int, 'highestEventId' => int],
+     *                  'results' => [eventId => ['success' => bool, 'eventId' => int, 'errorType' => string|null, 'errorMessage' => string|null, 'exception' => Exception|null]],
+     *                  'errorSummary' => ['DATABASE_ERROR' => int, 'PROCESSING_ERROR' => int, 'NO_DATA' => int, 'BOM_ERROR' => int, 'USER_ERROR' => int]
+     *               ]
      */
     public function processAndExecuteProduction(array $production, $productionDate = null) {
-        $queries = $this->processProduction($production, $productionDate);
-        $lastEventId = 0;
-        $processedEvents = [];
+        if (empty($production)) {
+            return [
+                'overall' => [
+                    'success' => false,
+                    'processedCount' => 0,
+                    'errorCount' => 1,
+                    'highestEventId' => 0
+                ],
+                'results' => [],
+                'errorSummary' => ['NO_DATA' => 1, 'DATABASE_ERROR' => 0, 'PROCESSING_ERROR' => 0, 'BOM_ERROR' => 0, 'USER_ERROR' => 0]
+            ];
+        }
 
-        // First, organize queries by event ID and type
-        $bulkOperations = [];
+        $queries = $this->processProduction($production, $productionDate);
+        $results = [];
+        $errorSummary = ['DATABASE_ERROR' => 0, 'PROCESSING_ERROR' => 0, 'NO_DATA' => 0, 'BOM_ERROR' => 0, 'USER_ERROR' => 0];
+        $processedCount = 0;
+        $errorCount = 0;
+        $highestEventId = 0;
 
         foreach ($queries as $eventId => $queryList) {
-            if ($queryList[0] === "SELECT 1") continue;
+            $result = [
+                'success' => false,
+                'eventId' => (int)$eventId,
+                'errorType' => null,
+                'errorMessage' => null,
+                'exception' => null,
+                'queriesExecuted' => 0,
+                'totalQueries' => count($queryList)
+            ];
 
-            foreach ($queryList as $query) {
-                // For each event, organize queries by table and operation type
-                if (preg_match('/INSERT INTO `([\w_]+)`/', $query, $tableMatch)) {
-                    $table = $tableMatch[1];
-
-                    // Extract column names
-                    preg_match('/\((.*?)\) VALUES/', $query, $columnsMatch);
-                    $columns = $columnsMatch[1];
-
-                    // Extract values
-                    preg_match('/VALUES \((.*)\)/', $query, $valuesMatch);
-                    if (isset($valuesMatch[1])) {
-                        if (!isset($bulkOperations[$table])) {
-                            $bulkOperations[$table] = [
-                                'columns' => $columns,
-                                'values' => [],
-                                'events' => []
-                            ];
-                        }
-                        $bulkOperations[$table]['values'][] = $valuesMatch[1];
-                        if (!in_array($eventId, $bulkOperations[$table]['events'])) {
-                            $bulkOperations[$table]['events'][] = $eventId;
-                        }
+            if ($queryList[0] === "SELECT 1") {
+                // This indicates a processing error occurred during processProduction()
+                // We need to analyze the original row to determine what type of error it was
+                $originalRow = null;
+                foreach ($production as $row) {
+                    if ($row[0] == $eventId) { // EventId is first element
+                        $originalRow = $row;
+                        break;
                     }
                 }
-                elseif (preg_match('/UPDATE `commission__list` SET (.*) WHERE `commission__list`\.`id` = (\d+)/', $query, $updateMatch)) {
-                    $table = 'commission__list_updates';
-                    $id = $updateMatch[2];
-                    $updates = $updateMatch[1];
 
-                    if (!isset($bulkOperations[$table])) {
-                        $bulkOperations[$table] = [
-                            'updates' => [],
-                            'events' => []
+                // Try to categorize the processing error by re-attempting the problematic steps
+                $categorizedError = $this->categorizeProcessingError($originalRow);
+                $result['errorType'] = $categorizedError['errorType'];
+                $result['errorMessage'] = $categorizedError['errorMessage'];
+                $result['exception'] = $categorizedError['exception'];
+                $errorSummary[$categorizedError['errorType']]++;
+                $errorCount++;
+            } else {
+                $eventSuccess = true;
+                $queriesExecuted = 0;
+                $queryErrorMessage = null;
+                $queryException = null;
+
+                foreach ($queryList as $queryIndex => $query) {
+                    try {
+                        $this->MsaDB->query($query);
+                        $queriesExecuted++;
+
+                    } catch (\Exception $e) {
+                        $eventSuccess = false;
+                        $queryErrorMessage = "Database error on query " . ($queryIndex + 1) . "/" . count($queryList) . ": " . $e->getMessage();
+                        $queryException = $e;
+                        break;
+                    }
+                }
+
+                $result['queriesExecuted'] = $queriesExecuted;
+
+                if ($eventSuccess) {
+                    $result['success'] = true;
+                    $processedCount++;
+                    $highestEventId = max($highestEventId, (int)$eventId);
+                } else {
+                    $result['errorType'] = 'DATABASE_ERROR';
+                    $result['errorMessage'] = $queryErrorMessage;
+                    $result['exception'] = $queryException;
+                    $errorSummary['DATABASE_ERROR']++;
+                    $errorCount++;
+                }
+            }
+
+            $results[$eventId] = $result;
+        }
+
+        // Handle case where no queries were generated (empty production data)
+        if (empty($queries)) {
+            $errorSummary['NO_DATA']++;
+            $errorCount++;
+        }
+
+        $overallSuccess = $processedCount > 0 && $errorCount === 0;
+
+        return [
+            'overall' => [
+                'success' => $overallSuccess,
+                'processedCount' => $processedCount,
+                'errorCount' => $errorCount,
+                'highestEventId' => $highestEventId,
+                'totalRows' => count($production)
+            ],
+            'results' => $results,
+            'errorSummary' => $errorSummary
+        ];
+    }
+
+    /**
+     * Categorize processing errors to determine proper action_needed_id
+     * This mimics the logic from processProduction to identify the specific failure point
+     *
+     * @param array $row Original production row data
+     * @return array Array with errorType, errorMessage, and exception
+     */
+    private function categorizeProcessingError($row) {
+        if (empty($row) || count($row) < 5) {
+            return [
+                'errorType' => 'PROCESSING_ERROR',
+                'errorMessage' => 'Invalid or empty production row data',
+                'exception' => new \Exception("Invalid or empty production row data", 0)
+            ];
+        }
+
+        list($eventId, $executionTimestamp, $userEmail, $deviceId, $quantity) = $row;
+
+        // Test 1: Check deviceId validity (BOM-related error)
+        if (empty($deviceId) || !is_numeric($deviceId)) {
+            return [
+                'errorType' => 'BOM_ERROR',
+                'errorMessage' => "Invalid or empty deviceId: " . var_export($deviceId, true),
+                'exception' => new \Exception("Invalid or empty deviceId: " . var_export($deviceId, true), 1) // Code 1 = BOM error
+            ];
+        }
+
+        // Test 2: Check if SKU exists in MSA database
+        try {
+            $MsaId = $this->MsaDB->query("SELECT id FROM list__sku WHERE id = " . (int)$deviceId, \PDO::FETCH_COLUMN);
+            if (empty($MsaId)) {
+                // Try to get from FlowPin to see if it exists there
+                try {
+                    $newSKU = $this->FlowpinDB->query("SELECT Symbol, Description FROM ProductTypes WHERE Id = " . (int)$deviceId);
+                    if (empty($newSKU)) {
+                        return [
+                            'errorType' => 'BOM_ERROR',
+                            'errorMessage' => "SKU with ID $deviceId not found in FlowPin database",
+                            'exception' => new \Exception("SKU with ID $deviceId not found in FlowPin database", 1) // Code 1 = BOM error
                         ];
                     }
-
-                    $bulkOperations[$table]['updates'][] = [
-                        'id' => $id,
-                        'data' => $updates
+                    // SKU exists in FlowPin but not in MSA - this is a synchronization issue (BOM-related)
+                    return [
+                        'errorType' => 'BOM_ERROR',
+                        'errorMessage' => "SKU with ID $deviceId exists in FlowPin but not in MSA database",
+                        'exception' => new \Exception("SKU with ID $deviceId exists in FlowPin but not in MSA database", 1) // Code 1 = BOM error
                     ];
-
-                    if (!in_array($eventId, $bulkOperations[$table]['events'])) {
-                        $bulkOperations[$table]['events'][] = $eventId;
-                    }
+                } catch (\Throwable $e) {
+                    return [
+                        'errorType' => 'BOM_ERROR',
+                        'errorMessage' => "Error checking FlowPin for SKU $deviceId: " . $e->getMessage(),
+                        'exception' => new \Exception("Error checking FlowPin for SKU $deviceId: " . $e->getMessage(), 1) // Code 1 = BOM error
+                    ];
                 }
             }
+        } catch (\Throwable $e) {
+            return [
+                'errorType' => 'DATABASE_ERROR',
+                'errorMessage' => "Database error checking SKU existence: " . $e->getMessage(),
+                'exception' => $e
+            ];
         }
 
-        // Now execute bulk operations with proper error handling
-        foreach ($bulkOperations as $table => $data) {
-            try {
-                if ($table === 'commission__list_updates') {
-                    // Handle commission list updates
-                    $updateCases = [
-                        'quantity_produced' => [],
-                        'state_id' => []
-                    ];
-
-                    $ids = [];
-                    foreach ($data['updates'] as $update) {
-                        $id = $update['id'];
-                        $ids[] = $id;
-
-                        if (preg_match('/`quantity_produced` = \'(\d+)\'/', $update['data'], $qtyMatch)) {
-                            $updateCases['quantity_produced'][] = "WHEN $id THEN {$qtyMatch[1]}";
-                        }
-
-                        if (preg_match('/state_id = \'(\d+)\'/', $update['data'], $stateMatch)) {
-                            $updateCases['state_id'][] = "WHEN $id THEN {$stateMatch[1]}";
-                        }
-                    }
-
-                    if (!empty($ids)) {
-                        $sql = "UPDATE `commission__list` SET ";
-                        $sets = [];
-
-                        foreach ($updateCases as $column => $cases) {
-                            if (!empty($cases)) {
-                                $sets[] = "`$column` = CASE `id` " . implode(' ', $cases) . " ELSE `$column` END";
-                            }
-                        }
-
-                        $sql .= implode(', ', $sets) . " WHERE `id` IN (" . implode(',', $ids) . ")";
-                        $this->MsaDB->query($sql);
-
-                        // Mark events as processed on success
-                        foreach ($data['events'] as $eventId) {
-                            $processedEvents[$eventId] = true;
-                        }
-                    }
-                }
-                else {
-                    // Handle inserts
-                    $chunks = array_chunk($data['values'], 100); // Split into chunks to avoid huge queries
-
-                    foreach ($chunks as $chunk) {
-                        $sql = "INSERT INTO `$table` ({$data['columns']}) VALUES (" . implode('), (', $chunk) . ")";
-                        $this->MsaDB->query($sql);
-                    }
-
-                    // Mark events as processed on success
-                    foreach ($data['events'] as $eventId) {
-                        $processedEvents[$eventId] = true;
-                    }
-                }
-            } catch (\Exception $e) {
-                // Log error but continue with other operations
-                error_log("Error executing bulk operation for table $table: " . $e->getMessage());
-                // Don't mark these events as processed
+        // Test 3: Check user validity (User-related error)
+        try {
+            $user = $this->userRepository->getUserByEmail($userEmail);
+            if (!$user || !$user->userId) {
+                return [
+                    'errorType' => 'USER_ERROR',
+                    'errorMessage' => "User with email '$userEmail' not found or invalid",
+                    'exception' => new \Exception("User with email '$userEmail' not found or invalid", 2) // Code 2 = User error
+                ];
             }
+        } catch (\Throwable $e) {
+            return [
+                'errorType' => 'USER_ERROR',
+                'errorMessage' => "Error retrieving user with email '$userEmail': " . $e->getMessage(),
+                'exception' => new \Exception("Error retrieving user with email '$userEmail': " . $e->getMessage(), 2) // Code 2 = User error
+            ];
         }
 
-        // Update lastEventId based on successfully processed events only
-        foreach (array_keys($processedEvents) as $eventId) {
-            $lastEventId = max($lastEventId, (int)$eventId);
+        // Test 4: Check BOM validity
+        try {
+            $bomRepository = new BomRepository($this->MsaDB);
+            $bomValues = [
+                "sku_id" => $deviceId,
+                "version" => null
+            ];
+            $bomsFound = $bomRepository->getBomByValues("sku", $bomValues);
+            if (count($bomsFound) !== 1) {
+                return [
+                    'errorType' => 'BOM_ERROR',
+                    'errorMessage' => "Cannot get BOM ID with provided values: type:sku, id:$deviceId, version:null. Found " . count($bomsFound) . " BOMs",
+                    'exception' => new \Exception("Cannot get BOM ID with provided values: type:sku, id:$deviceId, version:null", 1) // Code 1 = BOM error
+                ];
+            }
+        } catch (\Throwable $e) {
+            return [
+                'errorType' => 'BOM_ERROR',
+                'errorMessage' => "Error retrieving BOM for SKU $deviceId: " . $e->getMessage(),
+                'exception' => new \Exception("Error retrieving BOM for SKU $deviceId: " . $e->getMessage(), 1) // Code 1 = BOM error
+            ];
         }
 
-        return $lastEventId;
+        // If we got here, the error is something else entirely - critical error
+        return [
+            'errorType' => 'PROCESSING_ERROR',
+            'errorMessage' => "Unknown processing error for EventId $eventId",
+            'exception' => new \Exception("Unknown processing error for EventId $eventId", 0) // Code 0 = Critical error
+        ];
     }
 }
