@@ -6,17 +6,20 @@ use Atte\Utils\NotificationRepository;
 use Atte\Utils\UserRepository;
 use Atte\Utils\Locker;
 use Atte\Utils\Production\SkuProductionProcessor;
+use Atte\Api\GoogleSheets;
 
 set_time_limit(0);
 
-// Initialize logging
-$logFile = __DIR__ . '/logs/flowpin-sku-update-' . date('Y-m-d') . '.log';
-$errorLogFile = __DIR__ . '/logs/flowpin-sku-update-errors-' . date('Y-m-d') . '.log';
-$inventoryChangesFile = __DIR__ . '/logs/flowpin-inventory-changes-' . date('Y-m-d') . '.log';
-$logDir = dirname($logFile);
+$currentDate = date('Y-m-d');
+$currentHour = date('H');
+$logDir = __DIR__ . '/logs/' . $currentDate;
 if (!file_exists($logDir)) {
     mkdir($logDir, 0755, true);
 }
+
+$logFile = $logDir . '/flowpin-sku-update-' . $currentDate . '-' . $currentHour . 'h.log';
+$errorLogFile = $logDir . '/flowpin-sku-update-errors-' . $currentDate . '-' . $currentHour . 'h.log';
+$inventoryChangesFile = $logDir . '/flowpin-inventory-changes-' . $currentDate . '-' . $currentHour . 'h.log';
 
 // Track inventory changes by SKU ID for summing
 $inventoryChanges = [];
@@ -59,7 +62,7 @@ function trackInventoryChange($skuId, $quantity, $operation) {
 }
 
 function writeInventoryChanges() {
-    global $inventoryChangesFile, $inventoryChanges;
+    global $inventoryChangesFile, $inventoryChanges, $MsaDB;
 
     if (empty($inventoryChanges)) {
         writeLog("No inventory changes to write");
@@ -69,23 +72,46 @@ function writeInventoryChanges() {
     $timestamp = date('Y-m-d H:i:s');
     $content = "=== INVENTORY CHANGES SUMMARY - {$timestamp} ===" . PHP_EOL;
 
-    // Sort by SKU ID for easier reading
+    $list__sku = $MsaDB->readIdName(table: 'list__sku');
+
     ksort($inventoryChanges);
 
+    $sheetsData = [];
+    $sheetsData[] = ['INVENTORY CHANGES SUMMARY - ' . $timestamp, '', '', ''];
     foreach ($inventoryChanges as $skuId => $data) {
-        $content .= "SKU {$skuId}: TOTAL {$data['total_change']}" . PHP_EOL;
+        $skuName = $list__sku[$skuId] ?? 'Unknown SKU';
+        $content .= "SKU {$skuId} ({$skuName}): TOTAL {$data['total_change']}" . PHP_EOL;
 
         // Show breakdown by operation type
         foreach ($data['operations'] as $operation => $qty) {
             $content .= "  {$operation}: {$qty}" . PHP_EOL;
+            // Add to sheets data
+            $sheetsData[] = [$skuId, $skuName, $operation, $qty];
         }
         $content .= PHP_EOL;
     }
 
     $content .= "=== END INVENTORY CHANGES ===" . PHP_EOL . PHP_EOL;
 
+    // Write to local log file
     file_put_contents($inventoryChangesFile, $content, FILE_APPEND | LOCK_EX);
     writeLog("Inventory changes summary written with " . count($inventoryChanges) . " SKUs affected");
+
+    try {
+        $googleSheets = new GoogleSheets();
+        $spreadsheetId = '1AKW_-aw139SjcpXtPOJHCqKXh4Ihe2T-H4RKgLc_TIY';
+        $sheetName = 'MSA_flowpin_update_summary';
+
+        $result = $googleSheets->appendToSheet($spreadsheetId, $sheetName, 'A:D', $sheetsData);
+
+        if ($result !== false) {
+            writeLog("Successfully sent inventory changes to Google Sheets. Updated {$result} cells.");
+        } else {
+            writeLog("Failed to send inventory changes to Google Sheets", 'WARNING');
+        }
+    } catch (\Exception $e) {
+        writeLog("Error sending data to Google Sheets: " . $e->getMessage(), 'ERROR');
+    }
 }
 
 writeLog("=== Starting FlowPin SKU Update Process ===");
@@ -618,7 +644,6 @@ try {
     }
 
 } catch (\Throwable $exception) {
-    // Rollback current transaction if active
     if ($MsaDB->db->inTransaction()) {
         $MsaDB->db->rollBack();
         writeLog("Transaction rolled back due to critical error", 'ERROR');
