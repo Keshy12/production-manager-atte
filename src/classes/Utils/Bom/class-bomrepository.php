@@ -102,7 +102,7 @@ class BomRepository {
 
         $columns[] = "isActive";
         $placeholders[] = ":isActive";
-        $params[':isActive'] = 1;
+        $params[':isActive'] = 0;
 
         // Build the query
         $columnsStr = implode(', ', $columns);

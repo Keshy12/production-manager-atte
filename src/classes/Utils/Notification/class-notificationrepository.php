@@ -1,5 +1,5 @@
 <?php
-namespace Atte\Utils;  
+namespace Atte\Utils;
 
 use Atte\DB\MsaDB;
 use Atte\Utils\Notification;
@@ -21,6 +21,7 @@ class NotificationRepository {
             throw new \Exception("There is no notification with given id($id)");
         }
     }
+
     public function getUnresolvedNotifications(){
         $MsaDB = $this -> MsaDB;
         $dbresult = $MsaDB -> query("SELECT * FROM `notification__list` 
@@ -72,32 +73,30 @@ class NotificationRepository {
     }
 
     /**
-    * Create notification from given exception, or add queries to existing notification.
-    * @param \Throwable $exception Exception that will be used for creating notification.
-    * @param mixed $row Query that caused error.
-    * @param mixed $valueForAction Value to replace in queries when resolving.
-    * @param int|null $flowpinQueryTypeId Type of flowpin query that caused exception (for future resolvement).
-    * @return Notification Notification class
-    */
+     * Create notification from given exception, or add queries to existing notification.
+     * @param \Throwable $exception Exception that will be used for creating notification.
+     * @param mixed $row Query that caused error.
+     * @param int|null $flowpinQueryTypeId Type of flowpin query that caused exception (for future resolvement).
+     * @return Notification Notification class
+     */
     public function createNotificationFromException(\Throwable $exception, mixed $row = null, int|null $flowpinQueryTypeId = null) {
-        $exceptionClass = get_class($exception);
-        switch($exceptionClass) {
-            case "PDOException":
-                return $this -> createNotificationFromPDOException($exception, $row, $flowpinQueryTypeId);
-            case "Exception":
-                return $this -> createNotificationFromCustomException($exception, $row, $flowpinQueryTypeId);
-
-            default:
-                return $this -> createNotification(0, $row, NULL, serialize($exception), $flowpinQueryTypeId);
+        if ($exception instanceof \PDOException) {
+            return $this -> createNotificationFromPDOException($exception, $row, $flowpinQueryTypeId);
+        } elseif ($exception instanceof \Exception) {
+            return $this -> createNotificationFromCustomException($exception, $row, $flowpinQueryTypeId);
+        } else {
+            return $this -> createNotification(0, $row, NULL, serialize($exception), $flowpinQueryTypeId);
         }
     }
+
     private function createNotificationFromPDOException(\PDOException $exception, $row, $flowpinQueryTypeId) {
         $exceptionCode = $exception -> getCode();
         $exceptionValues = serialize($this->simplifyException($exception));
+
         switch($exceptionCode) {
             case 23000:
                 $actionNeeded = 1;
-                $valueForAction = $row["ProductTypeId"];
+                $valueForAction = $this->getValueForAction($row, 'ProductTypeId');
                 break;
 
             default:
@@ -106,21 +105,21 @@ class NotificationRepository {
                 break;
         }
         return $this -> createNotification($actionNeeded, $row, $valueForAction, $exceptionValues, $flowpinQueryTypeId);
-
     }
 
     private function createNotificationFromCustomException(\Exception $exception, $row, $flowpinQueryTypeId) {
         $exceptionCode = $exception -> getCode();
         $exceptionValues = $this->simplifyException($exception);
         $exceptionValues = serialize($exceptionValues);
+
         switch($exceptionCode) {
             case 1:
                 $actionNeeded = 1;
-                $valueForAction = $row["ProductTypeId"];
+                $valueForAction = $this->getValueForAction($row, 'ProductTypeId');
                 break;
             case 2:
                 $actionNeeded = 2;
-                $valueForAction = $row["ByUserEmail"];
+                $valueForAction = $this->getValueForAction($row, 'ByUserEmail');
                 break;
 
             default:
@@ -129,6 +128,25 @@ class NotificationRepository {
                 break;
         }
         return $this -> createNotification($actionNeeded, $row, $valueForAction, $exceptionValues, $flowpinQueryTypeId);
+    }
 
+    /**
+     * Safely extract value from row data structure
+     * @param mixed $row The row data (could be array or other structure)
+     * @param string $key The key to extract
+     * @return mixed The value or null if not found
+     */
+    private function getValueForAction($row, $key) {
+        if (is_array($row)) {
+            if (isset($row[$key])) {
+                return $row[$key];
+            }
+
+            if (isset($row[1]) && is_array($row[1]) && isset($row[1][$key])) {
+                return $row[1][$key];
+            }
+        }
+
+        return null;
     }
 }
