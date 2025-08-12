@@ -1,7 +1,7 @@
 function getFlowpinDate() {
     $.ajax({
         type: "POST",
-        url: "public_html/assets/layout/side-menu/get-flowpin-date.php",
+        url: "/atte_ms_new/public_html/assets/layout/side-menu/get-flowpin-date.php",
         data: {},
         success: function(data) {
             let result = JSON.parse(data);
@@ -14,7 +14,7 @@ function getFlowpinDate() {
 function getNotifications() {
     $.ajax({
         type: "POST",
-        url: "public_html/assets/layout/side-menu/get-unresolved-notifications.php",
+        url: "/atte_ms_new/public_html/assets/layout/side-menu/get-unresolved-notifications.php",
         data: {},
         success: function(data) {
             let result = JSON.parse(data);
