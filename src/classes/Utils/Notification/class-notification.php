@@ -259,9 +259,17 @@ class Notification {
         $actionNeededId = $notificationValues["action_needed_id"];
         $timestamp = $notificationValues["timestamp"];
         $alert = $alerts[$actionNeededId];
+
+        if ($actionNeededId == 1) {
+            $skuQuery = "SELECT name FROM list__sku WHERE id = " . intval($valueForAction);
+            $skuResult = $MsaDB->query($skuQuery, \PDO::FETCH_COLUMN);
+            if (!empty($skuResult)) {
+                $valueForAction = $skuResult[0];
+            }
+        }
+
         $message = $MsaDB -> query("SELECT description FROM notification__action_needed WHERE id = $actionNeededId", \PDO::FETCH_COLUMN)[0];
         return "<a class='dropdown-item $alert text-truncate mt-1' href='$link'><b>$valueForAction</b><span class='float-right'><small>$timestamp</small></span>
-        <br>$message</a>";
-
+                <br>$message</a>";
     }
 }

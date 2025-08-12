@@ -13,13 +13,7 @@ $notificationValues = array_values($notification -> notificationValues);
 list($id, $timestamp, $actionNeededId, $valueForAction, $isResolved) = $notificationValues;
 $queriesAffectedCount = $MsaDB -> query("SELECT COUNT(*) FROM `notification__queries_affected` WHERE notification_id = $id");
 
-if($actionNeededId == 1){
-    $MsaId = $MsaDB -> query("SELECT id FROM list__sku WHERE id = $valueForAction", PDO::FETCH_COLUMN);
-    if(empty($MsaId)) {
-        $newSKU = $FlowpinDB -> query("SELECT Symbol, Description FROM ProductTypes WHERE Id = $valueForAction")[0];
-        $MsaDB -> insert("list__sku", ["id", "name", "description", "isActive"], [$valueForAction, $newSKU["Symbol"], $newSKU["Description"], 1]);
-    }
-}
+
 $list__sku = $MsaDB -> readIdName("list__sku");
 
 $message = $MsaDB -> query("SELECT description FROM notification__action_needed 
@@ -50,7 +44,7 @@ if($isResolved) {
         <div class="w-50 text-center">
             <h3>Wartość potrzebna do akcji:</h3>
             <?=$valueForAction?><br>
-            <?php echo $actionNeededId == 1 ? $list__sku[$valueForAction] : "" ; ?>
+            <?php echo $actionNeededId == 1 ? ($list__sku[$valueForAction] ?? "SKU nie znalezione w bazie danych") : "" ; ?>
         </div>
     </div>
     <hr>
