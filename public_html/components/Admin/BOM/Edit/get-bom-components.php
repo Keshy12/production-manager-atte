@@ -3,7 +3,7 @@ use Atte\DB\MsaDB;
 use Atte\Utils\BomRepository;
 
 $MsaDB = MsaDB::getInstance();
-$bomRepository = new BomRepository($MsaDB); 
+$bomRepository = new BomRepository($MsaDB);
 
 $wasSuccessful = true;
 $errorMessage = '';
@@ -38,17 +38,27 @@ if($bomType == 'smd') {
     $bomValues['version'] = $_POST['bomValues'][2];
 }
 
-$createNewBom = $_POST['createBom'] == "true";
-if($createNewBom) {
-    $bomValues['deviceId'] = $_POST['bomValues'][0];
-    $bomRepository->createBom($bomType, $bomValues);
-    unset($bomValues['deviceId']);
-}
 $bomsFound = $bomRepository->getBomByValues($bomType, $bomValues);
 
 try {
-    if(count($bomsFound) < 1) throw new \Exception("Nie znaleziono BOM");
+    if(count($bomsFound) == 0) {
+        if($bomType == 'sku') {
+            $columns = ['sku_id', 'version', 'isActive'];
+            $values = [$bomValues['sku_id'], $bomValues['version'], 0];
+            $newBomId = $MsaDB->insert('bom__sku', $columns, $values);
+
+            $bomsFound = $bomRepository->getBomByValues($bomType, $bomValues);
+
+            if(count($bomsFound) != 1) {
+                throw new \Exception("Błąd podczas tworzenia nowego BOM dla SKU");
+            }
+        } else {
+            throw new \Exception("Nie znaleziono BOM");
+        }
+    }
+
     if(count($bomsFound) > 1) throw new \Exception("Znaleziono wiele BOM dla podanych parametrów");
+
 } catch(\Exception $e) {
     $wasSuccessful = false;
     $errorMessage = $e -> getMessage();
@@ -65,10 +75,10 @@ if($wasSuccessful) {
     $bomComponents = $bom -> getComponents(1);
 
     $generateComponentInfo = function(&$row) use (
-            $list__sku, $list__sku_desc,
-            $list__tht, $list__tht_desc,
-            $list__smd, $list__smd_desc,
-            $list__parts, $list__parts_desc) {
+        $list__sku, $list__sku_desc,
+        $list__tht, $list__tht_desc,
+        $list__smd, $list__smd_desc,
+        $list__parts, $list__parts_desc) {
         $componentType = $row['type'];
         $componentId = $row['componentId'];
         if(!isset(${'list__'.$componentType}[$componentId])
@@ -91,4 +101,4 @@ if($wasSuccessful) {
 }
 
 echo json_encode([$bomComponents, $bomId, $bomIsActive, $wasSuccessful, $errorMessage]
-                , JSON_FORCE_OBJECT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
+    , JSON_FORCE_OBJECT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);

@@ -114,6 +114,37 @@ function writeInventoryChanges() {
     }
 }
 
+/**
+ * Ensures SKU exists in MSA database, creates it from FlowPin if missing
+ * @param int $deviceId SKU ID to check/create
+ * @param MsaDB $MsaDB MSA database instance
+ * @param FlowpinDB $FlowpinDB FlowPin database instance
+ * @return bool True if SKU exists or was created successfully, false on error
+ */
+function ensureSkuExists($deviceId, $MsaDB, $FlowpinDB) {
+    $MsaId = $MsaDB->query("SELECT id FROM list__sku WHERE id = " . (int)$deviceId, PDO::FETCH_COLUMN);
+    if (!empty($MsaId)) {
+        return true;
+    }
+
+    try {
+        $newSKU = $FlowpinDB->query("SELECT Symbol, Description FROM ProductTypes WHERE Id = " . (int)$deviceId);
+        if (empty($newSKU)) {
+            writeLog("SKU with ID $deviceId not found in FlowPin database", 'ERROR');
+            return false;
+        }
+
+        $newSKU = $newSKU[0];
+        $MsaDB->insert("list__sku", ["id", "name", "description", "isActive"], [$deviceId, $newSKU["Symbol"], $newSKU["Description"], 1]);
+        writeLog("Created missing SKU: ID=$deviceId, Name={$newSKU["Symbol"]}", 'INFO');
+        return true;
+
+    } catch (\Throwable $exception) {
+        writeLog("Error creating SKU $deviceId: " . $exception->getMessage(), 'ERROR');
+        return false;
+    }
+}
+
 writeLog("=== Starting FlowPin SKU Update Process ===");
 
 $MsaDB = MsaDB::getInstance();
@@ -250,6 +281,10 @@ try {
 
             writeLog("Processing Sold SKU - EventId: {$eventId}, DeviceId: {$deviceId}, UserEmail: {$userEmail}, Qty: {$qty}");
 
+            if (!ensureSkuExists($deviceId, $MsaDB, $FlowpinDB)) {
+                throw new \Exception("Failed to ensure SKU $deviceId exists in database");
+            }
+
             $user = $userRepository->getUserByEmail($userEmail);
             $userId = $user->userId;
             $comment = "Finalizacja zamówienia, spakowano do wysyłki, EventId: " . $eventId;
@@ -324,6 +359,10 @@ try {
 
             writeLog("Processing Returned SKU - EventId: {$eventId}, DeviceId: {$deviceId}, UserEmail: {$userEmail}, Qty: {$qty}");
 
+            if (!ensureSkuExists($deviceId, $MsaDB, $FlowpinDB)) {
+                throw new \Exception("Failed to ensure SKU $deviceId exists in database");
+            }
+
             $user = $userRepository->getUserByEmail($userEmail);
             $userId = $user->userId;
             $comment = "Zwrot SKU od klienta, EventId: " . $eventId;
@@ -396,6 +435,10 @@ try {
 
             writeLog("Processing Moved SKU - EventId: {$eventId}, DeviceId: {$deviceId}, UserEmail: {$userEmail}, " .
                 "WarehouseOut: {$warehouseOut}, QtyOut: {$qtyOut}, WarehouseIn: {$warehouseIn}, QtyIn: {$qtyIn}");
+
+            if (!ensureSkuExists($deviceId, $MsaDB, $FlowpinDB)) {
+                throw new \Exception("Failed to ensure SKU $deviceId exists in database");
+            }
 
             $user = $userRepository->getUserByEmail($userEmail);
             $userId = $user->userId;
