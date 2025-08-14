@@ -3,7 +3,7 @@ use Atte\DB\MsaDB;
 
 $MsaDB = MsaDB::getInstance();
 
-$columns = ["login", "password", "name", "surname", "email", "isAdmin", "sub_magazine_id"];
+$columns = ["login", "password", "name", "surname", "email", "isAdmin", "isActive", "sub_magazine_id"];
 $values = [
     $_POST["login"],
     hash('sha256', $_POST["password"]),
@@ -11,6 +11,7 @@ $values = [
     $_POST["surname"],
     $_POST["email"],
     isset($_POST["isAdmin"]),
+    isset($_POST["isActive"]),
     $_POST["sub_magazine_id"]
 ];
 
@@ -28,10 +29,3 @@ catch (\Throwable $e)
 }
 
 echo json_encode([$resultMessage, $wasSuccessful, $insertedId], JSON_FORCE_OBJECT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
-
-
- 
-
-
-
-

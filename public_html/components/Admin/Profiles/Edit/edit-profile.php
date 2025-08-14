@@ -9,9 +9,9 @@ $userInfo = [
     "name" => $_POST["name"],
     "surname" => $_POST["surname"],
     "email" => $_POST["email"],
+    "isActive" => isset($_POST["isActive"]),
     "sub_magazine_id" => $_POST["sub_magazine_id"]
 ];
-
 
 $result = "Zedytowano dane pomyślnie";
 $wasSuccessful = true;
@@ -26,4 +26,3 @@ catch(\Throwable $e)
 }
 
 echo json_encode([$result, $wasSuccessful], JSON_FORCE_OBJECT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
-

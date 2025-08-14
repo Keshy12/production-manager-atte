@@ -7,7 +7,7 @@ $userName = $_POST["userName"] ?? "";
 $userPassword = hash('sha256',$_POST["userPassword"]) ?? "";
 
 $user = $MsaDB -> query("SELECT user_id, isAdmin FROM user 
-WHERE login = '$userName' AND password = '$userPassword'");
+WHERE login = '$userName' AND password = '$userPassword' AND isActive = 1");
 
 $location = "http://".BASEURL."/login";
 

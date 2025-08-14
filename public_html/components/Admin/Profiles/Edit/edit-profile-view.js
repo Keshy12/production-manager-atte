@@ -1,4 +1,4 @@
-let $formFields = $("#login, #name, #surname, #email, #list__submag");
+let $formFields = $("#login, #name, #surname, #email, #list__submag, #isActive");
 let $usedDevicesFields = $("#list__tht, #list__smd, .deleteAllDevices, #addSMD, #addTHT");
 
 let deviceProducedTemplate = $('script[data-template="deviceProduced"]').text().split(/\$\{(.+?)\}/g);
@@ -17,6 +17,7 @@ function fillForm(userInfo)
     $("#surname").val(userInfo['surname']);
     $("#email").val(userInfo['email']);
     $("#list__submag").val(userInfo['sub_magazine_id']).selectpicker('refresh');
+    $("#isActive").prop('checked', userInfo['isActive'] === 1);
 }
 
 function renderDevicesProduced(devicesUsed, deviceType)
@@ -81,6 +82,7 @@ function addProfile()
                 $formFields.attr('readonly', false);
                 $("#password").attr('readonly', false);
                 $("#password").attr('required', false);
+                $("#isActive").prop('disabled', false);
                 let option = '<option value="'+insertedId+'">'+fullName+'</option>';
                 $("#list__user").append(option).selectpicker("refresh").val(insertedId).selectpicker("refresh");
                 $("#passwordField, #isAdminField, #addProfileSubmit").hide();
@@ -132,6 +134,7 @@ $("#editProfileSubmit").click(function(e){
         {
             let userId = $("#user_id").val();
             $formFields.attr('readonly', false);
+            $("#isActive").prop('disabled', false);
             let result = JSON.parse(data);
             let resultMessage = result[0];
             let alertType = result[1] ? "alert-success" : "alert-danger";
@@ -156,6 +159,7 @@ $("#editProfileSubmit").click(function(e){
 $("#createNewProfile").click(function(){
     $formFields.prop('disabled', false);
     $formFields.val('');
+    $("#isActive").prop('checked', false);
     $("#list__tht, #list__smd").prop('disabled', true).selectpicker('refresh');
     $("#addSMD, #addTHT, .deleteAllDevices").prop('disabled', true);
     $("#thtUsed, #smdUsed").empty();
@@ -176,11 +180,26 @@ $("#addProfileSubmit").click(function(e){
         $("#addAdminProfileModal").modal('show');
         return;
     }
+
+    if(!$("#isActive").is(":checked")) {
+        $("#addInactiveUserModal").modal('show');
+        return;
+    }
+
+    addProfile();
+});
+
+$("#addInactiveUserSubmit").click(function(){
+    $("#addInactiveUserModal").modal('hide');
     addProfile();
 });
 
 $("#addAdminProfileSubmit").click(function(){
     $("#addAdminProfileModal").modal('hide');
+    if(!$("#isActive").is(":checked")) {
+        $("#addInactiveUserModal").modal('show');
+        return;
+    }
     addProfile();
 });
 
@@ -261,7 +280,7 @@ $("#removeDeviceProduced").click(function() {
                                 data-tokens="`+name+" "+description+`" 
                                 value="`+device_id+`">
                                 `+name+
-                            `</option>`;
+                    `</option>`;
                 $("#list__"+type).append(insert);
                 $("#list__"+type).selectpicker('refresh');
             }
@@ -330,7 +349,7 @@ $("#removeAllDevicesProduced").click(function(){
                                     data-tokens="`+name+" "+description+`" 
                                     value="`+device_id+`">
                                     `+name+
-                                `</option>`;
+                        `</option>`;
                     $("#list__"+type).append(insert);
                     $("#list__"+type).selectpicker('refresh');
                 }

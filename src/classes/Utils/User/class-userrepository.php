@@ -19,7 +19,9 @@ class UserRepository {
                         login, name, surname, 
                         email, isAdmin, 
                         sub_magazine_id as subMagazineId 
-                    FROM `user` ORDER BY user_id ASC";
+                    FROM `user` 
+                    WHERE isActive = 1 
+                    ORDER BY user_id ASC";
         $result = $MsaDB -> query($query, PDO::FETCH_CLASS, "Atte\\Utils\\User", [$MsaDB]);
         return $result;
     }
