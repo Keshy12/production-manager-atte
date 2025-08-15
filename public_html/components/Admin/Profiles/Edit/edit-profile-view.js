@@ -18,6 +18,9 @@ function fillForm(userInfo)
     $("#email").val(userInfo['email']);
     $("#list__submag").val(userInfo['sub_magazine_id']).selectpicker('refresh');
     $("#isActive").prop('checked', userInfo['isActive'] === 1);
+
+    // Save the loaded sub_magazine_id as previous value
+    $("#cancelNewMagazine").attr('data-previous-value', userInfo['sub_magazine_id'] || '');
 }
 
 function renderDevicesProduced(devicesUsed, deviceType)
@@ -79,6 +82,7 @@ function addProfile()
             if(wasSuccessful) {
                 let insertedId = result[2];
                 let fullName = $("#name").val()+" "+$("#surname").val();
+                let newSubMagId = result[3]; // New sub magazine ID if created
                 $formFields.attr('readonly', false);
                 $("#password").attr('readonly', false);
                 $("#password").attr('required', false);
@@ -91,16 +95,61 @@ function addProfile()
                 $('#list__smd_hidden option').clone().appendTo('#list__smd');
                 $("#list__tht, #list__smd").prop('disabled', false).selectpicker('refresh');
                 $("#addSMD, #addTHT, .deleteAllDevices").prop('disabled', false);
+
+                // If new sub magazine was created, add it to the select and update the form
+                if(newSubMagId) {
+                    let newMagName = $("#new_magazine_name").val();
+                    let nextNumber = $("#next_submag_number").val().toString().padStart(2, '0');
+                    let fullMagName = "SUB MAG " + nextNumber + ": " + newMagName;
+                    let magOption = '<option value="'+newSubMagId+'">'+fullMagName+'</option>';
+                    $("#list__submag option[value='create_new']").before(magOption);
+                    $("#list__submag").val(newSubMagId).selectpicker('refresh');
+                    // Update the previous value to the newly created magazine
+                    $("#cancelNewMagazine").attr('data-previous-value', newSubMagId);
+                    hideNewMagazineInput();
+                }
             }
         }
     });
 }
+
+function showNewMagazineInput() {
+    $("#magazineSelectContainer").hide();
+    $("#newMagazineContainer").show();
+    $("#new_magazine_name").prop('required', true);
+}
+
+function hideNewMagazineInput() {
+    $("#newMagazineContainer").hide();
+    $("#magazineSelectContainer").show();
+    $("#new_magazine_name").prop('required', false).val('');
+
+    // Restore previous value from the cancel button
+    let previousValue = $("#cancelNewMagazine").attr('data-previous-value') || '';
+    $("#list__submag").val(previousValue).selectpicker('refresh');
+}
+
+// Handle magazine select change
+$("#list__submag").change(function(){
+    if($(this).val() === 'create_new') {
+        showNewMagazineInput();
+    } else {
+        // Save the current selection as previous value when it's not "create_new"
+        $("#cancelNewMagazine").attr('data-previous-value', $(this).val() || '');
+    }
+});
+
+// Handle cancel new magazine
+$("#cancelNewMagazine").click(function(){
+    hideNewMagazineInput();
+});
 
 $("#list__user").change(function(){
     let userid = this.value;
     $("#passwordField, #isAdminField, #addProfileSubmit").hide();
     $("#password").attr('required', false);
     $("#thtUsed, #smdUsed").empty();
+    hideNewMagazineInput(); // Reset magazine input when changing user
     $.ajax({
         type: "POST",
         url: COMPONENTS_PATH+"/admin/profiles/edit/get-user-info.php",
@@ -152,6 +201,20 @@ $("#editProfileSubmit").click(function(e){
             let fullName = $("#name").val()+" "+$("#surname").val();
             $('#list__user option[value="'+userId+'"]').html(fullName);
             $('#list__user').selectpicker('refresh');
+
+            // Handle new sub magazine creation in edit mode
+            let newSubMagId = result[2];
+            if(newSubMagId) {
+                let newMagName = $("#new_magazine_name").val();
+                let nextNumber = $("#next_submag_number").val().toString().padStart(2, '0');
+                let fullMagName = "SUB MAG " + nextNumber + ": " + newMagName;
+                let magOption = '<option value="'+newSubMagId+'">'+fullMagName+'</option>';
+                $("#list__submag option[value='create_new']").before(magOption);
+                $("#list__submag").val(newSubMagId).selectpicker('refresh');
+                // Update the previous value to the newly created magazine
+                $("#cancelNewMagazine").attr('data-previous-value', newSubMagId);
+                hideNewMagazineInput();
+            }
         }
     });
 });
@@ -159,6 +222,7 @@ $("#editProfileSubmit").click(function(e){
 $("#createNewProfile").click(function(){
     $formFields.prop('disabled', false);
     $formFields.val('');
+    $("#list__submag").val('').selectpicker('refresh'); // Explicitly clear and refresh submag
     $("#isActive").prop('checked', false);
     $("#list__tht, #list__smd").prop('disabled', true).selectpicker('refresh');
     $("#addSMD, #addTHT, .deleteAllDevices").prop('disabled', true);
@@ -167,7 +231,10 @@ $("#createNewProfile").click(function(){
     $("#editProfileSubmit").hide();
     $("#passwordField, #isAdminField, #addProfileSubmit").show();
     $("#password").prop('required', true);
-    $("#list__submag, #list__user").selectpicker('refresh');
+    $("#list__user").selectpicker('refresh');
+    hideNewMagazineInput(); // Reset magazine input
+    // Clear the previous value since we're creating a new user
+    $("#cancelNewMagazine").removeAttr('data-previous-value');
 });
 
 $("#addProfileSubmit").click(function(e){

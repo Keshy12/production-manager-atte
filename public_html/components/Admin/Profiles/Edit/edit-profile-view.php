@@ -13,6 +13,18 @@ $list__submag = $MsaDB -> readIdName("magazine__list",
     "sub_magazine_id",
     "sub_magazine_name",
     "ORDER BY type_id, sub_magazine_id ASC");
+
+$existingSubMags = $MsaDB->query("SELECT sub_magazine_name FROM magazine__list WHERE type_id = 2", \PDO::FETCH_COLUMN);
+$maxNumber = 0;
+foreach($existingSubMags as $name) {
+    if(preg_match('/SUB MAG (\d+):/', $name, $matches)) {
+        $number = intval($matches[1]);
+        if($number > $maxNumber) {
+            $maxNumber = $number;
+        }
+    }
+}
+$nextSubMagNumber = $maxNumber + 1;
 ?>
 
 <div class="d-flex justify-content-center">
@@ -41,6 +53,7 @@ $list__submag = $MsaDB -> readIdName("magazine__list",
       class="container" id="userForm">
     <h1 class="text-center">Profil: <span id="userFullName"></span></h1>
     <input type="hidden" name="user_id" id="user_id">
+    <input type="hidden" name="next_submag_number" id="next_submag_number" value="<?= $nextSubMagNumber ?>">
     Login: <input id="login" name="login" class="form-control rounded mx-2" disabled required>
     <span id="passwordField" style="display: none;">
             Hasło: <input id="password" name="password" class="form-control rounded mx-2">
@@ -48,11 +61,30 @@ $list__submag = $MsaDB -> readIdName("magazine__list",
     Imię: <input id="name" name="name" class="form-control rounded mx-2" disabled required>
     Nazwisko: <input id="surname" name="surname" class="form-control rounded mx-2" disabled>
     Email: <input id="email" name="email" class="form-control rounded mx-2" disabled>
-    Magazyn: <select name="sub_magazine_id" data-style="" data-style-base="form-control"
-                     data-title="Wybierz magazyn..." id="list__submag"
-                     class="selectpicker form-control rounded mx-2" disabled required>
-        <?php $selectRenderer -> renderArraySelect($list__submag) ?>
-    </select>
+
+    <div id="magazineSelectContainer">
+        Magazyn: <select name="sub_magazine_id" data-style="" data-style-base="form-control"
+                         data-title="Wybierz magazyn..." id="list__submag"
+                         class="selectpicker form-control rounded mx-2" disabled required>
+            <?php $selectRenderer -> renderArraySelect($list__submag) ?>
+            <option value="create_new">====== Stwórz nowy ======</option>
+        </select>
+    </div>
+
+    <div id="newMagazineContainer" style="display: none;">
+        Magazyn:
+        <div class="input-group mx-2">
+            <div class="input-group-prepend">
+                <span class="input-group-text" id="subMagPrefix">SUB MAG <?= sprintf('%02d', $nextSubMagNumber) ?>:</span>
+            </div>
+            <input type="text" class="form-control" id="new_magazine_name" name="new_magazine_name" placeholder="Nazwa magazynu">
+        </div>
+        <div class="w-100 mx-2">
+            <small class="text-muted"><b>Uwaga!</b> Tworzysz magazyn kontrahenta. W celu stworzenia magazynu głownego ATTE, skontaktuj się z administratorem.</small>
+        </div>
+        <button type="button" class="btn btn-sm btn-secondary mx-2 mt-1" id="cancelNewMagazine">Anuluj</button>
+    </div>
+
     <span id="isAdminField" style="display: none;">
             Uprawnienia:
             <div class="form-check mx-2">
