@@ -38,7 +38,7 @@ $("#updateDataFromFlowpin").click(function(){
     $("#spinnerflowpin").show();
     $.ajax({
         type: "POST",
-        url: "src/cron/flowpin-sku-update.php",
+        url: "/atte_ms_new/src/cron/flowpin-sku-update.php",
         data: {},
         success: function(data) {
             if(data.length) alert(data);
