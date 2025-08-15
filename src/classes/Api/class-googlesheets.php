@@ -101,8 +101,9 @@ class GoogleSheets
             $params = [
                 'valueInputOption' => 'USER_ENTERED'
             ];
-            $result = $this->service->spreadsheets_values->clear($spreadsheetId, $sheetName."!".$range, $bodyClear);
-            $result = $this->service->spreadsheets_values->update($spreadsheetId, $sheetName."!".$range, $body, $params);
+            $range = empty($range) ? $range : "!".$range;
+            $result = $this->service->spreadsheets_values->clear($spreadsheetId, $sheetName.$range, $bodyClear);
+            $result = $this->service->spreadsheets_values->update($spreadsheetId, $sheetName.$range, $body, $params);
             return $result -> getUpdatedCells();
         } catch(\Exception $e) {
             if( 401 == $e->getCode() ) {

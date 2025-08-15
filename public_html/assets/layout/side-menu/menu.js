@@ -47,3 +47,17 @@ $("#updateDataFromFlowpin").click(function(){
         }
     });
 })
+
+$("#sendWarehousesToGS").click(function(){
+    $("#spinnerflowpin").show();
+    $.ajax({
+        type: "POST",
+        url: "/atte_ms_new/src/cron/warehouse-data-gs-upload.php",
+        data: {},
+        success: function(data) {
+            if(data.length) alert(data);
+            $("#spinnerflowpin").hide();
+            getFlowpinDate();
+        }
+    });
+})
