@@ -106,47 +106,93 @@ class MagazineActionHandler
 
         $userId = $_SESSION['user_id'] ?? 1;
 
-        $transferQueries = [
-            "INSERT INTO inventory__parts (parts_id, user_id, sub_magazine_id, quantity, timestamp, input_type_id, comment, isVerified)
-             SELECT parts_id, {$userId}, {$toMagazineId}, SUM(quantity), NOW(), input_type_id, 
-                    CONCAT('Transfer from magazine ', {$fromMagazineId}), 1
+        try {
+            $transferQueries = [
+                // Insert positive quantities to target magazine
+                "INSERT INTO inventory__parts (parts_id, user_id, sub_magazine_id, quantity, timestamp, input_type_id, comment, isVerified)
+             SELECT parts_id, {$userId}, {$toMagazineId}, SUM(quantity), NOW(), 2, 
+                    'Transfer z magazynu {$fromMagazineId}', 1
              FROM inventory__parts 
              WHERE sub_magazine_id = {$fromMagazineId}
-             GROUP BY parts_id, input_type_id
+             GROUP BY parts_id
              HAVING SUM(quantity) > 0",
 
-            "INSERT INTO inventory__smd (smd_id, user_id, sub_magazine_id, quantity, timestamp, input_type_id, comment, isVerified)
-             SELECT smd_id, {$userId}, {$toMagazineId}, SUM(quantity), NOW(), input_type_id, 
-                    CONCAT('Transfer from magazine ', {$fromMagazineId}), 1
+                // Insert negative quantities to source magazine
+                "INSERT INTO inventory__parts (parts_id, user_id, sub_magazine_id, quantity, timestamp, input_type_id, comment, isVerified)
+             SELECT parts_id, {$userId}, {$fromMagazineId}, -SUM(quantity), NOW(), 2, 
+                    'Transfer do magazynu {$toMagazineId}', 1
+             FROM inventory__parts 
+             WHERE sub_magazine_id = {$fromMagazineId}
+             GROUP BY parts_id
+             HAVING SUM(quantity) > 0",
+
+                // SMD - positive to target
+                "INSERT INTO inventory__smd (smd_id, user_id, sub_magazine_id, quantity, timestamp, input_type_id, comment, isVerified)
+             SELECT smd_id, {$userId}, {$toMagazineId}, SUM(quantity), NOW(), 2, 
+                    'Transfer z magazynu {$fromMagazineId}', 1
              FROM inventory__smd 
              WHERE sub_magazine_id = {$fromMagazineId}
-             GROUP BY smd_id, input_type_id
+             GROUP BY smd_id
              HAVING SUM(quantity) > 0",
 
-            "INSERT INTO inventory__tht (tht_id, user_id, sub_magazine_id, quantity, timestamp, input_type_id, comment, isVerified)
-             SELECT tht_id, {$userId}, {$toMagazineId}, SUM(quantity), NOW(), input_type_id, 
-                    CONCAT('Transfer from magazine ', {$fromMagazineId}), 1
+                // SMD - negative to source
+                "INSERT INTO inventory__smd (smd_id, user_id, sub_magazine_id, quantity, timestamp, input_type_id, comment, isVerified)
+             SELECT smd_id, {$userId}, {$fromMagazineId}, -SUM(quantity), NOW(), 2, 
+                    'Transfer do magazynu {$toMagazineId}', 1
+             FROM inventory__smd 
+             WHERE sub_magazine_id = {$fromMagazineId}
+             GROUP BY smd_id
+             HAVING SUM(quantity) > 0",
+
+                // THT - positive to target
+                "INSERT INTO inventory__tht (tht_id, user_id, sub_magazine_id, quantity, timestamp, input_type_id, comment, isVerified)
+             SELECT tht_id, {$userId}, {$toMagazineId}, SUM(quantity), NOW(), 2, 
+                    'Transfer z magazynu {$fromMagazineId}', 1
              FROM inventory__tht 
              WHERE sub_magazine_id = {$fromMagazineId}
-             GROUP BY tht_id, input_type_id
+             GROUP BY tht_id
              HAVING SUM(quantity) > 0",
 
-            "INSERT INTO inventory__sku (sku_id, user_id, sub_magazine_id, quantity, timestamp, input_type_id, comment, isVerified)
-             SELECT sku_id, {$userId}, {$toMagazineId}, SUM(quantity), NOW(), input_type_id, 
-                    CONCAT('Transfer from magazine ', {$fromMagazineId}), 1
+                // THT - negative to source
+                "INSERT INTO inventory__tht (tht_id, user_id, sub_magazine_id, quantity, timestamp, input_type_id, comment, isVerified)
+             SELECT tht_id, {$userId}, {$fromMagazineId}, -SUM(quantity), NOW(), 2, 
+                    'Transfer do magazynu {$toMagazineId}', 1
+             FROM inventory__tht 
+             WHERE sub_magazine_id = {$fromMagazineId}
+             GROUP BY tht_id
+             HAVING SUM(quantity) > 0",
+
+                // SKU - positive to target
+                "INSERT INTO inventory__sku (sku_id, user_id, sub_magazine_id, quantity, timestamp, input_type_id, comment, isVerified)
+             SELECT sku_id, {$userId}, {$toMagazineId}, SUM(quantity), NOW(), 2, 
+                    'Transfer z magazynu {$fromMagazineId}', 1
              FROM inventory__sku 
              WHERE sub_magazine_id = {$fromMagazineId}
-             GROUP BY sku_id, input_type_id
-             HAVING SUM(quantity) > 0"
-        ];
+             GROUP BY sku_id
+             HAVING SUM(quantity) > 0",
 
-        foreach ($transferQueries as $query) {
-            $this->MsaDB->query($query);
+                // SKU - negative to source
+                "INSERT INTO inventory__sku (sku_id, user_id, sub_magazine_id, quantity, timestamp, input_type_id, comment, isVerified)
+             SELECT sku_id, {$userId}, {$fromMagazineId}, -SUM(quantity), NOW(), 2, 
+                    'Transfer do magazynu {$toMagazineId}', 1
+             FROM inventory__sku 
+             WHERE sub_magazine_id = {$fromMagazineId}
+             GROUP BY sku_id
+             HAVING SUM(quantity) > 0"
+            ];
+
+            foreach ($transferQueries as $query) {
+                $result = $this->MsaDB->query($query);
+                if ($result === false) {
+                    throw new Exception('Błąd podczas transferu inwentarza');
+                }
+            }
+        } catch (Exception $e) {
+            throw $e;
         }
 
         return $targetMagazineResult[0]['sub_magazine_name'];
     }
-
     public function clearMagazineInventory(int $magazineId): void
     {
         $userId = $_SESSION['user_id'] ?? 1;
