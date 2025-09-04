@@ -14,6 +14,11 @@ $list__submag = $MsaDB -> readIdName("magazine__list",
     "sub_magazine_name",
     "ORDER BY type_id, sub_magazine_id ASC");
 
+$list__submag_isActive = $MsaDB -> readIdName("magazine__list",
+    "sub_magazine_id",
+    "isActive",
+    "ORDER BY type_id, sub_magazine_id ASC");
+
 $existingSubMags = $MsaDB->query("SELECT sub_magazine_name FROM magazine__list WHERE type_id = 2", \PDO::FETCH_COLUMN);
 $maxNumber = 0;
 foreach($existingSubMags as $name) {
@@ -66,7 +71,14 @@ $nextSubMagNumber = $maxNumber + 1;
         Magazyn: <select name="sub_magazine_id" data-style="" data-style-base="form-control"
                          data-title="Wybierz magazyn..." id="list__submag"
                          class="selectpicker form-control rounded mx-2" disabled required>
-            <?php $selectRenderer -> renderArraySelect($list__submag) ?>
+            <?php
+            foreach($list__submag as $key => $submag):
+                $disabled = $list__submag_isActive[$key] == 0 ? 'disabled' : '';
+                ?>
+                <option value="<?= htmlspecialchars($key) ?>" <?= $disabled ?>>
+                    <?= htmlspecialchars($submag)?>
+                </option>
+            <?php endforeach; ?>
             <option value="create_new">====== Stwórz nowy ======</option>
         </select>
     </div>

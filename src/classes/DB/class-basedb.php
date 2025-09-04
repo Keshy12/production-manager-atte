@@ -125,9 +125,9 @@ class BaseDB {
     * @param int $id Id to delete.
     * @return bool|object True on success, false on failure.
     */
-    public function deleteById(string $table, int $id) {
+    public function deleteById(string $table, int $id, string $idColumnName = "id") {
         $db = $this -> db;
-        $sql = "DELETE FROM `$table` WHERE `id` = $id";
+        $sql = "DELETE FROM `$table` WHERE `$idColumnName` = $id";
         $query = $db -> prepare($sql);
         return $query -> execute(); 
     }

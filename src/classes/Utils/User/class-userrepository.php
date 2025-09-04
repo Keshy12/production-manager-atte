@@ -50,5 +50,33 @@ class UserRepository {
         }
     }
 
+    /**
+     * Disable a user
+     * @param int $userId User ID
+     * @return bool Success status
+     */
+    public function disableUser(int $userId) {
+        $MsaDB = $this -> MsaDB;
+        return $MsaDB -> update(
+            'user',
+            ['isActive' => 0],
+            'user_id',
+            $userId
+        );
+    }
 
+    /**
+     * Enable a user
+     * @param int $userId User ID
+     * @return bool Success status
+     */
+    public function enableUser(int $userId) {
+        $MsaDB = $this -> MsaDB;
+        return $MsaDB -> update(
+            'user',
+            ['isActive' => 1],
+            'user_id',
+            $userId
+        );
+    }
 }

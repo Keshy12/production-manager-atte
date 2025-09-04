@@ -43,6 +43,9 @@ class ProductionManager {
             $user = $this->userRepository->getUserById($userId);
             $userInfo = $user->getUserInfo();
             $sub_magazine_id = $userInfo["sub_magazine_id"];
+            if($userInfo["magazine_isActive"] == 0) {
+                throw new \Exception("The magazine this user is on is not active.");
+            }
 
             // Build BOM filter values. SMD requires an additional laminate_id.
             $bomValues = [ $deviceType . "_id" => $deviceId, "version" => $version == 'n/d' ? null : $version];

@@ -21,32 +21,44 @@ function loadMagazine() {
             $("#previouspage").prop('disabled', page == 1);
             $("#nextpage").prop('disabled', !nextPageAvailable);
             Object.keys(items).map(function (item) {
-                let values = {key: item, 
-                              componentName: items[item].componentName,
-                              componentDescription: items[item].componentDescription,
-                              sumType1: items[item][1].typeQuantitySum,
-                              sumType2: items[item][2].typeQuantitySum,
-                              sumAll: items[item][1].typeQuantitySum + items[item][2].typeQuantitySum}
+                let values = {key: item,
+                    componentName: items[item].componentName,
+                    componentDescription: items[item].componentDescription,
+                    sumType1: items[item][1].typeQuantitySum,
+                    sumType2: items[item][2].typeQuantitySum,
+                    sumAll: items[item][1].typeQuantitySum + items[item][2].typeQuantitySum}
                 delete items[item][1].typeQuantitySum;
                 delete items[item][2].typeQuantitySum;
 
                 let renderedItem = warehouseTableItem.map(render(values)).join('');
                 let $renderedItem = $(renderedItem);
 
+                // Handle main warehouses
                 let mainWarehouses = items[item][1];
                 let $mainWarehouses = $renderedItem.find(".mainWarehouses");
+
                 for(const key in mainWarehouses)
                 {
-                    $mainWarehouses.append(mainWarehouses[key].name+": ");
-                    $mainWarehouses.append("<b>"+mainWarehouses[key].quantity+"</b><br>");
+                    let isActive = mainWarehouses[key].isActive;
+                    let warehouseHtml = mainWarehouses[key].name+": ";
+                    warehouseHtml += "<b>"+mainWarehouses[key].quantity+"</b><br>";
+
+                    if (!isActive) {
+                        warehouseHtml = '<span class="text-danger">' + warehouseHtml + '</span>';
+                    }
+
+                    $mainWarehouses.append(warehouseHtml);
                 }
+
                 let mainWarehousesJSON = JSON.stringify(mainWarehouses);
                 $mainWarehouses.append(`<button data-device_id='`+item+`' 
                 data-values='`+mainWarehousesJSON+`' 
                 class="btn btn-primary my-2 magazineCorrection">Korekta</button>`)
 
+                // Handle other warehouses
                 let otherWarehouses = items[item][2];
                 let $otherWarehouses = $renderedItem.find(".otherWarehouses");
+
                 for(const key in otherWarehouses)
                 {
                     if(otherWarehouses[key].quantity == 0)
@@ -54,13 +66,23 @@ function loadMagazine() {
                         delete otherWarehouses[key];
                         continue;
                     }
-                    $otherWarehouses.append(otherWarehouses[key].name+": ");
-                    $otherWarehouses.append("<b>"+otherWarehouses[key].quantity+"</b><br>");
+
+                    let isActive = otherWarehouses[key].isActive;
+                    let warehouseHtml = otherWarehouses[key].name+": ";
+                    warehouseHtml += "<b>"+otherWarehouses[key].quantity+"</b><br>";
+
+                    if (!isActive) {
+                        warehouseHtml = '<span class="text-danger">' + warehouseHtml + '</span>';
+                    }
+
+                    $otherWarehouses.append(warehouseHtml);
                 }
+
                 let otherWarehousesJSON = JSON.stringify(otherWarehouses);
                 $otherWarehouses.append(`<button data-device_id='`+item+`' 
                 data-values='`+otherWarehousesJSON+`' 
                 class="btn btn-primary my-2 magazineCorrection">Korekta</button>`)
+
                 $('#warehouseTable').append($renderedItem);
             });
         }

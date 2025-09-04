@@ -15,7 +15,7 @@ $currentMagazine = $isCurrUserAdmin ? '' : $currentUser -> subMagazineId;
 $list__warehouse = $MsaDB -> readIdName(table: 'magazine__list', 
                                         id: 'sub_magazine_id', 
                                         name: 'sub_magazine_name', 
-                                        add: 'ORDER BY type_id, sub_magazine_id ASC');
+                                        add: 'WHERE isActive = 1 ORDER BY type_id, sub_magazine_id ASC');
 $list__priority = array_reverse($MsaDB -> readIdName("commission__priority"), true);
 
 $allUsers = $userRepository -> getAllUsers();

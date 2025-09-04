@@ -12,7 +12,7 @@ $MsaDB->db->beginTransaction();
 
 try {
     // Get magazine list and current timestamp
-    $list__magazine = $MsaDB->readIdName("magazine__list", "sub_magazine_id", "sub_magazine_name", 'ORDER BY type_id, sub_magazine_id ASC');
+    $list__magazine = $MsaDB->readIdName("magazine__list", "sub_magazine_id", "sub_magazine_name", 'WHERE isActive = 1 ORDER BY type_id, sub_magazine_id ASC');
     $now = date("Y/m/d H:i:s", time());
     $types = [1 => "sku", 2 => "tht", 3 => "smd", 4 => "parts"];
 

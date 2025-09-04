@@ -1,14 +1,10 @@
 <?php
 use Atte\DB\MsaDB;
-use Atte\Utils\UserRepository;
 use Atte\Utils\BomRepository;
 
 $MsaDB = MsaDB::getInstance();
 
-$userRepository = new UserRepository($MsaDB);
-
-$user = $userRepository -> getUserById($_SESSION["userid"]);
-$userInfo = $user -> getUserInfo();
+// $userInfo defined in script that includes this file
 $userSubmagazineId = $userInfo["sub_magazine_id"];
 
 function getAvailableComponents($componentType, $userSubmagazineId) {

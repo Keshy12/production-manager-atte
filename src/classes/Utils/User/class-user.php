@@ -10,10 +10,10 @@ class User
     public int $userId;
     public string $login;
     public string $name;
-    public string $surname; 
+    public string $surname;
     public string $email;
     public bool $isAdmin;
-    public int $subMagazineId; 
+    public ?int $subMagazineId;
 
     public function __construct(BaseDB $MsaDB){
         $this->MsaDB = $MsaDB;
@@ -26,12 +26,17 @@ class User
     public function getUserInfo(){
         $MsaDB = $this -> MsaDB;
         $id = $this -> userId;
-        $sql = "SELECT * 
-                FROM user u 
-                JOIN magazine__list s 
-                ON u.sub_magazine_id = s.sub_magazine_id 
-                WHERE user_id = $id";
+        $sql = "SELECT u.*, 
+                   s.*,
+                   u.isActive as user_isActive,
+                   s.isActive as magazine_isActive
+            FROM user u 
+            JOIN magazine__list s 
+            ON u.sub_magazine_id = s.sub_magazine_id 
+            WHERE user_id = $id";
         $result = $MsaDB -> query($sql, PDO::FETCH_ASSOC);
+        // To avoid confusion, we remove isActive since it can mean both user and magazine
+        unset($result[0]['isActive']);
         return $result[0];
     }
 

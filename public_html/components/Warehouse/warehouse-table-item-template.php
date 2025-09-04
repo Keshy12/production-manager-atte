@@ -18,10 +18,10 @@
 <tr>
     <td class="tdcollapse"></td>
     <td class="tdcollapse">
-        <div class="collapse${key} collapse mx-1 mainWarehouses"></div>
+        <div class="collapse${key} collapse mx-1 mainWarehouses"><small class="text-muted">Wyłączone (czerwone) magazyny nie wliczają się do sumy.</small><br></div>
     </td>
     <td class="tdcollapse">
-        <div class="collapse${key} collapse mx-1 otherWarehouses"></div>
+        <div class="collapse${key} collapse mx-1 otherWarehouses"><small class="text-muted">Wyłączone (czerwone) magazyny nie wliczają się do sumy.</small><br></div>
     </td>
     <td class="tdcollapse"></td>
 </tr>

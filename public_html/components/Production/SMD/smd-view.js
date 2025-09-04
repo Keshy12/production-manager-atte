@@ -151,26 +151,53 @@ $("#form").submit(function(e) {
         data: $form.serialize(), // serializes the form's elements.
         success: function(data)
         {
-            const result = JSON.parse(data);
-            let firstId = result[0];
-            let lastId = result[1];
-            let alerts = result[2];
             $("#send").html("Wyślij");
             $("#send").prop("disabled", false);
-
-            // Create ID range for highlighting
-            let idRange = (firstId === lastId) ? firstId : firstId + '-' + lastId;
-            generateLastProduction($("#list__device option:selected").val(), null, idRange);
-
             $("#alerts").empty();
 
-            alerts.forEach(function(alert) {
-                $("#alerts").append(alert);
-            });
+            try {
+                const result = JSON.parse(data);
+                let firstId = result[0];
+                let lastId = result[1];
+                let alerts = result[2];
+
+                // Create ID range for highlighting
+                let idRange = (firstId === lastId) ? firstId : firstId + '-' + lastId;
+                generateLastProduction($("#list__device option:selected").val(), null, idRange);
+
+                alerts.forEach(function(alert) {
+                    $("#alerts").append(alert);
+                });
+            } catch (e) {
+                // If response is not JSON, treat it as an error message string
+                $("#alerts").append('<div class="alert alert-danger alert-dismissible fade show" role="alert">' +
+                    data +
+                    '<button type="button" class="close" data-dismiss="alert" aria-label="Close">' +
+                    '<span aria-hidden="true">&times;</span>' +
+                    '</button>' +
+                    '</div>');
+            }
+        },
+        error: function(xhr, status, error) {
+            $("#send").html("Wyślij");
+            $("#send").prop("disabled", false);
+            $("#alerts").empty();
+
+            // Handle HTTP error responses
+            let errorMessage = "Wystąpił błąd podczas przetwarzania żądania.";
+            if (xhr.responseText) {
+                errorMessage = xhr.responseText;
+            }
+
+            $("#alerts").append('<div class="alert alert-danger alert-dismissible fade show" role="alert">' +
+                errorMessage +
+                '<button type="button" class="close" data-dismiss="alert" aria-label="Close">' +
+                '<span aria-hidden="true">&times;</span>' +
+                '</button>' +
+                '</div>');
         }
     });
 });
-
 function updateRollbackButtonState() {
     var highlightedRows = $('.highlighted-row').length;
     var $rollbackBtn = $('#rollbackBtn');
