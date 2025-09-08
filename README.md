@@ -170,16 +170,9 @@ The system uses a comprehensive database schema with the following key tables:
 - SQL injection protection via prepared statements
 - CSRF protection
 
-## 🤝 Contributing
-
-1. Follow PSR-4 autoloading standards
-2. Use meaningful commit messages
-3. Test changes in development environment
-4. Update documentation for new features
-
 ## 📄 License
 
-[Specify your license here]
+This software is proprietary to [Company Name] and not intended for public use or distribution.
 
 ## 🆘 Support
 
@@ -188,4 +181,4 @@ For technical support or questions about the system, please contact the developm
 ---
 
 **⚠️ Note**: This is a production inventory management system designed for manufacturing environments. Ensure proper backup procedures and testing before deploying in production.
-```
+
