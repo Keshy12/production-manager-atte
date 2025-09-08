@@ -1,4 +1,3 @@
-```markdown
 # ATTE Production Manager
 
 A comprehensive inventory management system built with vanilla PHP, jQuery, and Bootstrap. This system is designed for manufacturing environments to track components, manage production workflows, and handle bill of materials (BOM) for both SMD and THT (through-hole) devices.
