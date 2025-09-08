@@ -100,7 +100,6 @@ mysql -u your_username -p your_database < atte_ms.sql
 │   ├── classes/         # PHP classes and utilities
 │   └── cron/           # Scheduled tasks
 ├── vendor/              # Composer dependencies
-├── atte_ms.sql         # Database schema
 └── composer.json       # Dependency configuration
 ```
 
