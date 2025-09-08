@@ -199,36 +199,36 @@ class MagazineActionHandler
 
         $clearQueries = [
             "INSERT INTO inventory__parts (parts_id, user_id, sub_magazine_id, quantity, timestamp, input_type_id, comment, isVerified)
-             SELECT parts_id, {$userId}, sub_magazine_id, -SUM(quantity), NOW(), input_type_id, 
-                    'Inventory cleared during magazine deactivation', 1
-             FROM inventory__parts 
-             WHERE sub_magazine_id = {$magazineId}
-             GROUP BY parts_id, input_type_id
-             HAVING SUM(quantity) > 0",
+         SELECT parts_id, {$userId}, sub_magazine_id, -SUM(quantity), NOW(), 3, 
+                'Inventory cleared during magazine deactivation', 1
+         FROM inventory__parts 
+         WHERE sub_magazine_id = {$magazineId}
+         GROUP BY parts_id
+         HAVING SUM(quantity) > 0",
 
             "INSERT INTO inventory__smd (smd_id, user_id, sub_magazine_id, quantity, timestamp, input_type_id, comment, isVerified)
-             SELECT smd_id, {$userId}, sub_magazine_id, -SUM(quantity), NOW(), input_type_id, 
-                    'Inventory cleared during magazine deactivation', 1
-             FROM inventory__smd 
-             WHERE sub_magazine_id = {$magazineId}
-             GROUP BY smd_id, input_type_id
-             HAVING SUM(quantity) > 0",
+         SELECT smd_id, {$userId}, sub_magazine_id, -SUM(quantity), NOW(), 3, 
+                'Inventory cleared during magazine deactivation', 1
+         FROM inventory__smd 
+         WHERE sub_magazine_id = {$magazineId}
+         GROUP BY smd_id
+         HAVING SUM(quantity) > 0",
 
             "INSERT INTO inventory__tht (tht_id, user_id, sub_magazine_id, quantity, timestamp, input_type_id, comment, isVerified)
-             SELECT tht_id, {$userId}, sub_magazine_id, -SUM(quantity), NOW(), input_type_id, 
-                    'Inventory cleared during magazine deactivation', 1
-             FROM inventory__tht 
-             WHERE sub_magazine_id = {$magazineId}
-             GROUP BY tht_id, input_type_id
-             HAVING SUM(quantity) > 0",
+         SELECT tht_id, {$userId}, sub_magazine_id, -SUM(quantity), NOW(), 3, 
+                'Inventory cleared during magazine deactivation', 1
+         FROM inventory__tht 
+         WHERE sub_magazine_id = {$magazineId}
+         GROUP BY tht_id
+         HAVING SUM(quantity) > 0",
 
             "INSERT INTO inventory__sku (sku_id, user_id, sub_magazine_id, quantity, timestamp, input_type_id, comment, isVerified)
-             SELECT sku_id, {$userId}, sub_magazine_id, -SUM(quantity), NOW(), input_type_id, 
-                    'Inventory cleared during magazine deactivation', 1
-             FROM inventory__sku 
-             WHERE sub_magazine_id = {$magazineId}
-             GROUP BY smd_id, input_type_id
-             HAVING SUM(quantity) > 0"
+         SELECT sku_id, {$userId}, sub_magazine_id, -SUM(quantity), NOW(), 3, 
+                'Inventory cleared during magazine deactivation', 1
+         FROM inventory__sku 
+         WHERE sub_magazine_id = {$magazineId}
+         GROUP BY sku_id
+         HAVING SUM(quantity) > 0"
         ];
 
         foreach ($clearQueries as $query) {
