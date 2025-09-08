@@ -172,7 +172,7 @@ The system uses a comprehensive database schema with the following key tables:
 
 ## 📄 License
 
-This software is proprietary to [Company Name] and not intended for public use or distribution.
+This software is proprietary to ATTE Power Sp. z o.o. and not intended for public use or distribution.
 
 ## 🆘 Support
 
