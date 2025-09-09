@@ -55,6 +55,86 @@ class Commission
                                         PDO::FETCH_COLUMN);
         return $receivers;
     }
+
+    public function rollbackItems($rollbackOption, $MsaDB) {
+        $commissionId = $this->commissionValues["id"];
+        $deviceType = $this->deviceType;
+        $magazineFromId = $this->commissionValues['magazine_from'];
+        $magazineToId = $this->commissionValues['magazine_to'];
+
+        // Build WHERE clause based on rollback option
+        $whereClause = "commission_id = $commissionId";
+        if ($rollbackOption === 'remaining') {
+            $quantityReturned = $this->commissionValues['quantity_returned'];
+            $whereClause .= " AND id NOT IN (
+                SELECT DISTINCT inventory_id FROM (
+                    SELECT id as inventory_id, 
+                           ROW_NUMBER() OVER (ORDER BY timestamp ASC) as rn
+                    FROM inventory__{$deviceType} 
+                    WHERE commission_id = $commissionId 
+                      AND sub_magazine_id = $magazineToId 
+                      AND quantity > 0
+                ) ranked 
+                WHERE rn <= $quantityReturned
+            )";
+        }
+
+        // Get items to rollback
+        $itemsToRollback = $MsaDB->query("
+            SELECT id, quantity, user_id, production_date, comment, input_type_id,
+                   {$deviceType}_id
+            FROM inventory__{$deviceType} 
+            WHERE $whereClause 
+              AND sub_magazine_id = $magazineToId 
+              AND quantity > 0
+        ");
+
+        // Create rollback entries
+        foreach ($itemsToRollback as $item) {
+            // Remove from destination magazine
+            $MsaDB->insert("inventory__{$deviceType}", [
+                $deviceType . '_id',
+                'commission_id',
+                'user_id',
+                'sub_magazine_id',
+                'quantity',
+                'production_date',
+                'input_type_id',
+                'comment'
+            ], [
+                $item[$deviceType . '_id'],
+                $commissionId,
+                $item['user_id'],
+                $magazineToId,
+                -$item['quantity'],
+                $item['production_date'],
+                $item['input_type_id'],
+                $item['comment'] . " (Rollback - anulacja zlecenia)"
+            ]);
+
+            // Add back to source magazine
+            $MsaDB->insert("inventory__{$deviceType}", [
+                $deviceType . '_id',
+                'commission_id',
+                'user_id',
+                'sub_magazine_id',
+                'quantity',
+                'production_date',
+                'input_type_id',
+                'comment'
+            ], [
+                $item[$deviceType . '_id'],
+                $commissionId,
+                $item['user_id'],
+                $magazineFromId,
+                $item['quantity'],
+                $item['production_date'],
+                $item['input_type_id'],
+                $item['comment'] . " (Rollback - anulacja zlecenia)"
+            ]);
+        }
+    }
+
     public function updateReceivers($receivers){
         $MsaDB = $this -> MsaDB;
         $id = $this->commissionValues["id"];
