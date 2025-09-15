@@ -37,7 +37,6 @@ include('table-row-template.php');
     <?= $selectRenderer->renderPartsSelect() ?>
 </select>
 
-
 <div class="d-flex flex-column align-items-center justify-content-center mt-4">
     <div class="d-flex w-75" id="selectWarehouses">
         <select id="transferFrom" data-title="Transfer z:" class="form-control selectpicker w-50 mx-2" 
@@ -172,60 +171,58 @@ include('table-row-template.php');
 
 <div id="transferTableContainer" style="display:none">
     <h4 class="text-center mt-4 mb-2">Przesyłane komponenty</h4>
+
+    <!-- Centered buttons container -->
+    <div class="text-center mb-3" id="transferTableButtons" style="display: none;">
+        <button id="toggleAllCommissions" class="btn btn-sm btn-outline-secondary mr-2">
+            <i class="bi bi-arrows-collapse"></i> Zwiń wszystkie
+        </button>
+        <button id="showHelpModal" class="btn btn-outline-info btn-sm" data-toggle="tooltip" title="Pomoc - jak interpretować widok">
+            <i class="bi bi-question-circle"></i> Pomoc
+        </button>
+    </div>
+
     <div class="d-flex flex-column align-items-center justify-content-center">
         <table class="table table-bordered table-sm table-hover text-center w-75">
+            <!-- rest of your table code stays the same -->
             <thead>
-                <tr style="border: none;" class="text-center p-0 m-0">
-                    <td style="border: none;"></td>
-                    <td class="p-0" style="border: none;">
-                        <input type="checkbox" id="subtractPartsMagazineFrom">
-                        <br>
-                        <small>
-                            <label for="subtractPartsMagazineFrom">Uwzględnij aktywne zlecenia</label>
-                        </small>
-                    </td>
-                    <td class="p-0" style="border: none;">
-                        <input type="checkbox" id="subtractPartsMagazineTo">
-                        <br>
-                        <small>
-                            <label for="subtractPartsMagazineTo">Uwzględnij aktywne zlecenia</label>
-                        </small>
-                    </td>
-                    <td style="border: none;"></td>
-                    <td style="border: none;">
-                        <button id="insertDifferenceAll" class="btn btn-primary w-100 btn-sm mx-auto">
-                            Różnica wszystkie
-                        </button>
-                    </td>
-                </tr>
-                <tr>
-                    <th style="width: 45%;">Komponent</th>
-                    <th>Dostępne na magazynie</th>
-                    <th>W magazynie docelowym</th>
-                    <th>Potrzebne do zlecenia</th>
-                    <th>Przekazywana ilość</th>
-                    <th></th>
-                </tr>
+            <tr style="border: none;" class="text-center p-0 m-0">
+                <td style="border: none;"></td>
+                <td class="p-0" style="border: none;">
+                    <input type="checkbox" id="subtractPartsMagazineFrom">
+                    <br>
+                    <small>
+                        <label for="subtractPartsMagazineFrom">Uwzględnij aktywne zlecenia</label>
+                    </small>
+                </td>
+                <td class="p-0" style="border: none;">
+                    <input type="checkbox" id="subtractPartsMagazineTo">
+                    <br>
+                    <small>
+                        <label for="subtractPartsMagazineTo">Uwzględnij aktywne zlecenia</label>
+                    </small>
+                </td>
+                <td style="border: none;"></td>
+                <td style="border: none;">
+                    <button id="insertDifferenceAll" class="btn btn-primary w-100 btn-sm mx-auto">
+                        Różnica wszystkie
+                    </button>
+                </td>
+            </tr>
+            <tr>
+                <th style="width: 45%;">Komponent</th>
+                <th>Dostępne na magazynie</th>
+                <th>W magazynie docelowym</th>
+                <th>Potrzebne do zlecenia</th>
+                <th>Przekazywana ilość</th>
+                <th></th>
+            </tr>
             </thead>
             <tbody id="transferTBody"></tbody>
         </table>
-        <div class="d-flex justify-content-center mx-auto w-75">
-            <select id="magazineComponent" data-width="10%" data-title="Typ:" class="form-control selectpicker">
-                <option value="sku">SKU</option>
-                <option value="tht">THT</option>
-                <option value="smd">SMD</option>
-                <option value="parts">Parts</option>
-            </select>
-            <select id="list__components" data-title="Urządzenie:" data-live-search="true"
-                    data-width="70%" class="form-control selectpicker" disabled></select>
-            <input type="number" style="width: 75px; padding: 3px; text-align: center;" class="form-control mx-1"
-                id="qtyComponent">
-            <a tabindex="0" id="addTransferComponent" class="btn btn-primary" data-toggle="popover" data-trigger="manual"
-                data-content="Uzupełnij dane"><i class="bi bi-plus-lg"></i></a>
-        </div>
         <button id="submitTransfer" data-toggle="popover" data-trigger="manual"
-                data-content="Wpisz przekazywaną ilość dla każdego z komponentów" class="btn btn-primary mt-2 mb-3">
-                Prześlij
+                data-content="Wpisz przekazywanÄ… iloÅ›Ä‡ dla kaÅ¼dego z komponentÃ³w" class="btn btn-primary mt-2 mb-3">
+            Prześlij
         </button>
     </div>
 </div>

@@ -27,9 +27,11 @@ function getComponentValues(components, transferFrom, transferTo) {
     });
     return result;
 }
- 
+
 function addComponentsRow(componentValues, $TBody) {
-    const $tr = $(transferComponentsTableRow_template.map(render(componentValues)).join(''));
+    const template = transferComponentsTableRow_template.map(render(componentValues)).join('');
+    const $tr = $(template);
+
     if(componentValues['neededForCommissionQty'] == '<span class="text-light">n/d</span>') {
         $tr.find('.insertDifference').remove();
     }
@@ -51,8 +53,8 @@ function addOrSubtractComponentsReserved(checked, tableCellClass){
 }
 
 function validateAddComponentForm(magazineComponent, listComponents, transferQty) {
-    if (magazineComponent == '' 
-        || listComponents == '' 
+    if (magazineComponent == ''
+        || listComponents == ''
         || transferQty == '') {
         return false;
     }
@@ -64,12 +66,12 @@ function clearAddComponentForm(){
     $("#magazineComponent, #list__components").selectpicker('refresh');
 }
 
-$("#addTransferComponent").click(function() {    
+$("#addTransferComponent").click(function() {
     const componentType = $("#magazineComponent").val();
     const listComponentsVal = $("#list__components").val();
     const transferQty = $("#qtyComponent").val();
     if(!validateAddComponentForm(componentType, listComponentsVal, transferQty)) {
-        $("#addTransferComponent").popover('show');   
+        $("#addTransferComponent").popover('show');
         return;
     }
     clearAddComponentForm();
@@ -110,7 +112,7 @@ $('body').on('click', '.insertDifference', function() {
     const qty = neededForCommission - availableTo;
     if (isNaN(neededForCommission)) return;
     const result = qty > 0 ? qty : 0;
-    $qty.val(result);
+    $qty.val(result).change();
 });
 
 $("#subtractPartsMagazineFrom").change(function() {
