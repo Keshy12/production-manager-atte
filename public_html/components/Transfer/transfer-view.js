@@ -7,10 +7,109 @@ $(document).ready(function() {
     $("#transferFrom").val(currentMagazine);
     $('[data-toggle="popover"]').popover();
     $(".selectpicker").selectpicker('refresh');
+
+    // Initialize tooltips
+    $('[data-toggle="tooltip"]').tooltip();
+
+    // Handle help button click
+    $(document).on('click', '#showHelpModal', function() {
+        $("#submitExplanationModal").modal('show');
+    });
+
+    // Handle quantity changes to update summary
+    $(document).on('input change', '.transferQty', function() {
+        const $input = $(this);
+        const key = $input.data('key');
+        const newQty = parseInt($input.val()) || 0;
+
+        // Update the component in the components array
+        if (components[key]) {
+            components[key].transferQty = newQty;
+        }
+
+        // Update the global summary
+        updateGlobalSummary();
+    });
 });
 
 function render(props) {
     return function(tok, i) { return (i % 2) ? props[tok] : tok; };
+}
+
+function updateGlobalSummary() {
+    // Check if the global summary header exists, if not, don't update
+    if ($('.global-summary-header').length === 0) {
+        return;
+    }
+
+    // Check if summary is currently expanded
+    const isExpanded = $('.global-summary-header').hasClass('expanded');
+
+    // Remove existing summary rows
+    $('.global-summary-component:not(.add-global-component-form)').remove();
+
+    // Create new summary based on all current components
+    const allComponents = components.filter(c => c); // Filter out deleted components
+    const globalSummary = createGlobalSummary(allComponents);
+
+    // Update component count
+    $('#totalComponentsCount').text(`${globalSummary.length} komponentów`);
+
+    // Add summary rows
+    globalSummary.forEach(summaryComponent => {
+        const summaryRowTemplate = $('script[data-template="globalSummaryComponentRow_template"]').text().split(/\$\{(.+?)\}/g);
+        const summaryComponentRow = summaryRowTemplate.map(render(summaryComponent)).join('');
+        const $summaryRow = $(summaryComponentRow);
+
+        // Insert before the add form if it exists, otherwise at the end
+        if (window.$currentAddGlobalForm) {
+            window.$currentAddGlobalForm.before($summaryRow);
+        } else {
+            $('#transferTBody').append($summaryRow);
+        }
+
+        // Preserve the visibility state
+        if (isExpanded) {
+            $summaryRow.show();
+        } else {
+            $summaryRow.hide();
+        }
+    });
+}
+
+function createGlobalSummary(allComponentValues) {
+    // Group components by type and componentId, but EXCLUDE manually added components (those with commissionKey = null)
+    const componentSummary = {};
+
+    allComponentValues.forEach(component => {
+        // Skip manually added components (they have commissionKey = null and blue line)
+        if (component.commissionKey === null) {
+            return;
+        }
+
+        const key = `${component.type}-${component.componentId}`;
+        if (!componentSummary[key]) {
+            componentSummary[key] = {
+                type: component.type,
+                componentId: component.componentId,
+                componentName: component.componentName,
+                componentDescription: component.componentDescription,
+                warehouseFromQty: component.warehouseFromQty,
+                warehouseFromReserved: component.warehouseFromReserved,
+                warehouseToQty: component.warehouseToQty,
+                warehouseToReserved: component.warehouseToReserved,
+                totalNeeded: 0,
+                totalTransferQty: 0
+            };
+        }
+
+        // Sum up the quantities
+        const needed = parseInt(component.neededForCommissionQty.replace(/<[^>]*>/g, '')) || 0;
+        componentSummary[key].totalNeeded += needed;
+        componentSummary[key].totalTransferQty += parseInt(component.transferQty) || 0;
+    });
+
+    return Object.values(componentSummary);
 }
 
 function getComponentValues(components, transferFrom, transferTo) {
@@ -95,7 +194,6 @@ $("#magazineComponent").change(function() {
     $("#list__components").selectpicker('refresh');
 });
 
-
 $("#insertDifferenceAll").click(function() {
     $(".insertDifference").each(function() {
         $(this).click();
@@ -129,8 +227,8 @@ $("#deleteFromTransfer").click(function() {
     const key = $(this).data('key');
     delete components[key];
     $('.removeTransferRow[data-key="' + key + '"]').closest('tr').remove();
+    updateGlobalSummary();
 });
-
 
 $('body').on('click', '.removeTransferRow', function() {
     $("#deleteComponentRowModal").modal('show');
@@ -138,12 +236,12 @@ $('body').on('click', '.removeTransferRow', function() {
 });
 
 $("#transferFrom, #transferTo").change(function() {
-   if($("#transferFrom").val() == '' || $("#transferTo").val() == '') return;
+    if($("#transferFrom").val() == '' || $("#transferTo").val() == '') return;
 
-   $("#createCommission, #dontCreateCommission")
-            .prop('disabled', false)
-            .css('pointer-events','')
-            .parent().popover('dispose');
+    $("#createCommission, #dontCreateCommission")
+        .prop('disabled', false)
+        .css('pointer-events','')
+        .parent().popover('dispose');
 });
 
 $("#transferTo").change(function() {

@@ -14,7 +14,7 @@
                     <th>Odbiorca</th>
                     <th>Urządzenie</th>
                     <th>Laminat</th>
-                    <th>Wersja</t>
+                    <th>Wersja</th>
                     <th>Ilość</th>
                 </thead>
                 <tbody id="commissionResultTBody"></tbody>

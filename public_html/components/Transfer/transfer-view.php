@@ -174,9 +174,6 @@ include('table-row-template.php');
 
     <!-- Centered buttons container -->
     <div class="text-center mb-3" id="transferTableButtons" style="display: none;">
-        <button id="toggleAllCommissions" class="btn btn-sm btn-outline-secondary mr-2">
-            <i class="bi bi-arrows-collapse"></i> Zwiń wszystkie
-        </button>
         <button id="showHelpModal" class="btn btn-outline-info btn-sm" data-toggle="tooltip" title="Pomoc - jak interpretować widok">
             <i class="bi bi-question-circle"></i> Pomoc
         </button>
