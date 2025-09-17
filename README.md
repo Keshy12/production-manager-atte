@@ -95,12 +95,12 @@ mysql -u your_username -p your_database < atte_ms.sql
 ├── public_html/           # Web root directory
 │   ├── assets/           # CSS, JS, images
 │   ├── components/       # Application modules
-│   └── index.php        # Main entry point
 ├── src/                  # Core application classes
 │   ├── classes/         # PHP classes and utilities
 │   └── cron/           # Scheduled tasks
 ├── vendor/              # Composer dependencies
-└── composer.json       # Dependency configuration
+├── composer.json       # Dependency configuration
+└── index.php        # Main entry point
 ```
 
 ## 🔧 Key Modules
