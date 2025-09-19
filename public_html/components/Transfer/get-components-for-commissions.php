@@ -46,7 +46,26 @@ foreach($commissions as $key => $commission)
             && $activeCommission->commissionValues['magazine_from'] == $transferFrom
             && $commission['receiversIds'] == $activeCommission->getReceivers()
         ) {
-            $existingCommissions[] = [$activeCommission->commissionValues["id"], $commission['deviceName'], $activeCommission->commissionValues["timestamp_created"], $key];
+            // Enhanced duplicate info with version and laminate
+            $duplicateInfo = [
+                $activeCommission->commissionValues["id"],
+                $commission['deviceName'],
+                $activeCommission->commissionValues["timestamp_created"],
+                $key
+            ];
+
+            // Add version info
+            $version = $commission['version'] !== 'n/d' ? $commission['version'] : '';
+            if (!empty($version)) {
+                $duplicateInfo[1] .= " (wersja: {$version})";
+            }
+
+            // Add laminate info for SMD
+            if ($deviceType === 'smd' && !empty($commission['laminate'])) {
+                $duplicateInfo[1] .= " (laminat: {$commission['laminate']})";
+            }
+
+            $existingCommissions[] = $duplicateInfo;
             break;
         }
     }

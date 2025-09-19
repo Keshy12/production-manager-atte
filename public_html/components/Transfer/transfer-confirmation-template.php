@@ -16,6 +16,7 @@
                     <th>Laminat</th>
                     <th>Wersja</th>
                     <th>Ilość</th>
+                    <th>Status</th>
                 </thead>
                 <tbody id="commissionResultTBody"></tbody>
             </table>
@@ -28,10 +29,11 @@
             </h4>
             <table class="table table-sm table-striped">
                 <thead>
-                    <tr class="text-center">
-                        <th scope="col">Komponent</th>
-                        <th scope="col">Ilość przekazywana</th>
-                    </tr>
+                <tr class="text-center">
+                    <th scope="col" style="width: 50%;">Komponent</th>
+                    <th scope="col" style="width: 15%;">Ilość</th>
+                    <th scope="col" style="width: 35%;">Źródła</th>
+                </tr>
                 </thead>
                 <tbody class="text-center" id="componentResultTBody">
                 </tbody>
@@ -56,19 +58,25 @@
             ${version}
         </td>
         <td class="quantityCell">
-            ${quantity}
+            ${quantityDisplay}
+        </td>
+        <td class="statusCell">
+            <span class="badge ${statusBadgeClass}">${statusText}</span>
         </td>
     </tr>
 </script>
 
 <script type="text/template" data-template="resultComponentTableRow_template">
     <tr>
-        <td>
+        <td class="componentInfo">
             <b>${deviceName}</b><br>
-            <small>${deviceDescription}</small>
+            <small class="text-muted">${deviceDescription}</small>
         </td>
-        <td>
-            ${transferQty}
+        <td class="text-center">
+            <strong>${transferQty}</strong>
+        </td>
+        <td class="text-center">
+            ${sourcesDisplay}
         </td>
     </tr>
 </script>

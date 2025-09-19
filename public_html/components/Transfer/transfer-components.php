@@ -6,18 +6,21 @@ use Atte\Utils\CommissionRepository;
 $MsaDB = MsaDB::getInstance();
 $MsaDB->db->beginTransaction();
 
-// Get and filter components and commissions
 $components = isset($_POST["components"]) ? array_filter($_POST["components"]) : "";
 $commissions = isset($_POST["commissions"]) ? array_filter($_POST["commissions"]) : "";
 $existingCommissions = isset($_POST["existingCommissions"]) ? array_filter($_POST["existingCommissions"]) : [];
+$componentSources = isset($_POST["componentSources"]) ? $_POST["componentSources"] : [];
 $existingCommissionsIds = array_column($existingCommissions, 0, 3);
+
+$magazineNamesCache = [];
+$allMagazines = $MsaDB->query("SELECT sub_magazine_id, sub_magazine_name FROM magazine__list");
+foreach($allMagazines as $magazine) {
+    $magazineNamesCache[$magazine['sub_magazine_id']] = $magazine['sub_magazine_name'];
+}
 
 $userid = $_SESSION["userid"];
 $now = date("Y/m/d H:i:s", time());
-
-// Warehouse that components are transferred from
 $transferFrom = $_POST["transferFrom"];
-// Warehouse that is being transferred components
 $transferTo = $_POST["transferTo"];
 
 function getBomValues($bomType, $bomId, $bomVer, $bomLamId) {
@@ -36,10 +39,20 @@ function getBomValues($bomType, $bomId, $bomVer, $bomLamId) {
 $commissionRepository = new CommissionRepository($MsaDB);
 $bomRepository = new BomRepository($MsaDB);
 
-// Create mapping from commissionKey to actual database commission_id
-$commissionKeyToId = [];
+// Tworzenie grupy zleceń
+$groupId = null;
+if (!empty($commissions)) {
+    $groupId = $commissionRepository->createCommissionGroup(
+        $userid,
+        $transferFrom,
+        $transferTo,
+        "Multi-source transfer group"
+    );
+}
 
+$commissionKeyToId = [];
 $commissionResult = [];
+
 if (!empty($commissions)) {
     $comment = "Przekazanie materiałów do zlecenia";
     $input_type_id = 8;
@@ -58,23 +71,29 @@ if (!empty($commissions)) {
         $bom = $bomsFound[0];
         $bomId = $bom->id;
 
+        $isExpanded = false;
+        $initialQty = 0;
+
         if (isset($existingCommissionsIds[$index])) {
             // Extend existing commission
             $existingId = $existingCommissionsIds[$index];
             $commissionObj = $commissionRepository->getCommissionById($existingId);
+            $initialQty = $commissionObj->commissionValues['quantity']; // Store initial quantity
             $commissionObj->addToQuantity($qty);
             $newQty = $commissionObj->commissionValues['quantity'];
             $commission_id = $existingId;
+            $isExpanded = true;
         } else {
-            // Create new commission
+            // Create new commission with group_id
             $commission_id = $MsaDB->insert("commission__list",
-                ["user_id", "magazine_from", "magazine_to", "bom_" . $type . "_id", "quantity", "timestamp_created", "state_id", "priority"],
-                [$userid, $transferFrom, $transferTo, $bomId, $qty, $now, '1', $priorityId]
+                ["user_id", "magazine_from", "magazine_to", "bom_" . $type . "_id", "quantity",
+                    "timestamp_created", "state_id", "priority", "commission_group_id"],
+                [$userid, $transferFrom, $transferTo, $bomId, $qty, $now, '1', $priorityId, $groupId]
             );
             $newQty = $qty;
+            $initialQty = 0;
         }
 
-        // Map the commissionKey (index) to the actual database commission_id
         $commissionKeyToId[$index] = $commission_id;
 
         $bom->getNameAndDescription();
@@ -85,11 +104,14 @@ if (!empty($commissions)) {
             "deviceDescription" => $bom->description,
             "laminate" => $bom->laminateName ?? "",
             "version" => $bom->version ?? "",
-            "quantity" => $newQty
+            "quantity" => $newQty,
+            "isExpanded" => $isExpanded,
+            "initialQuantity" => $initialQty,
+            "addedQuantity" => $qty
         ];
 
         // Add receivers only for new commissions
-        if (!isset($existingCommissionsIds[$index])) {
+        if (!$isExpanded) {
             $receivers = $commission['receiversIds'];
             foreach ($receivers as $user) {
                 $MsaDB->insert("commission__receivers", ["commission_id", "user_id"], [$commission_id, $user]);
@@ -100,45 +122,74 @@ if (!empty($commissions)) {
 
 $componentsResult = [];
 $input_type_id = 2;
-$comment = "Przekazanie materiałów";
+$comment = "Transfer komponentów";
 
 if (!empty($components)) {
-    foreach ($components as $component) {
+    foreach ($components as $componentIndex => $component) {
         $type = $component['type'];
         $deviceId = $component['componentId'];
-        $qty = $component['transferQty'];
+        $totalQty = $component['transferQty'];
 
         // Determine the commission_id based on commissionKey
         $commission_id = null;
         if (isset($component['commissionKey']) && $component['commissionKey'] !== null && $component['commissionKey'] !== '') {
             $commissionKey = $component['commissionKey'];
-
-            // Use the mapping to get the actual database commission_id
             if (isset($commissionKeyToId[$commissionKey])) {
                 $commission_id = $commissionKeyToId[$commissionKey];
+            } else {
+                throw new \Exception("Commission key $commissionKey not found in mapping. Component index: $componentIndex");
             }
-            // If commissionKey doesn't exist in mapping, commission_id stays null
         }
-        // If commissionKey is null or empty, commission_id stays null (global component)
 
-        // Insert component transfer (remove from source)
+        // Get sources for this component (from transferSources JS object)
+        $sources = $componentSources[$componentIndex] ?? [
+            ['warehouseId' => $transferFrom, 'quantity' => $totalQty]
+        ];
+
+        $transferredSources = [];
+        $isNonDefaultTransfer = false;
+
+        foreach($sources as $source) {
+            $sourceWarehouse = $source['warehouseId'];
+            $sourceQty = $source['quantity'];
+
+            if($sourceQty <= 0) continue;
+
+            // Check if this source is different from default
+            if($sourceWarehouse != $transferFrom) {
+                $isNonDefaultTransfer = true;
+            }
+
+            // Remove from source warehouse (negative quantity)
+            $MsaDB->insert("inventory__".$type,
+                [$type."_id", "commission_id", "user_id", "sub_magazine_id", "quantity", "timestamp", "input_type_id", "comment"],
+                [$deviceId, $commission_id, $userid, $sourceWarehouse, $sourceQty * -1, $now, $input_type_id, $comment . " - Grupa: $groupId (źródło)"]);
+
+            $transferredSources[] = [
+                'warehouseName' => getMagazineNameCached($sourceWarehouse, $magazineNamesCache),
+                'quantity' => $sourceQty
+            ];
+        }
+
+        // Add to destination warehouse (positive quantity)
         $MsaDB->insert("inventory__".$type,
             [$type."_id", "commission_id", "user_id", "sub_magazine_id", "quantity", "timestamp", "input_type_id", "comment"],
-            [$deviceId, $commission_id, $userid, $transferFrom, $qty*-1, $now, $input_type_id, $comment]);
-
-        // Insert component transfer (add to destination)
-        $MsaDB->insert("inventory__".$type,
-            [$type."_id", "commission_id", "user_id", "sub_magazine_id", "quantity", "timestamp", "input_type_id", "comment"],
-            [$deviceId, $commission_id, $userid, $transferTo, $qty, $now, $input_type_id, $comment]);
+            [$deviceId, $commission_id, $userid, $transferTo, $totalQty, $now, $input_type_id, $comment . " - Grupa: $groupId (cel)"]);
 
         $componentsResult[] = [
             "deviceName" => $component['componentName'],
             "deviceDescription" => $component['componentDescription'],
-            "transferQty" => $qty
+            "transferQty" => $totalQty,
+            "sources" => $transferredSources,
+            "showSources" => $isNonDefaultTransfer || count($transferredSources) > 1, // Flag to show sources
+            "isDefaultTransfer" => !$isNonDefaultTransfer && count($transferredSources) === 1
         ];
     }
 }
 
-echo json_encode([$commissionResult, $componentsResult], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
+function getMagazineNameCached($magazineId, $cache) {
+    return $cache[$magazineId] ?? 'Unknown';
+}
+    echo json_encode([$commissionResult, $componentsResult], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
 
 $MsaDB->db->commit();

@@ -155,6 +155,9 @@
             </div>
         </td>
         <td class="align-middle">
+            <button class="btn btn-light btn-sm edit-component-sources" data-key="${key}">
+                <i class="bi bi-gear"></i>
+            </button>
             <button data-key="${key}" class="removeTransferRow btn btn-light btn-sm">
                 <i class="bi bi-trash"></i>
             </button>
@@ -238,9 +241,10 @@
             </div>
         </td>
         <td class="align-middle">
-            <span class="text-muted">-</span>
+            ${multiSourceIndicator}
         </td>
     </tr>
+    ${multiSourceDetails}
 </script>
 
 <script type="text/template" data-template="addGlobalComponentForm_template">

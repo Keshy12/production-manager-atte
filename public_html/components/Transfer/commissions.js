@@ -50,9 +50,10 @@ $(document).ready(function() {
             }
         });
 
-        // Remove components from array and DOM
+        // Remove components from array, sources and DOM
         componentsToRemove.forEach(componentIndex => {
             delete components[componentIndex];
+            delete transferSources[componentIndex];
             $(`.commission-component[data-key="${componentIndex}"]`).remove();
         });
 
@@ -73,6 +74,7 @@ $(document).ready(function() {
         $("#deleteCommissionConfirmModal").modal('hide');
         commissionToDelete = null;
     });
+
     // Reset commission to delete when modal is cancelled
     $("#deleteCommissionConfirmModal").on('hidden.bs.modal', function() {
         commissionToDelete = null;
@@ -117,7 +119,7 @@ $(document).ready(function() {
 
             for (const commissionKey in componentsByCommission) {
                 const commissionGroup = componentsByCommission[commissionKey];
-                const commission = commissions[commissionKey]; // Get original commission data
+                const commission = commissions[commissionKey];
 
                 // Add clickable commission header row
                 const commissionHeaderRow = `
@@ -150,6 +152,15 @@ $(document).ready(function() {
                 componentValues.forEach(componentValue => {
                     componentValue['key'] = componentIndex;
                     componentValue['commissionKey'] = commissionKey;
+
+                    // Initialize default transfer source for each component
+                    transferSources[componentIndex] = [{
+                        warehouseId: transferFrom,
+                        quantity: getTotalTransferQty(componentIndex) || componentValue.transferQty
+                    }];
+
+                    syncComponentQuantityFromSources(componentIndex);
+
                     addComponentsRow(componentValue, $TBody);
                     componentIndex++;
                 });
@@ -173,24 +184,60 @@ $(document).ready(function() {
         }, 0);
     });
 
+    $("#transferNoCommission").click(function() {
+        $("#transferWithoutCommissionModal").modal('hide');
+        $("#transferFrom, #transferTo").prop('disabled', true).selectpicker('refresh');
+        $("#createCommissionCard").hide();
+        $("#transferTableContainer").show();
+
+        // Add the "Add Component" button at the bottom of the table
+        addNoCommissionAddButton();
+    });
+
+    $("#finishNoCommissionTransfer").click(function() {
+        $("#noCommissionTransferCard").hide();
+        $("#transferTableContainer").show();
+
+        // Initialize transfer sources for existing components
+        components.forEach((component, index) => {
+            if (component) {
+                transferSources[index] = [{
+                    warehouseId: $("#transferFrom").val(),
+                    quantity: component.transferQty
+                }];
+                syncComponentQuantityFromSources(index);
+            }
+        });
+
+        // Update global summary if needed
+        updateGlobalSummary();
+    });
+
     // GLOBAL SUMMARY FUNCTIONALITY
     let $currentAddGlobalForm = null;
     window.$currentAddGlobalForm = null;
 
     // Handle clicking the global summary header (collapse/expand)
     $(document).on('click', '.global-summary-header', function() {
+        if (hasUnsavedSourceChanges) {
+            $("#unsavedSourceChangesModal").modal('show');
+            return;
+        }
         const $header = $(this);
         const $components = $('.global-summary-component');
+        const $sourceDetails = $('.source-details-summary'); // Add this line
         const $toggleIcon = $header.find('.summary-toggle-icon');
 
         if ($header.hasClass('expanded')) {
             // Collapse summary
             $components.hide();
+            $sourceDetails.hide(); // Add this line
             $header.removeClass('expanded');
             $toggleIcon.removeClass('bi-chevron-down').addClass('bi-chevron-right');
         } else {
             // Expand summary and collapse ALL commissions
             $components.show();
+            $sourceDetails.show(); // Add this line - auto-show source details when expanding
             $header.addClass('expanded');
             $toggleIcon.removeClass('bi-chevron-right').addClass('bi-chevron-down');
 
@@ -201,12 +248,16 @@ $(document).ready(function() {
             $('.commission-toggle-icon').removeClass('bi-chevron-down').addClass('bi-chevron-right');
             $('.commission-summary').show();
             $('.commission-details').hide();
+
+            // Hide any open commission source details
+            $('.source-details-row').remove();
+            $('.edit-component-sources').html('<i class="bi bi-gear"></i>').removeClass('btn-warning').addClass('btn-light');
         }
     });
 
     // Handle clicking the global "add component" button
     $(document).on('click', '.add-global-component', function(e) {
-        e.stopPropagation(); // Prevent header click
+        e.stopPropagation();
 
         // Hide any existing form
         if ($currentAddGlobalForm) {
@@ -285,7 +336,7 @@ $(document).ready(function() {
             componentId: componentId,
             neededForCommissionQty: '<span class="text-light">n/d</span>',
             transferQty: transferQty,
-            commissionKey: null // This indicates it's not part of a commission
+            commissionKey: null
         };
 
         // Get component values and add to the transfer table
@@ -297,9 +348,17 @@ $(document).ready(function() {
         componentValues[0]['key'] = pushedKey;
         componentValues[0]['commissionKey'] = null;
 
+        // Initialize default transfer source
+        transferSources[pushedKey] = [{
+            warehouseId: transferFrom,
+            quantity: parseInt(transferQty)
+        }];
+
+        syncComponentQuantityFromSources(pushedKey);
+
         // Add the row to the table with blue line indicator, positioned before the form row
         const $newRow = $(transferComponentsTableRow_template.map(render(componentValues[0])).join(''));
-        $newRow.addClass('manual-component'); // Add class for blue line styling
+        $newRow.addClass('manual-component');
         $currentAddGlobalForm.before($newRow);
 
         // Update the global summary
@@ -416,9 +475,17 @@ $(document).ready(function() {
         componentValues[0]['key'] = pushedKey;
         componentValues[0]['commissionKey'] = currentCommissionKey;
 
+        // Initialize default transfer source
+        transferSources[pushedKey] = [{
+            warehouseId: transferFrom,
+            quantity: parseInt(transferQty)
+        }];
+        // Sync component data
+        syncComponentQuantityFromSources(pushedKey);
+
         // Add the row to the table with manual component styling, positioned before the form row
         const $newRow = $(transferComponentsTableRow_template.map(render(componentValues[0])).join(''));
-        $newRow.addClass('manual-component'); // Add class for blue line styling and special collapse behavior
+        $newRow.addClass('manual-component');
         $currentAddComponentForm.before($newRow);
 
         // Hide the form and show all add-component buttons again
@@ -445,6 +512,7 @@ $(document).ready(function() {
 
     // COLLAPSE/EXPAND FUNCTIONALITY
     // Custom collapse functionality
+// Custom collapse functionality
     $(document).on('click', '.commission-header', function() {
         const commissionKey = $(this).data('commission-key');
         const $header = $(this);
@@ -464,10 +532,12 @@ $(document).ready(function() {
             // Collapse the global summary when expanding any commission
             const $globalSummary = $('.global-summary-header');
             const $globalComponents = $('.global-summary-component');
+            const $sourceDetails = $('.source-details-summary'); // Add this line
             const $globalToggleIcon = $globalSummary.find('.summary-toggle-icon');
 
             if ($globalSummary.hasClass('expanded')) {
                 $globalComponents.hide();
+                $sourceDetails.hide(); // Add this line
                 $globalSummary.removeClass('expanded');
                 $globalToggleIcon.removeClass('bi-chevron-down').addClass('bi-chevron-right');
             }
@@ -481,6 +551,10 @@ $(document).ready(function() {
 
             // Hide any open forms for this commission
             $(`.add-component-form[data-commission-key="${commissionKey}"]`).hide();
+
+            // Hide any open source details for this commission
+            $(`.source-details-row`).remove();
+            $('.edit-component-sources').html('<i class="bi bi-gear"></i>').removeClass('btn-warning').addClass('btn-light');
         }
     });
 });
@@ -569,13 +643,6 @@ $("#commissionNoTransfer").click(function() {
     $("#createCommissionCard").hide();
     $("#moreOptionsCard, #commissionTableContainer").show();
     $("#submitCommissions").data('noTransfer', true);
-});
-
-$("#transferNoCommission").click(function() {
-    $("#transferWithoutCommissionModal").modal('hide');
-    $("#transferFrom, #transferTo").prop('disabled', true).selectpicker('refresh');
-    $("#createCommissionCard").hide();
-    $("#transferTableContainer").show();
 });
 
 // Device selection logic

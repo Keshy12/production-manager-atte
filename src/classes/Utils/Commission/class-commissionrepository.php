@@ -37,4 +37,39 @@ class CommissionRepository {
         }
     }
 
+    public function createCommissionGroup($createdBy, $transferFromDefault, $transferTo, $comment = null) {
+        $now = date("Y-m-d H:i:s", time());
+        $groupId = $this->MsaDB->insert('commission__groups', [
+            'created_by',
+            'timestamp_created',
+            'transfer_from',
+            'transfer_to',
+            'comment'
+        ], [
+            $createdBy,
+            $now,
+            $transferFromDefault,
+            $transferTo,
+            $comment
+        ]);
+
+        return $groupId;
+    }
+
+    public function getCommissionGroupById($groupId) {
+        $groupData = $this->MsaDB->query(
+            "SELECT * FROM commission__groups WHERE id = $groupId"
+        );
+
+        if(empty($groupData)) {
+            throw new \Exception("Commission group not found");
+        }
+
+        $group = new CommissionGroup($this->MsaDB);
+        $group->groupValues = $groupData[0];
+        $group->loadCommissions();
+
+        return $group;
+    }
+
 }

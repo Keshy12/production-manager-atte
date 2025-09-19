@@ -172,3 +172,49 @@
         </div>
     </div>
 </div>
+
+<div class="modal fade" id="nonMainWarehouseModal" tabindex="-1" role="dialog">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Transfer z magazynu zewnętrznego</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p>Jeden lub więcej wybranych magazynów źródłowych nie jest magazynem głównym.</p>
+                <p><strong>Czy na pewno chcesz kontynuować transfer z magazynu zewnętrznego?</strong></p>
+                <p><small class="text-muted">To może być potrzebne gdy brakuje komponentu w magazynach głównych, ale kontrahent zewnętrzny go posiada.</small></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Anuluj</button>
+                <button type="button" id="confirmNonMainWarehouse" class="btn btn-warning">Kontynuuj transfer</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="unsavedSourceChangesModal" tabindex="-1" role="dialog">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Niezapisane zmiany</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p>Masz otwarte okno edycji źródeł transferu z niezapisanymi zmianami.</p>
+                <p><strong>Aby kontynuować, musisz:</strong></p>
+                <ul>
+                    <li>Zapisać zmiany klikając przycisk "Zapisz", lub</li>
+                    <li>Anulować edycję klikając przycisk "X" obok źródeł</li>
+                </ul>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-dismiss="modal">Rozumiem</button>
+            </div>
+        </div>
+    </div>
+</div>
