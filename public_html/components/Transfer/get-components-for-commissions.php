@@ -17,7 +17,8 @@ $magazineToCommissions = $magazineTo->getActiveCommissions();
 
 $existingCommissions = [];
 
-$components = [];
+// Change: Group components by commission instead of flattening them
+$componentsByCommission = [];
 foreach($commissions as $key => $commission)
 {
     $deviceType = $commission['deviceType'];
@@ -29,12 +30,12 @@ foreach($commissions as $key => $commission)
     ];
 
     if(!empty($commission['laminateId'])) $bomValues['laminate_id'] = $commission['laminateId'];
-    
+
     $bomsFound = $bomRepository -> getBomByValues($deviceType, $bomValues);
-    
+
     if(count($bomsFound) < 1) throw new \Exception("BOM not found");
     if(count($bomsFound) > 1) throw new \Exception("Multiple BOMs found");
-    
+
     $bom = $bomsFound[0];
     $bomId = $bom -> id;
     foreach ($magazineToCommissions as $activeCommission) {
@@ -45,10 +46,39 @@ foreach($commissions as $key => $commission)
             && $activeCommission->commissionValues['magazine_from'] == $transferFrom
             && $commission['receiversIds'] == $activeCommission->getReceivers()
         ) {
-            $existingCommissions[] = [$activeCommission->commissionValues["id"], $commission['deviceName'], $activeCommission->commissionValues["timestamp_created"], $key];
+            // Enhanced duplicate info with version and laminate
+            $duplicateInfo = [
+                $activeCommission->commissionValues["id"],
+                $commission['deviceName'],
+                $activeCommission->commissionValues["timestamp_created"],
+                $key
+            ];
+
+            // Add version info
+            $version = $commission['version'] !== 'n/d' ? $commission['version'] : '';
+            if (!empty($version)) {
+                $duplicateInfo[1] .= " (wersja: {$version})";
+            }
+
+            // Add laminate info for SMD
+            if ($deviceType === 'smd' && !empty($commission['laminate'])) {
+                $duplicateInfo[1] .= " (laminat: {$commission['laminate']})";
+            }
+
+            $existingCommissions[] = $duplicateInfo;
             break;
         }
     }
+
+    // Group components by commission
+    $componentsByCommission[$key] = [
+        'commissionInfo' => [
+            'deviceName' => $commission['deviceName'],
+            'receivers' => $commission['receivers'],
+            'priorityColor' => $commission['priorityColor']
+        ],
+        'components' => []
+    ];
 
     foreach($bom->getComponents($commission['quantity']) as $bomComponent)
     {
@@ -56,7 +86,7 @@ foreach($commissions as $key => $commission)
         $bomComponentId = $bomComponent['componentId'];
         $bomComponentQty = $bomComponent['quantity'];
 
-        $components[] = [
+        $componentsByCommission[$key]['components'][] = [
             'type' => $bomType,
             'componentId' => $bomComponentId,
             'neededForCommissionQty' => $bomComponentQty,
@@ -65,5 +95,5 @@ foreach($commissions as $key => $commission)
     }
 }
 
-echo json_encode([$components, $existingCommissions]
-                ,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
+echo json_encode([$componentsByCommission, $existingCommissions]
+    ,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);

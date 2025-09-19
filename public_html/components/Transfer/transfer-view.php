@@ -12,10 +12,10 @@ $currentUser = $userRepository -> getUserById($_SESSION['userid']);
 $isCurrUserAdmin = $currentUser -> isAdmin();
 $currentMagazine = $isCurrUserAdmin ? '' : $currentUser -> subMagazineId;
 
-$list__warehouse = $MsaDB -> readIdName(table: 'magazine__list', 
-                                        id: 'sub_magazine_id', 
-                                        name: 'sub_magazine_name', 
-                                        add: 'WHERE isActive = 1 ORDER BY type_id, sub_magazine_id ASC');
+$list__warehouse = $MsaDB -> readIdName(table: 'magazine__list',
+    id: 'sub_magazine_id',
+    name: 'sub_magazine_name',
+    add: 'WHERE isActive = 1 ORDER BY type_id, sub_magazine_id ASC');
 $list__priority = array_reverse($MsaDB -> readIdName("commission__priority"), true);
 
 $allUsers = $userRepository -> getAllUsers();
@@ -37,17 +37,25 @@ include('table-row-template.php');
     <?= $selectRenderer->renderPartsSelect() ?>
 </select>
 
-
 <div class="d-flex flex-column align-items-center justify-content-center mt-4">
     <div class="d-flex w-75" id="selectWarehouses">
-        <select id="transferFrom" data-title="Transfer z:" class="form-control selectpicker w-50 mx-2" 
-                    data-default-value="<?=$currentMagazine?>" data-live-search="true" 
-                    <?= $isCurrUserAdmin ? '' : 'disabled'; ?>>
-            <?= $selectRenderer->renderArraySelect($list__warehouse) ?>
+        <select id="transferFrom" data-title="Transfer z:" class="form-control selectpicker w-50 mx-2"
+                data-default-value="<?=$currentMagazine?>" data-live-search="true"
+            <?= $isCurrUserAdmin ? '' : 'disabled'; ?>>
+            <?php
+            $warehouses = $MsaDB->query("SELECT sub_magazine_id, sub_magazine_name, type_id FROM magazine__list WHERE isActive = 1 ORDER BY type_id, sub_magazine_id ASC");
+            foreach($warehouses as $warehouse) {
+                echo "<option value='{$warehouse['sub_magazine_id']}' data-type-id='{$warehouse['type_id']}'>{$warehouse['sub_magazine_name']}</option>";
+            }
+            ?>
         </select>
-        <select id="transferTo" data-title="Transfer do:" class="form-control selectpicker w-50 mx-2" 
-                    data-live-search="true">
-            <?= $selectRenderer->renderArraySelect($list__warehouse) ?>
+        <select id="transferTo" data-title="Transfer do:" class="form-control selectpicker w-50 mx-2"
+                data-live-search="true">
+            <?php
+            foreach($warehouses as $warehouse) {
+                echo "<option value='{$warehouse['sub_magazine_id']}' data-type-id='{$warehouse['type_id']}'>{$warehouse['sub_magazine_name']}</option>";
+            }
+            ?>
         </select>
     </div>
     <div id="createCommissionCard" class="card align-items-center p-2 mt-2">
@@ -90,7 +98,7 @@ include('table-row-template.php');
                         <span class="input-group-text">Grupy</span>
                     </div>
                     <select class="selectpicker" id="groupSelect" title="Wybierz..."
-                        data-style-base="form-control form-control-sm" data-style="">
+                            data-style-base="form-control form-control-sm" data-style="">
                     </select>
                 </div>
                 <div class="input-group justify-content-center mt-3">
@@ -98,12 +106,12 @@ include('table-row-template.php');
                         <span class="input-group-text">Priorytet</span>
                     </div>
                     <select class="selectpicker" id="list__priority" title="Wybierz..."
-                        data-style-base="form-control" data-style="">
+                            data-style-base="form-control" data-style="">
                         <?php
-                            $colors = ["none", "green", "rgb(255, 219, 88)", "red"];
-                            foreach($list__priority as $id => $value) {
-                                echo "<option data-content=\"<span style='box-shadow: -20px 0px 0px 0px {$colors[$id]}; margin-left: 7px;'>$value</span>\" value='$id'>$value</option>";
-                            } 
+                        $colors = ["none", "green", "rgb(255, 219, 88)", "red"];
+                        foreach($list__priority as $id => $value) {
+                            echo "<option data-content=\"<span style='box-shadow: -20px 0px 0px 0px {$colors[$id]}; margin-left: 7px;'>$value</span>\" value='$id'>$value</option>";
+                        }
                         ?>
                     </select>
                 </div>
@@ -152,12 +160,12 @@ include('table-row-template.php');
     <div class="d-flex flex-column align-items-center justify-content-center">
         <table id="commissionTable" class="table table-bordered table-sm table-hover collapse show text-center w-50">
             <thead>
-                <th>Odbiorca</th>
-                <th>Urządzenie</th>
-                <th>Laminat</th>
-                <th>Wersja</th>
-                <th>Ilość</th>
-                <th></th>
+            <th>Odbiorca</th>
+            <th>Urządzenie</th>
+            <th>Laminat</th>
+            <th>Wersja</th>
+            <th>Ilość</th>
+            <th></th>
             </thead>
             <tbody id="commissionTBody"></tbody>
         </table>
@@ -172,60 +180,54 @@ include('table-row-template.php');
 
 <div id="transferTableContainer" style="display:none">
     <h4 class="text-center mt-4 mb-2">Przesyłane komponenty</h4>
+
+    <!-- Centered buttons container -->
+    <div class="text-center mb-3" id="transferTableButtons" style="display: none;">
+        <button id="showHelpModal" class="btn btn-outline-info btn-sm" data-toggle="tooltip" title="Pomoc - jak interpretować widok">
+            <i class="bi bi-question-circle"></i> Pomoc
+        </button>
+    </div>
+
     <div class="d-flex flex-column align-items-center justify-content-center">
         <table class="table table-bordered table-sm table-hover text-center w-75">
             <thead>
-                <tr style="border: none;" class="text-center p-0 m-0">
-                    <td style="border: none;"></td>
-                    <td class="p-0" style="border: none;">
-                        <input type="checkbox" id="subtractPartsMagazineFrom">
-                        <br>
-                        <small>
-                            <label for="subtractPartsMagazineFrom">Uwzględnij aktywne zlecenia</label>
-                        </small>
-                    </td>
-                    <td class="p-0" style="border: none;">
-                        <input type="checkbox" id="subtractPartsMagazineTo">
-                        <br>
-                        <small>
-                            <label for="subtractPartsMagazineTo">Uwzględnij aktywne zlecenia</label>
-                        </small>
-                    </td>
-                    <td style="border: none;"></td>
-                    <td style="border: none;">
-                        <button id="insertDifferenceAll" class="btn btn-primary w-100 btn-sm mx-auto">
-                            Różnica wszystkie
-                        </button>
-                    </td>
-                </tr>
-                <tr>
-                    <th style="width: 45%;">Komponent</th>
-                    <th>Dostępne na magazynie</th>
-                    <th>W magazynie docelowym</th>
-                    <th>Potrzebne do zlecenia</th>
-                    <th>Przekazywana ilość</th>
-                    <th></th>
-                </tr>
+            <tr style="border: none;" class="text-center p-0 m-0">
+                <td style="border: none;"></td>
+                <td class="p-0" style="border: none;">
+                    <input type="checkbox" id="subtractPartsMagazineFrom">
+                    <br>
+                    <small>
+                        <label for="subtractPartsMagazineFrom">Uwzględnij aktywne zlecenia</label>
+                    </small>
+                </td>
+                <td class="p-0" style="border: none;">
+                    <input type="checkbox" id="subtractPartsMagazineTo">
+                    <br>
+                    <small>
+                        <label for="subtractPartsMagazineTo">Uwzględnij aktywne zlecenia</label>
+                    </small>
+                </td>
+                <td style="border: none;"></td>
+                <td style="border: none;">
+                    <button id="insertDifferenceAll" class="btn btn-primary w-100 btn-sm mx-auto">
+                        Różnica wszystkie
+                    </button>
+                </td>
+            </tr>
+            <tr>
+                <th style="width: 40%;">Komponent</th>
+                <th>Dostępne na magazynie</th>
+                <th>W magazynie docelowym</th>
+                <th>Potrzebne do zlecenia</th>
+                <th>Przekazywana ilość</th>
+                <th style="width: 15%;">Akcje</th>
+            </tr>
             </thead>
             <tbody id="transferTBody"></tbody>
         </table>
-        <div class="d-flex justify-content-center mx-auto w-75">
-            <select id="magazineComponent" data-width="10%" data-title="Typ:" class="form-control selectpicker">
-                <option value="sku">SKU</option>
-                <option value="tht">THT</option>
-                <option value="smd">SMD</option>
-                <option value="parts">Parts</option>
-            </select>
-            <select id="list__components" data-title="Urządzenie:" data-live-search="true"
-                    data-width="70%" class="form-control selectpicker" disabled></select>
-            <input type="number" style="width: 75px; padding: 3px; text-align: center;" class="form-control mx-1"
-                id="qtyComponent">
-            <a tabindex="0" id="addTransferComponent" class="btn btn-primary" data-toggle="popover" data-trigger="manual"
-                data-content="Uzupełnij dane"><i class="bi bi-plus-lg"></i></a>
-        </div>
         <button id="submitTransfer" data-toggle="popover" data-trigger="manual"
                 data-content="Wpisz przekazywaną ilość dla każdego z komponentów" class="btn btn-primary mt-2 mb-3">
-                Prześlij
+            Prześlij
         </button>
     </div>
 </div>

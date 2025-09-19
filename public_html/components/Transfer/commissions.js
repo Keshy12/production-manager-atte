@@ -3,9 +3,7 @@ const transferCommissionTableRow_template = $('script[data-template="transferCom
 const commissions = [];
 const existingCommissions = [];
 
-
 $(document).ready(function() {
-    
     $("#list__priority").val(0).selectpicker('refresh');
 
     $("#addCommission").click(function() {
@@ -17,27 +15,86 @@ $(document).ready(function() {
         clearAddCommissionFields();
     });
 
+    let commissionToDelete = null;
+
     $('body').on('click', '.removeCommissionRow', function() {
         const key = $(this).data('key');
+        const $commissionRow = $(this).closest('tr');
+
+        // Check if we're in transfer mode (after commissions have been submitted)
+        const isInTransferMode = $('#transferTableContainer').is(':visible');
+
+        if (isInTransferMode) {
+            // Show confirmation modal in transfer mode
+            commissionToDelete = key;
+            $("#deleteCommissionConfirmModal").modal('show');
+            return;
+        } else {
+            // In creation mode, delete immediately
+            delete commissions[key];
+            $commissionRow.remove();
+        }
+    });
+
+    // Handle confirmed deletion
+    $("#confirmDeleteCommission").click(function() {
+        if (commissionToDelete === null) return;
+
+        const key = commissionToDelete;
+
+        // Remove all components that belong to this commission
+        const componentsToRemove = [];
+        components.forEach((component, index) => {
+            if (component && component.commissionKey == key) {
+                componentsToRemove.push(index);
+            }
+        });
+
+        // Remove components from array, sources and DOM
+        componentsToRemove.forEach(componentIndex => {
+            delete components[componentIndex];
+            delete transferSources[componentIndex];
+            $(`.commission-component[data-key="${componentIndex}"]`).remove();
+        });
+
+        // Remove commission header and related rows
+        $(`.commission-header[data-commission-key="${key}"]`).remove();
+        $(`.add-component-row[data-commission-key="${key}"]`).remove();
+
+        // Update global summary
+        updateGlobalSummary();
+
+        // Remove from commissions array
         delete commissions[key];
-        $(this).closest('tr').remove();
-    }); 
+
+        // Remove the commission row from the creation table (if it exists)
+        $(`.removeCommissionRow[data-key="${key}"]`).closest('tr').remove();
+
+        // Hide modal and reset
+        $("#deleteCommissionConfirmModal").modal('hide');
+        commissionToDelete = null;
+    });
+
+    // Reset commission to delete when modal is cancelled
+    $("#deleteCommissionConfirmModal").on('hidden.bs.modal', function() {
+        commissionToDelete = null;
+    });
 
     $("#submitCommissions").click(function() {
         $("#submitCommissions, #moreOptionsCard").hide();
         $("#commissionTable").removeClass('show');
-        $(".removeCommissionRow").remove();
         const isNoTransfer = $(this).data('noTransfer');
         if(isNoTransfer === true) {
             $("#submitTransfer").click();
             return;
         }
         $(".commissionSubmitSpinner").show();
-        //Timeout of 0ms, to allow the DOM to update before getting the components via AJAX
+
         setTimeout(() => {
             const transferFrom = $("#transferFrom").val();
             const transferTo = $("#transferTo").val();
-            const [commissionComponents, foundExistingCommissions] = getComponentsForCommissions(commissions, transferFrom, transferTo);
+            const [componentsByCommission, foundExistingCommissions] = getComponentsForCommissions(commissions, transferFrom, transferTo);
+
             if (foundExistingCommissions.length > 0) {
                 $(".commissionSubmitSpinner").hide();
                 existingCommissions.push(...foundExistingCommissions)
@@ -45,28 +102,466 @@ $(document).ready(function() {
                     .map(ec => `<li>ID: ${ec[0]} - ${ec[1]} <small>(stworzono: ${ec[2]})</small></li>`)
                     .join('');
                 const $alert = $(`<div class="alert-existing-commission alert alert-warning alert-dismissible fade show" role="alert">
-                                      <strong>Wykryto duplikacje zlecenia:</strong>
-                                      <ul>${items}</ul>
-                                      <strong>Powyższe pozycje zostaną rozszerzone o odpowiednią ilość.</strong>
-                                    </div>
-                                  `);
-
+                          <strong>Wykryto duplikacje zlecenia:</strong>
+                          <ul>${items}</ul>
+                          <strong>Powyższe pozycje zostaną rozszerzone o odpowiednią ilość.</strong>
+                        </div>
+                      `);
                 $("#transferTableContainer").before($alert);
             }
-            const componentValues = getComponentValues(commissionComponents, transferFrom, transferTo);
+
+            // Add bulk toggle button
+            addToggleAllButton();
+
+            // Process grouped components
             const $TBody = $('#transferTBody');
-            components.push(...componentValues);
-            for (const key in componentValues) {
-                if (componentValues.hasOwnProperty(key)) {
-                    componentValues[key]['key'] = key;
-                    addComponentsRow(componentValues[key], $TBody);
-                }
+            let componentIndex = 0;
+
+            for (const commissionKey in componentsByCommission) {
+                const commissionGroup = componentsByCommission[commissionKey];
+                const commission = commissions[commissionKey];
+
+                // Add clickable commission header row
+                const commissionHeaderRow = `
+                        <tr class="commission-header" data-commission-key="${commissionKey}"
+                            style="box-shadow: -7px 0px 0px 0px ${commissionGroup.commissionInfo.priorityColor};">
+                            <td colspan="6" class="font-weight-bold">
+                                <div class="commission-details">
+                                    <i class="bi bi-chevron-down commission-toggle-icon mr-2"></i>
+                                    Zlecenie: ${commissionGroup.commissionInfo.deviceName} - ${commissionGroup.commissionInfo.receivers}
+                                    ${commission.laminate && commission.laminate !== '' ? `<br><small class="text-muted">Laminat: ${commission.laminate}</small>` : ''}
+                                    ${commission.version && commission.version !== 'n/d' ? `<br><small class="text-muted">Wersja: ${commission.version}</small>` : ''}
+                                    <br><small class="text-muted">Ilość: ${commission.quantity}</small>
+                                    <span class="badge badge-light ml-2">${commissionGroup.components.length} komponentów</span>
+                                </div>
+                                <div class="commission-summary" style="display: none;">
+                                    <i class="bi bi-chevron-right commission-toggle-icon mr-2"></i>
+                                    Zlecenie: ${commissionGroup.commissionInfo.deviceName} - ${commissionGroup.commissionInfo.receivers}
+                                    <span class="badge badge-light ml-2">${commissionGroup.components.length} komponentów</span>
+                                </div>
+                            </td>
+                        </tr>
+                        `;
+                $TBody.append(commissionHeaderRow);
+
+                // Get component values for this commission's components
+                const componentValues = getComponentValues(commissionGroup.components, transferFrom, transferTo);
+                components.push(...componentValues);
+
+                // Add component rows
+                componentValues.forEach(componentValue => {
+                    componentValue['key'] = componentIndex;
+                    componentValue['commissionKey'] = commissionKey;
+
+                    // Initialize default transfer source for each component
+                    transferSources[componentIndex] = [{
+                        warehouseId: transferFrom,
+                        quantity: getTotalTransferQty(componentIndex) || componentValue.transferQty
+                    }];
+
+                    syncComponentQuantityFromSources(componentIndex);
+
+                    addComponentsRow(componentValue, $TBody);
+                    componentIndex++;
+                });
+
+                // Add the "add component" button for this commission
+                const addButtonTemplate = $('script[data-template="addCommissionComponentRow_template"]').text().split(/\$\{(.+?)\}/g);
+                const addButtonRow = addButtonTemplate.map(render({commissionKey: commissionKey})).join('');
+                $TBody.append(addButtonRow);
             }
+
+            // Add global summary ONCE after all commissions are processed
+            const globalSummaryHeaderTemplate = $('script[data-template="globalSummaryHeader_template"]').text().split(/\$\{(.+?)\}/g);
+            const globalSummaryHeaderRow = globalSummaryHeaderTemplate.map(render({})).join('');
+            $TBody.append(globalSummaryHeaderRow);
+
+            // Create and add global summary
+            updateGlobalSummary();
+
             $(".commissionSubmitSpinner").hide();
             $("#transferTableContainer").show();
         }, 0);
     });
+
+    $("#transferNoCommission").click(function() {
+        $("#transferWithoutCommissionModal").modal('hide');
+        $("#transferFrom, #transferTo").prop('disabled', true).selectpicker('refresh');
+        $("#createCommissionCard").hide();
+        $("#transferTableContainer").show();
+
+        // Add the "Add Component" button at the bottom of the table
+        addNoCommissionAddButton();
+    });
+
+    $("#finishNoCommissionTransfer").click(function() {
+        $("#noCommissionTransferCard").hide();
+        $("#transferTableContainer").show();
+
+        // Initialize transfer sources for existing components
+        components.forEach((component, index) => {
+            if (component) {
+                transferSources[index] = [{
+                    warehouseId: $("#transferFrom").val(),
+                    quantity: component.transferQty
+                }];
+                syncComponentQuantityFromSources(index);
+            }
+        });
+
+        // Update global summary if needed
+        updateGlobalSummary();
+    });
+
+    // GLOBAL SUMMARY FUNCTIONALITY
+    let $currentAddGlobalForm = null;
+    window.$currentAddGlobalForm = null;
+
+    // Handle clicking the global summary header (collapse/expand)
+    $(document).on('click', '.global-summary-header', function() {
+        if (hasUnsavedSourceChanges) {
+            $("#unsavedSourceChangesModal").modal('show');
+            return;
+        }
+        const $header = $(this);
+        const $components = $('.global-summary-component');
+        const $sourceDetails = $('.source-details-summary'); // Add this line
+        const $toggleIcon = $header.find('.summary-toggle-icon');
+
+        if ($header.hasClass('expanded')) {
+            // Collapse summary
+            $components.hide();
+            $sourceDetails.hide(); // Add this line
+            $header.removeClass('expanded');
+            $toggleIcon.removeClass('bi-chevron-down').addClass('bi-chevron-right');
+        } else {
+            // Expand summary and collapse ALL commissions
+            $components.show();
+            $sourceDetails.show(); // Add this line - auto-show source details when expanding
+            $header.addClass('expanded');
+            $toggleIcon.removeClass('bi-chevron-right').addClass('bi-chevron-down');
+
+            // Collapse all commissions when expanding summary
+            $('.commission-header').addClass('collapsed');
+            $('.commission-component:not(.manual-component)').addClass('hidden');
+            $('.add-component-row').addClass('hidden');
+            $('.commission-toggle-icon').removeClass('bi-chevron-down').addClass('bi-chevron-right');
+            $('.commission-summary').show();
+            $('.commission-details').hide();
+
+            // Hide any open commission source details
+            $('.source-details-row').remove();
+            $('.edit-component-sources').html('<i class="bi bi-gear"></i>').removeClass('btn-warning').addClass('btn-light');
+        }
+    });
+
+    // Handle clicking the global "add component" button
+    $(document).on('click', '.add-global-component', function(e) {
+        e.stopPropagation();
+
+        // Hide any existing form
+        if ($currentAddGlobalForm) {
+            $currentAddGlobalForm.remove();
+            $currentAddGlobalForm = null;
+            window.$currentAddGlobalForm = null;
+        }
+
+        // Create and show the form
+        const addGlobalFormTemplate = $('script[data-template="addGlobalComponentForm_template"]').text().split(/\$\{(.+?)\}/g);
+        const formRow = addGlobalFormTemplate.map(render({})).join('');
+        const $formRow = $(formRow);
+
+        // Insert the form at the end of the summary section
+        $('#transferTBody').append($formRow);
+        $formRow.show();
+        $currentAddGlobalForm = $formRow;
+        window.$currentAddGlobalForm = $formRow;
+
+        // Expand the summary if it's collapsed
+        if (!$('.global-summary-header').hasClass('expanded')) {
+            $('.global-summary-header').click();
+        }
+
+        // Initialize selectpickers for the new form
+        $formRow.find('.selectpicker').selectpicker();
+
+        // Hide the add button
+        $('.add-global-component').hide();
+    });
+
+    // Handle component type selection for global components
+    $(document).on('change', '#globalMagazineComponent', function() {
+        let option = $(this).val();
+        $("#globalListComponents").empty();
+        $('#list__' + option + '_hidden option').clone().appendTo('#globalListComponents');
+        $("#globalListComponents").prop("disabled", false);
+        $("#globalListComponents").selectpicker('refresh');
+    });
+
+    // Handle adding the component to the global summary
+    $(document).on('click', '#addGlobalComponentBtn', function() {
+        const componentType = $("#globalMagazineComponent").val();
+        const componentId = $("#globalListComponents").val();
+        const transferQty = $("#globalQtyComponent").val();
+
+        if (!validateGlobalComponentForm(componentType, componentId, transferQty)) {
+            $(this).popover({
+                content: "Uzupełnij wszystkie dane",
+                trigger: 'manual',
+                placement: 'top'
+            }).popover('show');
+            setTimeout(() => $(this).popover('hide'), 2000);
+            return;
+        }
+
+        // Check for duplicates in global components (commissionKey = null)
+        let isDuplicate = false;
+        components.forEach(component => {
+            if (component &&
+                component.commissionKey === null &&
+                component.type === componentType &&
+                component.componentId === componentId) {
+                isDuplicate = true;
+            }
+        });
+
+        if (isDuplicate) {
+            $("#duplicateComponentModal").modal('show');
+            return;
+        }
+
+        // Create the component object (no commission association)
+        const component = {
+            type: componentType,
+            componentId: componentId,
+            neededForCommissionQty: '<span class="text-light">n/d</span>',
+            transferQty: transferQty,
+            commissionKey: null
+        };
+
+        // Get component values and add to the transfer table
+        const transferFrom = $("#transferFrom").val();
+        const transferTo = $("#transferTo").val();
+        const componentValues = getComponentValues([component], transferFrom, transferTo);
+
+        const pushedKey = components.push(componentValues[0]) - 1;
+        componentValues[0]['key'] = pushedKey;
+        componentValues[0]['commissionKey'] = null;
+
+        // Initialize default transfer source
+        transferSources[pushedKey] = [{
+            warehouseId: transferFrom,
+            quantity: parseInt(transferQty)
+        }];
+
+        syncComponentQuantityFromSources(pushedKey);
+
+        // Add the row to the table with blue line indicator, positioned before the form row
+        const $newRow = $(transferComponentsTableRow_template.map(render(componentValues[0])).join(''));
+        $newRow.addClass('manual-component');
+        $currentAddGlobalForm.before($newRow);
+
+        // Update the global summary
+        updateGlobalSummary();
+
+        // Hide the form and show the add button again
+        cancelAddingGlobalComponent();
+    });
+
+    // Handle canceling the global component addition
+    $(document).on('click', '#cancelGlobalComponentBtn', function() {
+        cancelAddingGlobalComponent();
+    });
+
+    function cancelAddingGlobalComponent() {
+        if ($currentAddGlobalForm) {
+            $currentAddGlobalForm.remove();
+            $currentAddGlobalForm = null;
+            window.$currentAddGlobalForm = null;
+        }
+        $('.add-global-component').show();
+    }
+
+    function validateGlobalComponentForm(componentType, componentId, transferQty) {
+        return componentType && componentId && transferQty && transferQty > 0;
+    }
+
+    // COMMISSION COMPONENT ADDITION FUNCTIONALITY
+    let currentCommissionKey = null;
+    let $currentAddComponentForm = null;
+
+    // Handle clicking the "+" button for adding components to a commission
+    $(document).on('click', '.add-commission-component', function() {
+        currentCommissionKey = $(this).data('commission-key');
+
+        // Hide any existing form
+        if ($currentAddComponentForm) {
+            $currentAddComponentForm.hide();
+        }
+
+        // Create and show the form for this commission
+        const addComponentFormTemplate = $('script[data-template="addCommissionComponentForm_template"]').text().split(/\$\{(.+?)\}/g);
+        const formRow = addComponentFormTemplate.map(render({commissionKey: currentCommissionKey})).join('');
+        const $formRow = $(formRow);
+
+        // Insert the form after the current row and show it
+        $(this).closest('tr').after($formRow);
+        $formRow.show();
+        $currentAddComponentForm = $formRow;
+
+        // Initialize selectpickers for the new form
+        $formRow.find('.selectpicker').selectpicker();
+
+        // Hide all add-component buttons
+        $('.add-commission-component').closest('tr').hide();
+    });
+
+    // Handle component type selection for commission components
+    $(document).on('change', '#commissionMagazineComponent', function() {
+        let option = $(this).val();
+        $("#commissionListComponents").empty();
+        $('#list__' + option + '_hidden option').clone().appendTo('#commissionListComponents');
+        $("#commissionListComponents").prop("disabled", false);
+        $("#commissionListComponents").selectpicker('refresh');
+    });
+
+    // Handle adding the component to the commission
+    $(document).on('click', '#addCommissionComponentBtn', function() {
+        const componentType = $("#commissionMagazineComponent").val();
+        const componentId = $("#commissionListComponents").val();
+        const transferQty = $("#commissionQtyComponent").val();
+
+        if (!validateCommissionComponentForm(componentType, componentId, transferQty)) {
+            $(this).popover({
+                content: "Uzupełnij wszystkie dane",
+                trigger: 'manual',
+                placement: 'top'
+            }).popover('show');
+            setTimeout(() => $(this).popover('hide'), 2000);
+            return;
+        }
+
+        // Check for duplicates in the current commission
+        let isDuplicate = false;
+        components.forEach(component => {
+            if (component &&
+                component.commissionKey == currentCommissionKey &&
+                component.type === componentType &&
+                component.componentId === componentId) {
+                isDuplicate = true;
+            }
+        });
+
+        if (isDuplicate) {
+            $("#duplicateComponentModal").modal('show');
+            return;
+        }
+
+        // Create the component object
+        const component = {
+            type: componentType,
+            componentId: componentId,
+            neededForCommissionQty: '<span class="text-light">n/d</span>',
+            transferQty: transferQty,
+            commissionKey: currentCommissionKey
+        };
+
+        // Get component values and add to the transfer table
+        const transferFrom = $("#transferFrom").val();
+        const transferTo = $("#transferTo").val();
+        const componentValues = getComponentValues([component], transferFrom, transferTo);
+
+        const pushedKey = components.push(componentValues[0]) - 1;
+        componentValues[0]['key'] = pushedKey;
+        componentValues[0]['commissionKey'] = currentCommissionKey;
+
+        // Initialize default transfer source
+        transferSources[pushedKey] = [{
+            warehouseId: transferFrom,
+            quantity: parseInt(transferQty)
+        }];
+        // Sync component data
+        syncComponentQuantityFromSources(pushedKey);
+
+        // Add the row to the table with manual component styling, positioned before the form row
+        const $newRow = $(transferComponentsTableRow_template.map(render(componentValues[0])).join(''));
+        $newRow.addClass('manual-component');
+        $currentAddComponentForm.before($newRow);
+
+        // Hide the form and show all add-component buttons again
+        cancelAddingCommissionComponent();
+    });
+
+    // Handle canceling the component addition
+    $(document).on('click', '#cancelCommissionComponentBtn', function() {
+        cancelAddingCommissionComponent();
+    });
+
+    function cancelAddingCommissionComponent() {
+        if ($currentAddComponentForm) {
+            $currentAddComponentForm.remove();
+            $currentAddComponentForm = null;
+        }
+        $('.add-component-row').show();
+        currentCommissionKey = null;
+    }
+
+    function validateCommissionComponentForm(componentType, componentId, transferQty) {
+        return componentType && componentId && transferQty && transferQty > 0;
+    }
+
+    // COLLAPSE/EXPAND FUNCTIONALITY
+    // Custom collapse functionality
+// Custom collapse functionality
+    $(document).on('click', '.commission-header', function() {
+        const commissionKey = $(this).data('commission-key');
+        const $header = $(this);
+        const $components = $(`.commission-component[data-commission-key="${commissionKey}"]:not(.manual-component)`);
+        const $addButtonRow = $(`.add-component-row[data-commission-key="${commissionKey}"]`);
+        const $summary = $header.find('.commission-summary');
+        const $details = $header.find('.commission-details');
+
+        if ($header.hasClass('collapsed')) {
+            // Expand this commission and collapse summary
+            $components.removeClass('hidden');
+            $addButtonRow.removeClass('hidden');
+            $header.removeClass('collapsed');
+            $summary.hide();
+            $details.show();
+
+            // Collapse the global summary when expanding any commission
+            const $globalSummary = $('.global-summary-header');
+            const $globalComponents = $('.global-summary-component');
+            const $sourceDetails = $('.source-details-summary'); // Add this line
+            const $globalToggleIcon = $globalSummary.find('.summary-toggle-icon');
+
+            if ($globalSummary.hasClass('expanded')) {
+                $globalComponents.hide();
+                $sourceDetails.hide(); // Add this line
+                $globalSummary.removeClass('expanded');
+                $globalToggleIcon.removeClass('bi-chevron-down').addClass('bi-chevron-right');
+            }
+        } else {
+            // Collapse this commission
+            $components.addClass('hidden');
+            $addButtonRow.addClass('hidden');
+            $header.addClass('collapsed');
+            $summary.show();
+            $details.hide();
+
+            // Hide any open forms for this commission
+            $(`.add-component-form[data-commission-key="${commissionKey}"]`).hide();
+
+            // Hide any open source details for this commission
+            $(`.source-details-row`).remove();
+            $('.edit-component-sources').html('<i class="bi bi-gear"></i>').removeClass('btn-warning').addClass('btn-light');
+        }
+    });
 });
+
+function addToggleAllButton() {
+    $("#transferTableButtons").show();
+}
 
 function getComponentsForCommissions(commissions, transferFrom, transferTo) {
     const data = { commissions: commissions, transferFrom: transferFrom, transferTo: transferTo };
@@ -121,6 +616,11 @@ function addCommissionRow(commissionValues, $TBody) {
     $TBody.append($tr);
 }
 
+function render(props) {
+    return function(tok, i) { return (i % 2) ? props[tok] : tok; };
+}
+
+// Modal handlers
 $("#dontCreateCommission").click(function() {
     $("#transferWithoutCommissionModal").modal('show');
 });
@@ -145,18 +645,11 @@ $("#commissionNoTransfer").click(function() {
     $("#submitCommissions").data('noTransfer', true);
 });
 
-$("#transferNoCommission").click(function() {
-    $("#transferWithoutCommissionModal").modal('hide');
-    $("#transferFrom, #transferTo").prop('disabled', true).selectpicker('refresh');
-    $("#createCommissionCard").hide();
-    $("#transferTableContainer").show();
-});
-
+// Device selection logic
 $('select#deviceType').change(function(){
     const deviceType = this.value;
     const usersSelected = $('#userSelect').val();
     const usedDevices = getUsedDevices(usersSelected, deviceType);
-    // Get devices used by all selected users
     const usedDevicesCommon = getCommonElements(usedDevices);
     let $deviceList = $("#list__device");
     $deviceList.empty();
@@ -222,13 +715,11 @@ $("#list__device").change(function(){
 function generateVersionSelect(possibleVersions){
     $("#version").empty();
     if(Object.keys(possibleVersions).length == 1) {
-        if(possibleVersions[0] == null)
-        {
+        if(possibleVersions[0] == null) {
             $("#version").selectpicker('destroy');
             $("#version").html("<option value=\"n/d\" selected>n/d</option>");
             $("#version").prop('disabled', false);
             $("#version").selectpicker('refresh');
-            $("#currentpage").text(1);
             return;
         }
         let version_id = Object.keys(possibleVersions)[0];
@@ -236,10 +727,8 @@ function generateVersionSelect(possibleVersions){
         let option = "<option value='"+version+"' selected>"+version+"</option>";
         $("#version").append(option);
         $("#version").selectpicker('destroy');
-        $("#currentpage").text(1);
     } else {
-        for (let version_id in possibleVersions) 
-        {
+        for (let version_id in possibleVersions) {
             let version = possibleVersions[version_id][0];
             let option = "<option value='"+version+"'>"+version+"</option>";
             $("#version").append(option);
@@ -259,8 +748,7 @@ function generateLaminateSelect(possibleLaminates){
         $("#version").prop('disabled', false);
         generateVersionSelect(possibleLaminates[laminate_id]['versions']);
     } else {
-        for (let laminate_id in possibleLaminates) 
-        {
+        for (let laminate_id in possibleLaminates) {
             let laminate_name = possibleLaminates[laminate_id][0];
             let versions = JSON.stringify(possibleLaminates[laminate_id]['versions']);
             let option = "<option value='"+laminate_id+"' data-jsonversions='"+versions+"'>"+laminate_name+"</option>";
@@ -271,7 +759,7 @@ function generateLaminateSelect(possibleLaminates){
 }
 
 $("#userSelect").change(function(){
-    const usersSelected = $(this).val(); 
+    const usersSelected = $(this).val();
     $("#versionSelect, #laminateSelect").hide();
     $("#version, #list__laminate").prop('disabled', true);
     $("#list__device").empty();
@@ -285,12 +773,10 @@ $("#userSelect").change(function(){
         $("#deviceType").find('option[value="'+deviceType+'"]').prop('disabled', !commonDevicesFound);
     });
 
-
     $("#deviceType, #list__device").selectpicker('refresh');
 });
 
-function clearAddCommissionFields()
-{
+function clearAddCommissionFields() {
     $("#userSelect, #list__device, #version, #list__laminate, #quantity, #deviceType").val('');
     $("#list__priority").val(0);
     $("#versionSelect, #laminateSelect").hide();

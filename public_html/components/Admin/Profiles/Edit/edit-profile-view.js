@@ -17,7 +17,7 @@ function fillForm(userInfo)
     $("#surname").val(userInfo['surname']);
     $("#email").val(userInfo['email']);
     $("#list__submag").val(userInfo['sub_magazine_id']).selectpicker('refresh');
-    $("#isActive").prop('checked', userInfo['isActive'] === 1);
+    $("#isActive").prop('checked', userInfo['user_isActive'] === 1);
 
     // Save the loaded sub_magazine_id as previous value
     $("#cancelNewMagazine").attr('data-previous-value', userInfo['sub_magazine_id'] || '');
