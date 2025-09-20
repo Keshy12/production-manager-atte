@@ -168,8 +168,7 @@ The system uses a comprehensive database schema with the following key tables:
 - Session-based authentication
 - Role-based access control
 - SQL injection protection via prepared statements
-- CSRF protection
-
+  
 ## 📄 License
 
 This software is proprietary to ATTE Power Sp. z o.o. and not intended for public use or distribution.
