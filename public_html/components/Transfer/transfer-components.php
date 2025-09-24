@@ -39,9 +39,9 @@ function getBomValues($bomType, $bomId, $bomVer, $bomLamId) {
 $commissionRepository = new CommissionRepository($MsaDB);
 $bomRepository = new BomRepository($MsaDB);
 
-// Tworzenie grupy zleceń
+// Create commission group
 $groupId = null;
-if (!empty($commissions)) {
+if (!empty($commissions) || !empty($components)) {
     $groupId = $commissionRepository->createCommissionGroup(
         $userid,
         $transferFrom,
@@ -51,6 +51,7 @@ if (!empty($commissions)) {
 }
 
 $commissionKeyToId = [];
+$commissionGroupTransferIds = []; // Track group transfer IDs
 $commissionResult = [];
 
 if (!empty($commissions)) {
@@ -84,17 +85,24 @@ if (!empty($commissions)) {
             $commission_id = $existingId;
             $isExpanded = true;
         } else {
-            // Create new commission with group_id
+            // Create new commission (without group_id in commission__list)
             $commission_id = $MsaDB->insert("commission__list",
                 ["user_id", "magazine_from", "magazine_to", "bom_" . $type . "_id", "quantity",
-                    "timestamp_created", "state_id", "priority", "commission_group_id"],
-                [$userid, $transferFrom, $transferTo, $bomId, $qty, $now, '1', $priorityId, $groupId]
+                    "timestamp_created", "state_id", "priority"],
+                [$userid, $transferFrom, $transferTo, $bomId, $qty, $now, '1', $priorityId]
             );
             $newQty = $qty;
             $initialQty = 0;
         }
 
+        // Create commission group transfer record
+        $groupTransferId = $MsaDB->insert("commission__group_transfers",
+            ["commission_id", "commission_group_id", "timestamp_created"],
+            [$commission_id, $groupId, $now]
+        );
+
         $commissionKeyToId[$index] = $commission_id;
+        $commissionGroupTransferIds[$commission_id] = $groupTransferId;
 
         $bom->getNameAndDescription();
         $commissionResult[] = [
@@ -132,13 +140,23 @@ if (!empty($components)) {
 
         // Determine the commission_id based on commissionKey
         $commission_id = null;
+        $groupTransferId = null;
+
         if (isset($component['commissionKey']) && $component['commissionKey'] !== null && $component['commissionKey'] !== '') {
             $commissionKey = $component['commissionKey'];
             if (isset($commissionKeyToId[$commissionKey])) {
                 $commission_id = $commissionKeyToId[$commissionKey];
+                $groupTransferId = $commissionGroupTransferIds[$commission_id];
             } else {
                 throw new \Exception("Commission key $commissionKey not found in mapping. Component index: $componentIndex");
             }
+        } else {
+            // For manual components (not linked to a specific commission),
+            // create a generic group transfer record
+            $groupTransferId = $MsaDB->insert("commission__group_transfers",
+                ["commission_id", "commission_group_id", "timestamp_created"],
+                [null, $groupId, $now] // commission_id is NULL for manual components
+            );
         }
 
         // Get sources for this component (from transferSources JS object)
@@ -161,9 +179,22 @@ if (!empty($components)) {
             }
 
             // Remove from source warehouse (negative quantity)
-            $MsaDB->insert("inventory__".$type,
-                [$type."_id", "commission_id", "user_id", "sub_magazine_id", "quantity", "timestamp", "input_type_id", "comment"],
-                [$deviceId, $commission_id, $userid, $sourceWarehouse, $sourceQty * -1, $now, $input_type_id, $comment . " - Grupa: $groupId (źródło)"]);
+            $insertFields = [$type."_id", "user_id", "sub_magazine_id", "quantity", "timestamp", "input_type_id", "comment"];
+            $insertValues = [$deviceId, $userid, $sourceWarehouse, $sourceQty * -1, $now, $input_type_id, $comment . " - Grupa: $groupId (źródło)"];
+
+            // Add commission_id if present
+            if ($commission_id) {
+                $insertFields[] = "commission_id";
+                $insertValues[] = $commission_id;
+            }
+
+            // Add commission_group_transfer_id if present
+            if ($groupTransferId) {
+                $insertFields[] = "commission_group_transfer_id";
+                $insertValues[] = $groupTransferId;
+            }
+
+            $MsaDB->insert("inventory__".$type, $insertFields, $insertValues);
 
             $transferredSources[] = [
                 'warehouseName' => getMagazineNameCached($sourceWarehouse, $magazineNamesCache),
@@ -172,9 +203,20 @@ if (!empty($components)) {
         }
 
         // Add to destination warehouse (positive quantity)
-        $MsaDB->insert("inventory__".$type,
-            [$type."_id", "commission_id", "user_id", "sub_magazine_id", "quantity", "timestamp", "input_type_id", "comment"],
-            [$deviceId, $commission_id, $userid, $transferTo, $totalQty, $now, $input_type_id, $comment . " - Grupa: $groupId (cel)"]);
+        $insertFields = [$type."_id", "user_id", "sub_magazine_id", "quantity", "timestamp", "input_type_id", "comment"];
+        $insertValues = [$deviceId, $userid, $transferTo, $totalQty, $now, $input_type_id, $comment . " - Grupa: $groupId (cel)"];
+
+        // Add commission_id if present
+        if ($commission_id) {
+            $insertFields[] = "commission_id";
+            $insertValues[] = $commission_id;
+        }
+
+        // Add commission_group_transfer_id if present
+        $insertFields[] = "commission_group_transfer_id";
+        $insertValues[] = $groupTransferId;
+
+        $MsaDB->insert("inventory__".$type, $insertFields, $insertValues);
 
         $componentsResult[] = [
             "deviceName" => $component['componentName'],
@@ -190,6 +232,7 @@ if (!empty($components)) {
 function getMagazineNameCached($magazineId, $cache) {
     return $cache[$magazineId] ?? 'Unknown';
 }
-    echo json_encode([$commissionResult, $componentsResult], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
+
+echo json_encode([$commissionResult, $componentsResult], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
 
 $MsaDB->db->commit();
