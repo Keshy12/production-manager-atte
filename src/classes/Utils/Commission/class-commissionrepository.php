@@ -23,11 +23,13 @@ class CommissionRepository {
         if(isset($queryResult[0])) {
             $row = $queryResult[0];
             $row = array_filter($row, fn ($value) => !is_null($value));
-            $type = null;
-            $type = isset($row["bom_sku_id"]) ? "sku" : $type;
-            $type = isset($row["bom_tht_id"]) ? "tht" : $type;
-            $type = isset($row["bom_smd_id"]) ? "smd" : $type;
-            $row["deviceBomId"] = $row["bom_{$type}_id"];
+
+            // Get device type from the device_type column
+            $type = $row["device_type"];
+
+            // Set deviceBomId using the single bom_id column
+            $row["deviceBomId"] = $row["bom_id"];
+
             $commission = new Commission($MsaDB);
             $commission -> deviceType = $type;
             $commission -> commissionValues = $row;
@@ -36,40 +38,4 @@ class CommissionRepository {
             throw new \Exception("There is no commission with given id($id)");
         }
     }
-
-    public function createCommissionGroup($createdBy, $transferFromDefault, $transferTo, $comment = null) {
-        $now = date("Y-m-d H:i:s", time());
-        $groupId = $this->MsaDB->insert('commission__groups', [
-            'created_by',
-            'timestamp_created',
-            'transfer_from',
-            'transfer_to',
-            'comment'
-        ], [
-            $createdBy,
-            $now,
-            $transferFromDefault,
-            $transferTo,
-            $comment
-        ]);
-
-        return $groupId;
-    }
-
-    public function getCommissionGroupById($groupId) {
-        $groupData = $this->MsaDB->query(
-            "SELECT * FROM commission__groups WHERE id = $groupId"
-        );
-
-        if(empty($groupData)) {
-            throw new \Exception("Commission group not found");
-        }
-
-        $group = new CommissionGroup($this->MsaDB);
-        $group->groupValues = $groupData[0];
-        $group->loadCommissions();
-
-        return $group;
-    }
-
 }

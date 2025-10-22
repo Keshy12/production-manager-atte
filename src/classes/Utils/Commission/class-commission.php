@@ -59,8 +59,8 @@ class Commission
     public function rollbackItems($rollbackOption, $MsaDB) {
         $commissionId = $this->commissionValues["id"];
         $deviceType = $this->deviceType;
-        $magazineFromId = $this->commissionValues['magazine_from'];
-        $magazineToId = $this->commissionValues['magazine_to'];
+        $warehouseFromId = $this->commissionValues['warehouse_from_id'];
+        $warehouseToId = $this->commissionValues['warehouse_to_id'];
 
         // Build WHERE clause based on rollback option
         $whereClause = "commission_id = $commissionId";
@@ -72,7 +72,7 @@ class Commission
                            ROW_NUMBER() OVER (ORDER BY timestamp ASC) as rn
                     FROM inventory__{$deviceType} 
                     WHERE commission_id = $commissionId 
-                      AND sub_magazine_id = $magazineToId 
+                      AND sub_magazine_id = $warehouseToId 
                       AND quantity > 0
                 ) ranked 
                 WHERE rn <= $quantityReturned
@@ -85,7 +85,7 @@ class Commission
                    {$deviceType}_id
             FROM inventory__{$deviceType} 
             WHERE $whereClause 
-              AND sub_magazine_id = $magazineToId 
+              AND sub_magazine_id = $warehouseToId 
               AND quantity > 0
         ");
 
@@ -97,7 +97,7 @@ class Commission
                 'commission_id',
                 'user_id',
                 'sub_magazine_id',
-                'quantity',
+                'qty',
                 'production_date',
                 'input_type_id',
                 'comment'
@@ -105,8 +105,8 @@ class Commission
                 $item[$deviceType . '_id'],
                 $commissionId,
                 $item['user_id'],
-                $magazineToId,
-                -$item['quantity'],
+                $warehouseToId,
+                -$item['qty'],
                 $item['production_date'],
                 $item['input_type_id'],
                 $item['comment'] . " (Rollback - anulacja zlecenia)"
@@ -126,7 +126,7 @@ class Commission
                 $item[$deviceType . '_id'],
                 $commissionId,
                 $item['user_id'],
-                $magazineFromId,
+                $warehouseFromId,
                 $item['quantity'],
                 $item['production_date'],
                 $item['input_type_id'],

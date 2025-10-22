@@ -1,232 +1,242 @@
 <?php
 use Atte\DB\MsaDB;
 use Atte\Utils\CommissionRepository;
-use Atte\Utils\BomRepository;
+
+header('Content-Type: application/json');
 
 $MsaDB = MsaDB::getInstance();
 $MsaDB->db->beginTransaction();
-$wasSuccessful = true;
-$errorMessage = "";
+
+$response = ['success' => false, 'message' => ''];
 
 try {
+    $commissionId = $_POST['commissionId'];
+    $cancellationType = $_POST['cancellationType']; // 'single' or 'group'
+    $rollbackEnabled = $_POST['rollbackEnabled'] === 'true';
+    $rollbackDistribution = json_decode($_POST['rollbackDistribution'], true);
+
     $commissionRepository = new CommissionRepository($MsaDB);
-    $bomRepository = new BomRepository($MsaDB);
+    $commission = $commissionRepository->getCommissionById($commissionId);
 
-    $commission = $commissionRepository->getCommissionById($_POST["id"]);
-    $rollbackOption = $_POST["rollbackOption"] ?? 'none';
-    $unreturnedOption = $_POST["unreturnedOption"] ?? 'keep';
+    $commissionGroupId = $commission->commissionValues['commission_group_id'];
 
-    // Cancel the commission
-    $commission->cancel();
+    if ($cancellationType === 'group') {
+        // Cancel entire group
+        if (!$commissionGroupId) {
+            throw new Exception("Commission is not part of a group");
+        }
 
-    // Handle rollback/delete based on selected option
-    if ($rollbackOption !== 'none') {
-        $commissionId = $_POST["id"];
-        $commissionValues = $commission->commissionValues;
-        $magazineFromId = $commissionValues['magazine_from'];
-        $magazineToId = $commissionValues['magazine_to'];
+        $commissionGroup = $commissionRepository->getCommissionGroupById($commissionGroupId);
 
-        // Get BOM components to calculate remaining quantities
-        $deviceType = $commission->deviceType;
-        $bomId = $commissionValues["bom_{$deviceType}_id"];
-        $deviceBom = $bomRepository->getBomById($deviceType, $bomId);
-        $bomComponents = $deviceBom->getComponents(1);
+        // Cancel all commissions in the group
+        foreach ($commissionGroup->commissions as $groupCommission) {
+            $groupCommission->cancel();
+        }
 
-        $inventoryTypes = ['parts', 'sku', 'tht', 'smd'];
+        // Perform rollback for entire group if enabled
+        if ($rollbackEnabled && $rollbackDistribution) {
+            performGroupRollback($MsaDB, $commissionGroup, $rollbackDistribution);
+        }
 
-        foreach ($inventoryTypes as $type) {
-            // Get transferred items for this type (input_type_id = 2)
-            $transferredItems = $MsaDB->query("
-                SELECT id, quantity, user_id, production_date, comment, {$type}_id, timestamp
-                FROM inventory__{$type} 
-                WHERE commission_id = $commissionId 
-                AND input_type_id = 2
-                AND quantity > 0
-                ORDER BY timestamp ASC
-            ");
+        $response['message'] = 'Grupa zleceń została anulowana pomyślnie';
 
-            // Calculate remaining quantities and process items
-            foreach ($transferredItems as $item) {
-                $itemId = $item[$type . '_id'];
-                $originalQuantity = $item['quantity'];
-                $usedQuantity = 0;
+    } else {
+        // Cancel single commission
+        $commission->cancel();
 
-                // Find matching BOM component to calculate used quantity
-                foreach ($bomComponents as $bomComponent) {
-                    if ($bomComponent['type'] === $type && $bomComponent['componentId'] == $itemId) {
-                        $usedQuantity = $bomComponent['quantity'] * $commissionValues['quantity_produced'];
-                        break;
-                    }
-                }
+        // Perform rollback for single commission if enabled
+        if ($rollbackEnabled && $rollbackDistribution) {
+            performSingleCommissionRollback($MsaDB, $commission, $rollbackDistribution);
+        }
 
-                $remainingQuantity = max(0, $originalQuantity - $usedQuantity);
+        $response['message'] = 'Zlecenie zostało anulowane pomyślnie';
+    }
 
-                // Only process if there's remaining quantity
-                if ($remainingQuantity > 0) {
-                    if ($rollbackOption === 'remaining') {
-                        // Create negative entry in destination magazine
-                        $MsaDB->insert("inventory__{$type}", [
-                            $type . '_id',
-                            'commission_id',
-                            'user_id',
-                            'sub_magazine_id',
-                            'quantity',
-                            'production_date',
-                            'input_type_id',
-                            'comment'
-                        ], [
-                            $itemId,
-                            $commissionId,
-                            $item['user_id'],
-                            $magazineToId,
-                            -$remainingQuantity,
-                            $item['production_date'],
-                            2,
-                            $item['comment'] . " (Rollback - anulacja zlecenia)"
-                        ]);
+    $MsaDB->db->commit();
+    $response['success'] = true;
 
-                        // Create positive entry in source magazine
-                        $MsaDB->insert("inventory__{$type}", [
-                            $type . '_id',
-                            'commission_id',
-                            'user_id',
-                            'sub_magazine_id',
-                            'quantity',
-                            'production_date',
-                            'input_type_id',
-                            'comment'
-                        ], [
-                            $itemId,
-                            $commissionId,
-                            $item['user_id'],
-                            $magazineFromId,
-                            $remainingQuantity,
-                            $item['production_date'],
-                            2,
-                            $item['comment'] . " (Rollback - anulacja zlecenia)"
-                        ]);
-                    } else if ($rollbackOption === 'delete') {
-                        // Create negative entry in destination magazine (delete remaining)
-                        $MsaDB->insert("inventory__{$type}", [
-                            $type . '_id',
-                            'commission_id',
-                            'user_id',
-                            'sub_magazine_id',
-                            'quantity',
-                            'production_date',
-                            'input_type_id',
-                            'comment'
-                        ], [
-                            $itemId,
-                            $commissionId,
-                            $item['user_id'],
-                            $magazineToId,
-                            -$remainingQuantity,
-                            $item['production_date'],
-                            3,
-                            $item['comment'] . " (Usunięcie - anulacja zlecenia)"
-                        ]);
+} catch (Exception $e) {
+    $MsaDB->db->rollBack();
+    $response['message'] = $e->getMessage();
+}
+
+echo json_encode($response);
+
+function performSingleCommissionRollback($MsaDB, $commission, $rollbackDistribution) {
+    $commissionId = $commission->commissionValues['id'];
+    $deviceType = $commission->deviceType;
+    $userId = $_SESSION['user_id'] ?? 1;
+
+    foreach ($rollbackDistribution as $componentKey => $sources) {
+        // Parse component key (e.g., "smd_123" -> type: "smd", id: "123")
+        $parts = explode('_', $componentKey);
+        $type = $parts[0];
+        $componentId = $parts[1];
+
+        // Calculate total rollback quantity
+        $totalRollbackQuantity = array_sum(array_column($sources, 'quantity'));
+
+        if ($totalRollbackQuantity <= 0) continue;
+
+        // Remove from destination magazine
+        $destinationMagazineId = getDestinationMagazineId($MsaDB, $commissionId, $type, $componentId);
+
+        $MsaDB->insert("inventory__$type", [
+            $type . '_id',
+            'commission_id',
+            'user_id',
+            'sub_magazine_id',
+            'quantity',
+            'input_type_id',
+            'comment'
+        ], [
+            $componentId,
+            $commissionId,
+            $userId,
+            $destinationMagazineId,
+            -$totalRollbackQuantity,
+            2, // Transfer type
+            "Rollback - anulacja zlecenia #$commissionId"
+        ]);
+
+        // Add back to source magazines according to distribution
+        foreach ($sources as $source) {
+            if ($source['quantity'] > 0) {
+                $MsaDB->insert("inventory__$type", [
+                    $type . '_id',
+                    'commission_id',
+                    'user_id',
+                    'sub_magazine_id',
+                    'quantity',
+                    'input_type_id',
+                    'comment'
+                ], [
+                    $componentId,
+                    $commissionId,
+                    $userId,
+                    $source['sourceId'],
+                    $source['quantity'],
+                    2, // Transfer type
+                    "Rollback - anulacja zlecenia #$commissionId (powrót do źródła)"
+                ]);
+            }
+        }
+    }
+}
+
+function performGroupRollback($MsaDB, $commissionGroup, $rollbackDistribution) {
+    $userId = $_SESSION['user_id'] ?? 1;
+    $groupId = $commissionGroup->groupValues['id'];
+
+    foreach ($rollbackDistribution as $componentKey => $sources) {
+        // Parse component key
+        $parts = explode('_', $componentKey);
+        $type = $parts[0];
+        $componentId = $parts[1];
+
+        // Calculate total rollback quantity
+        $totalRollbackQuantity = array_sum(array_column($sources, 'quantity'));
+
+        if ($totalRollbackQuantity <= 0) continue;
+
+        // Get all transfers for this component in the group
+        $transfers = $MsaDB->query("
+            SELECT i.*, c.id as commission_id
+            FROM inventory__$type i
+            LEFT JOIN commission__list c ON i.commission_id = c.id
+            WHERE c.commission_group_id = $groupId 
+            AND i.{$type}_id = $componentId
+            AND i.quantity > 0
+            ORDER BY i.quantity DESC
+        ");
+
+        $remainingToRollback = $totalRollbackQuantity;
+
+        // Rollback from destination magazines
+        foreach ($transfers as $transfer) {
+            if ($remainingToRollback <= 0) break;
+
+            $rollbackFromThis = min($remainingToRollback, $transfer['quantity']);
+
+            // Remove from destination
+            $MsaDB->insert("inventory__$type", [
+                $type . '_id',
+                'commission_id',
+                'user_id',
+                'sub_magazine_id',
+                'quantity',
+                'input_type_id',
+                'comment'
+            ], [
+                $componentId,
+                $transfer['commission_id'],
+                $userId,
+                $transfer['sub_magazine_id'],
+                -$rollbackFromThis,
+                2,
+                "Rollback - anulacja grupy zleceń #$groupId"
+            ]);
+
+            $remainingToRollback -= $rollbackFromThis;
+        }
+
+        // Add back to source magazines according to distribution
+        foreach ($sources as $source) {
+            if ($source['quantity'] > 0) {
+                // We need to distribute across commissions that used this source
+                $sourceTransfers = $MsaDB->query("
+                    SELECT i.commission_id, ABS(i.quantity) as quantity
+                    FROM inventory__$type i
+                    LEFT JOIN commission__list c ON i.commission_id = c.id
+                    WHERE c.commission_group_id = $groupId 
+                    AND i.{$type}_id = $componentId
+                    AND i.sub_magazine_id = {$source['sourceId']}
+                    AND i.quantity < 0
+                ");
+
+                $sourceTotal = array_sum(array_column($sourceTransfers, 'quantity'));
+
+                foreach ($sourceTransfers as $sourceTransfer) {
+                    if ($sourceTotal > 0) {
+                        $proportion = $sourceTransfer['quantity'] / $sourceTotal;
+                        $returnQuantity = round($source['quantity'] * $proportion);
+
+                        if ($returnQuantity > 0) {
+                            $MsaDB->insert("inventory__$type", [
+                                $type . '_id',
+                                'commission_id',
+                                'user_id',
+                                'sub_magazine_id',
+                                'quantity',
+                                'input_type_id',
+                                'comment'
+                            ], [
+                                $componentId,
+                                $sourceTransfer['commission_id'],
+                                $userId,
+                                $source['sourceId'],
+                                $returnQuantity,
+                                2,
+                                "Rollback - anulacja grupy zleceń #$groupId (powrót do źródła)"
+                            ]);
+                        }
                     }
                 }
             }
         }
     }
-
-    // Handle unreturned products
-    $commissionValues = $commission->commissionValues;
-    $unreturnedProducts = max(0, $commissionValues['quantity_produced'] - $commissionValues['quantity_returned']);
-
-    if ($unreturnedProducts > 0 && $unreturnedOption !== 'keep') {
-        $deviceType = $commission->deviceType;
-        $bomId = $commissionValues["bom_{$deviceType}_id"];
-        $commissionId = $_POST["id"];
-        $magazineFromId = $commissionValues['magazine_from'];
-        $magazineToId = $commissionValues['magazine_to'];
-
-        // Get the device BOM to get the actual device ID
-        $deviceBom = $bomRepository->getBomById($deviceType, $bomId);
-        $deviceId = $deviceBom->deviceId; // Use deviceId property directly
-
-        if ($unreturnedOption === 'transfer') {
-            // Transfer unreturned products to destination magazine (original source)
-            $MsaDB->insert("inventory__{$deviceType}", [
-                "{$deviceType}_id",
-                "{$deviceType}_bom_id",
-                'commission_id',
-                'user_id',
-                'sub_magazine_id',
-                'quantity',
-                'input_type_id',
-                'comment',
-                'production_date'
-            ], [
-                $deviceId,
-                $bomId,
-                $commissionId,
-                $_SESSION["userid"] ?? 1,
-                $magazineFromId, // Transfer to original source magazine
-                $unreturnedProducts,
-                2,
-                'Przeniesienie niewróconych produktów przy anulacji zlecenia',
-                date('Y-m-d H:i:s')
-            ]);
-
-            // Remove from contractor magazine (negative entry)
-            $MsaDB->insert("inventory__{$deviceType}", [
-                "{$deviceType}_id",
-                "{$deviceType}_bom_id",
-                'commission_id',
-                'user_id',
-                'sub_magazine_id',
-                'quantity',
-                'input_type_id',
-                'comment',
-                'production_date'
-            ], [
-                $deviceId,
-                $bomId,
-                $commissionId,
-                $_SESSION["userid"] ?? 1,
-                $magazineToId, // Remove from contractor magazine
-                -$unreturnedProducts,
-                2,
-                'Przeniesienie niewróconych produktów przy anulacji zlecenia',
-                date('Y-m-d H:i:s')
-            ]);
-
-        } else if ($unreturnedOption === 'remove') {
-            // Remove unreturned products from contractor magazine
-            $MsaDB->insert("inventory__{$deviceType}", [
-                "{$deviceType}_id",
-                "{$deviceType}_bom_id",
-                'commission_id',
-                'user_id',
-                'sub_magazine_id',
-                'quantity',
-                'input_type_id',
-                'comment',
-                'production_date'
-            ], [
-                $deviceId,
-                $bomId,
-                $commissionId,
-                $_SESSION["userid"] ?? 1,
-                $magazineToId, // Remove from contractor magazine
-                -$unreturnedProducts,
-                3,
-                'Usunięcie niewróconych produktów przy anulacji zlecenia',
-                date('Y-m-d H:i:s')
-            ]);
-        }
-    }
-
-    $MsaDB->db->commit();
-}
-catch (\Throwable $e) {
-    $MsaDB->db->rollBack();
-    $wasSuccessful = false;
-    $errorMessage = "ERROR! Error message:".$e->getMessage();
 }
 
-echo json_encode([$wasSuccessful, $errorMessage]
-    , JSON_FORCE_OBJECT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
+function getDestinationMagazineId($MsaDB, $commissionId, $type, $componentId) {
+    $result = $MsaDB->query("
+        SELECT sub_magazine_id 
+        FROM inventory__$type 
+        WHERE commission_id = $commissionId 
+        AND {$type}_id = $componentId 
+        AND quantity > 0 
+        LIMIT 1
+    ");
+
+    return $result[0]['sub_magazine_id'] ?? null;
+}
+?>

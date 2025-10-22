@@ -7,99 +7,125 @@ $commissionId = $_POST['commissionId'];
 $response = ['success' => false, 'data' => []];
 
 try {
-    // Get all commission group transfers for this commission
-    $groupTransfers = $MsaDB->query("
-        SELECT cgt.*, cg.timestamp_created, cg.comment
-        FROM commission__group_transfers cgt
-        JOIN commission__groups cg ON cgt.commission_group_id = cg.id
-        WHERE cgt.commission_id = $commissionId 
-        AND cgt.is_cancelled = 0
-        ORDER BY cgt.timestamp_created DESC
+    // Get all transfer groups for this commission
+    $transferGroups = $MsaDB->query("
+        SELECT DISTINCT 
+            tg.id as transfer_group_id,
+            tg.created_at,
+            tg.created_by,
+            tg.notes,
+            tg.is_cancelled
+        FROM inventory__transfer_groups tg
+        INNER JOIN (
+            SELECT DISTINCT transfer_group_id FROM inventory__parts WHERE commission_id = $commissionId
+            UNION
+            SELECT DISTINCT transfer_group_id FROM inventory__sku WHERE commission_id = $commissionId
+            UNION
+            SELECT DISTINCT transfer_group_id FROM inventory__smd WHERE commission_id = $commissionId
+            UNION
+            SELECT DISTINCT transfer_group_id FROM inventory__tht WHERE commission_id = $commissionId
+        ) transfers ON tg.id = transfers.transfer_group_id
+        WHERE tg.is_cancelled = 0
+        ORDER BY tg.created_at DESC
     ");
 
     $groups = [];
-    foreach ($groupTransfers as $transfer) {
-        $groupId = $transfer['commission_group_id'];
+    foreach ($transferGroups as $transfer) {
+        $transferGroupId = $transfer['transfer_group_id'];
 
-        // Get ALL commissions in this group with their details
+        // Get ALL commissions in this transfer group
         $allCommissionsInGroup = $MsaDB->query("
-            SELECT 
-                cgt.commission_id,
-                cgt.id as transfer_id,
-                cl.quantity,
-                cl.quantity_produced,
-                cl.quantity_returned,
-                cl.state_id,
-                cl.isCancelled,
-                cl.timestamp_created,
-                CASE 
-                    WHEN cl.bom_sku_id IS NOT NULL THEN 'sku'
-                    WHEN cl.bom_smd_id IS NOT NULL THEN 'smd'
-                    WHEN cl.bom_tht_id IS NOT NULL THEN 'tht'
-                END as device_type,
-                COALESCE(cl.bom_sku_id, cl.bom_smd_id, cl.bom_tht_id) as bom_id
-            FROM commission__group_transfers cgt
-            JOIN commission__list cl ON cgt.commission_id = cl.id
-            WHERE cgt.commission_group_id = $groupId
-            AND cgt.is_cancelled = 0
-            ORDER BY cgt.timestamp_created ASC
+            SELECT DISTINCT 
+                cl.id as commission_id,
+                cl.warehouse_from_id,
+                cl.warehouse_to_id,
+                cl.device_type,
+                cl.bom_id,
+                cl.qty,
+                cl.qty_produced,
+                cl.qty_returned,
+                cl.state,
+                cl.priority,
+                cl.is_cancelled,
+                cl.created_at
+            FROM commission__list cl
+            INNER JOIN (
+                SELECT DISTINCT commission_id FROM inventory__parts WHERE transfer_group_id = $transferGroupId AND commission_id IS NOT NULL
+                UNION
+                SELECT DISTINCT commission_id FROM inventory__sku WHERE transfer_group_id = $transferGroupId AND commission_id IS NOT NULL
+                UNION
+                SELECT DISTINCT commission_id FROM inventory__smd WHERE transfer_group_id = $transferGroupId AND commission_id IS NOT NULL
+                UNION
+                SELECT DISTINCT commission_id FROM inventory__tht WHERE transfer_group_id = $transferGroupId AND commission_id IS NOT NULL
+            ) transfers ON cl.id = transfers.commission_id
+            WHERE cl.is_cancelled = 0
+            ORDER BY cl.created_at ASC
         ");
 
         // Check if there are manual components (no commission_id) in this group
         $hasManualComponents = $MsaDB->query("
             SELECT COUNT(*) as count
-            FROM commission__group_transfers cgt
-            WHERE cgt.commission_group_id = $groupId
-            AND cgt.commission_id IS NULL
-            AND cgt.is_cancelled = 0
+            FROM (
+                SELECT id FROM inventory__parts WHERE transfer_group_id = $transferGroupId AND commission_id IS NULL AND is_cancelled = 0
+                UNION ALL
+                SELECT id FROM inventory__sku WHERE transfer_group_id = $transferGroupId AND commission_id IS NULL AND is_cancelled = 0
+                UNION ALL
+                SELECT id FROM inventory__smd WHERE transfer_group_id = $transferGroupId AND commission_id IS NULL AND is_cancelled = 0
+                UNION ALL
+                SELECT id FROM inventory__tht WHERE transfer_group_id = $transferGroupId AND commission_id IS NULL AND is_cancelled = 0
+            ) as manual_transfers
         ")[0]['count'] > 0;
 
         // Get commission details for each commission
         $commissionsWithDetails = [];
 
         foreach ($allCommissionsInGroup as $commissionData) {
-            $commissionId = $commissionData['commission_id'];
+            $commissionIdInGroup = $commissionData['commission_id'];
             $deviceType = $commissionData['device_type'];
             $bomId = $commissionData['bom_id'];
 
-            // Check if this commission appears in other groups (indicating extensions)
+            // Check if this commission appears in other transfer groups (indicating extensions)
             $allGroupsForCommission = $MsaDB->query("
-                SELECT DISTINCT commission_group_id
-                FROM commission__group_transfers 
-                WHERE commission_id = $commissionId
-                AND is_cancelled = 0
+                SELECT DISTINCT transfer_group_id
+                FROM (
+                    SELECT transfer_group_id FROM inventory__parts WHERE commission_id = $commissionIdInGroup AND is_cancelled = 0
+                    UNION
+                    SELECT transfer_group_id FROM inventory__sku WHERE commission_id = $commissionIdInGroup AND is_cancelled = 0
+                    UNION
+                    SELECT transfer_group_id FROM inventory__smd WHERE commission_id = $commissionIdInGroup AND is_cancelled = 0
+                    UNION
+                    SELECT transfer_group_id FROM inventory__tht WHERE commission_id = $commissionIdInGroup AND is_cancelled = 0
+                ) as all_transfers
             ");
 
             $isExtension = count($allGroupsForCommission) > 1;
-
-            $isPartialView = $isExtension && ($commissionId != $_POST['commissionId']);
 
             // Get device info based on type
             switch ($deviceType) {
                 case 'sku':
                     $deviceInfo = $MsaDB->query("
-                SELECT s.name, s.description, bs.version 
-                FROM bom__sku bs 
-                JOIN list__sku s ON bs.sku_id = s.id 
-                WHERE bs.id = $bomId
-            ")[0];
+                        SELECT s.name, s.description, bs.version 
+                        FROM bom__sku bs 
+                        JOIN list__sku s ON bs.sku_id = s.id 
+                        WHERE bs.id = $bomId
+                    ")[0];
                     break;
                 case 'smd':
                     $deviceInfo = $MsaDB->query("
-                SELECT s.name, s.description, bs.version, l.name as laminate_name
-                FROM bom__smd bs 
-                JOIN list__smd s ON bs.smd_id = s.id 
-                LEFT JOIN list__laminate l ON bs.laminate_id = l.id
-                WHERE bs.id = $bomId
-            ")[0];
+                        SELECT s.name, s.description, bs.version, l.name as laminate_name
+                        FROM bom__smd bs 
+                        JOIN list__smd s ON bs.smd_id = s.id 
+                        LEFT JOIN list__laminate l ON bs.laminate_id = l.id
+                        WHERE bs.id = $bomId
+                    ")[0];
                     break;
                 case 'tht':
                     $deviceInfo = $MsaDB->query("
-                SELECT t.name, t.description, bt.version 
-                FROM bom__tht bt 
-                JOIN list__tht t ON bt.tht_id = t.id 
-                WHERE bt.id = $bomId
-            ")[0];
+                        SELECT t.name, t.description, bt.version 
+                        FROM bom__tht bt 
+                        JOIN list__tht t ON bt.tht_id = t.id 
+                        WHERE bt.id = $bomId
+                    ")[0];
                     break;
             }
 
@@ -113,73 +139,124 @@ try {
 
             $receiverNames = array_map(function($r) { return $r['name'] . ' ' . $r['surname']; }, $receivers);
 
-            // Get transfers specific to this commission
-            $commissionTransfers = getCommissionTransfers($MsaDB, $groupId, $commissionData['commission_id']);
+            // Get transfers specific to this commission in this transfer group
+            $commissionTransfers = getCommissionTransfers($MsaDB, $transferGroupId, $commissionData['commission_id']);
 
             $commissionsWithDetails[] = [
                 'commissionId' => $commissionData['commission_id'],
-                'transferId' => $commissionData['transfer_id'],
+                'transferGroupId' => $transferGroupId,
                 'isCurrentCommission' => $commissionData['commission_id'] == $commissionId,
                 'isExtension' => $isExtension,
-                'isPartialView' => $isPartialView,
                 'deviceName' => $deviceInfo['name'],
                 'deviceDescription' => $deviceInfo['description'] ?? '',
                 'version' => $deviceInfo['version'] ?? '',
                 'laminate' => $deviceInfo['laminate_name'] ?? '',
-                'quantity' => $commissionData['quantity'],
-                'quantityProduced' => $commissionData['quantity_produced'],
-                'quantityReturned' => $commissionData['quantity_returned'],
-                'stateId' => $commissionData['state_id'],
-                'isCancelled' => $commissionData['isCancelled'],
-                'timestampCreated' => $commissionData['timestamp_created'],
+                'qty' => $commissionData['qty'],
+                'qtyProduced' => $commissionData['qty_produced'],
+                'qtyReturned' => $commissionData['qty_returned'],
+                'state' => $commissionData['state'],
+                'priority' => $commissionData['priority'],
+                'isCancelled' => $commissionData['is_cancelled'],
+                'createdAt' => $commissionData['created_at'],
                 'receivers' => $receiverNames,
                 'deviceType' => $deviceType,
-                'transfers' => $commissionTransfers
+                'transfers' => $commissionTransfers,
+                'warehouseFromId' => $commissionData['warehouse_from_id'],
+                'warehouseToId' => $commissionData['warehouse_to_id']
             ];
         }
 
         // Add manual components as a separate "commission" if they exist
         if ($hasManualComponents) {
-            $manualTransfers = getManualComponentTransfers($MsaDB, $groupId);
-
-            // Get the transfer_id for manual components
-            $manualTransferId = $MsaDB->query("
-                SELECT id FROM commission__group_transfers 
-                WHERE commission_group_id = $groupId 
-                AND commission_id IS NULL 
-                AND is_cancelled = 0 
-                LIMIT 1
-            ")[0]['id'] ?? null;
+            $manualTransfers = getManualComponentTransfers($MsaDB, $transferGroupId);
 
             $commissionsWithDetails[] = [
                 'commissionId' => null,
-                'transferId' => $manualTransferId,
+                'transferGroupId' => $transferGroupId,
                 'isCurrentCommission' => false,
                 'isManualComponents' => true,
                 'deviceName' => 'Komponenty dodane ręcznie',
                 'deviceDescription' => 'Komponenty transferowane bez powiązania ze zleceniem',
                 'version' => '',
                 'laminate' => '',
-                'quantity' => 0,
-                'quantityProduced' => 0,
-                'quantityReturned' => 0,
-                'stateId' => 0,
+                'qty' => 0,
+                'qtyProduced' => 0,
+                'qtyReturned' => 0,
+                'state' => 'active',
+                'priority' => 'none',
                 'isCancelled' => 0,
-                'timestampCreated' => $transfer['timestamp_created'],
+                'createdAt' => $transfer['created_at'],
                 'receivers' => [],
                 'deviceType' => '',
-                'transfers' => $manualTransfers
+                'transfers' => $manualTransfers,
+                'warehouseFromId' => null,
+                'warehouseToId' => null
             ];
         }
 
         $groups[] = [
-            'id' => $groupId,
-            'transferId' => $transfer['id'],
-            'timestamp' => $transfer['timestamp_created'],
-            'comment' => $transfer['comment'],
+            'id' => $transferGroupId,
+            'timestamp' => $transfer['created_at'],
+            'notes' => $transfer['notes'],
+            'createdBy' => $transfer['created_by'],
             'hasOtherCommissions' => count($allCommissionsInGroup) > 1 || $hasManualComponents,
             'allCommissions' => $commissionsWithDetails
         ];
+    }
+
+    // After all groups are built, calculate proper badge logic
+    // First, collect all commission IDs and their group appearances in current context
+    $allVisibleCommissions = [];
+    foreach ($groups as $group) {
+        foreach ($group['allCommissions'] as $commission) {
+            if (!isset($commission['commissionId']) || ($commission['isManualComponents'] ?? false)) continue;
+
+            $commissionIdInContext = $commission['commissionId'];
+            if (!isset($allVisibleCommissions[$commissionIdInContext])) {
+                $allVisibleCommissions[$commissionIdInContext] = [];
+            }
+            $allVisibleCommissions[$commissionIdInContext][] = $group['id'];
+        }
+    }
+
+    // Now update badge logic for each group
+    foreach ($groups as &$group) {
+        foreach ($group['allCommissions'] as &$commission) {
+            if (!isset($commission['commissionId']) || ($commission['isManualComponents'] ?? false)) {
+                $commission['extensionBadge'] = 'none';
+                continue;
+            }
+
+            $commissionIdInContext = $commission['commissionId'];
+
+            // Get ALL transfer groups for this commission (total)
+            $allTransfersForCommission = $MsaDB->query("
+                SELECT DISTINCT transfer_group_id
+                FROM (
+                    SELECT transfer_group_id FROM inventory__parts WHERE commission_id = $commissionIdInContext AND is_cancelled = 0
+                    UNION
+                    SELECT transfer_group_id FROM inventory__sku WHERE commission_id = $commissionIdInContext AND is_cancelled = 0
+                    UNION
+                    SELECT transfer_group_id FROM inventory__smd WHERE commission_id = $commissionIdInContext AND is_cancelled = 0
+                    UNION
+                    SELECT transfer_group_id FROM inventory__tht WHERE commission_id = $commissionIdInContext AND is_cancelled = 0
+                ) as all_transfers
+            ");
+
+            $totalTransferGroups = count($allTransfersForCommission);
+            $visibleTransferGroups = count(array_unique($allVisibleCommissions[$commissionIdInContext]));
+
+            // Set badge logic
+            if ($totalTransferGroups > 1) {
+                if ($visibleTransferGroups >= $totalTransferGroups) {
+                    $commission['extensionBadge'] = 'requires_all';
+                } else {
+                    $commission['extensionBadge'] = 'partial_only';
+                }
+            } else {
+                $commission['extensionBadge'] = 'none';
+            }
+        }
     }
 
     $response['success'] = true;
@@ -191,21 +268,26 @@ try {
 
 echo json_encode($response);
 
-function getCommissionTransfers($MsaDB, $groupId, $commissionId) {
+/**
+ * Get commission transfers for a specific commission in a transfer group
+ */
+function getCommissionTransfers($MsaDB, $transferGroupId, $commissionId) {
     $transfers = [];
 
     foreach (['sku', 'smd', 'tht', 'parts'] as $type) {
         $typeTransfers = $MsaDB->query("
-            SELECT i.quantity, i.sub_magazine_id,
-                   l.name as component_name,
-                   l.description as component_description,
-                   m.sub_magazine_name as magazine_name
+            SELECT 
+                i.qty, 
+                i.sub_magazine_id,
+                l.name as component_name,
+                l.description as component_description,
+                m.sub_magazine_name as magazine_name
             FROM inventory__$type i
-            JOIN commission__group_transfers cgt ON i.commission_group_transfer_id = cgt.id
             JOIN list__$type l ON i.{$type}_id = l.id
             JOIN magazine__list m ON i.sub_magazine_id = m.sub_magazine_id
-            WHERE cgt.commission_group_id = $groupId 
+            WHERE i.transfer_group_id = $transferGroupId 
             AND i.commission_id = $commissionId
+            AND i.is_cancelled = 0
         ");
 
         // Group by component
@@ -215,17 +297,27 @@ function getCommissionTransfers($MsaDB, $groupId, $commissionId) {
             if (!isset($componentGroups[$key])) {
                 $componentGroups[$key] = [
                     'sources' => [],
+                    'sourceIds' => [],
                     'destination' => '',
+                    'destinationId' => null,
                     'quantity' => 0,
                     'description' => $t['component_description']
                 ];
             }
 
-            if ($t['quantity'] < 0) {
-                $componentGroups[$key]['sources'][] = $t['magazine_name'] . ' (' . abs($t['quantity']) . ')';
+            if ($t['qty'] < 0) {
+                // This is a source (negative quantity means taken FROM this warehouse)
+                $componentGroups[$key]['sources'][] = $t['magazine_name'] . ' (' . abs($t['qty']) . ')';
+                $componentGroups[$key]['sourceIds'][] = [
+                    'id' => (int)$t['sub_magazine_id'],
+                    'name' => $t['magazine_name'],
+                    'quantity' => abs($t['qty'])
+                ];
             } else {
+                // This is a destination (positive quantity means added TO this warehouse)
                 $componentGroups[$key]['destination'] = $t['magazine_name'];
-                $componentGroups[$key]['quantity'] += $t['quantity'];
+                $componentGroups[$key]['destinationId'] = (int)$t['sub_magazine_id'];
+                $componentGroups[$key]['quantity'] += $t['qty'];
             }
         }
 
@@ -235,7 +327,9 @@ function getCommissionTransfers($MsaDB, $groupId, $commissionId) {
                 'componentDescription' => $data['description'],
                 'quantity' => $data['quantity'],
                 'sources' => $data['sources'],
-                'destination' => $data['destination']
+                'sourceIds' => $data['sourceIds'],
+                'destination' => $data['destination'],
+                'destinationId' => $data['destinationId']
             ];
         }
     }
@@ -243,21 +337,26 @@ function getCommissionTransfers($MsaDB, $groupId, $commissionId) {
     return $transfers;
 }
 
-function getManualComponentTransfers($MsaDB, $groupId) {
+/**
+ * Get manual component transfers (no commission_id) in a transfer group
+ */
+function getManualComponentTransfers($MsaDB, $transferGroupId) {
     $transfers = [];
 
     foreach (['sku', 'smd', 'tht', 'parts'] as $type) {
         $typeTransfers = $MsaDB->query("
-            SELECT i.quantity, i.sub_magazine_id,
-                   l.name as component_name,
-                   l.description as component_description,
-                   m.sub_magazine_name as magazine_name
+            SELECT 
+                i.qty, 
+                i.sub_magazine_id,
+                l.name as component_name,
+                l.description as component_description,
+                m.sub_magazine_name as magazine_name
             FROM inventory__$type i
-            JOIN commission__group_transfers cgt ON i.commission_group_transfer_id = cgt.id
             JOIN list__$type l ON i.{$type}_id = l.id
             JOIN magazine__list m ON i.sub_magazine_id = m.sub_magazine_id
-            WHERE cgt.commission_group_id = $groupId 
-            AND cgt.commission_id IS NULL
+            WHERE i.transfer_group_id = $transferGroupId 
+            AND i.commission_id IS NULL
+            AND i.is_cancelled = 0
         ");
 
         // Group by component
@@ -267,17 +366,25 @@ function getManualComponentTransfers($MsaDB, $groupId) {
             if (!isset($componentGroups[$key])) {
                 $componentGroups[$key] = [
                     'sources' => [],
+                    'sourceIds' => [],
                     'destination' => '',
+                    'destinationId' => null,
                     'quantity' => 0,
                     'description' => $t['component_description']
                 ];
             }
 
-            if ($t['quantity'] < 0) {
-                $componentGroups[$key]['sources'][] = $t['magazine_name'] . ' (' . abs($t['quantity']) . ')';
+            if ($t['qty'] < 0) {
+                $componentGroups[$key]['sources'][] = $t['magazine_name'] . ' (' . abs($t['qty']) . ')';
+                $componentGroups[$key]['sourceIds'][] = [
+                    'id' => (int)$t['sub_magazine_id'],
+                    'name' => $t['magazine_name'],
+                    'quantity' => abs($t['qty'])
+                ];
             } else {
                 $componentGroups[$key]['destination'] = $t['magazine_name'];
-                $componentGroups[$key]['quantity'] += $t['quantity'];
+                $componentGroups[$key]['destinationId'] = (int)$t['sub_magazine_id'];
+                $componentGroups[$key]['quantity'] += $t['qty'];
             }
         }
 
@@ -287,7 +394,9 @@ function getManualComponentTransfers($MsaDB, $groupId) {
                 'componentDescription' => $data['description'],
                 'quantity' => $data['quantity'],
                 'sources' => $data['sources'],
-                'destination' => $data['destination']
+                'sourceIds' => $data['sourceIds'],
+                'destination' => $data['destination'],
+                'destinationId' => $data['destinationId']
             ];
         }
     }
