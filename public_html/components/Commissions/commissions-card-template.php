@@ -1,7 +1,8 @@
 <script type="text/template" data-template="commissionCard">
-    <div class="card text-center m-2" style="min-width: 360px; max-width: 400px; box-shadow: -5px 0px 0px 0px ${color};">
-        <div class="card-header bg-light py-2">
-            <!-- Info button (left) -->
+    <div class="card text-center m-2 ${class}"
+         style="min-width: 360px; max-width: 400px; box-shadow: -5px 0px 0px 0px ${color};"
+         ${showGroupBadge}data-grouped-ids="${groupedIds}">
+        <div class="card-header py-2">
             <button type="button"
                     style="float: left;"
                     class="btn btn-sm btn-link p-0 commission-info-btn"
@@ -16,7 +17,6 @@
                 <i class="bi bi-info-circle" style="font-size: 1.2rem;"></i>
             </button>
 
-            <!-- Actions menu (right) -->
             <span ${isHidden}>
             <div class="dropdown" style="float: right;">
                 <button type="button"
@@ -42,7 +42,6 @@
             </div>
         </span>
 
-            <!-- Device name with collapse toggle -->
             <div class="mt-2">
                 <div style="font-size: 1.1rem; font-weight: 600;">
                     ${deviceName}
@@ -54,9 +53,8 @@
                             aria-controls="deviceDesc-${id}">
                         <i class="bi bi-chevron-down" style="font-size: 0.9rem;"></i>
                     </button>
-                    <!-- Collapsible device description -->
                 </div>
-                <div  class="collapse mt-2" id="deviceDesc-${id}">
+                <div class="collapse mt-2" id="deviceDesc-${id}">
                     <small class="text-muted">
                         ${deviceDescription}
                     </small>
@@ -64,7 +62,6 @@
                 <small class="text-muted">${deviceLaminateAndVersion}</small>
             </div>
 
-            <!-- Receivers info -->
             <div class="mt-1 ${class2}">
                 <small>
                     <i class="bi bi-person"></i>
@@ -74,7 +71,18 @@
         </div>
 
         <div class="card-body p-3">
-            <!-- Main quantities table -->
+            <div ${showGroupBadge} class="mb-2">
+                <span class="badge badge-warning">
+                    <i class="bi bi-layers"></i> Zgrupowane: ${groupedCount} zleceń
+                </span>
+            </div>
+
+            <div ${showPotentialGroupBadge} class="mb-2">
+                <span class="badge badge-secondary">
+                    <i class="bi bi-stack"></i> Możliwe do zgrupowania: ${potentialGroupCount} zleceń
+                </span>
+            </div>
+
             <table class="table table-bordered table-sm mb-2">
                 <thead class="thead-light">
                 <tr class="${class3}">
@@ -94,7 +102,6 @@
                 </tbody>
             </table>
 
-            <!-- Delivered quantity table -->
             <table class="table table-bordered table-sm mb-0">
                 <thead class="thead-light">
                 <tr class="${class3}">

@@ -3,7 +3,6 @@ use Atte\DB\MsaDB;
 use Atte\Utils\ComponentRenderer\SelectRenderer;
 use Atte\Utils\ComponentRenderer\PaginationRenderer;
 
-// State options - using ENUM values from commission__list.state
 $list__state = [
     'active' => 'Aktywne',
     'completed' => 'Ukończone',
@@ -11,7 +10,6 @@ $list__state = [
     'cancelled' => 'Anulowane'
 ];
 
-// Priority options - using ENUM values from commission__list.priority
 $list__priority = [
     'critical' => 'Krytyczny',
     'urgent' => 'Pilny',
@@ -33,9 +31,8 @@ $currentUser = isset($_SESSION["userid"]) ? $_SESSION["userid"] : "";
 
 $submagazine_list = $MsaDB -> readIdName("magazine__list", "sub_magazine_id", "sub_magazine_name", "ORDER BY type_id ASC");
 
-// Initialize pagination (will be updated via AJAX)
 $currentPage = 1;
-$totalItems = 0; // This will be fetched via AJAX
+$totalItems = 0;
 $itemsPerPage = 20;
 
 $paginationRenderer = new PaginationRenderer($currentPage, $totalItems, $itemsPerPage, [
@@ -51,12 +48,10 @@ $paginationRenderer = new PaginationRenderer($currentPage, $totalItems, $itemsPe
 
 ?>
 
-<!-- Ajax Result Container -->
 <div class="d-flex justify-content-center">
     <div id="ajaxResult" class="my-4 position-fixed" style="z-index: 100; max-width: 75%;"></div>
 </div>
 
-<!-- Hidden Select Lists -->
 <select id="list__sku" hidden>
     <?= $selectRenderer -> renderSKUBomSelect() ?>
 </select>
@@ -71,7 +66,6 @@ $paginationRenderer = new PaginationRenderer($currentPage, $totalItems, $itemsPe
     <div class="row justify-content-center">
         <div class="col-xl-10 col-lg-11 col-12">
 
-            <!-- Main Filter Card -->
             <div class="card mt-4 mb-3">
                 <div class="card-header alert-primary" style="cursor: pointer;" data-toggle="collapse" data-target="#filterCollapse">
                     <div class="d-flex justify-content-between align-items-center">
@@ -79,10 +73,9 @@ $paginationRenderer = new PaginationRenderer($currentPage, $totalItems, $itemsPe
                         <i class="bi bi-chevron-down"></i>
                     </div>
                 </div>
-                <div id="filterCollapse" class="collapse">
+                <div id="filterCollapse" class="collapse alert-info">
                     <div class="card-body p-3">
 
-                        <!-- Warehouse Filters -->
                         <div class="form-row mb-2">
                             <div class="col-md-5 col-12 mb-2">
                                 <label class="small mb-1"><strong>Zlecenie z:</strong></label>
@@ -105,7 +98,6 @@ $paginationRenderer = new PaginationRenderer($currentPage, $totalItems, $itemsPe
 
                         <hr class="my-2">
 
-                        <!-- Device Filters -->
                         <div class="form-row mb-2">
                             <div class="col-md-2 col-6 mb-2">
                                 <label class="small mb-1"><strong>Typ:</strong></label>
@@ -137,7 +129,6 @@ $paginationRenderer = new PaginationRenderer($currentPage, $totalItems, $itemsPe
 
                         <hr class="my-2">
 
-                        <!-- User, Status & Priority Filters -->
                         <div class="form-row mb-2">
                             <div class="col-md-4 col-12 mb-2">
                                 <label class="small mb-1"><strong>Zlecono dla:</strong></label>
@@ -169,7 +160,6 @@ $paginationRenderer = new PaginationRenderer($currentPage, $totalItems, $itemsPe
 
                         <hr class="my-2">
 
-                        <!-- Options -->
                         <div class="form-row">
                             <div class="col-md-6 col-12 mb-2 mb-md-0">
                                 <div class="custom-control custom-checkbox">
@@ -190,66 +180,71 @@ $paginationRenderer = new PaginationRenderer($currentPage, $totalItems, $itemsPe
                         </div>
 
                     </div>
+                </div>
+            </div>
 
-                    <!-- Statistics Bar -->
-                    <div class="card mb-3" id="statsBar" style="display: none;">
-                        <div class="card-body p-2">
-                            <div class="row text-center">
-                                <div class="col-3">
-                                    <h5 class="text-primary mb-0" id="statTotal">0</h5>
-                                    <small class="text-muted">Wszystkich</small>
-                                </div>
-                                <div class="col-3">
-                                    <h5 class="text-success mb-0" id="statActive">0</h5>
-                                    <small class="text-muted">Aktywnych</small>
-                                </div>
-                                <div class="col-3">
-                                    <h5 class="text-info mb-0" id="statCompleted">0</h5>
-                                    <small class="text-muted">Ukończonych</small>
-                                </div>
-                                <div class="col-3">
-                                    <h5 class="text-warning mb-0" id="statGrouped">0</h5>
-                                    <small class="text-muted">Zgrupowanych</small>
-                                </div>
+            <div class="card mb-3" id="statsBar" style="display: none;">
+                <div class="card-body p-3">
+                    <div class="row text-center">
+                        <div class="col-6 col-md-3 mb-2 mb-md-0">
+                            <div class="d-flex flex-column align-items-center">
+                                <h4 class="text-primary mb-1" id="statTotal">0</h4>
+                                <small class="text-muted">Wszystkich</small>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3 mb-2 mb-md-0">
+                            <div class="d-flex flex-column align-items-center">
+                                <h4 class="text-success mb-1" id="statActive">0</h4>
+                                <small class="text-muted">Aktywnych</small>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="d-flex flex-column align-items-center">
+                                <h4 class="text-info mb-1" id="statCompleted">0</h4>
+                                <small class="text-muted">Ukończonych</small>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="d-flex flex-column align-items-center">
+                                <h4 class="text-warning mb-1" id="statReturned">0</h4>
+                                <small class="text-muted">Zwróconych</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="statsGrouped" class="row text-center mt-2 pt-2 border-top" style="display: none;">
+                        <div class="col-12">
+                            <div class="d-flex flex-column align-items-center">
+                                <h5 class="text-secondary mb-1" id="statGrouped">0</h5>
+                                <small class="text-muted">Zgrupowanych zleceń</small>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Pagination Controls -->
-            <div id="paginationTop">
-                <!-- Pagination will be rendered here by JS -->
-            </div>
+            <div id="paginationTop"></div>
 
-            <!-- Loading Spinner -->
             <div class="d-flex justify-content-center mb-3">
                 <div style="display: none;" id="transferSpinner" class="spinner-border text-primary" role="status">
                     <span class="sr-only">Ładowanie...</span>
                 </div>
             </div>
 
-            <!-- Results Container -->
             <div class="d-flex flex-wrap justify-content-center" id="container"></div>
 
-            <!-- Pagination Controls Bottom -->
-            <div id="paginationBottom" class="mt-3">
-                <!-- Pagination will be rendered here by JS -->
-            </div>
+            <div id="paginationBottom" class="mt-3"></div>
 
         </div>
     </div>
 </div>
 
 <script>
-    // Store pagination configuration
     const PAGINATION_CONFIG = {
         itemsPerPage: <?= $itemsPerPage ?>,
         currentPage: 1,
         totalItems: 0
     };
 </script>
-
 
 <script src="http://<?=BASEURL?>/public_html/components/commissions/commissions-view-renderer.js"></script>
 <script src="http://<?=BASEURL?>/public_html/components/commissions/commissions-view-main.js"></script>

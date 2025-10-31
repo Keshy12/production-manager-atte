@@ -31,10 +31,10 @@ $receivers = $_POST["receivers"] ?? false;
 $state_id = $_POST["state_id"] ?? false;
 $priority_id = $_POST["priority_id"] ?? false;
 $showCancelled = $_POST["showCancelled"] == "true";
+$groupTogether = $_POST["groupTogether"] == "true";
 
-// Fix: Convert page to integer
 $page = isset($_POST["page"]) ? (int)$_POST["page"] : 1;
-$page = max(1, $page); // Ensure page is at least 1
+$page = max(1, $page);
 $offset = ($page - 1) * 10;
 
 if($transferFrom !== false) $statements[] = "warehouse_from_id = ".$transferFrom;
@@ -42,11 +42,6 @@ if($transferTo !== false) $statements[] = "warehouse_to_id = ".$transferTo;
 $commissionRepository = new CommissionRepository($MsaDB);
 $bomRepository = new BomRepository($MsaDB);
 
-
-/**
- * Get the bom_id from the user input
- * If not all needed values are set, bom_id = false
- */
 $bom_id = false;
 if(!empty($device)) {
     $type = $device[0] ?? null;
@@ -69,10 +64,8 @@ if(!empty($device)) {
     foreach($bomsFound as $bom)
     {
         $bom_id = $bom -> id;
-        // Use device_type and bom_id columns
         $statements[] = "device_type = '".$type."' AND bom_id = ".$bom_id;
     }
-
 }
 
 if($receivers) {
@@ -104,22 +97,118 @@ if(!$showCancelled) {
 }
 
 $add = implode(" AND ", $statements);
-$commissions = [];
-$resultQuery = $MsaDB -> query("SELECT cl.id FROM `commission__list` cl JOIN commission__receivers cr on cl.id = cr.commission_id WHERE $add GROUP BY cl.id ORDER BY cl.created_at DESC LIMIT 11 OFFSET $offset;", PDO::FETCH_COLUMN);
+
+$allIdsQuery = $MsaDB -> query(
+    "SELECT DISTINCT cl.id 
+     FROM `commission__list` cl 
+     JOIN commission__receivers cr on cl.id = cr.commission_id 
+     WHERE $add 
+     ORDER BY cl.created_at DESC",
+    PDO::FETCH_COLUMN
+);
+
 $nextPageAvailable = false;
 if(isset($resultQuery[10]))
 {
     unset($resultQuery[10]);
     $nextPageAvailable = true;
 }
-foreach($resultQuery as $id)
-{
-    $commissions[] = $commissionRepository -> getCommissionById($id);
+
+$groupedCommissionsMap = [];
+$potentialGroupsMap = [];
+
+foreach($allIdsQuery as $id) {
+    $commission = $commissionRepository->getCommissionById($id);
+    $type = $commission->deviceType;
+    $row = $commission->commissionValues;
+    $bomId = $row["bom_id"];
+    $receivers = implode(',', $commission->getReceivers());
+
+    $groupKey = $type.'_'.$bomId.'_'.$row["warehouse_from_id"].'_'.$row["warehouse_to_id"].'_'.$receivers.'_'.$row["priority"];
+
+    if(!isset($potentialGroupsMap[$groupKey])) {
+        $potentialGroupsMap[$groupKey] = 1;
+    } else {
+        $potentialGroupsMap[$groupKey]++;
+    }
 }
+
+if($groupTogether) {
+    $groupedCommissions = [];
+    foreach($allIdsQuery as $id) {
+        $commission = $commissionRepository->getCommissionById($id);
+        $type = $commission->deviceType;
+        $row = $commission->commissionValues;
+        $bomId = $row["bom_id"];
+        $receivers = implode(',', $commission->getReceivers());
+
+        $groupKey = $type.'_'.$bomId.'_'.$row["warehouse_from_id"].'_'.$row["warehouse_to_id"].'_'.$receivers.'_'.$row["priority"];
+
+        if(!isset($groupedCommissionsMap[$groupKey])) {
+            $groupedCommissionsMap[$groupKey] = [
+                'commission' => $commission,
+                'ids' => [$id],
+                'totalQuantity' => (int)$row["qty"],
+                'totalProduced' => (int)$row["qty_produced"],
+                'totalReturned' => (int)$row["qty_returned"]
+            ];
+        } else {
+            $groupedCommissionsMap[$groupKey]['ids'][] = $id;
+            $groupedCommissionsMap[$groupKey]['totalQuantity'] += (int)$row["qty"];
+            $groupedCommissionsMap[$groupKey]['totalProduced'] += (int)$row["qty_produced"];
+            $groupedCommissionsMap[$groupKey]['totalReturned'] += (int)$row["qty_returned"];
+        }
+    }
+    $totalCount = count($groupedCommissionsMap);
+    $groupedKeys = array_keys($groupedCommissionsMap);
+
+    $paginatedKeys = array_slice($groupedKeys, $offset, 10);
+    $nextPageAvailable = count($groupedKeys) > ($offset + 10);
+
+    $commissions = [];
+    foreach($paginatedKeys as $key) {
+        $commissions[] = $groupedCommissionsMap[$key];
+    }
+} else {
+    $totalCount = count($allIdsQuery);
+
+    $paginatedIds = array_slice($allIdsQuery, $offset, 10);
+    $nextPageAvailable = count($allIdsQuery) > ($offset + 10);
+
+    $commissions = [];
+    foreach($paginatedIds as $id) {
+        $commission = $commissionRepository->getCommissionById($id);
+        $commissions[] = [
+            'commission' => $commission,
+            'ids' => [$id],
+            'totalQuantity' => (int)$commission->commissionValues["qty"],
+            'totalProduced' => (int)$commission->commissionValues["qty_produced"],
+            'totalReturned' => (int)$commission->commissionValues["qty_returned"]
+        ];
+    }
+}
+
+$statsQuery = $MsaDB -> query(
+    "SELECT 
+        COUNT(DISTINCT CASE WHEN cl.state = 'active' THEN cl.id END) as active_count,
+        COUNT(DISTINCT CASE WHEN cl.state = 'completed' THEN cl.id END) as completed_count,
+        COUNT(DISTINCT CASE WHEN cl.state = 'returned' THEN cl.id END) as returned_count
+    FROM `commission__list` cl 
+    JOIN commission__receivers cr on cl.id = cr.commission_id 
+    WHERE $add",
+    PDO::FETCH_ASSOC
+);
+
+$stats = $statsQuery[0] ?? ['active_count' => 0, 'completed_count' => 0, 'returned_count' => 0];
+$stats['grouped_count'] = $groupTogether ? $totalCount : 0;
+
 $result = [];
-foreach($commissions as $commission) {
-    $type = $commission -> deviceType;
-    $row = $commission -> commissionValues;
+foreach($commissions as $commissionData) {
+    $commission = $commissionData['commission'];
+    $type = $commission->deviceType;
+    $row = $commission->commissionValues;
+
+    $isGrouped = count($commissionData['ids']) > 1;
 
     $stateMap = [
         'active' => 1,
@@ -127,7 +216,18 @@ foreach($commissions as $commission) {
         'returned' => 3,
         'cancelled' => 4
     ];
-    $state = $row["state"];
+    if($isGrouped) {
+        $states = [];
+        foreach($commissionData['ids'] as $groupedId) {
+            $groupedCommission = $commissionRepository->getCommissionById($groupedId);
+            $states[] = $stateMap[$groupedCommission->commissionValues["state"]] ?? 1;
+        }
+        $state_numeric = min($states);
+        $state = array_search($state_numeric, $stateMap);
+    } else {
+        $state = $row["state"];
+        $state_numeric = $stateMap[$state] ?? 1;
+    }
     $state_numeric = $stateMap[$state] ?? 1;
 
     $priorityMap = [
@@ -140,7 +240,6 @@ foreach($commissions as $commission) {
     $priority_numeric = $priorityMap[$priority] ?? 0;
 
     $colors = ["none", "green", "yellow", "red"];
-    // Use bom_id instead of bom_{type}_id
     $bomId = $row["bom_id"];
     $deviceBom = $bomRepository -> getBomById($type, $bomId);
     $deviceId = $deviceBom -> deviceId;
@@ -150,18 +249,25 @@ foreach($commissions as $commission) {
     $device_laminate_and_version = $device_laminate." Wersja: <b>".$device_version."</b>";
     $isCancelled = $row["is_cancelled"];
     $receivers = $commission -> getReceivers();
-    $classes = ['list-group-item-primary', '', 'list-group-item-secondary', 'bg-secondary'];
+    $classes = ['list-group-item-primary', '', 'alert-secondary', 'list-group-item-dark border-secondary'];
     $class = $classes[$state_numeric];
     if($isCancelled == 1 ) $class = 'list-group-item-danger';
     $receiversName = array();
     foreach($receivers as $receiver) {
         $receiversName[] = $users[$receiver];
     }
+
+    $groupKey = $type.'_'.$bomId.'_'.$row["warehouse_from_id"].'_'.$row["warehouse_to_id"].'_'.implode(',', $receivers).'_'.$row["priority"];
+    $canBeGrouped = !$groupTogether && isset($potentialGroupsMap[$groupKey]) && $potentialGroupsMap[$groupKey] > 1;
+
     $result[] = [
         "class" => $class,
         "class2" => ($state_numeric != 3) ? 'text-muted' : '',
         "class3" => ($state_numeric != 1 || $isCancelled == 1) ? 'table-light' : '',
         "isHidden" => $isCancelled == 1 ? "hidden" : "",
+        "showGroupBadge" => $isGrouped ? "" : "hidden",
+        "showPotentialGroupBadge" => $canBeGrouped ? "" : "hidden",
+        "potentialGroupCount" => $canBeGrouped ? $potentialGroupsMap[$groupKey] : 0,
         "color" => $colors[$priority_numeric],
         "warehouseFromId" => $row["warehouse_from_id"],
         "warehouseFrom" => $magazines[$row["warehouse_from_id"]],
@@ -177,19 +283,13 @@ foreach($commissions as $commission) {
         "state" => $state,
         "stateId" => $state_numeric,
         "receiversName" => implode(", ", $receiversName),
-        "quantity" => $row["qty"],
-        "quantityProduced" => $row["qty_produced"],
-        "quantityReturned" => $row["qty_returned"],
-        "timestampCreated" => $row["created_at"]
+        "quantity" => $commissionData['totalQuantity'],
+        "quantityProduced" => $commissionData['totalProduced'],
+        "quantityReturned" => $commissionData['totalReturned'],
+        "timestampCreated" => $row["created_at"],
+        "groupedCount" => count($commissionData['ids']),
+        "groupedIds" => implode(',', $commissionData['ids'])
     ];
 }
-$countQuery = $MsaDB -> query(
-    "SELECT COUNT(DISTINCT cl.id) as total 
-     FROM `commission__list` cl 
-     JOIN commission__receivers cr on cl.id = cr.commission_id 
-     WHERE $add",
-    PDO::FETCH_ASSOC
-);
-$totalCount = $countQuery[0]['total'] ?? 0;
 
-echo json_encode([$result, $nextPageAvailable, $totalCount]);
+echo json_encode([$result, $nextPageAvailable, $totalCount, $stats]);

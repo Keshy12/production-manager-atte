@@ -1,29 +1,16 @@
-function generateLastProduction(deviceId, lastId, lastIdRange){
-    let data = {deviceType: 'tht', deviceId: deviceId};
-    if (lastIdRange) {
-        data.lastIdRange = lastIdRange;
-    } else if (lastId) {
-        data.lastId = lastId;
+// Get device type from script tag URL parameter
+const urlParams = new URLSearchParams(document.currentScript.src.split('?')[1]);
+const DEVICE_TYPE = urlParams.get('deviceType') || 'smd';
+const IS_SMD = DEVICE_TYPE === 'smd';
+
+function generateLastProduction(deviceId, transferGroupId){
+    let data = {deviceType: DEVICE_TYPE, deviceId: deviceId};
+    if (transferGroupId) {
+        data.transferGroupId = transferGroupId;
     }
     $("#lastProduction").load('../public_html/components/production/last-production-table.php', data, function() {
-        // Update button state after table loads
         updateRollbackButtonState();
     });
-}
-
-function generateMarking(marking){
-    $("#marking").empty();
-    for (let mark in marking)
-    {
-        mark = parseInt(mark);
-        let bMarking = marking[mark];
-        let fileName = (mark+1)+"off.png";
-        if(bMarking) fileName = (mark+1)+"on.png";
-        $("#marking").append(`<img style='width:33%;' 
-                                   class='img-fluid mt-4' 
-                                   src='/atte_ms_new/public_html/assets/img/production/tht/marking/`+fileName+`' 
-                                   alt='oznaczenie'>`);
-    }
 }
 
 function generateVersionSelect(possibleVersions){
@@ -32,7 +19,7 @@ function generateVersionSelect(possibleVersions){
         let version_id = Object.keys(possibleVersions)[0];
         let version = possibleVersions[version_id];
         let option = null;
-        if(version === null) {
+        if(version === null || version[0] === null) {
             option = "<option value='n/d' selected>n/d</option>";
         } else {
             option = "<option value='"+version[0]+"' selected>"+version[0]+"</option>";
@@ -50,6 +37,43 @@ function generateVersionSelect(possibleVersions){
     $("#version").selectpicker('refresh');
 }
 
+function generateLaminateSelect(possibleLaminates){
+    if(Object.keys(possibleLaminates).length == 1) {
+        let laminate_id = Object.keys(possibleLaminates)[0];
+        let laminate_name = possibleLaminates[laminate_id][0];
+        let versions = JSON.stringify(possibleLaminates[laminate_id]['versions']);
+        let option = "<option value='"+laminate_id+"' data-jsonversions='"+versions+"' selected>"+laminate_name+"</option>";
+        $("#laminate").append(option);
+        $("#laminate").selectpicker('destroy');
+        $("#laminate").selectpicker('');
+        generateVersionSelect(possibleLaminates[laminate_id]['versions']);
+    } else {
+        for (let laminate_id in possibleLaminates)
+        {
+            let laminate_name = possibleLaminates[laminate_id][0];
+            let versions = JSON.stringify(possibleLaminates[laminate_id]['versions']);
+            let option = "<option value='"+laminate_id+"' data-jsonversions='"+versions+"'>"+laminate_name+"</option>";
+            $("#laminate").append(option);
+        }
+    }
+    $("#laminate").selectpicker('refresh');
+}
+
+function generateMarking(marking){
+    $("#marking").empty();
+    for (let mark in marking)
+    {
+        mark = parseInt(mark);
+        let bMarking = marking[mark];
+        let fileName = (mark+1)+"off.png";
+        if(bMarking) fileName = (mark+1)+"on.png";
+        $("#marking").append(`<img style='width:33%;' 
+                                   class='img-fluid mt-4' 
+                                   src='/atte_ms_new/public_html/assets/img/production/tht/marking/`+fileName+`' 
+                                   alt='oznaczenie'>`);
+    }
+}
+
 function rollbackLastProduction() {
     let deviceId = $("#list__device").val();
     if (!deviceId) {
@@ -57,18 +81,21 @@ function rollbackLastProduction() {
         return;
     }
 
-    // Get highlighted row IDs
-    let highlightedIds = [];
+    // Get selected transfer group IDs
+    let selectedGroups = [];
     $('.highlighted-row').each(function() {
-        highlightedIds.push($(this).data('row-id'));
+        let groupId = $(this).data('transfer-group-id');
+        if (groupId && selectedGroups.indexOf(groupId) === -1) {
+            selectedGroups.push(groupId);
+        }
     });
 
-    if (highlightedIds.length === 0) {
+    if (selectedGroups.length === 0) {
         alert("Brak zaznaczonych wpisów do cofnięcia");
         return;
     }
 
-    if (!confirm("Czy na pewno chcesz cofnąć zaznaczone wpisy produkcji (" + highlightedIds.length + " szt.)?")) {
+    if (!confirm("Czy na pewno chcesz cofnąć zaznaczone wpisy produkcji (" + selectedGroups.length + " grup)?")) {
         return;
     }
 
@@ -78,16 +105,16 @@ function rollbackLastProduction() {
         type: "POST",
         url: "../public_html/components/production/rollback-production.php",
         data: {
-            deviceType: 'tht',
+            deviceType: DEVICE_TYPE,
             deviceId: deviceId,
-            rollbackIds: highlightedIds.join(',')
+            transferGroupIds: selectedGroups.join(',')
         },
         success: function(data) {
             const result = JSON.parse(data);
             $("#rollbackBtn").html("Cofnij ostatnią").prop("disabled", true);
 
             if (result.success) {
-                generateLastProduction(deviceId, null, result.rollbackIdRange);
+                generateLastProduction(deviceId, result.transferGroupId);
                 $("#alerts").empty();
                 $("#alerts").append('<div class="alert alert-success alert-dismissible fade show" role="alert">' +
                     result.message +
@@ -116,21 +143,35 @@ function rollbackLastProduction() {
 }
 
 $("#list__device").change(function(){
-    $("#laminate, #version, #alerts").empty();
-    $("#laminate, #version").selectpicker('refresh');
-    let possibleVersions = $("#list__device option:selected").data("jsonversions");
-    let marking = $("#list__device option:selected").data("jsonmarking");
-    let deviceDescription = $("#list__device option:selected").data("subtext");
-    $("#device_description").val(deviceDescription);
-    generateVersionSelect(possibleVersions);
-    generateMarking(marking);
+    if (IS_SMD) {
+        $("#laminate, #version").empty();
+        $("#laminate, #version").selectpicker('refresh');
+        let possibleLaminates = $("#list__device option:selected").data("jsonlaminates");
+        let deviceDescription = $("#list__device option:selected").data("subtext");
+        $("#device_description").val(deviceDescription);
+        generateLaminateSelect(possibleLaminates);
+    } else {
+        $("#version, #alerts").empty();
+        $("#version").selectpicker('refresh');
+        let possibleVersions = $("#list__device option:selected").data("jsonversions");
+        let marking = $("#list__device option:selected").data("jsonmarking");
+        let deviceDescription = $("#list__device option:selected").data("subtext");
+        $("#device_description").val(deviceDescription);
+        generateVersionSelect(possibleVersions);
+        generateMarking(marking);
+    }
     generateLastProduction(this.value);
 });
 
+if (IS_SMD) {
+    $("#laminate").change(function(){
+        let possibleVersions = $("#laminate option:selected").data("jsonversions");
+        generateVersionSelect(possibleVersions);
+    });
+}
+
 $("#form").submit(function(e) {
-    //Avoid to execute the actual submit of the form.
     e.preventDefault();
-    //When doing correction (negative quantity), commment is required.
     if($("#quantity").val() < 0 && !$.trim($("#comment").val()))
     {
         $('#correctionModal').modal('show');
@@ -143,7 +184,7 @@ $("#form").submit(function(e) {
     $.ajax({
         type: "POST",
         url: actionUrl,
-        data: $form.serialize(), // serializes the form's elements.
+        data: $form.serialize(),
         success: function(data)
         {
             $("#send").html("Wyślij");
@@ -152,13 +193,10 @@ $("#form").submit(function(e) {
 
             try {
                 const result = JSON.parse(data);
-                let firstId = result[0];
-                let lastId = result[1];
-                let alerts = result[2];
+                let transferGroupId = result[0];
+                let alerts = result[1];
 
-                // Create ID range for highlighting
-                let idRange = (firstId === lastId) ? firstId : firstId + '-' + lastId;
-                generateLastProduction($("#list__device option:selected").val(), null, idRange);
+                generateLastProduction($("#list__device option:selected").val(), transferGroupId);
 
                 alerts.forEach(function(alert) {
                     $("#alerts").append(alert);
@@ -177,7 +215,6 @@ $("#form").submit(function(e) {
             $("#send").prop("disabled", false);
             $("#alerts").empty();
 
-            // Handle HTTP error responses
             let errorMessage = "Wystąpił błąd podczas przetwarzania żądania.";
             if (xhr.responseText) {
                 errorMessage = xhr.responseText;
@@ -198,8 +235,16 @@ function updateRollbackButtonState() {
     var $rollbackBtn = $('#rollbackBtn');
 
     if (highlightedRows > 0) {
+        // Count unique transfer groups
+        var uniqueGroups = new Set();
+        $('.highlighted-row').each(function() {
+            var groupId = $(this).data('transfer-group-id');
+            if (groupId) uniqueGroups.add(groupId);
+        });
+
+        var groupCount = uniqueGroups.size;
         $rollbackBtn.prop('disabled', false).removeClass('btn-secondary').addClass('btn-warning');
-        $rollbackBtn.text('Cofnij zaznaczone (' + highlightedRows + ')');
+        $rollbackBtn.text('Cofnij zaznaczone (' + groupCount + ' grup)');
     } else {
         $rollbackBtn.prop('disabled', true).removeClass('btn-warning').addClass('btn-secondary');
         $rollbackBtn.text('Cofnij ostatnią');
@@ -211,6 +256,13 @@ $(document).ready(function(){
     let autoSelectValues = JSON.parse($("#list__device").attr("data-auto-select"));
     if(autoSelectValues.length) {
         $("#list__device").selectpicker('val', autoSelectValues[0]).change();
-        $("#version").selectpicker('val', autoSelectValues[1]).change();
+        if (IS_SMD && autoSelectValues.length > 1) {
+            $("#laminate").selectpicker('val', autoSelectValues[1]).change();
+            if (autoSelectValues.length > 2) {
+                $("#version").selectpicker('val', autoSelectValues[2]).change();
+            }
+        } else if (!IS_SMD && autoSelectValues.length > 1) {
+            $("#version").selectpicker('val', autoSelectValues[1]).change();
+        }
     }
 });

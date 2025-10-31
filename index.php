@@ -13,11 +13,13 @@ switch ($request) {
 
     case 'production/tht':
         includeWithVariables($headerDir, array('title' => 'Produkcja THT'));
-        require $componentsDir . '/production/tht/tht-view.php';
+        $_GET['type'] = 'tht';
+        require $componentsDir . '/production/production-view.php';
         break;
     case 'production/smd':
         includeWithVariables($headerDir, array('title' => 'Produkcja SMD'));
-        require $componentsDir . '/production/smd/smd-view.php';
+        $_GET['type'] = 'smd';
+        require $componentsDir . '/production/production-view.php';
         break;
     case 'transfer':
         includeWithVariables($headerDir, array('title' => 'Transfer'));
@@ -87,7 +89,7 @@ switch ($request) {
         includeWithVariables($headerDir, array('title' => 'Edycja Magazynów'));
         require $componentsDir . '/admin/magazines/edit/edit-magazines-view.php';
         break;
-    
+
     case 'test':
 //        includeWithVariables($headerDir, array('title' => 'Test'));
         require $componentsDir . '/tests/test1.php';

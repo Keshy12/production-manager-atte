@@ -1,44 +1,41 @@
 <?php
 $MsaDB = Atte\DB\MsaDB::getInstance();
 $userRepository = new Atte\Utils\UserRepository($MsaDB);
-$user = $userRepository -> getUserById($_SESSION["userid"]);
-$userInfo = $user -> getUserInfo();
+$user = $userRepository->getUserById($_SESSION["userid"]);
+$userInfo = $user->getUserInfo();
 
 $deviceType = $_POST["deviceType"] ?? "";
 $deviceId = $_POST["deviceId"] ?? "";
 $subMagazineId = $userInfo["sub_magazine_id"];
-$lastId = $_POST["lastId"] ?? "";
-$lastIdRange = $_POST["lastIdRange"] ?? ""; // New parameter for ID range
+$transferGroupId = $_POST["transferGroupId"] ?? ""; // New parameter for highlighting
 
-$lastProduction = $MsaDB -> query("
-SELECT i.id, u.login, l.name, i.quantity, i.timestamp, i.comment 
-FROM `inventory__{$deviceType}` i JOIN user u on i.user_id = u.user_id 
-JOIN list__{$deviceType} l on i.{$deviceType}_id = l.id WHERE l.id = '$deviceId' 
-AND i.sub_magazine_id = '{$subMagazineId}' AND input_type_id = 4 ORDER BY i.`id` DESC LIMIT 10;");
+$lastProduction = $MsaDB->query("
+SELECT i.id, u.login, l.name, i.qty, i.timestamp, i.comment, i.transfer_group_id
+FROM `inventory__{$deviceType}` i 
+LEFT JOIN inventory__transfer_groups tg ON i.transfer_group_id = tg.id
+LEFT JOIN user u ON tg.created_by = u.user_id 
+JOIN list__{$deviceType} l ON i.{$deviceType}_id = l.id 
+WHERE l.id = '$deviceId' 
+AND i.sub_magazine_id = '{$subMagazineId}' 
+AND i.input_type_id = 4 
+AND i.is_cancelled = 0
+ORDER BY i.`id` DESC LIMIT 10;");
 
-// Parse lastIdRange if provided (format: "firstId-lastId" or just single ID)
-$highlightIds = [];
-if (!empty($lastIdRange)) {
-    if (strpos($lastIdRange, '-') !== false) {
-        // Range format: "123-127"
-        $rangeParts = explode('-', $lastIdRange);
-        if (count($rangeParts) == 2) {
-            $firstId = (int)$rangeParts[0];
-            $lastRangeId = (int)$rangeParts[1];
-            $highlightIds = range(min($firstId, $lastRangeId), max($firstId, $lastRangeId));
-        }
-    } else {
-        // Single ID format: "123"
-        $highlightIds = [(int)$lastIdRange];
+// Generate color mapping for transfer groups
+$transferGroupColors = [];
+$colorClasses = ['table-info', 'table-warning', 'table-success', 'table-primary', 'table-secondary'];
+$colorIndex = 0;
+
+foreach ($lastProduction as $row) {
+    $groupId = $row['transfer_group_id'];
+    if ($groupId && !isset($transferGroupColors[$groupId])) {
+        $transferGroupColors[$groupId] = $colorClasses[$colorIndex % count($colorClasses)];
+        $colorIndex++;
     }
-} elseif (!empty($lastId)) {
-    // Fallback to old single ID parameter
-    $highlightIds = [(int)$lastId];
 }
 ?>
 <table id="lastProductionTable" class="table mt-4 table-striped w-75"
-       data-last-id-range="<?= htmlspecialchars($lastIdRange) ?>"
-       data-highlight-ids="<?= htmlspecialchars(json_encode($highlightIds)) ?>">
+       data-transfer-group-id="<?= htmlspecialchars($transferGroupId) ?>">
     <thead class="thead-light">
     <tr>
         <th scope="col">ID</th>
@@ -56,18 +53,37 @@ if (!empty($lastIdRange)) {
     </thead>
     <tbody>
     <?php foreach($lastProduction as $row) {
-        $currentId = (int)$row[0];
-        $isHighlighted = in_array($currentId, $highlightIds);
+        $currentId = (int)$row['id'];
+        $groupId = $row['transfer_group_id'];
+        $isHighlighted = ($groupId && $groupId == $transferGroupId);
+        $colorClass = $groupId ? ($transferGroupColors[$groupId] ?? '') : '';
+        $highlightClass = $isHighlighted ? 'highlighted-row' : '';
         ?>
-        <tr class="<?= $isHighlighted ? "table-info highlighted-row" : "" ; ?>" data-row-id="<?= $currentId ?>">
+        <tr class="<?= "$colorClass $highlightClass" ?>"
+            data-row-id="<?= $currentId ?>"
+            data-transfer-group-id="<?= $groupId ?>">
             <td><?=$currentId?></td>
-            <td><?=$row[1]?></td>
-            <td><?=$row[2]?></td>
-            <td><?=$row[3]+0?></td>
-            <td><?=$row[4]?></td>
-            <td><?=$row[5]?></td>
+            <td><?=$row['login']?></td>
+            <td><?=$row['name']?></td>
+            <td><?=$row['qty']+0?></td>
+            <td><?=$row['timestamp']?></td>
+            <td><?=$row['comment']?></td>
             <td></td>
         </tr>
     <?php } ?>
     </tbody>
 </table>
+
+<script>
+    // Add click handler to toggle row selection
+    $(document).ready(function() {
+        $('#lastProductionTable tbody tr').click(function() {
+            var groupId = $(this).data('transfer-group-id');
+            if (groupId) {
+                // Toggle all rows with same transfer_group_id
+                $('tr[data-transfer-group-id="' + groupId + '"]').toggleClass('highlighted-row');
+                updateRollbackButtonState();
+            }
+        });
+    });
+</script>

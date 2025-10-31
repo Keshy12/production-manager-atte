@@ -46,54 +46,17 @@
         display: inline-block;
     }
 
-    .commission-header.collapsed .commission-toggle-icon {
-        transform: rotate(-90deg);
-    }
-
-    .commission-component {
-        transition: opacity 0.3s ease;
-    }
-
-    .commission-component.hidden {
-        display: none;
-    }
-
-    .commission-details {
-        transition: all 0.3s ease;
-    }
-
-    .commission-summary {
-        transition: all 0.3s ease;
-    }
-
     .add-component-form {
         background-color: #f8f9fa;
         border-left: 3px solid #007bff;
     }
 
-    .add-component-form.hidden {
-        display: none !important;
-    }
-
-    .add-component-row.hidden {
-        display: none !important;
-    }
-
-    .add-summary-component-form.hidden {
-        display: none !important;
-    }
-
-    /* Blue line for manually added components */
     .manual-component .componentInfo {
         border-left: 3px solid #007bff !important;
     }
 
     .commission-summary-section {
         background-color: #f8f9fa !important;
-    }
-
-    .summary-component-row.hidden {
-        display: none !important;
     }
 
     .global-summary-header {
@@ -114,21 +77,7 @@
         display: inline-block;
     }
 
-    .global-summary-header.expanded .summary-toggle-icon {
-        transform: rotate(90deg);
-    }
-
-    /* Blue line for manually added components */
-    .manual-component .componentInfo {
-        border-left: 3px solid #007bff !important;
-    }
-
-    /* Manually added components should not be hidden when commission collapses */
     .manual-component.commission-component {
-        display: table-row !important;
-    }
-
-    .manual-component.commission-component.hidden {
         display: table-row !important;
     }
 </style>
@@ -201,7 +150,8 @@
     </tr>
 </script>
 <script type="text/template" data-template="globalSummaryHeader_template">
-    <tr class="global-summary-header" style="background-color: #acf5a1; border-top: 5px solid #6db1ff;">
+    <tr class="global-summary-header" data-toggle="collapse" data-target=".collapse-global-summary"
+        style="background-color: #acf5a1; border-top: 5px solid #6db1ff;">
         <td colspan="6" class="py-2 font-weight-bold cursor-pointer" style="cursor: pointer;">
             <div class="d-flex justify-content-between align-items-center">
                 <div>
@@ -209,16 +159,13 @@
                     <span>Podsumowanie komponentów</span>
                     <span class="badge badge-secondary ml-2" id="totalComponentsCount">0 komponentów</span>
                 </div>
-                <button class="btn btn-outline-primary btn-sm add-global-component">
-                    <i class="bi bi-plus"></i> Dodaj komponent do transferu
-                </button>
             </div>
         </td>
     </tr>
 </script>
 
 <script type="text/template" data-template="globalSummaryComponentRow_template">
-    <tr class="global-summary-component" style="display: none; background-color: #f8f9fa;">
+    <tr class="global-summary-component collapse collapse-global-summary" style="background-color: #f8f9fa;">
         <td class="componentInfo" style="border-left: 3px solid #6c757d;">
             <b>${componentName}</b><br>
             <small class="text-muted">${componentDescription}</small>
@@ -248,7 +195,7 @@
 </script>
 
 <script type="text/template" data-template="addGlobalComponentForm_template">
-    <tr class="add-global-component-form global-summary-component" style="display: none; background-color: #f8f9fa;">
+    <tr class="add-global-component-form global-summary-component collapse collapse-global-summary" style="background-color: #f8f9fa;">
         <td colspan="6" class="py-3">
             <div class="d-flex justify-content-center align-items-center">
                 <small class="text-muted mr-3">Dodaj komponent do transferu (bez zlecenia):</small>

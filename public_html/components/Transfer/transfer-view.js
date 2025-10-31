@@ -83,20 +83,8 @@ $(document).ready(function() {
             return;
         }
 
-        hasUnsavedSourceChanges = true;
-
         // Before opening, collapse global summary if it's expanded
-        const $globalSummary = $('.global-summary-header');
-        if ($globalSummary.hasClass('expanded')) {
-            const $globalComponents = $('.global-summary-component');
-            const $sourceDetails = $('.source-details-summary');
-            const $globalToggleIcon = $globalSummary.find('.summary-toggle-icon');
-
-            $globalComponents.hide();
-            $sourceDetails.hide();
-            $globalSummary.removeClass('expanded');
-            $globalToggleIcon.removeClass('bi-chevron-down').addClass('bi-chevron-right');
-        }
+        $('.collapse-global-summary').collapse('hide');
 
         // Create source details row
         const sourceDetailsHtml = createSourceDetailsRow(key, component);
@@ -375,30 +363,22 @@ function addNoCommissionAddButton() {
 }
 
 function updateGlobalSummary() {
-    // Check if the global summary header exists, if not, don't update
     if ($('.global-summary-header').length === 0) {
         return;
     }
 
-    // Check if summary is currently expanded
-    const isExpanded = $('.global-summary-header').hasClass('expanded');
-
-    // Remove existing summary rows (including source details)
     $('.global-summary-component:not(.add-global-component-form)').remove();
     $('.source-details-summary').remove();
 
-    // Create new summary based on all current components
-    const allComponents = components.filter(c => c); // Filter out deleted components
+    const allComponents = components.filter(c => c);
     const globalSummary = createGlobalSummary(allComponents);
 
-    // Update component count
     $('#totalComponentsCount').text(`${globalSummary.length} komponentów`);
 
     // If no commissions exist, show all components as individual rows (no grouping)
     const hasCommissions = allComponents.some(component => component.commissionKey !== null);
 
     if (!hasCommissions && allComponents.length > 0) {
-        // For no-commission transfers, show each component individually
         allComponents.forEach(component => {
             if (component) {
                 const summaryComponent = {
@@ -408,8 +388,10 @@ function updateGlobalSummary() {
                     warehouseFromReserved: component.warehouseFromReserved,
                     warehouseToQty: component.warehouseToQty,
                     warehouseToReserved: component.warehouseToReserved,
-                    totalNeeded: component.neededForCommissionQty,
-                    totalTransferQty: component.transferQty,
+                    totalNeeded: typeof component.neededForCommissionQty === 'string'
+                        ? parseInt(component.neededForCommissionQty.replace(/<[^>]*>/g, '')) || 0
+                        : parseInt(component.neededForCommissionQty) || 0,
+                    totalTransferQty: parseInt(component.transferQty) || 0,
                     multiSourceIndicator: '<span class="text-muted">-</span>',
                     multiSourceDetails: ''
                 };
@@ -418,43 +400,18 @@ function updateGlobalSummary() {
                 const summaryComponentRow = summaryRowTemplate.map(render(summaryComponent)).join('');
                 const $summaryRow = $(summaryComponentRow);
 
-                // Insert before the add form if it exists, otherwise at the end
                 if (window.$currentAddGlobalForm) {
                     window.$currentAddGlobalForm.before($summaryRow);
                 } else {
                     $('#transferTBody').append($summaryRow);
                 }
-
-                // Preserve the visibility state
-                if (isExpanded) {
-                    $summaryRow.show();
-                } else {
-                    $summaryRow.hide();
-                }
             }
         });
     } else {
-        // Normal commission-based summary
         globalSummary.forEach(summaryComponent => {
             const summaryRowTemplate = $('script[data-template="globalSummaryComponentRow_template"]').text().split(/\$\{(.+?)\}/g);
             const summaryComponentRow = summaryRowTemplate.map(render(summaryComponent)).join('');
-            const $summaryRow = $(summaryComponentRow);
-
-            // Insert before the add form if it exists, otherwise at the end
-            if (window.$currentAddGlobalForm) {
-                window.$currentAddGlobalForm.before($summaryRow);
-            } else {
-                $('#transferTBody').append($summaryRow);
-            }
-
-            // Preserve the visibility state
-            if (isExpanded) {
-                $summaryRow.show();
-                // Auto-expand multi-source details if summary is expanded
-                $summaryRow.filter('.source-details-summary').show();
-            } else {
-                $summaryRow.hide();
-            }
+            $('#transferTBody').append(summaryComponentRow);
         });
     }
 }
@@ -492,10 +449,15 @@ function createGlobalSummary(allComponentValues) {
         }
 
         // Sum up the quantities
-        const needed = parseInt(component.neededForCommissionQty.replace(/<[^>]*>/g, '')) || 0;
+        const needed = typeof component.neededForCommissionQty === 'string'
+            ? parseInt(component.neededForCommissionQty.replace(/<[^>]*>/g, '')) || 0
+            : parseInt(component.neededForCommissionQty) || 0;
         componentSummary[key].totalNeeded += needed;
         componentSummary[key].totalTransferQty += parseInt(component.transferQty) || 0;
         componentSummary[key].componentKeys.push(componentIndex);
+
+        const transferQty = parseInt(component.transferQty) || 0;
+        componentSummary[key].totalTransferQty += transferQty;
 
         // Track sources for this component
         const sources = transferSources[componentIndex] || [{

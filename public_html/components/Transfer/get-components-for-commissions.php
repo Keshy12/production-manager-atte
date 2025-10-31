@@ -17,7 +17,7 @@ $magazineToCommissions = $magazineTo->getActiveCommissions();
 
 $existingCommissions = [];
 
-// Change: Group components by commission instead of flattening them
+// Group components by commission
 $componentsByCommission = [];
 foreach($commissions as $key => $commission)
 {
@@ -37,20 +37,25 @@ foreach($commissions as $key => $commission)
     if(count($bomsFound) > 1) throw new \Exception("Multiple BOMs found");
 
     $bom = $bomsFound[0];
-    $bomId = $bom -> id;
+    $bomId = $bom -> id; // This is the ID from bom__smd, bom__tht, etc.
+
+    // --- REFACTORED DUPLICATE CHECK ---
     foreach ($magazineToCommissions as $activeCommission) {
-        $activeCommission->getReceivers();
+        $activeCommission->getReceivers(); // Ensure receivers are loaded
+        $activeCommValues = $activeCommission->commissionValues; // Get the raw data
+
+        // Check using the correct column names from commission__list table
         if ($activeCommission->deviceType === $deviceType
-            && $activeCommission->commissionValues["bom_{$deviceType}_id"] == $bomId
-            && $activeCommission->commissionValues['isCancelled'] == 0
-            && $activeCommission->commissionValues['magazine_from'] == $transferFrom
+            && isset($activeCommValues["bom_id"]) && $activeCommValues["bom_id"] == $bomId
+            && isset($activeCommValues['is_cancelled']) && $activeCommValues['is_cancelled'] == 0
+            && isset($activeCommValues['warehouse_from_id']) && $activeCommValues['warehouse_from_id'] == $transferFrom
             && $commission['receiversIds'] == $activeCommission->getReceivers()
         ) {
             // Enhanced duplicate info with version and laminate
             $duplicateInfo = [
-                $activeCommission->commissionValues["id"],
+                $activeCommValues["id"],
                 $commission['deviceName'],
-                $activeCommission->commissionValues["timestamp_created"],
+                $activeCommValues["created_at"], // Use correct 'created_at' column
                 $key
             ];
 
@@ -66,9 +71,10 @@ foreach($commissions as $key => $commission)
             }
 
             $existingCommissions[] = $duplicateInfo;
-            break;
+            break; // Found a duplicate, no need to check other active commissions
         }
     }
+    // --- END REFACTORED DUPLICATE CHECK ---
 
     // Group components by commission
     $componentsByCommission[$key] = [

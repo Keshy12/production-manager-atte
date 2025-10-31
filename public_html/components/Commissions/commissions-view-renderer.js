@@ -1,8 +1,3 @@
-/**
- * commissions-view-renderer.js
- * Updated with dynamic pagination based on total items and fixed popover handling
- */
-
 class CommissionsRenderer {
     constructor() {
         this.commissionCardTemplate = null;
@@ -11,23 +6,25 @@ class CommissionsRenderer {
         this.itemsPerPage = 10;
         this.hasNextPage = false;
         this.isLoading = false;
+        this.stats = {
+            total: 0,
+            active: 0,
+            completed: 0,
+            returned: 0,
+            grouped: 0
+        };
 
         this.init();
     }
 
     init() {
-        // Load card template
         this.commissionCardTemplate = $('script[data-template="commissionCard"]').text().split(/\$\{(.+?)\}/g);
 
-        // Initialize on document ready
         $(document).ready(() => {
             this.render();
         });
     }
 
-    /**
-     * Main render function - fetches data and renders everything
-     */
     render() {
         if (this.isLoading) return;
 
@@ -44,21 +41,29 @@ class CommissionsRenderer {
                 const result = JSON.parse(data);
                 const commissions = result[0];
                 const nextPageAvailable = result[1];
-                const totalCount = result[2] || null; // Total count from backend
+                const totalCount = result[2] || null;
+                const stats = result[3] || {};
 
                 this.hasNextPage = nextPageAvailable;
 
-                // Update total items (use backend count if available)
                 if (totalCount !== null && totalCount !== undefined) {
                     this.totalItems = totalCount;
                 } else {
-                    // Fallback to estimation
                     this.totalItems = this.estimateTotalItems(commissions.length, nextPageAvailable);
                 }
 
+                console.table(commissions);
+                this.stats = {
+                    total: totalCount || 0,
+                    active: parseInt(stats.active_count) || 0,
+                    completed: parseInt(stats.completed_count) || 0,
+                    returned: parseInt(stats.returned_count) || 0,
+                    grouped: parseInt(stats.grouped_count) || 0
+                };
+
                 this.renderCommissions(commissions);
                 this.renderPagination();
-                this.updateStats(commissions);
+                this.updateStats();
             },
             error: (xhr, status, error) => {
                 this.showError("Błąd podczas ładowania zleceń: " + error);
@@ -70,9 +75,6 @@ class CommissionsRenderer {
         });
     }
 
-    /**
-     * Get current filter values
-     */
     getFilters() {
         return {
             transferFrom: $("#transferFrom").val(),
@@ -92,9 +94,6 @@ class CommissionsRenderer {
         };
     }
 
-    /**
-     * Render commission cards
-     */
     renderCommissions(commissions) {
         const container = $("#container");
         container.empty();
@@ -109,18 +108,12 @@ class CommissionsRenderer {
             container.append(card);
         });
 
-        // Initialize popovers with proper configuration
         this.initializePopovers();
     }
 
-    /**
-     * Initialize popovers with click trigger and outside click handling
-     */
     initializePopovers() {
-        // Destroy existing popovers first
         $('[data-toggle="popover"]').popover('dispose');
 
-        // Initialize info button popovers
         $('.commission-info-btn').popover({
             trigger: 'click',
             html: true,
@@ -128,28 +121,21 @@ class CommissionsRenderer {
             container: 'body'
         });
 
-        // Close popover when clicking outside
         $(document).on('click', function (e) {
             const $target = $(e.target);
 
-            // Don't close if clicking on the button itself or the popover content
             if (!$target.closest('.commission-info-btn').length &&
                 !$target.closest('.popover').length) {
                 $('.commission-info-btn').popover('hide');
             }
         });
 
-        // Prevent event propagation on popover button
         $('.commission-info-btn').on('click', function(e) {
             e.stopPropagation();
-            // Close other open popovers
             $('.commission-info-btn').not(this).popover('hide');
         });
     }
 
-    /**
-     * Render single commission card
-     */
     renderCard(commission) {
         return this.commissionCardTemplate
             .map((token, i) => {
@@ -158,9 +144,6 @@ class CommissionsRenderer {
             .join('');
     }
 
-    /**
-     * Render empty state
-     */
     renderEmptyState() {
         return `
             <div class="w-100 text-center py-5">
@@ -173,23 +156,15 @@ class CommissionsRenderer {
         `;
     }
 
-    /**
-     * Render pagination controls
-     */
     renderPagination() {
         const paginationHtml = this.buildPaginationHtml();
 
-        // Render in both top and bottom containers
         $("#paginationTop").html(paginationHtml);
         $("#paginationBottom").html(paginationHtml);
 
-        // Attach event handlers
         this.attachPaginationHandlers();
     }
 
-    /**
-     * Build pagination HTML
-     */
     buildPaginationHtml() {
         if (this.totalItems === 0) {
             return '';
@@ -201,13 +176,11 @@ class CommissionsRenderer {
 
         return `
             <div class="d-flex flex-column align-items-center mb-3">
-                <!-- Items info -->
                 <div class="text-muted small mb-2">
                     Wyświetlanie <strong>${start}-${end}</strong> z <strong>${this.totalItems}</strong> elementów
                     ${totalPages > 0 ? `(Strona ${this.currentPage} z ${totalPages})` : ''}
                 </div>
                 
-                <!-- Pagination buttons -->
                 <div class="btn-group btn-group-sm" role="group">
                     <button class="btn btn-outline-primary pagination-btn" 
                             data-action="first" 
@@ -220,7 +193,6 @@ class CommissionsRenderer {
                         <i class="bi bi-chevron-left"></i> Poprzednia
                     </button>
                     
-                    <!-- Page selector dropdown -->
                     <div class="btn-group" role="group">
                         <button type="button" 
                                 class="btn btn-primary dropdown-toggle" 
@@ -243,14 +215,10 @@ class CommissionsRenderer {
         `;
     }
 
-    /**
-     * Build dropdown items for page selector
-     */
     buildPageDropdownItems(totalPages) {
         let items = '';
 
         if (totalPages > 0) {
-            // We know exact total pages - show all
             for (let i = 1; i <= totalPages; i++) {
                 const isActive = i === this.currentPage ? 'active' : '';
                 items += `
@@ -262,7 +230,6 @@ class CommissionsRenderer {
                 `;
             }
         } else {
-            // Don't know exact total - show current + some more
             const pagesToShow = Math.max(this.currentPage + 10, 20);
 
             for (let i = 1; i <= pagesToShow; i++) {
@@ -276,7 +243,6 @@ class CommissionsRenderer {
                 `;
             }
 
-            // Add divider and custom input for unknown totals
             items += `
                 <div class="dropdown-divider"></div>
                 <div class="px-3 py-2">
@@ -299,32 +265,20 @@ class CommissionsRenderer {
         return items;
     }
 
-    /**
-     * Get total pages (0 if unknown)
-     */
     getTotalPages() {
         if (this.totalItems <= 0) return 0;
         return Math.ceil(this.totalItems / this.itemsPerPage);
     }
 
-    /**
-     * Estimate total items when exact count is not available
-     */
     estimateTotalItems(currentPageCount, hasNextPage) {
         if (hasNextPage) {
-            // At least one more page exists
             return (this.currentPage * this.itemsPerPage) + 1;
         } else {
-            // This is the last page
             return (this.currentPage - 1) * this.itemsPerPage + currentPageCount;
         }
     }
 
-    /**
-     * Attach pagination event handlers
-     */
     attachPaginationHandlers() {
-        // Pagination buttons
         $(document).off('click', '.pagination-btn').on('click', '.pagination-btn', (e) => {
             const action = $(e.currentTarget).data('action');
 
@@ -341,7 +295,6 @@ class CommissionsRenderer {
             }
         });
 
-        // Page dropdown items
         $(document).off('click', '.page-dropdown-item').on('click', '.page-dropdown-item', (e) => {
             e.preventDefault();
             const page = parseInt($(e.currentTarget).data('page'));
@@ -351,7 +304,6 @@ class CommissionsRenderer {
             }
         });
 
-        // Custom page input - button click
         $(document).off('click', '.go-to-custom-page').on('click', '.go-to-custom-page', (e) => {
             const pageInput = $(e.currentTarget).closest('.input-group').find('.custom-page-input');
             const page = parseInt(pageInput.val());
@@ -361,9 +313,8 @@ class CommissionsRenderer {
             }
         });
 
-        // Custom page input - Enter key
         $(document).off('keypress', '.custom-page-input').on('keypress', '.custom-page-input', (e) => {
-            if (e.which === 13) { // Enter key
+            if (e.which === 13) {
                 e.preventDefault();
                 const page = parseInt($(e.currentTarget).val());
 
@@ -373,9 +324,7 @@ class CommissionsRenderer {
             }
         });
 
-        // Prevent dropdown from closing when clicking inside custom input area
         $(document).off('click', '.page-dropdown-menu').on('click', '.page-dropdown-menu', (e) => {
-            // Only stop propagation if clicking on the custom input section
             if ($(e.target).closest('.input-group').length > 0 ||
                 $(e.target).hasClass('custom-page-input')) {
                 e.stopPropagation();
@@ -383,15 +332,11 @@ class CommissionsRenderer {
         });
     }
 
-    /**
-     * Go to specific page
-     */
     goToPage(page) {
         if (page < 1 || this.isLoading) return;
 
         const totalPages = this.getTotalPages();
 
-        // Validate page number if we know total pages
         if (totalPages > 0 && page > totalPages) {
             this.showError(`Strona ${page} nie istnieje. Maksymalna strona: ${totalPages}`);
             return;
@@ -400,58 +345,38 @@ class CommissionsRenderer {
         this.currentPage = page;
         this.render();
 
-        // Scroll to top
         $('html, body').animate({ scrollTop: 0 }, 300);
     }
 
-    /**
-     * Update statistics bar
-     */
-    updateStats(commissions) {
-        if (!commissions || commissions.length === 0) {
+    updateStats() {
+        if (this.stats.total === 0) {
             $("#statsBar").hide();
             return;
         }
 
-        const stats = {
-            total: commissions.length,
-            active: commissions.filter(c => c.state === 'active').length,
-            completed: commissions.filter(c => c.state === 'completed').length,
-            grouped: 0
-        };
+        $("#statTotal").text(this.stats.total);
+        $("#statActive").text(this.stats.active);
+        $("#statCompleted").text(this.stats.completed);
+        $("#statReturned").text(this.stats.returned);
 
-        // Calculate grouped count if grouping is enabled
-        if ($("#groupTogether").prop('checked')) {
-            stats.grouped = commissions.reduce((sum, c) => {
-                return sum + (c.groupedCount || 1);
-            }, 0);
+        if ($("#groupTogether").prop('checked') && this.stats.grouped > 0) {
+            $("#statGrouped").text(this.stats.grouped);
+            $("#statsGrouped").show();
+        } else {
+            $("#statsGrouped").hide();
         }
-
-        $("#statTotal").text(stats.total);
-        $("#statActive").text(stats.active);
-        $("#statCompleted").text(stats.completed);
-        $("#statGrouped").text(stats.grouped || '-');
 
         $("#statsBar").show();
     }
 
-    /**
-     * Show loading spinner
-     */
     showSpinner() {
         $("#transferSpinner").show();
     }
 
-    /**
-     * Hide loading spinner
-     */
     hideSpinner() {
         $("#transferSpinner").hide();
     }
 
-    /**
-     * Show error message
-     */
     showError(message) {
         const alertHtml = `
             <div class="alert alert-danger alert-dismissible fade show" role="alert">
@@ -469,9 +394,6 @@ class CommissionsRenderer {
         }, 5000);
     }
 
-    /**
-     * Reset to first page
-     */
     resetToFirstPage() {
         this.currentPage = 1;
     }

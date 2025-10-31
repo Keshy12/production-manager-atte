@@ -11,12 +11,12 @@
             </h4>
             <table id="commissionTable" class="table table-bordered table-sm table-hover text-center">
                 <thead>
-                    <th>Odbiorca</th>
-                    <th>Urządzenie</th>
-                    <th>Laminat</th>
-                    <th>Wersja</th>
-                    <th>Ilość</th>
-                    <th>Status</th>
+                <th>Odbiorca</th>
+                <th>Urządzenie</th>
+                <th>Laminat</th>
+                <th>Wersja</th>
+                <th>Ilość</th>
+                <th>Status</th>
                 </thead>
                 <tbody id="commissionResultTBody"></tbody>
             </table>

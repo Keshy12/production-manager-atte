@@ -19,7 +19,6 @@ $selectRenderer = new SelectRenderer($MsaDB);
                 </button>
             </div>
             <div class="modal-body">
-                <!-- Priority Selection -->
                 <div class="form-group">
                     <label for="editPriority" class="font-weight-bold">
                         <i class="bi bi-flag"></i> Priorytet:
@@ -29,7 +28,6 @@ $selectRenderer = new SelectRenderer($MsaDB);
                     </select>
                 </div>
 
-                <!-- Subcontractors Selection -->
                 <div class="form-group">
                     <label for="editSubcontractors" class="font-weight-bold">
                         <i class="bi bi-people"></i> Zleceniobiorcy:
@@ -43,7 +41,6 @@ $selectRenderer = new SelectRenderer($MsaDB);
                     </select>
                 </div>
 
-                <!-- Groups Selection (if needed) -->
                 <div class="form-group">
                     <label for="input-groups" class="font-weight-bold">
                         <i class="bi bi-collection"></i> Grupy:
@@ -71,7 +68,7 @@ $selectRenderer = new SelectRenderer($MsaDB);
         <div class="modal-content">
             <div class="modal-header bg-danger text-white">
                 <h5 class="modal-title" id="cancelCommissionModalLabel">
-                    <i class="bi bi-exclamation-triangle"></i> Anuluj zlecenie
+                    <i class="bi bi-exclamation-triangle"></i> Anulacja zlecenia
                 </h5>
                 <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
                     <span aria-hidden="true">&times;</span>
@@ -79,7 +76,7 @@ $selectRenderer = new SelectRenderer($MsaDB);
             </div>
 
             <div class="modal-body">
-                <!-- Instructions Collapsible Card -->
+                <!-- Instructions Card -->
                 <div class="card border-info mb-3">
                     <div class="card-header bg-info text-white py-2"
                          style="cursor: pointer;"
@@ -96,89 +93,73 @@ $selectRenderer = new SelectRenderer($MsaDB);
                     </div>
                     <div id="instructionsCollapse" class="collapse">
                         <div class="card-body">
-                            <!-- How it works -->
-                            <h6 class="font-weight-bold mb-2">
-                                <i class="bi bi-gear"></i> Jak działa anulacja:
+                            <h6 class="font-weight-bold mb-3">
+                                <i class="bi bi-1-circle"></i> Struktura anulacji
+                            </h6>
+                            <p class="mb-3">System wyświetla zlecenia pogrupowane według <strong>transferów</strong>. Każda grupa transferu reprezentuje jeden moment w czasie, kiedy komponenty zostały przetransferowane.</p>
+
+                            <div class="alert alert-light border mb-3">
+                                <strong>Elementy do zaznaczenia:</strong>
+                                <ul class="mb-0 mt-2">
+                                    <li><strong>Zlecenia</strong> - zaznaczenie anuluje całe zlecenie w systemie</li>
+                                    <li><strong>Transfery komponentów</strong> - zaznaczenie zwraca komponenty do magazynów źródłowych</li>
+                                </ul>
+                            </div>
+
+                            <h6 class="font-weight-bold mb-3">
+                                <i class="bi bi-2-circle"></i> Logika zaznaczania
                             </h6>
                             <ul class="mb-3">
-                                <li><strong>Grupy transferów (Transfer #X):</strong> Każda grupa reprezentuje jeden transfer komponentów wykonany w konkretnym momencie. Kliknij nagłówek aby rozwinąć/zwinąć grupę.</li>
-                                <li><strong>Zaznaczanie zleceń:</strong> Zaznaczenie zlecenia automatycznie wybiera wszystkie jego komponenty w danej grupie.</li>
-                                <li><strong>Zaznaczanie komponentów:</strong> Możesz ręcznie zaznaczać pojedyncze komponenty niezależnie od zlecenia.</li>
-                                <li><strong>Komponenty w wielu grupach:</strong> To samo zlecenie może pojawić się w kilku grupach, jeśli było rozszerzane. Każda grupa to osobny transfer komponentów.</li>
+                                <li><strong>Zaznaczenie zlecenia</strong> automatycznie zaznacza wszystkie jego komponenty w tej grupie transferu</li>
+                                <li><strong>Zaznaczenie komponentu</strong> nie zaznacza zlecenia - możesz zwrócić komponenty bez anulowania zlecenia</li>
+                                <li>Możesz ręcznie odznaczać i zaznaczać dowolne elementy według potrzeb</li>
                             </ul>
 
-                            <!-- Cancellation types -->
-                            <div class="alert alert-light border">
-                                <h6 class="font-weight-bold mb-3">
-                                    <i class="bi bi-tags"></i> Typy anulacji:
-                                </h6>
-
-                                <div class="p-2 mb-2 bg-danger-light border-left border-danger border-3">
-                                    <strong class="text-danger">
-                                        <i class="bi bi-x-circle"></i> Całe zlecenie zostanie anulowane
-                                    </strong>
-                                    <br>
-                                    <small class="text-muted">
-                                        Wszystkie instancje tego zlecenia są wybrane. Zlecenie zostanie całkowicie anulowane w systemie.
-                                    </small>
-                                </div>
-
-                                <div class="p-2 mb-2 border-left border-info border-3">
-                                    <span class="badge badge-info">Wymaga wszystkich rozszerzeń</span>
-                                    <br>
-                                    <small class="text-muted">
-                                        To zlecenie ma rozszerzenia w innych grupach. Aby je całkowicie anulować, musisz wybrać wszystkie jego części.
-                                    </small>
-                                </div>
-
-                                <div class="p-2 border-left border-danger border-3">
-                                    <span class="badge badge-danger">Tylko rozszerzenie</span>
-                                    <br>
-                                    <small class="text-muted">
-                                        To jest rozszerzenie innego zlecenia. Anulowanie jego komponentów NIE anuluje głównego zlecenia.
-                                    </small>
-                                </div>
-                            </div>
-
-                            <!-- Process steps -->
-                            <h6 class="font-weight-bold mb-2">
-                                <i class="bi bi-list-ol"></i> Proces anulacji:
+                            <h6 class="font-weight-bold mb-3">
+                                <i class="bi bi-3-circle"></i> Obliczanie ilości do zwrotu
                             </h6>
-                            <ol class="mb-3">
-                                <li>Wybierz zlecenia lub komponenty do anulacji</li>
-                                <li>Sprawdź podsumowanie - co zostanie anulowane i jakie transfery zostaną cofnięte</li>
-                                <li>System automatycznie obliczy ilość komponentów do zwrotu:
-                                    <ul class="mt-1">
-                                        <li><strong>Przetransferowano:</strong> Suma zaznaczonych komponentów</li>
-                                        <li><strong>Użyto:</strong> Ilość wykorzystana w produkcji (na podstawie wyprodukowanej ilości)</li>
-                                        <li><strong>Do zwrotu:</strong> Różnica (przetransferowano - użyto)</li>
-                                    </ul>
-                                </li>
-                                <li>Potwierdź anulację - operacja jest nieodwracalna</li>
-                                <li>Niewykorzystane komponenty wrócą do magazynów źródłowych</li>
-                            </ol>
+                            <div class="bg-light p-3 rounded mb-3">
+                                <code>Ilość do zwrotu = Przetransferowano - (Wyprodukowano × Komponenty na jednostkę)</code>
+                            </div>
+                            <p class="mb-3">System automatycznie odejmuje komponenty użyte w produkcji od ilości przetransferowanej.</p>
 
-                            <!-- Important warnings -->
-                            <div class="alert alert-danger mb-2">
+                            <h6 class="font-weight-bold mb-3">
+                                <i class="bi bi-4-circle"></i> Rozkład zwrotu między źródła
+                            </h6>
+                            <p class="mb-2">Gdy komponenty pochodzą z wielu magazynów, możesz kontrolować rozkład zwrotu:</p>
+                            <ul class="mb-3">
+                                <li>Domyślnie: zwrot priorytetyzuje magazyny zewnętrzne</li>
+                                <li>Użyj przycisków <kbd>+</kbd> i <kbd>-</kbd> aby ręcznie dostosować ilości</li>
+                                <li>System automatycznie przelicza pozostałe magazyny</li>
+                            </ul>
+
+                            <div class="alert alert-danger">
                                 <i class="bi bi-exclamation-triangle-fill"></i>
-                                <strong>Ważne:</strong>
-                                Jeśli ilość do zwrotu jest <span class="badge badge-danger">ujemna (czerwona)</span>,
-                                oznacza to że użyto więcej komponentów niż przetransferowano. W takim przypadku
-                                anulacja zostanie zablokowana. Może to wskazywać na błąd w danych lub konieczność korekty.
+                                <strong>Ważne ostrzeżenia:</strong>
+                                <ul class="mb-0 mt-2">
+                                    <li>Jeśli <span class="badge badge-danger">ilość do zwrotu jest ujemna</span>, oznacza to że użyto więcej komponentów niż przetransferowano. Takie transfery są zablokowane do anulacji.</li>
+                                    <li>Anulacja jest operacją <strong>nieodwracalną</strong></li>
+                                    <li>Komponenty zostaną zwrócone do magazynów źródłowych według wybranego rozkładu</li>
+                                </ul>
                             </div>
 
-                            <div class="alert alert-warning mb-0">
-                                <i class="bi bi-info-circle-fill"></i>
-                                <strong>Uwaga:</strong>
-                                Anulacja jest operacją nieodwracalną. Wybrane transfery zostaną cofnięte do magazynów źródłowych.
-                            </div>
+                            <h6 class="font-weight-bold mb-3 mt-3">
+                                <i class="bi bi-5-circle"></i> Proces anulacji krok po kroku
+                            </h6>
+                            <ol class="mb-0">
+                                <li>Wybierz zlecenia i/lub komponenty do anulacji</li>
+                                <li>Dla komponentów z wieloma źródłami - dostosuj rozkład zwrotu (opcjonalnie)</li>
+                                <li>Sprawdź podsumowanie anulacji</li>
+                                <li>Potwierdź operację przyciskiem "Potwierdź anulację"</li>
+                                <li>System automatycznie wykona wszystkie operacje magazynowe</li>
+                            </ol>
                         </div>
                     </div>
                 </div>
 
                 <!-- Transfer Groups List -->
                 <div id="groupsList">
-                    <!-- Will be populated by JavaScript -->
+                    <!-- Populated by JavaScript -->
                 </div>
 
                 <!-- Cancellation Summary -->
@@ -189,7 +170,7 @@ $selectRenderer = new SelectRenderer($MsaDB);
                         </strong>
                     </div>
                     <div class="card-body" id="summaryContent">
-                        <!-- Content will be dynamically populated -->
+                        <!-- Populated by JavaScript -->
                     </div>
                 </div>
             </div>
@@ -206,33 +187,23 @@ $selectRenderer = new SelectRenderer($MsaDB);
     </div>
 </div>
 
-<!-- Loading Overlay for Cancel Modal -->
+<!-- Loading Overlay -->
 <div id="cancelModalOverlay"
      class="position-fixed w-100 h-100 d-flex align-items-center justify-content-center bg-white"
-     style="top: 0; left: 0; z-index: 1050; opacity: 0.95; display: none !important;">
+     style="top: 0; left: 0; z-index: 1060; opacity: 0.95; display: none !important;">
     <div class="text-center">
         <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
             <span class="sr-only">Ładowanie...</span>
         </div>
-        <h5 class="text-primary">Ładowanie danych transferu...</h5>
+        <h5 class="text-primary">Ładowanie danych anulacji...</h5>
     </div>
 </div>
 
-<!-- Custom styles for badge borders (minimal CSS for functionality) -->
 <style>
     .border-3 {
         border-width: 3px !important;
     }
 
-    .bg-danger-light {
-        background-color: #ffcdcd !important;
-    }
-
-    .border-danger.bg-light-danger {
-        background-color: #ffe5e5 !important;
-    }
-
-    /* Chevron rotation on collapse */
     [data-toggle="collapse"] .bi-chevron-down {
         transition: transform 0.2s ease;
     }
@@ -241,14 +212,55 @@ $selectRenderer = new SelectRenderer($MsaDB);
         transform: rotate(180deg);
     }
 
-    /* Make collapse headers hoverable */
     [data-toggle="collapse"]:hover {
         background-color: rgba(0, 0, 0, 0.02);
     }
 
-    /* Loading overlay z-index fix */
     #cancelModalOverlay[style*="display: block"],
     #cancelModalOverlay[style*="display:block"] {
         display: flex !important;
+    }
+
+    .source-qty-input::-webkit-outer-spin-button,
+    .source-qty-input::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+
+    .source-qty-input[type=number] {
+        -moz-appearance: textfield;
+    }
+
+    .transfers-list {
+        background-color: #f8f9fa;
+        border-left: 3px solid #dee2e6;
+        padding: 10px;
+    }
+
+    .sources-distribution {
+        background-color: #fff;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        padding: 10px;
+        margin-top: 5px;
+        margin-bottom: 10px;
+    }
+
+    .sources-distribution small {
+        font-size: 0.85rem;
+    }
+
+    .sources-distribution .input-group {
+        width: 140px !important;
+    }
+
+    .sources-distribution .btn {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.875rem;
+    }
+
+    .sources-distribution .form-control {
+        font-size: 0.875rem;
+        padding: 0.25rem 0.5rem;
     }
 </style>
