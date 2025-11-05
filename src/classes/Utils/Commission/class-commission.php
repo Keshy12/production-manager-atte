@@ -71,12 +71,12 @@ class Commission
         }
     }
 
-    public function addToQuantity($amount) {
-        $currentQty = $this->commissionValues['qty'];
+    public function addToQuantity($amount, $fieldName = 'qty') {
+        $currentQty = $this->commissionValues[$fieldName];
         $newQty = $currentQty + $amount;
         $id = $this->commissionValues['id'];
-        $this->MsaDB->update('commission__list', ['qty' => $newQty], 'id', $id);
-        $this->commissionValues['qty'] = $newQty;
+        $this->MsaDB->update('commission__list', [$fieldName => $newQty], 'id', $id);
+        $this->commissionValues[$fieldName] = $newQty;
         $this->updateStateAuto();
     }
 }
