@@ -262,5 +262,21 @@ $selectRenderer = new SelectRenderer($MsaDB);
     .sources-distribution .form-control {
         font-size: 0.875rem;
         padding: 0.25rem 0.5rem;
+
+    }
+
+    .main-source-container {
+        background-color: #e3f2fd;
+        border: 2px solid rgba(33, 150, 243, 0.16);
+        border-radius: 4px;
+        padding: 8px;
+        margin-bottom: 8px;
+    }
+
+    .external-source-container {
+        background-color: #fff;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        padding: 8px;
     }
 </style>

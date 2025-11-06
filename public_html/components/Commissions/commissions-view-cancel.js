@@ -137,6 +137,8 @@ $(document).ready(function() {
         sortedCommissions.forEach(commissionId => {
             const commission = data.commissionsData[commissionId];
             const transfers = data.transfersByCommission[commissionId] || [];
+            const unreturned = commission.qtyUnreturned;
+            const hasUnreturned = unreturned > 0;
 
             const cardHtml = `
             <div class="card mb-3 commission-card" data-commission-id="${commissionId}">
@@ -146,7 +148,9 @@ $(document).ready(function() {
                             <input type="checkbox" 
                                    class="custom-control-input commission-checkbox" 
                                    id="comm-${commissionId}"
-                                   data-commission-id="${commissionId}">
+                                   data-commission-id="${commissionId}"
+                                   data-has-unreturned="${hasUnreturned}"
+                                   data-unreturned-qty="${unreturned}">
                             <label class="custom-control-label font-weight-bold" for="comm-${commissionId}">
                                 <i class="bi bi-file-earmark-text"></i>
                                 Zlecenie #${commissionId}: ${commission.deviceName}
@@ -166,12 +170,12 @@ $(document).ready(function() {
                         </button>
                     </div>
                     <small class="text-muted ml-4">
-                        Zlecono: ${commission.qty} | Wyprodukowano: ${commission.qtyProduced}
+                        Zlecono: ${commission.qty} | Wyprodukowano: ${commission.qtyProduced}${hasUnreturned ? ` | <span class="text-warning">Niewrócono: ${unreturned}</span>` : ''}
                     </small>
                 </div>
                 <div id="transfers-${commissionId}" class="collapse">
-                    <div class="card-body transfers-list">
-                        ${renderTransfers(transfers, commissionId)}
+                    <div class="card-body bg-light">
+                        ${transfers.length > 0 ? renderTransfersList(transfers, commissionId) : '<p class="mb-0 text-muted">Brak dostępnych transferów do anulacji</p>'}
                     </div>
                 </div>
             </div>
@@ -180,390 +184,295 @@ $(document).ready(function() {
             $groupsList.append(cardHtml);
         });
 
-        attachCancellationHandlers();
+        attachEventHandlers();
+        updateSummary();
     }
 
-    function renderTransfers(transfers, commissionId) {
-        if (!transfers || transfers.length === 0) {
-            return '<p class="text-muted mb-0">Brak transferów do anulacji</p>';
+    function renderTransfersList(transfers, commissionId) {
+        if (transfers.length === 0) {
+            return '<p class="mb-0 text-muted">Brak dostępnych transferów</p>';
         }
 
-        let html = '';
+        return `
+        <div class="transfers-list">
+            ${transfers.map((transfer, index) => {
+            const isDisabled = transfer.qtyAvailable <= 0;
+            const displayQty = Math.abs(transfer.qtyAvailable);
+            const qtyClass = transfer.qtyAvailable < 0 ? 'text-danger' : 'text-success';
 
-        transfers.forEach(transfer => {
-            const isInvalid = transfer.qtyAvailable < 0;
-            const invalidClass = isInvalid ? 'border-danger' : '';
-            const disabledAttr = isInvalid ? 'disabled' : '';
-
-            html += `
-                <div class="card mb-2 ${invalidClass}" data-transfer-id="${transfer.transferId}">
-                    <div class="card-body p-2">
-                        <div class="custom-control custom-checkbox">
-                            <input type="checkbox" 
-                                   class="custom-control-input transfer-checkbox" 
-                                   id="trans-${transfer.transferId}"
-                                   data-transfer-id="${transfer.transferId}"
-                                   data-commission-id="${commissionId}"
-                                   ${disabledAttr}>
-                            <label class="custom-control-label" for="trans-${transfer.transferId}">
-                                <strong>${transfer.componentName}</strong>
-                            </label>
+            let sourcesHtml = '';
+            if (transfer.sources && transfer.sources.length > 1) {
+                sourcesHtml = `
+                    <div class="sources-distribution mt-2" data-transfer-id="${transfer.transferId}">
+                        <small class="text-muted font-weight-bold d-block mb-2">
+                            <i class="bi bi-diagram-3"></i> Rozkład zwrotu:
+                        </small>
+                        <div class="d-flex flex-wrap gap-2">
+                        ${transfer.sources.map((source, srcIndex) => `
+                            <div class="d-inline-flex align-items-center mr-3 mb-2 ${source.isMainWarehouse ? 'main-source-container' : 'external-source-container'}">
+                                <small class="mr-2" style="min-width: 180px;">
+                                    ${source.warehouseName}<br>
+                                    <span class="text-muted" style="font-size: 0.8em;">przetransf: ${source.originalQty}</span>
+                                </small>
+                                <div class="input-group" style="width: 140px;">
+                                    ${!source.isMainWarehouse ? `
+                                    <div class="input-group-prepend">
+                                        <button class="btn btn-outline-secondary btn-sm source-qty-minus" 
+                                                type="button"
+                                                data-transfer-id="${transfer.transferId}"
+                                                data-source-index="${srcIndex}"
+                                                ${isDisabled ? 'disabled' : ''}>-</button>
+                                    </div>
+                                    ` : ''}
+                                    <input type="number" 
+                                           class="form-control form-control-sm text-center source-qty-input" 
+                                           value="${source.quantity}"
+                                           min="0"
+                                           data-transfer-id="${transfer.transferId}"
+                                           data-source-index="${srcIndex}"
+                                           ${source.isMainWarehouse ? 'readonly' : ''}
+                                           ${isDisabled ? 'disabled' : ''}>
+                                    ${!source.isMainWarehouse ? `
+                                    <div class="input-group-append">
+                                        <button class="btn btn-outline-secondary btn-sm source-qty-plus" 
+                                                type="button"
+                                                data-transfer-id="${transfer.transferId}"
+                                                data-source-index="${srcIndex}"
+                                                ${isDisabled ? 'disabled' : ''}>+</button>
+                                    </div>
+                                    ` : ''}
+                                </div>
+                            </div>
+                        `).join('')}
                         </div>
-                        <div class="ml-4 mt-2">
-                            <small class="d-block">
-                                Przetransferowano: <strong>${transfer.qtyTransferred}</strong> | 
-                                Użyto: <strong>${transfer.qtyUsed}</strong> | 
-                                Do zwrotu: <strong class="${isInvalid ? 'text-danger' : ''}">${transfer.qtyAvailable}</strong>
-                            </small>
-                            ${isInvalid ? '<small class="text-danger d-block"><i class="bi bi-exclamation-triangle"></i> Użyto więcej niż przetransferowano - nie można anulować</small>' : ''}
-                            
-                            ${!isInvalid && transfer.sources.length > 1 ? renderSourcesDistribution(transfer) : ''}
+                        <div class="mt-2">
+                            <small class="source-sum-indicator" data-transfer-id="${transfer.transferId}"></small>
                         </div>
                     </div>
+                `;
+            }
+
+            return `
+                <div class="mb-3 ${isDisabled ? 'opacity-50' : ''}">
+                    <div class="custom-control custom-checkbox">
+                        <input type="checkbox" 
+                               class="custom-control-input transfer-checkbox" 
+                               id="trans-${transfer.transferId}"
+                               data-transfer-id="${transfer.transferId}"
+                               data-commission-id="${commissionId}"
+                               ${isDisabled ? 'disabled' : ''}>
+                        <label class="custom-control-label" for="trans-${transfer.transferId}">
+                            <strong>${transfer.componentName}</strong>
+                        </label>
+                    </div>
+                    <small class="text-muted d-block ml-4">
+                        Przetransferowano: ${transfer.qtyTransferred} | 
+                        Użyto: ${transfer.qtyUsed} | 
+                        Do zwrotu: <span class="${qtyClass}">${displayQty}</span>
+                        ${isDisabled ? ' <span class="badge badge-danger">Brak do zwrotu</span>' : ''}
+                    </small>
+                    ${sourcesHtml}
                 </div>
             `;
-        });
-
-        return html;
-    }
-
-    function renderSourcesDistribution(transfer) {
-        let html = `
-            <div class="sources-distribution mt-2" data-transfer-id="${transfer.transferId}">
-                <small class="font-weight-bold d-block mb-2">
-                    <i class="bi bi-distribute-vertical"></i> Rozkład zwrotu między źródła:
-                </small>
-        `;
-
-        transfer.sources.forEach((source, index) => {
-            const badgeClass = source.isMainWarehouse ? 'badge-primary' : 'badge-info';
-            const showButtons = !source.isMainWarehouse;
-            const maxQty = source.originalQty || source.quantity;
-
-            html += `
-            <div class="d-flex align-items-center justify-content-between mb-2" data-source-index="${index}">
-                <div>
-                    <span class="badge ${badgeClass}">${source.warehouseName}</span>
-                    <span class="text-muted ml-1">(z ${maxQty})</span>
-                </div>
-                <div class="input-group input-group-sm" style="width: 140px;">
-                    ${showButtons ? `
-                    <div class="input-group-prepend">
-                        <button class="btn btn-outline-secondary source-qty-decrease" type="button">
-                            <i class="bi bi-dash"></i>
-                        </button>
-                    </div>
-                    ` : ''}
-                    <input type="number" 
-                           class="form-control text-center source-qty-input" 
-                           value="${source.quantity}"
-                           data-source-index="${index}"
-                           data-is-main="${source.isMainWarehouse}"
-                           data-max-qty="${maxQty}"
-                           step="0.01"
-                           min="0"
-                           max="${maxQty}"
-                           ${source.isMainWarehouse ? 'readonly' : ''}>
-                    ${showButtons ? `
-                    <div class="input-group-append">
-                        <button class="btn btn-outline-secondary source-qty-increase" type="button">
-                            <i class="bi bi-plus"></i>
-                        </button>
-                    </div>
-                    ` : ''}
-                </div>
-            </div>
-        `;
-        });
-
-        html += `
-            <div class="alert alert-danger mt-2 sources-error" style="display: none; padding: 0.5rem;">
-                <small>
-                    <i class="bi bi-exclamation-triangle"></i>
-                    <strong>Błąd:</strong> Suma źródeł przekracza ilość do zwrotu!
-                </small>
-            </div>
+        }).join('')}
         </div>
     `;
-        return html;
     }
 
-    function applyAutoSelection(cancellationType, isGrouped, clickedCommissionId) {
-        if (cancellationType === 'commissions') {
-            const commissionsToCheck = [];
-
-            if (isGrouped) {
-                $('.commission-checkbox').each(function() {
-                    const commissionId = $(this).data('commission-id');
-                    commissionsToCheck.push(commissionId);
-                });
-            } else {
-                commissionsToCheck.push(parseInt(clickedCommissionId));
-            }
-
-            checkUnreturnedProducts(commissionsToCheck, function(returnMap) {
-                commissionsToCheck.forEach(commissionId => {
-                    if (isGrouped) {
-                        $('.commission-checkbox').prop('checked', true);
-                    } else {
-                        $(`#comm-${commissionId}`).prop('checked', true);
-                    }
-                    selectedCommissions.add(parseInt(commissionId));
-                });
-
-                if (returnMap && Object.keys(returnMap).length > 0) {
-                    window.returnCompletedAsReturned = returnMap;
-                }
-
-                $('.collapse').collapse('hide');
-                updateTransferBadges();
-                updateSummary();
-            });
-
-        } else if (cancellationType === 'transfers') {
-            if (isGrouped) {
-                $('.transfer-checkbox:not(:disabled)').prop('checked', true).each(function() {
-                    selectedTransfers.add($(this).data('transfer-id'));
-                });
-                $('.collapse').collapse('show');
-            } else {
-                $(`[data-commission-id="${clickedCommissionId}"] .transfer-checkbox:not(:disabled)`).prop('checked', true).each(function() {
-                    selectedTransfers.add($(this).data('transfer-id'));
-                });
-                $(`#transfers-${clickedCommissionId}`).collapse('show');
-            }
-
-            updateTransferBadges();
-            updateSummary();
-
-        } else {
-            if (isGrouped) {
-                $('.commission-checkbox').prop('checked', true).each(function() {
-                    const commissionId = $(this).data('commission-id');
-                    selectedCommissions.add(parseInt(commissionId));
-                });
-                $('.transfer-checkbox:not(:disabled)').prop('checked', true).each(function() {
-                    selectedTransfers.add($(this).data('transfer-id'));
-                });
-            } else {
-                $(`#comm-${clickedCommissionId}`).prop('checked', true);
-                selectedCommissions.add(parseInt(clickedCommissionId));
-                $(`[data-commission-id="${clickedCommissionId}"] .transfer-checkbox:not(:disabled)`).prop('checked', true).each(function() {
-                    selectedTransfers.add($(this).data('transfer-id'));
-                });
-            }
-
-            updateTransferBadges();
-            updateSummary();
-        }
-    }
-
-    function checkUnreturnedProducts(commissionIds, callback) {
-        const unreturnedCommissions = [];
-
-        commissionIds.forEach(commId => {
-            const commission = cancellationData.commissionsData[commId];
-            if (commission && commission.qtyUnreturned > 0) {
-                unreturnedCommissions.push({
-                    id: commId,
-                    deviceName: commission.deviceName,
-                    qtyUnreturned: commission.qtyUnreturned
-                });
-            }
-        });
-
-        if (unreturnedCommissions.length === 0) {
-            callback(null);
-            return;
-        }
-
-        let listHtml = '<ul class="mb-0">';
-        unreturnedCommissions.forEach(comm => {
-            listHtml += `<li><strong>Zlecenie #${comm.id}</strong> (${comm.deviceName}): <span class="badge badge-warning">${comm.qtyUnreturned} szt.</span></li>`;
-        });
-        listHtml += '</ul>';
-
-        const dialogHtml = `
-        <div class="modal fade" id="unreturnedProductsModal" tabindex="-1">
-            <div class="modal-dialog">
-                <div class="modal-content">
-                    <div class="modal-header bg-warning">
-                        <h5 class="modal-title">
-                            <i class="bi bi-box-seam"></i> Niewrócone produkty
-                        </h5>
-                    </div>
-                    <div class="modal-body">
-                        <p class="mb-2">Następujące zlecenia mają wyprodukowane, ale niewrócone produkty:</p>
-                        ${listHtml}
-                        <p class="mt-3 mb-0"><strong>Czy chcesz automatycznie zwrócić te produkty do magazynu docelowego?</strong></p>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-action="no">
-                            Nie, anuluj bez zwrotu
-                        </button>
-                        <button type="button" class="btn btn-primary" data-action="yes">
-                            Tak, zwróć produkty
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
-
-        $('body').append(dialogHtml);
-        const $modal = $('#unreturnedProductsModal');
-
-        $modal.find('button[data-action]').on('click', function() {
-            const action = $(this).data('action');
-            const returnMap = {};
-
-            if (action === 'yes') {
-                unreturnedCommissions.forEach(comm => {
-                    returnMap[comm.id] = true;
-                });
-            }
-
-            $modal.modal('hide');
-            setTimeout(() => {
-                $modal.remove();
-                callback(returnMap);
-            }, 300);
-        });
-
-        $modal.on('hidden.bs.modal', function() {
-            $(this).remove();
-        });
-
-        $modal.modal('show');
-    }
-
-    function attachCancellationHandlers() {
+    function attachEventHandlers() {
         $('.commission-checkbox').off('change').on('change', function() {
             const commissionId = $(this).data('commission-id');
             const isChecked = $(this).prop('checked');
 
             if (isChecked) {
                 selectedCommissions.add(commissionId);
-                $(`[data-commission-id="${commissionId}"] .transfer-checkbox:not(:disabled)`).prop('checked', true).each(function() {
-                    selectedTransfers.add($(this).data('transfer-id'));
+
+                $(`.transfer-checkbox[data-commission-id="${commissionId}"]`).each(function() {
+                    if (!$(this).prop('disabled')) {
+                        $(this).prop('checked', true).trigger('change');
+                    }
                 });
             } else {
                 selectedCommissions.delete(commissionId);
+
+                $(`.transfer-checkbox[data-commission-id="${commissionId}"]`).each(function() {
+                    $(this).prop('checked', false).trigger('change');
+                });
             }
 
-            updateTransferBadges();
+            updateCommissionBadges(commissionId);
             updateSummary();
         });
 
         $('.transfer-checkbox').off('change').on('change', function() {
             const transferId = $(this).data('transfer-id');
+            const commissionId = $(this).data('commission-id');
             const isChecked = $(this).prop('checked');
 
             if (isChecked) {
                 selectedTransfers.add(transferId);
+                updateSourceSumIndicator(transferId);
             } else {
                 selectedTransfers.delete(transferId);
             }
 
-            updateTransferBadges();
+            updateCommissionBadges(commissionId);
             updateSummary();
         });
 
         $('.source-qty-input').off('input').on('input', function() {
-            const maxQty = parseFloat($(this).data('max-qty'));
-            const currentVal = parseFloat($(this).val()) || 0;
+            const transferId = $(this).data('transfer-id');
+            const sourceIndex = $(this).data('source-index');
+            const transfer = findTransferById(transferId);
 
-            if (currentVal > maxQty) {
-                $(this).val(maxQty);
+            if (!transfer || transfer.sources[sourceIndex].isMainWarehouse) return;
+
+            const newValue = parseFloat($(this).val()) || 0;
+            const oldValue = transfer.sources[sourceIndex].quantity;
+            const diff = newValue - oldValue;
+
+            const mainIndex = transfer.sources.findIndex(s => s.isMainWarehouse);
+            const $mainInput = $(`.source-qty-input[data-transfer-id="${transferId}"][data-source-index="${mainIndex}"]`);
+            const currentMainValue = parseFloat($mainInput.val()) || 0;
+            $mainInput.val(currentMainValue - diff);
+
+            transfer.sources[sourceIndex].quantity = newValue;
+            transfer.sources[mainIndex].quantity = currentMainValue - diff;
+
+            updateSourceSumIndicator(transferId);
+        });
+
+        $('.source-qty-plus').off('click').on('click', function() {
+            const transferId = $(this).data('transfer-id');
+            const sourceIndex = $(this).data('source-index');
+            const transfer = findTransferById(transferId);
+
+            if (!transfer) return;
+
+            const mainIndex = transfer.sources.findIndex(s => s.isMainWarehouse);
+            const $mainInput = $(`.source-qty-input[data-transfer-id="${transferId}"][data-source-index="${mainIndex}"]`);
+            const currentMainValue = parseFloat($mainInput.val()) || 0;
+
+            if (currentMainValue > 0) {
+                const $input = $(`.source-qty-input[data-transfer-id="${transferId}"][data-source-index="${sourceIndex}"]`);
+                const currentValue = parseFloat($input.val()) || 0;
+
+                $input.val(currentValue + 1);
+                $mainInput.val(currentMainValue - 1);
+
+                transfer.sources[sourceIndex].quantity = currentValue + 1;
+                transfer.sources[mainIndex].quantity = currentMainValue - 1;
+
+                updateSourceSumIndicator(transferId);
             }
-
-            const transferId = $(this).closest('.sources-distribution').data('transfer-id');
-            redistributeQuantities(transferId);
-            updateSummary();
         });
 
-        $('.source-qty-increase').off('click').on('click', function() {
-            const $input = $(this).closest('.input-group').find('.source-qty-input');
-            const currentVal = parseFloat($input.val()) || 0;
-            const maxVal = parseFloat($input.data('max-qty'));
-            $input.val(Math.min(currentVal + 1, maxVal)).trigger('input');
-        });
+        $('.source-qty-minus').off('click').on('click', function() {
+            const transferId = $(this).data('transfer-id');
+            const sourceIndex = $(this).data('source-index');
+            const transfer = findTransferById(transferId);
 
-        $('.source-qty-decrease').off('click').on('click', function() {
-            const $input = $(this).closest('.input-group').find('.source-qty-input');
-            const currentVal = parseFloat($input.val()) || 0;
-            $input.val(Math.max(currentVal - 1, 0)).trigger('input');
+            if (!transfer) return;
+
+            const $input = $(`.source-qty-input[data-transfer-id="${transferId}"][data-source-index="${sourceIndex}"]`);
+            const currentValue = parseFloat($input.val()) || 0;
+
+            if (currentValue > 0) {
+                const mainIndex = transfer.sources.findIndex(s => s.isMainWarehouse);
+                const $mainInput = $(`.source-qty-input[data-transfer-id="${transferId}"][data-source-index="${mainIndex}"]`);
+                const currentMainValue = parseFloat($mainInput.val()) || 0;
+
+                $input.val(currentValue - 1);
+                $mainInput.val(currentMainValue + 1);
+
+                transfer.sources[sourceIndex].quantity = currentValue - 1;
+                transfer.sources[mainIndex].quantity = currentMainValue + 1;
+
+                updateSourceSumIndicator(transferId);
+            }
         });
     }
 
-
-    function updateTransferBadges() {
-        $('.selected-transfers-badge, .partial-transfers-badge').hide();
-
-        $('.commission-card').each(function() {
-            const commissionId = $(this).data('commission-id');
-            const isCommissionSelected = selectedCommissions.has(parseInt(commissionId));
-
-            const $allTransferCheckboxes = $(`[data-commission-id="${commissionId}"] .transfer-checkbox:not(:disabled)`);
-            const $checkedTransferCheckboxes = $(`[data-commission-id="${commissionId}"] .transfer-checkbox:checked`);
-
-            const totalTransfers = $allTransferCheckboxes.length;
-            const selectedCount = $checkedTransferCheckboxes.length;
-
-            const $selectedBadge = $(`.selected-transfers-badge[data-commission-id="${commissionId}"]`);
-            const $partialBadge = $(`.partial-transfers-badge[data-commission-id="${commissionId}"]`);
-
-            if (isCommissionSelected) {
-                if (selectedCount < totalTransfers && totalTransfers > 0) {
-                    $partialBadge.text(`${selectedCount}/${totalTransfers} transferów`).show();
-                }
-            } else {
-                if (selectedCount > 0) {
-                    $selectedBadge.text(`${selectedCount} ${selectedCount === 1 ? 'transfer' : 'transferów'}`).show();
-                }
-            }
+    function getCurrentSourceTotal(transferId) {
+        let total = 0;
+        $(`.source-qty-input[data-transfer-id="${transferId}"]`).each(function() {
+            total += parseFloat($(this).val()) || 0;
         });
+        return total;
     }
 
-    function redistributeQuantities(transferId) {
-        const $distribution = $(`.sources-distribution[data-transfer-id="${transferId}"]`);
-        const $inputs = $distribution.find('.source-qty-input');
-        const $errorAlert = $distribution.find('.sources-error');
+    function redistributeFromOtherSources(transferId, excludeIndex, amount) {
+        updateSourceSumIndicator(transferId);
+    }
 
+    function redistributeToOtherSources(transferId, excludeIndex, amount) {
+        updateSourceSumIndicator(transferId);
+    }
+
+    function updateSourceSumIndicator(transferId) {
         const transfer = findTransferById(transferId);
         if (!transfer) return;
 
-        const totalAvailable = transfer.qtyAvailable;
-        let externalTotal = 0;
+        const currentTotal = getCurrentSourceTotal(transferId);
+        const expectedTotal = transfer.qtyAvailable;
+        const $indicator = $(`.source-sum-indicator[data-transfer-id="${transferId}"]`);
 
-        $inputs.filter('[data-is-main="false"]').each(function() {
-            externalTotal += parseFloat($(this).val()) || 0;
-        });
-
-        const mainWarehouseQty = totalAvailable - externalTotal;
-        $inputs.filter('[data-is-main="true"]').val(Math.max(0, mainWarehouseQty).toFixed(2));
-
-        let allSourcesTotal = 0;
-        $inputs.each(function() {
-            allSourcesTotal += parseFloat($(this).val()) || 0;
-        });
-
-        if (Math.abs(allSourcesTotal - totalAvailable) > 0.01) {
-            $errorAlert.show();
-            $inputs.addClass('is-invalid');
+        if (Math.abs(currentTotal - expectedTotal) >= 0.01) {
+            $indicator.html(`<span class="text-danger"><i class="bi bi-exclamation-triangle"></i> Suma: ${currentTotal.toFixed(2)} (oczekiwano: ${expectedTotal.toFixed(2)})</span>`);
         } else {
-            $errorAlert.hide();
-            $inputs.removeClass('is-invalid');
+            $indicator.html('');
         }
     }
 
-    function findTransferById(transferId) {
-        for (let commissionId in cancellationData.transfersByCommission) {
-            const transfers = cancellationData.transfersByCommission[commissionId];
-            const transfer = transfers.find(t => t.transferId == transferId);
-            if (transfer) return transfer;
+    function updateCommissionBadges(commissionId) {
+        const $commCheckbox = $(`.commission-checkbox[data-commission-id="${commissionId}"]`);
+        const $transferCheckboxes = $(`.transfer-checkbox[data-commission-id="${commissionId}"]`).not(':disabled');
+        const totalTransfers = $transferCheckboxes.length;
+        const checkedTransfers = $transferCheckboxes.filter(':checked').length;
+
+        const $selectedBadge = $(`.selected-transfers-badge[data-commission-id="${commissionId}"]`);
+        const $partialBadge = $(`.partial-transfers-badge[data-commission-id="${commissionId}"]`);
+
+        if (checkedTransfers > 0) {
+            $selectedBadge.text(`${checkedTransfers} transferów`).show();
+
+            if (checkedTransfers < totalTransfers && !$commCheckbox.prop('checked')) {
+                $partialBadge.show();
+            } else {
+                $partialBadge.hide();
+            }
+        } else {
+            $selectedBadge.hide();
+            $partialBadge.hide();
         }
-        return null;
+    }
+
+    function applyAutoSelection(cancellationType, isGrouped, clickedCommissionId) {
+        switch (cancellationType) {
+            case 'commissions':
+                if (isGrouped) {
+                    $('.commission-checkbox').prop('checked', true).trigger('change');
+                } else {
+                    $(`.commission-checkbox[data-commission-id="${clickedCommissionId}"]`).prop('checked', true).trigger('change');
+                }
+                break;
+
+            case 'transfers':
+                if (isGrouped) {
+                    $('.transfer-checkbox').not(':disabled').prop('checked', true).trigger('change');
+                } else {
+                    $(`.transfer-checkbox[data-commission-id="${clickedCommissionId}"]`).not(':disabled').prop('checked', true).trigger('change');
+                }
+                break;
+
+            case 'both':
+                if (isGrouped) {
+                    $('.commission-checkbox').prop('checked', true).trigger('change');
+                } else {
+                    $(`.commission-checkbox[data-commission-id="${clickedCommissionId}"]`).prop('checked', true).trigger('change');
+                }
+                break;
+        }
     }
 
     function updateSummary() {
@@ -577,111 +486,70 @@ $(document).ready(function() {
             return;
         }
 
-        let html = '';
+        let html = '<h6 class="font-weight-bold mb-3">Wybrane elementy:</h6>';
 
         if (selectedCommissions.size > 0) {
-            html += `
-            <h6 class="font-weight-bold mb-2">
-                <i class="bi bi-file-earmark-x"></i> Zlecenia do anulacji (${selectedCommissions.size}):
-            </h6>
-            <ul class="mb-3">
-        `;
+            html += '<div class="mb-3"><strong class="text-danger">Zlecenia do anulacji:</strong><ul class="mt-2">';
             selectedCommissions.forEach(commId => {
                 const commission = cancellationData.commissionsData[commId];
                 html += `<li>Zlecenie #${commId}: ${commission.deviceName}</li>`;
             });
-            html += '</ul>';
+            html += '</ul></div>';
         }
 
         if (selectedTransfers.size > 0) {
-            const groupedTransfers = {};
-            const transfersByCommission = {};
-
+            html += '<div class="mb-3"><strong class="text-warning">Komponenty do zwrotu:</strong><ul class="mt-2">';
             selectedTransfers.forEach(transId => {
                 const transfer = findTransferById(transId);
-                if (!transfer) return;
-
-                const commissionId = transfer.commissionId;
-                const isCommissionSelected = selectedCommissions.has(commissionId);
-
-                const $distribution = $(`.sources-distribution[data-transfer-id="${transId}"]`);
-
-                if ($distribution.length > 0) {
-                    $distribution.find('.source-qty-input').each(function(index) {
-                        const qty = parseFloat($(this).val()) || 0;
-                        if (qty > 0) {
-                            const source = transfer.sources[index];
-                            const key = `${transfer.componentType}_${transfer.componentId}_${source.warehouseId}`;
-
-                            if (!groupedTransfers[key]) {
-                                groupedTransfers[key] = {
-                                    componentName: transfer.componentName,
-                                    warehouseName: source.warehouseName,
-                                    quantity: 0,
-                                    isMainWarehouse: source.isMainWarehouse,
-                                    commissions: new Set()
-                                };
-                            }
-                            groupedTransfers[key].quantity += qty;
-                            if (!isCommissionSelected) {
-                                groupedTransfers[key].commissions.add(commissionId);
-                            }
-                        }
-                    });
-                } else {
-                    transfer.sources.forEach(source => {
-                        if (source.quantity > 0) {
-                            const key = `${transfer.componentType}_${transfer.componentId}_${source.warehouseId}`;
-
-                            if (!groupedTransfers[key]) {
-                                groupedTransfers[key] = {
-                                    componentName: transfer.componentName,
-                                    warehouseName: source.warehouseName,
-                                    quantity: 0,
-                                    isMainWarehouse: source.isMainWarehouse,
-                                    commissions: new Set()
-                                };
-                            }
-                            groupedTransfers[key].quantity += source.quantity;
-                            if (!isCommissionSelected) {
-                                groupedTransfers[key].commissions.add(commissionId);
-                            }
-                        }
-                    });
+                if (transfer) {
+                    html += `<li>Zlecenie #${transfer.commissionId}: ${transfer.componentName} (${transfer.qtyAvailable.toFixed(2)})</li>`;
                 }
             });
+            html += '</ul></div>';
+        }
 
-            if (Object.keys(groupedTransfers).length > 0) {
-                html += `
-                <h6 class="font-weight-bold mb-2">
-                    <i class="bi bi-box-arrow-left"></i> Transfery do zwrotu (${Object.keys(groupedTransfers).length}):
-                </h6>
-                <ul class="mb-0">
-            `;
-
-                for (let key in groupedTransfers) {
-                    const transfer = groupedTransfers[key];
-                    const badgeClass = transfer.isMainWarehouse ? 'badge-primary' : 'badge-info';
-
-                    let commissionIndicator = '';
-                    if (transfer.commissions.size > 0) {
-                        const commIds = Array.from(transfer.commissions).join(', #');
-                        commissionIndicator = ` <span class="badge badge-warning ml-1" title="Z innych zleceń: #${commIds}">
-                        <i class="bi bi-link-45deg"></i> #${commIds}
-                    </span>`;
-                    }
-
-                    html += `
-                    <li>
-                        <strong>${transfer.componentName}</strong>: 
-                        ${transfer.quantity.toFixed(2)} → 
-                        <span class="badge ${badgeClass}">${transfer.warehouseName}</span>${commissionIndicator}
-                    </li>
-                `;
-                }
-
-                html += '</ul>';
+        const commissionsWithUnreturned = {};
+        selectedCommissions.forEach(commId => {
+            const commission = cancellationData.commissionsData[commId];
+            if (commission.qtyUnreturned > 0) {
+                commissionsWithUnreturned[commId] = {
+                    name: commission.deviceName,
+                    qty: commission.qtyUnreturned
+                };
             }
+        });
+
+        if (Object.keys(commissionsWithUnreturned).length > 0) {
+            html += `
+                <div class="alert alert-warning">
+                    <h6 class="font-weight-bold">
+                        <i class="bi bi-exclamation-triangle"></i> Wykryto niewrócone sztuki
+                    </h6>
+                    <p class="mb-2">Następujące zlecenia mają wyprodukowane, ale niewrócone sztuki. Zaznacz checkbox aby automatycznie zwrócić je do magazynu docelowego:</p>
+                    ${Object.keys(commissionsWithUnreturned).map(commissionId => {
+                const unreturnedQty = commissionsWithUnreturned[commissionId].qty;
+
+                return `
+                            <div class="card mb-2">
+                                <div class="card-body py-2">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <span><strong>Zlecenie #${commissionId}</strong> - Niewrócono: <span class="text-warning">${unreturnedQty} szt.</span></span>
+                                        <div class="custom-control custom-checkbox">
+                                            <input type="checkbox" 
+                                                   class="custom-control-input return-completed-checkbox" 
+                                                   id="return-completed-${commissionId}" 
+                                                   data-commission-id="${commissionId}">
+                                            <label class="custom-control-label" for="return-completed-${commissionId}">
+                                                Zwróć automatycznie
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+            }).join('')}
+                </div>
+            `;
         }
 
         $content.html(html);
@@ -738,6 +606,7 @@ $(document).ready(function() {
 
     function submitCancellation() {
         const transfersToSubmit = [];
+        const returnCompletedAsReturned = {};
 
         selectedTransfers.forEach(transId => {
             const transfer = findTransferById(transId);
@@ -777,13 +646,19 @@ $(document).ready(function() {
             });
         });
 
+        $('.return-completed-checkbox:checked').each(function() {
+            const commissionId = $(this).data('commission-id');
+            returnCompletedAsReturned[commissionId] = true;
+        });
+
         $.ajax({
             type: 'POST',
             url: COMPONENTS_PATH + '/commissions/cancel-commission.php',
             data: {
                 action: 'submit_cancellation',
                 selectedCommissions: JSON.stringify([...selectedCommissions]),
-                selectedTransfers: JSON.stringify(transfersToSubmit)
+                selectedTransfers: JSON.stringify(transfersToSubmit),
+                returnCompletedAsReturned: JSON.stringify(returnCompletedAsReturned)
             },
             success: function(response) {
                 if (response.success) {
@@ -801,6 +676,18 @@ $(document).ready(function() {
                 showErrorMessage('Błąd podczas anulacji');
             }
         });
+    }
+
+    function findTransferById(transferId) {
+        for (let commId in cancellationData.transfersByCommission) {
+            const transfers = cancellationData.transfersByCommission[commId];
+            for (let transfer of transfers) {
+                if (transfer.transferId === transferId) {
+                    return transfer;
+                }
+            }
+        }
+        return null;
     }
 
     $('#cancelCommissionModal').on('hidden.bs.modal', function() {
