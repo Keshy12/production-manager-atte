@@ -1,6 +1,6 @@
 <script type="text/template" data-template="commissionCard">
-    <div class="card text-center m-2 ${class}"
-         style="min-width: 360px; max-width: 400px; box-shadow: -5px 0px 0px 0px ${color};"
+    <div class="card text-center m-2 ${class} ${cancelledClass}"
+         style="min-width: 360px; max-width: 400px; box-shadow: -5px 0px 0px 0px ${color}; ${cancelledStyle}"
          ${showGroupBadge}data-grouped-ids="${groupedIds}">
         <div class="card-header py-2">
             <button type="button"

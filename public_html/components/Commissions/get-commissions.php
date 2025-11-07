@@ -249,7 +249,7 @@ foreach($commissions as $commissionData) {
     $device_laminate_and_version = $device_laminate." Wersja: <b>".$device_version."</b>";
     $isCancelled = $row["is_cancelled"];
     $receivers = $commission -> getReceivers();
-    $classes = ['list-group-item-primary', '', 'alert-secondary', 'list-group-item-dark border-secondary'];
+    $classes = ['list-group-item-primary', '', 'alert-secondary', 'list-group-item-dark border-secondary', 'list-group-item-danger'];
     $class = $classes[$state_numeric];
     if($isCancelled == 1 ) $class = 'list-group-item-danger';
     $receiversName = array();
@@ -288,7 +288,9 @@ foreach($commissions as $commissionData) {
         "quantityReturned" => $commissionData['totalReturned'],
         "timestampCreated" => $row["created_at"],
         "groupedCount" => count($commissionData['ids']),
-        "groupedIds" => implode(',', $commissionData['ids'])
+        "groupedIds" => implode(',', $commissionData['ids']),
+        "cancelledClass" => $isCancelled == 1 ? "commission-cancelled" : "",
+        "cancelledStyle" => $isCancelled == 1 ? "opacity: 0.7; filter: grayscale(50%);" : ""
     ];
 }
 
