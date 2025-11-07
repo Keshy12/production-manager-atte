@@ -287,14 +287,18 @@ $(document).ready(function() {
             if (isChecked) {
                 selectedCommissions.add(commissionId);
 
-                $(`.transfer-checkbox[data-commission-id="${commissionId}"]`).each(function() {
-                    if (!$(this).prop('disabled')) {
-                        $(this).prop('checked', true).trigger('change');
-                    }
-                });
+                // Zaznacz transfery tylko wtedy, gdy tryb anulacji to 'both' lub 'transfers'
+                if (cancellationData && (cancellationData.cancellationType === 'both' || cancellationData.cancellationType === 'transfers')) {
+                    $(`.transfer-checkbox[data-commission-id="${commissionId}"]`).each(function() {
+                        if (!$(this).prop('disabled')) {
+                            $(this).prop('checked', true).trigger('change');
+                        }
+                    });
+                }
             } else {
                 selectedCommissions.delete(commissionId);
 
+                // Zawsze odznaczaj transfery, jeśli odznaczasz zlecenie
                 $(`.transfer-checkbox[data-commission-id="${commissionId}"]`).each(function() {
                     $(this).prop('checked', false).trigger('change');
                 });
@@ -316,6 +320,11 @@ $(document).ready(function() {
                 selectedTransfers.delete(transferId);
             }
 
+            // ### KRYTYCZNA ZMIANA ###
+            // Logika, która odznaczała rodzica, została USUNIĘTA.
+            // Teraz odznaczenie dziecka nie wpływa na rodzica.
+
+            // Po prostu zaktualizuj badge i podsumowanie
             updateCommissionBadges(commissionId);
             updateSummary();
         });
@@ -340,6 +349,7 @@ $(document).ready(function() {
             transfer.sources[mainIndex].quantity = currentMainValue - diff;
 
             updateSourceSumIndicator(transferId);
+            updateSummary(); // Aktualizacja na żywo
         });
 
         $('.source-qty-plus').off('click').on('click', function() {
@@ -364,6 +374,7 @@ $(document).ready(function() {
                 transfer.sources[mainIndex].quantity = currentMainValue - 1;
 
                 updateSourceSumIndicator(transferId);
+                updateSummary(); // Aktualizacja na żywo
             }
         });
 
@@ -389,6 +400,7 @@ $(document).ready(function() {
                 transfer.sources[mainIndex].quantity = currentMainValue + 1;
 
                 updateSourceSumIndicator(transferId);
+                updateSummary(); // Aktualizacja na żywo
             }
         });
     }
@@ -433,16 +445,16 @@ $(document).ready(function() {
         const $selectedBadge = $(`.selected-transfers-badge[data-commission-id="${commissionId}"]`);
         const $partialBadge = $(`.partial-transfers-badge[data-commission-id="${commissionId}"]`);
 
+        // --- Logika badge'a "X transferów" ---
         if (checkedTransfers > 0) {
             $selectedBadge.text(`${checkedTransfers} transferów`).show();
-
-            if (checkedTransfers < totalTransfers && !$commCheckbox.prop('checked')) {
-                $partialBadge.show();
-            } else {
-                $partialBadge.hide();
-            }
         } else {
             $selectedBadge.hide();
+        }
+
+        if ($commCheckbox.prop('checked') && checkedTransfers < totalTransfers) {
+            $partialBadge.show();
+        } else {
             $partialBadge.hide();
         }
     }
@@ -488,6 +500,7 @@ $(document).ready(function() {
 
         let html = '<h6 class="font-weight-bold mb-3">Wybrane elementy:</h6>';
 
+        // === SEKCJA ZLECEŃ ===
         if (selectedCommissions.size > 0) {
             html += '<div class="mb-3"><strong class="text-danger">Zlecenia do anulacji:</strong><ul class="mt-2">';
             selectedCommissions.forEach(commId => {
@@ -497,17 +510,168 @@ $(document).ready(function() {
             html += '</ul></div>';
         }
 
+        // === SEKCJA TRANSFERÓW (Z GRUPOWANIEM I KOLORAMI) ===
+        const componentAggregator = {}; // Obiekt do sumowania dla nowej tabeli
+
         if (selectedTransfers.size > 0) {
-            html += '<div class="mb-3"><strong class="text-warning">Komponenty do zwrotu:</strong><ul class="mt-2">';
+            html += '<div class="mb-3"><strong class="text-warning">Komponenty do zwrotu:</strong>';
+
+            // 1. Stwórz obiekt do grupowania transferów po commId
+            const groupedTransfers = {};
             selectedTransfers.forEach(transId => {
                 const transfer = findTransferById(transId);
-                if (transfer) {
-                    html += `<li>Zlecenie #${transfer.commissionId}: ${transfer.componentName} (${transfer.qtyAvailable.toFixed(2)})</li>`;
+                if (!transfer) return;
+
+                const commId = transfer.commissionId;
+                if (!groupedTransfers[commId]) {
+                    groupedTransfers[commId] = [];
                 }
+                groupedTransfers[commId].push(transfer);
             });
-            html += '</ul></div>';
+
+            // 2. Iteruj po zgrupowanym obiekcie
+            Object.keys(groupedTransfers).forEach(commId => {
+                const commIdInt = parseInt(commId);
+                const commission = cancellationData.commissionsData[commIdInt];
+                const commissionName = commission ? commission.deviceName : `Zlecenie #${commId}`;
+
+                const isCommissionCancelled = selectedCommissions.has(commIdInt);
+
+                let headerBorder, headerBg, headerText, cardBg, badgeClass;
+
+                if (isCommissionCancelled) {
+                    headerBorder = 'border-danger';
+                    headerBg = 'bg-danger text-white';
+                    headerText = 'Zlecenie anulowane';
+                    cardBg = '#fff5f5';
+                    badgeClass = 'badge-light';
+                } else {
+                    headerBorder = 'border-warning';
+                    headerBg = 'bg-warning text-dark';
+                    headerText = 'Zlecenie pozostaje';
+                    cardBg = '#fffaf3';
+                    badgeClass = 'badge-dark';
+                }
+
+                // 3. Renderuj nagłówek zlecenia
+                html += `
+                    <div class="card my-2 ${headerBorder}">
+                        <div class="card-header ${headerBg} p-2" style="font-size: 0.95rem;">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span>
+                                    <i class="bi bi-file-earmark-text"></i>
+                                    <strong>${commissionName} (#${commId})</strong>
+                                </span>
+                                <span class="badge ${badgeClass}">${headerText}</span>
+                            </div>
+                        </div>
+                        <div class="card-body p-2" style="background-color: ${cardBg};">
+                `;
+
+                // 4. Iteruj po transferach dla tego zlecenia
+                groupedTransfers[commId].forEach(transfer => {
+                    const componentName = transfer.componentName;
+                    html += `
+                        <div class="mb-2 pl-2">
+                            <h6 class="mb-1" style="font-size: 0.9rem;">
+                                <i class="bi bi-box"></i>
+                                <strong>${componentName}</strong>
+                            </h6>
+                            <div class="pl-3">
+                                <span class="text-muted">Suma do zwrotu:</span> 
+                                <strong class="text-warning">${transfer.qtyAvailable.toFixed(2)} szt.</strong>
+                            </div>
+                            <div class="pl-3 mt-1" style="font-size: 0.9em;">
+                    `;
+
+                    // 5. Renderuj źródła ORAZ DODAJ DO AGREGATORA
+                    const $distribution = $(`.sources-distribution[data-transfer-id="${transfer.transferId}"]`);
+                    if ($distribution.length > 0) {
+                        // Multi-source: Czytaj aktualne wartości z inputów
+                        $distribution.find('.source-qty-input').each(function(index) {
+                            const qty = parseFloat($(this).val()) || 0;
+                            if (qty > 0) {
+                                const source = transfer.sources[index];
+                                const warehouseName = source.warehouseName;
+                                html += `<div>
+                                            <i class="bi bi-arrow-return-left"></i> 
+                                            ${qty.toFixed(2)} szt. &rarr; 
+                                            <strong>${warehouseName}</strong>
+                                            ${source.isMainWarehouse ? ' (Główny)' : ''}
+                                         </div>`;
+
+                                // Dodaj do agregatora
+                                if (!componentAggregator[componentName]) { componentAggregator[componentName] = {}; }
+                                if (!componentAggregator[componentName][warehouseName]) { componentAggregator[componentName][warehouseName] = 0; }
+                                componentAggregator[componentName][warehouseName] += qty;
+                            }
+                        });
+                    } else {
+                        // Single-source: Użyj danych z obiektu
+                        transfer.sources.forEach(source => {
+                            if (source.quantity > 0) {
+                                const qty = source.quantity;
+                                const warehouseName = source.warehouseName;
+                                html += `<div>
+                                            <i class="bi bi-arrow-return-left"></i> 
+                                            ${qty.toFixed(2)} szt. &rarr; 
+                                            <strong>${warehouseName}</strong>
+                                            ${source.isMainWarehouse ? ' (Główny)' : ''}
+                                         </div>`;
+
+                                // Dodaj do agregatora
+                                if (!componentAggregator[componentName]) { componentAggregator[componentName] = {}; }
+                                if (!componentAggregator[componentName][warehouseName]) { componentAggregator[componentName][warehouseName] = 0; }
+                                componentAggregator[componentName][warehouseName] += qty;
+                            }
+                        });
+                    }
+
+                    html += '</div></div>'; // Zamknięcie transferu
+                }); // Koniec pętli transferów
+
+                html += '</div></div>'; // Zamknięcie card-body i card
+            }); // Koniec pętli zleceń
+
+            html += '</div>'; // Zamknięcie całej sekcji transferów
         }
 
+        // === NOWA SEKCJA: PODSUMOWANIE KOMPONENTÓW WG MAGAZYNU ===
+        if (Object.keys(componentAggregator).length > 0) {
+            html += `
+                <div class="mt-4">
+                    <strong class="text-info">
+                        <i class="bi bi-calculator"></i> Całkowity zwrot komponentów (wg magazynu):
+                    </strong>
+                    <table class="table table-sm table-bordered table-hover mt-2" style="font-size: 0.9em;">
+                        <thead class="thead-light">
+                            <tr>
+                                <th>Komponent</th>
+                                <th>Magazyn docelowy</th>
+                                <th class="text-right">Łączna ilość</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            for (const componentName in componentAggregator) {
+                for (const warehouseName in componentAggregator[componentName]) {
+                    const totalQty = componentAggregator[componentName][warehouseName];
+                    html += `
+                        <tr>
+                            <td>${componentName}</td>
+                            <td>${warehouseName}</td>
+                            <td class="text-right"><strong>${totalQty.toFixed(5)}</strong></td>
+                        </tr>
+                    `;
+                }
+            }
+
+            html += '</tbody></table></div>';
+        }
+
+
+        // === SEKCJA NIEWRÓCONYCH SZTUK (bez zmian) ===
         const commissionsWithUnreturned = {};
         selectedCommissions.forEach(commId => {
             const commission = cancellationData.commissionsData[commId];
@@ -521,7 +685,7 @@ $(document).ready(function() {
 
         if (Object.keys(commissionsWithUnreturned).length > 0) {
             html += `
-                <div class="alert alert-warning">
+                <div class="alert alert-warning mt-4">
                     <h6 class="font-weight-bold">
                         <i class="bi bi-exclamation-triangle"></i> Wykryto niewrócone sztuki
                     </h6>

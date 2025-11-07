@@ -229,6 +229,10 @@ function submitCancellation($MsaDB) {
                 $commission = $commissionRepository->getCommissionById($commissionId);
                 $row = $commission->commissionValues;
                 $deviceType = $commission->deviceType;
+                $bomId = $row['bom_id'];
+                $bomRepository = new BomRepository($MsaDB);
+                $deviceBom = $bomRepository->getBomById($deviceType, $bomId);
+                $deviceId = $deviceBom->deviceId;
 
                 $remaining = $row['qty_produced'] - $row['qty_returned'];
 
@@ -236,25 +240,23 @@ function submitCancellation($MsaDB) {
                     $MsaDB->update('commission__list', [
                         'qty_returned' => $row['qty_produced'],
                         'state' => 'returned'
-                    ], "id = $commissionId");
+                    ], 'id', $commissionId);
 
                     $inputTypeId = 5;
                     $comment = "Automatyczny zwrot pozostałych sztuk przy anulacji";
 
                     $MsaDB->insert("inventory__".$deviceType, [
                         $deviceType."_id",
-                        "bom_id",
+                        $deviceType."_bom_id",
                         "commission_id",
-                        "user_id",
                         "sub_magazine_id",
                         "qty",
                         "input_type_id",
                         "comment"
                     ], [
-                        $row['device_id'],
-                        $row['bom_id'],
+                        $deviceId,
+                        $bomId,
                         $commissionId,
-                        $userId,
                         $row['warehouse_to_id'],
                         -$remaining,
                         $inputTypeId,
@@ -267,7 +269,7 @@ function submitCancellation($MsaDB) {
                     'cancelled_at' => $now,
                     'cancelled_by' => $userId,
                     'state' => 'cancelled'
-                ], "id = $commissionId");
+                ], 'id', $commissionId);
             }
         }
 
@@ -292,7 +294,7 @@ function submitCancellation($MsaDB) {
                 'is_cancelled' => 1,
                 'cancelled_at' => $now,
                 'cancelled_by' => $userId
-            ], "id = $transferId");
+            ], 'id', $transferId);
 
             $MsaDB->insert("inventory__{$componentType}", [
                 $componentType . '_id',

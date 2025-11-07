@@ -94,12 +94,9 @@ $selectRenderer = new SelectRenderer($MsaDB);
                     <div id="instructionsCollapse" class="collapse">
                         <div class="card-body">
                             <h6 class="font-weight-bold mb-3">
-                                <i class="bi bi-1-circle"></i> Struktura anulacji
+                                <i class="bi bi-1-circle"></i> Elementy do zaznaczenia
                             </h6>
-                            <p class="mb-3">System wyświetla zlecenia pogrupowane według <strong>transferów</strong>. Każda grupa transferu reprezentuje jeden moment w czasie, kiedy komponenty zostały przetransferowane.</p>
-
                             <div class="alert alert-light border mb-3">
-                                <strong>Elementy do zaznaczenia:</strong>
                                 <ul class="mb-0 mt-2">
                                     <li><strong>Zlecenia</strong> - zaznaczenie anuluje całe zlecenie w systemie</li>
                                     <li><strong>Transfery komponentów</strong> - zaznaczenie zwraca komponenty do magazynów źródłowych</li>
@@ -110,7 +107,7 @@ $selectRenderer = new SelectRenderer($MsaDB);
                                 <i class="bi bi-2-circle"></i> Logika zaznaczania
                             </h6>
                             <ul class="mb-3">
-                                <li><strong>Zaznaczenie zlecenia</strong> automatycznie zaznacza wszystkie jego komponenty w tej grupie transferu</li>
+                                <li><strong>Zaznaczenie zlecenia</strong> automatycznie zaznacza wszystkie jego komponenty</li>
                                 <li><strong>Zaznaczenie komponentu</strong> nie zaznacza zlecenia - możesz zwrócić komponenty bez anulowania zlecenia</li>
                                 <li>Możesz ręcznie odznaczać i zaznaczać dowolne elementy według potrzeb</li>
                             </ul>
@@ -128,9 +125,11 @@ $selectRenderer = new SelectRenderer($MsaDB);
                             </h6>
                             <p class="mb-2">Gdy komponenty pochodzą z wielu magazynów, możesz kontrolować rozkład zwrotu:</p>
                             <ul class="mb-3">
-                                <li>Domyślnie: zwrot priorytetyzuje magazyny zewnętrzne</li>
+                                <li>Domyślnie: zwrot priorytetyzuje magazyn główny zlecenia</li>
                                 <li>Użyj przycisków <kbd>+</kbd> i <kbd>-</kbd> aby ręcznie dostosować ilości</li>
                                 <li>System automatycznie przelicza pozostałe magazyny</li>
+                                <li><span class="main-source-container d-inline-block px-2 py-1">Magazyn główny zlecenia</span></li>
+                                <li><span class="external-source-container d-inline-block px-2 py-1">Magazyny pomocnicze</span></li>
                             </ul>
 
                             <div class="alert alert-danger">
@@ -140,6 +139,7 @@ $selectRenderer = new SelectRenderer($MsaDB);
                                     <li>Jeśli <span class="badge badge-danger">ilość do zwrotu jest ujemna</span>, oznacza to że użyto więcej komponentów niż przetransferowano. Takie transfery są zablokowane do anulacji.</li>
                                     <li>Anulacja jest operacją <strong>nieodwracalną</strong></li>
                                     <li>Komponenty zostaną zwrócone do magazynów źródłowych według wybranego rozkładu</li>
+                                    <li>W podsumowaniu zobaczysz dokładnie, które komponenty wrócą do których magazynów</li>
                                 </ul>
                             </div>
 
@@ -149,7 +149,7 @@ $selectRenderer = new SelectRenderer($MsaDB);
                             <ol class="mb-0">
                                 <li>Wybierz zlecenia i/lub komponenty do anulacji</li>
                                 <li>Dla komponentów z wieloma źródłami - dostosuj rozkład zwrotu (opcjonalnie)</li>
-                                <li>Sprawdź podsumowanie anulacji</li>
+                                <li>Sprawdź podsumowanie anulacji - zobaczysz dokładny rozkład zwrotów do magazynów</li>
                                 <li>Potwierdź operację przyciskiem "Potwierdź anulację"</li>
                                 <li>System automatycznie wykona wszystkie operacje magazynowe</li>
                             </ol>
