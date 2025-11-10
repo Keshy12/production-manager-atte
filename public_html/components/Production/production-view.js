@@ -8,6 +8,19 @@ function generateLastProduction(deviceId, transferGroupId){
     if (transferGroupId) {
         data.transferGroupId = transferGroupId;
     }
+
+    // Preserve showCancelled state if checkbox exists
+    var showCancelledCheckbox = $('#showCancelledCheckbox');
+    if (showCancelledCheckbox.length && showCancelledCheckbox.is(':checked')) {
+        data.showCancelled = '1';
+    }
+
+    // Preserve noGrouping state if checkbox exists
+    var noGroupingCheckbox = $('#noGroupingCheckbox');
+    if (noGroupingCheckbox.length && noGroupingCheckbox.is(':checked')) {
+        data.noGrouping = '1';
+    }
+
     $("#lastProduction").load('../public_html/components/production/last-production-table.php', data, function() {
         updateRollbackButtonState();
     });
@@ -81,21 +94,46 @@ function rollbackLastProduction() {
         return;
     }
 
-    // Get selected transfer group IDs
+    // Collect selected transfer groups and individual entries
     let selectedGroups = [];
-    $('.highlighted-row').each(function() {
-        let groupId = $(this).data('transfer-group-id');
-        if (groupId && selectedGroups.indexOf(groupId) === -1) {
+    let selectedEntries = [];
+    let groupsFullySelected = new Set();
+
+    // Check which groups are fully selected via group checkbox
+    $('.group-checkbox:checked').each(function() {
+        let groupId = $(this).data('group-id');
+        if (groupId) {
             selectedGroups.push(groupId);
+            groupsFullySelected.add(groupId);
         }
     });
 
-    if (selectedGroups.length === 0) {
+    // Check individual row checkboxes (only if their group is not fully selected)
+    $('.row-checkbox:checked').each(function() {
+        let rowId = $(this).data('row-id');
+        let groupId = $(this).data('transfer-group-id');
+
+        // Only include individual entries if their group isn't fully selected
+        if (!groupsFullySelected.has(groupId)) {
+            selectedEntries.push(rowId);
+        }
+    });
+
+    if (selectedGroups.length === 0 && selectedEntries.length === 0) {
         alert("Brak zaznaczonych wpisów do cofnięcia");
         return;
     }
 
-    if (!confirm("Czy na pewno chcesz cofnąć zaznaczone wpisy produkcji (" + selectedGroups.length + " grup)?")) {
+    let confirmMessage = "Czy na pewno chcesz cofnąć zaznaczone wpisy produkcji?";
+    if (selectedGroups.length > 0 && selectedEntries.length > 0) {
+        confirmMessage = `Czy na pewno chcesz cofnąć ${selectedGroups.length} grup i ${selectedEntries.length} pojedynczych wpisów?`;
+    } else if (selectedGroups.length > 0) {
+        confirmMessage = `Czy na pewno chcesz cofnąć ${selectedGroups.length} grup transferowych?`;
+    } else {
+        confirmMessage = `Czy na pewno chcesz cofnąć ${selectedEntries.length} pojedynczych wpisów?`;
+    }
+
+    if (!confirm(confirmMessage)) {
         return;
     }
 
@@ -107,11 +145,12 @@ function rollbackLastProduction() {
         data: {
             deviceType: DEVICE_TYPE,
             deviceId: deviceId,
-            transferGroupIds: selectedGroups.join(',')
+            transferGroupIds: selectedGroups.join(','),
+            entryIds: selectedEntries.join(',')
         },
         success: function(data) {
             const result = JSON.parse(data);
-            $("#rollbackBtn").html("Cofnij ostatnią").prop("disabled", true);
+            $("#rollbackBtn").html("Cofnij zaznaczone").prop("disabled", true);
 
             if (result.success) {
                 generateLastProduction(deviceId, result.transferGroupId);
@@ -133,7 +172,7 @@ function rollbackLastProduction() {
             }
         },
         error: function() {
-            $("#rollbackBtn").html("Cofnij ostatnią").prop("disabled", true);
+            $("#rollbackBtn").html("Cofnij zaznaczone").prop("disabled", true);
             $("#alerts").empty();
             $("#alerts").append('<div class="alert alert-danger alert-dismissible fade show" role="alert">' +
                 'Błąd podczas cofania produkcji' +
@@ -231,23 +270,41 @@ $("#form").submit(function(e) {
 });
 
 function updateRollbackButtonState() {
-    var highlightedRows = $('.highlighted-row').length;
     var $rollbackBtn = $('#rollbackBtn');
 
-    if (highlightedRows > 0) {
-        // Count unique transfer groups
-        var uniqueGroups = new Set();
-        $('.highlighted-row').each(function() {
-            var groupId = $(this).data('transfer-group-id');
-            if (groupId) uniqueGroups.add(groupId);
-        });
+    // Count selected groups
+    var selectedGroups = $('.group-checkbox:checked').length;
 
-        var groupCount = uniqueGroups.size;
+    // Count selected individual rows (excluding those in fully selected groups)
+    var groupsFullySelected = new Set();
+    $('.group-checkbox:checked').each(function() {
+        var groupId = $(this).data('group-id');
+        if (groupId) groupsFullySelected.add(groupId);
+    });
+
+    var selectedIndividualRows = 0;
+    $('.row-checkbox:checked').each(function() {
+        var groupId = $(this).data('transfer-group-id');
+        if (!groupsFullySelected.has(groupId)) {
+            selectedIndividualRows++;
+        }
+    });
+
+    var totalSelected = selectedGroups + selectedIndividualRows;
+
+    if (totalSelected > 0) {
         $rollbackBtn.prop('disabled', false).removeClass('btn-secondary').addClass('btn-warning');
-        $rollbackBtn.text('Cofnij zaznaczone (' + groupCount + ' grup)');
+
+        if (selectedGroups > 0 && selectedIndividualRows > 0) {
+            $rollbackBtn.text('Cofnij zaznaczone (' + selectedGroups + ' grup, ' + selectedIndividualRows + ' wpisów)');
+        } else if (selectedGroups > 0) {
+            $rollbackBtn.text('Cofnij zaznaczone (' + selectedGroups + ' grup)');
+        } else {
+            $rollbackBtn.text('Cofnij zaznaczone (' + selectedIndividualRows + ' wpisów)');
+        }
     } else {
         $rollbackBtn.prop('disabled', true).removeClass('btn-warning').addClass('btn-secondary');
-        $rollbackBtn.text('Cofnij ostatnią');
+        $rollbackBtn.text('Cofnij zaznaczone');
     }
 }
 
