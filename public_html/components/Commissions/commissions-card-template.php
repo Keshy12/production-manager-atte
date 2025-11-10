@@ -77,6 +77,12 @@
                 </span>
             </div>
 
+            <div ${showPartialCancellationBadge} class="mb-2">
+                <span class="badge badge-danger">
+                    <i class="bi bi-exclamation-circle"></i> ${cancelledInGroup}/${totalInGroup} anulowane
+                </span>
+            </div>
+
             <div ${showPotentialGroupBadge} class="mb-2">
                 <span class="badge badge-secondary">
                     <i class="bi bi-stack"></i> Możliwe do zgrupowania: ${potentialGroupCount} zleceń

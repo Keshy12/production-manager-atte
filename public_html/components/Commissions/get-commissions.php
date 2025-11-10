@@ -257,7 +257,23 @@ foreach($commissions as $commissionData) {
     $device_laminate_id = $deviceBom -> laminateId;
     $device_laminate = !is_null($deviceBom -> laminateId) ? "Laminat: <b>".$list__laminate[$device_laminate_id]."</b>" : "" ;
     $device_laminate_and_version = $device_laminate." Wersja: <b>".$device_version."</b>";
+
+    // Check cancellation status - for grouped commissions, check all in group
     $isCancelled = $row["is_cancelled"];
+    $cancelledCount = 0;
+    $totalInGroup = count($commissionData['ids']);
+
+    if($isGrouped) {
+        foreach($commissionData['ids'] as $groupedId) {
+            $groupedCommission = $commissionRepository->getCommissionById($groupedId);
+            if($groupedCommission->commissionValues["is_cancelled"] == 1) {
+                $cancelledCount++;
+            }
+        }
+        // Only mark as cancelled if ALL commissions in group are cancelled
+        $isCancelled = ($cancelledCount === $totalInGroup) ? 1 : 0;
+    }
+
     $receivers = $commission -> getReceivers();
     $classes = ['list-group-item-primary', '', 'alert-secondary', 'list-group-item-dark border-secondary', 'list-group-item-danger'];
     $class = $classes[$state_numeric];
@@ -270,6 +286,8 @@ foreach($commissions as $commissionData) {
     $groupKey = $type.'_'.$bomId.'_'.$row["warehouse_from_id"].'_'.$row["warehouse_to_id"].'_'.implode(',', $receivers).'_'.$row["priority"];
     $canBeGrouped = !$groupTogether && isset($potentialGroupsMap[$groupKey]) && $potentialGroupsMap[$groupKey] > 1;
 
+    $isPartiallyCancelled = $isGrouped && $cancelledCount > 0 && $cancelledCount < $totalInGroup;
+
     $result[] = [
         "class" => $class,
         "class2" => ($state_numeric != 3) ? 'text-muted' : '',
@@ -278,6 +296,9 @@ foreach($commissions as $commissionData) {
         "showGroupBadge" => $isGrouped ? "" : "hidden",
         "showPotentialGroupBadge" => $canBeGrouped ? "" : "hidden",
         "potentialGroupCount" => $canBeGrouped ? $potentialGroupsMap[$groupKey] : 0,
+        "showPartialCancellationBadge" => $isPartiallyCancelled ? "" : "hidden",
+        "cancelledInGroup" => $cancelledCount,
+        "totalInGroup" => $totalInGroup,
         "color" => $colors[$priority_numeric],
         "warehouseFromId" => $row["warehouse_from_id"],
         "warehouseFrom" => $magazines[$row["warehouse_from_id"]],

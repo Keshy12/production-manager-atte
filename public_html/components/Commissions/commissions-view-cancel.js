@@ -123,6 +123,8 @@ $(document).ready(function() {
                 if (response.success) {
                     cancellationData = response;
                     cancellationData.cancellationType = cancellationType;
+                    cancellationData.groupedIds = groupedIds;
+                    cancellationData.isGrouped = isGrouped;
                     renderCancellationModal(response);
                     applyAutoSelection(cancellationType, isGrouped, commissionId);
                     $('#cancelModalOverlay').hide().removeClass("d-flex");
@@ -157,13 +159,14 @@ $(document).ready(function() {
             const transfers = data.transfersByCommission[commissionId] || [];
             const unreturned = commission.qtyUnreturned;
             const hasUnreturned = unreturned > 0;
+            // Use the actual commission's cancellation status
             const isCancelled = commission.isCancelled;
 
             const cardHtml = `
             <div class="card mb-3 commission-card ${isCancelled ? 'commission-cancelled-in-modal' : ''}"
                  data-commission-id="${commissionId}"
                  style="${isCancelled ? 'opacity: 0.7; border-color: #dc3545 !important;' : ''}">
-                <div class="card-header ${isCancelled ? 'bg-danger text-white' : 'bg-light'}">
+                <div class="card-header ${isCancelled ? 'alert-danger' : 'bg-light'}">
                     <div class="d-flex align-items-center justify-content-between">
                         <div class="custom-control custom-checkbox">
                             <input type="checkbox"
@@ -185,19 +188,19 @@ $(document).ready(function() {
                                 </span>
                             </label>
                         </div>
-                        <button class="btn btn-sm ${isCancelled ? 'btn-outline-light' : 'btn-outline-secondary'}"
+                        <button class="btn btn-sm btn-outline-secondary"
                                 type="button"
                                 data-toggle="collapse"
                                 data-target="#transfers-${commissionId}">
                             <i class="bi bi-chevron-down"></i>
                         </button>
                     </div>
-                    <small class="${isCancelled ? 'text-white-50' : 'text-muted'} ml-4">
+                    <small class="ml-4">
                         Zlecono: ${commission.qty} | Wyprodukowano: ${commission.qtyProduced}${hasUnreturned ? ` | <span class="${isCancelled ? 'text-white' : 'text-warning'}">Niewrócono: ${unreturned}</span>` : ''}
                     </small>
                 </div>
                 <div id="transfers-${commissionId}" class="collapse">
-                    <div class="card-body ${isCancelled ? 'bg-light' : 'bg-light'}">
+                    <div class="card-body bg-light">
                         ${transfers.length > 0 ? renderTransfersList(transfers, commissionId, isCancelled) : '<p class="mb-0 text-muted">Brak dostępnych transferów do anulacji</p>'}
                     </div>
                 </div>
@@ -561,9 +564,9 @@ $(document).ready(function() {
         switch (cancellationType) {
             case 'commissions':
                 if (isGrouped) {
-                    $('.commission-checkbox').prop('checked', true).trigger('change');
+                    $('.commission-checkbox').not(':disabled').prop('checked', true).trigger('change');
                 } else {
-                    $(`.commission-checkbox[data-commission-id="${clickedCommissionId}"]`).prop('checked', true).trigger('change');
+                    $(`.commission-checkbox[data-commission-id="${clickedCommissionId}"]`).not(':disabled').prop('checked', true).trigger('change');
                 }
                 break;
 
@@ -577,9 +580,9 @@ $(document).ready(function() {
 
             case 'both':
                 if (isGrouped) {
-                    $('.commission-checkbox').prop('checked', true).trigger('change');
+                    $('.commission-checkbox').not(':disabled').prop('checked', true).trigger('change');
                 } else {
-                    $(`.commission-checkbox[data-commission-id="${clickedCommissionId}"]`).prop('checked', true).trigger('change');
+                    $(`.commission-checkbox[data-commission-id="${clickedCommissionId}"]`).not(':disabled').prop('checked', true).trigger('change');
                 }
                 break;
         }
@@ -826,7 +829,7 @@ $(document).ready(function() {
         }
 
         const confirmHtml = `
-            <div class="modal fade" id="finalConfirmModal" tabindex="-1">
+            <div class="modal fade" id="finalConfirmModal" style="z-index: 1060;" tabindex="-1">
                 <div class="modal-dialog">
                     <div class="modal-content">
                         <div class="modal-header bg-danger text-white">
@@ -859,8 +862,25 @@ $(document).ready(function() {
             submitCancellation();
         });
 
+        $confirmModal.on('shown.bs.modal', function() {
+            // Create dark overlay over the parent cancellation modal
+            const overlayHtml = '<div id="modalDimOverlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.5); z-index: 1055;"></div>';
+            $('body').append(overlayHtml);
+        });
+
         $confirmModal.on('hidden.bs.modal', function() {
             $(this).remove();
+            // Remove the dark overlay
+            $('#modalDimOverlay').remove();
+            // Restore modal-open class for parent modal to maintain proper scroll behavior
+            if ($('#cancelCommissionModal').hasClass('show')) {
+                $('body').addClass('modal-open');
+                // Restore scrollbar padding if needed
+                const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+                if (scrollbarWidth > 0) {
+                    $('body').css('padding-right', scrollbarWidth + 'px');
+                }
+            }
         });
 
         $confirmModal.modal('show');
