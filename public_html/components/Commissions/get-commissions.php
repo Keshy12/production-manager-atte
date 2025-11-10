@@ -32,6 +32,8 @@ $state_id = $_POST["state_id"] ?? false;
 $priority_id = $_POST["priority_id"] ?? false;
 $showCancelled = $_POST["showCancelled"] == "true";
 $groupTogether = $_POST["groupTogether"] == "true";
+$dateFrom = !empty($_POST["dateFrom"]) ? $_POST["dateFrom"] : false;
+$dateTo = !empty($_POST["dateTo"]) ? $_POST["dateTo"] : false;
 
 $page = isset($_POST["page"]) ? (int)$_POST["page"] : 1;
 $page = max(1, $page);
@@ -94,6 +96,14 @@ if($priority_id) {
 
 if(!$showCancelled) {
     $statements[] = "is_cancelled = 0";
+}
+
+if($dateFrom !== false) {
+    $statements[] = "DATE(cl.created_at) >= '".$dateFrom."'";
+}
+
+if($dateTo !== false) {
+    $statements[] = "DATE(cl.created_at) <= '".$dateTo."'";
 }
 
 $add = implode(" AND ", $statements);

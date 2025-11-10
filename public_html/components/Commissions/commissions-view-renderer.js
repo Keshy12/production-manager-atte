@@ -90,6 +90,8 @@ class CommissionsRenderer {
             priority_id: $("#priority").val(),
             showCancelled: $("#showCancelled").prop('checked'),
             groupTogether: $("#groupTogether").prop('checked'),
+            dateFrom: $("#dateFrom").val(),
+            dateTo: $("#dateTo").val(),
             page: this.currentPage
         };
     }

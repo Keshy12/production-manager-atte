@@ -160,6 +160,24 @@ $paginationRenderer = new PaginationRenderer($currentPage, $totalItems, $itemsPe
 
                         <hr class="my-2">
 
+                        <div class="form-row mb-2">
+                            <div class="col-md-4 col-12 mb-2">
+                                <label class="small mb-1"><strong>Data od:</strong></label>
+                                <input type="date" class="form-control form-control-sm" id="dateFrom">
+                            </div>
+                            <div class="col-md-4 col-12 mb-2">
+                                <label class="small mb-1"><strong>Data do:</strong></label>
+                                <input type="date" class="form-control form-control-sm" id="dateTo">
+                            </div>
+                            <div class="col-md-4 col-12 d-flex align-items-end">
+                                <button type="button" id="clearDates" class="btn btn-danger btn-sm btn-block mb-2">
+                                    Wyczyść daty
+                                </button>
+                            </div>
+                        </div>
+
+                        <hr class="my-2">
+
                         <div class="form-row">
                             <div class="col-md-6 col-12 mb-2 mb-md-0">
                                 <div class="custom-control custom-checkbox">

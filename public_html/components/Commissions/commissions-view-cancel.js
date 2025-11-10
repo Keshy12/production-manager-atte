@@ -90,6 +90,23 @@ $(document).ready(function() {
             show: true
         });
 
+        // Get current filters from the page
+        const currentFilters = {
+            transferFrom: $("#transferFrom").val(),
+            transferTo: $("#transferTo").val(),
+            device: [
+                $("#type").val(),
+                $("#list__device").val(),
+                $("#laminate").val(),
+                $("#version").val()
+            ],
+            receivers: $("#user").val(),
+            state_id: $("#state").val(),
+            priority_id: $("#priority").val(),
+            showCancelled: $("#showCancelled").prop('checked'),
+            groupTogether: $("#groupTogether").prop('checked')
+        };
+
         $.ajax({
             type: 'POST',
             url: COMPONENTS_PATH + '/commissions/cancel-commission.php',
@@ -97,7 +114,8 @@ $(document).ready(function() {
                 action: 'get_cancellation_data',
                 commissionId: commissionId,
                 isGrouped: isGrouped,
-                groupedIds: groupedIds || ''
+                groupedIds: groupedIds || '',
+                filters: JSON.stringify(currentFilters)
             },
             success: function(response) {
                 console.log('Cancellation data received:', response);
@@ -139,21 +157,26 @@ $(document).ready(function() {
             const transfers = data.transfersByCommission[commissionId] || [];
             const unreturned = commission.qtyUnreturned;
             const hasUnreturned = unreturned > 0;
+            const isCancelled = commission.isCancelled;
 
             const cardHtml = `
-            <div class="card mb-3 commission-card" data-commission-id="${commissionId}">
-                <div class="card-header bg-light">
+            <div class="card mb-3 commission-card ${isCancelled ? 'commission-cancelled-in-modal' : ''}"
+                 data-commission-id="${commissionId}"
+                 style="${isCancelled ? 'opacity: 0.7; border-color: #dc3545 !important;' : ''}">
+                <div class="card-header ${isCancelled ? 'bg-danger text-white' : 'bg-light'}">
                     <div class="d-flex align-items-center justify-content-between">
                         <div class="custom-control custom-checkbox">
-                            <input type="checkbox" 
-                                   class="custom-control-input commission-checkbox" 
+                            <input type="checkbox"
+                                   class="custom-control-input commission-checkbox"
                                    id="comm-${commissionId}"
                                    data-commission-id="${commissionId}"
                                    data-has-unreturned="${hasUnreturned}"
-                                   data-unreturned-qty="${unreturned}">
+                                   data-unreturned-qty="${unreturned}"
+                                   ${isCancelled ? 'disabled' : ''}>
                             <label class="custom-control-label font-weight-bold" for="comm-${commissionId}">
                                 <i class="bi bi-file-earmark-text"></i>
                                 Zlecenie #${commissionId}: ${commission.deviceName}
+                                ${isCancelled ? '<span class="badge badge-light ml-2"><i class="bi bi-x-circle"></i> ANULOWANE</span>' : ''}
                                 <span class="badge badge-secondary ml-2 selected-transfers-badge" data-commission-id="${commissionId}" style="display: none;">
                                     0 transferów
                                 </span>
@@ -162,20 +185,20 @@ $(document).ready(function() {
                                 </span>
                             </label>
                         </div>
-                        <button class="btn btn-sm btn-outline-secondary" 
-                                type="button" 
-                                data-toggle="collapse" 
+                        <button class="btn btn-sm ${isCancelled ? 'btn-outline-light' : 'btn-outline-secondary'}"
+                                type="button"
+                                data-toggle="collapse"
                                 data-target="#transfers-${commissionId}">
                             <i class="bi bi-chevron-down"></i>
                         </button>
                     </div>
-                    <small class="text-muted ml-4">
-                        Zlecono: ${commission.qty} | Wyprodukowano: ${commission.qtyProduced}${hasUnreturned ? ` | <span class="text-warning">Niewrócono: ${unreturned}</span>` : ''}
+                    <small class="${isCancelled ? 'text-white-50' : 'text-muted'} ml-4">
+                        Zlecono: ${commission.qty} | Wyprodukowano: ${commission.qtyProduced}${hasUnreturned ? ` | <span class="${isCancelled ? 'text-white' : 'text-warning'}">Niewrócono: ${unreturned}</span>` : ''}
                     </small>
                 </div>
                 <div id="transfers-${commissionId}" class="collapse">
-                    <div class="card-body bg-light">
-                        ${transfers.length > 0 ? renderTransfersList(transfers, commissionId) : '<p class="mb-0 text-muted">Brak dostępnych transferów do anulacji</p>'}
+                    <div class="card-body ${isCancelled ? 'bg-light' : 'bg-light'}">
+                        ${transfers.length > 0 ? renderTransfersList(transfers, commissionId, isCancelled) : '<p class="mb-0 text-muted">Brak dostępnych transferów do anulacji</p>'}
                     </div>
                 </div>
             </div>
@@ -188,95 +211,170 @@ $(document).ready(function() {
         updateSummary();
     }
 
-    function renderTransfersList(transfers, commissionId) {
+    function renderTransfersList(transfers, commissionId, commissionIsCancelled) {
         if (transfers.length === 0) {
             return '<p class="mb-0 text-muted">Brak dostępnych transferów</p>';
         }
 
-        return `
-        <div class="transfers-list">
-            ${transfers.map((transfer, index) => {
-            const isDisabled = transfer.qtyAvailable <= 0;
-            const displayQty = Math.abs(transfer.qtyAvailable);
-            const qtyClass = transfer.qtyAvailable < 0 ? 'text-danger' : 'text-success';
+        // Separate regular transfers from cancellation transfers
+        const regularTransfers = transfers.filter(t => !t.isCancellationGroup);
+        const cancellationTransfers = transfers.filter(t => t.isCancellationGroup);
 
-            let sourcesHtml = '';
-            if (transfer.sources && transfer.sources.length > 1) {
-                sourcesHtml = `
-                    <div class="sources-distribution mt-2" data-transfer-id="${transfer.transferId}">
-                        <small class="text-muted font-weight-bold d-block mb-2">
-                            <i class="bi bi-diagram-3"></i> Rozkład zwrotu:
+        let html = '<div class="transfers-list">';
+
+        // Render regular transfers first
+        html += regularTransfers.map((transfer, index) => renderSingleTransfer(transfer, commissionId, commissionIsCancelled)).join('');
+
+        // Render cancellation transfers in a collapsible section
+        if (cancellationTransfers.length > 0) {
+            const collapseId = `cancellation-transfers-${commissionId}`;
+            html += `
+                <div class="mt-3 border-left border-secondary pl-3" style="border-left-width: 2px !important;">
+                    <div style="cursor: pointer;" data-toggle="collapse" data-target="#${collapseId}">
+                        <small class="text-muted">
+                            <i class="bi bi-arrow-counterclockwise"></i>
+                            <span class="text-decoration-underline">Zwroty z anulacji (${cancellationTransfers.length})</span>
+                            <i class="bi bi-chevron-down" style="font-size: 0.8em;"></i>
                         </small>
-                        <div class="d-flex flex-wrap gap-2">
-                        ${transfer.sources.map((source, srcIndex) => `
-                            <div class="d-inline-flex align-items-center mr-3 mb-2 ${source.isMainWarehouse ? 'main-source-container' : 'external-source-container'}">
-                                <small class="mr-2" style="min-width: 180px;">
-                                    ${source.warehouseName}<br>
-                                    <span class="text-muted" style="font-size: 0.8em;">przetransf: ${source.originalQty}</span>
-                                </small>
-                                <div class="input-group" style="width: 140px;">
-                                    ${!source.isMainWarehouse ? `
-                                    <div class="input-group-prepend">
-                                        <button class="btn btn-outline-secondary btn-sm source-qty-minus" 
-                                                type="button"
-                                                data-transfer-id="${transfer.transferId}"
-                                                data-source-index="${srcIndex}"
-                                                ${isDisabled ? 'disabled' : ''}>-</button>
-                                    </div>
-                                    ` : ''}
-                                    <input type="number" 
-                                           class="form-control form-control-sm text-center source-qty-input" 
-                                           value="${source.quantity}"
-                                           min="0"
-                                           data-transfer-id="${transfer.transferId}"
-                                           data-source-index="${srcIndex}"
-                                           ${source.isMainWarehouse ? 'readonly' : ''}
-                                           ${isDisabled ? 'disabled' : ''}>
-                                    ${!source.isMainWarehouse ? `
-                                    <div class="input-group-append">
-                                        <button class="btn btn-outline-secondary btn-sm source-qty-plus" 
-                                                type="button"
-                                                data-transfer-id="${transfer.transferId}"
-                                                data-source-index="${srcIndex}"
-                                                ${isDisabled ? 'disabled' : ''}>+</button>
-                                    </div>
-                                    ` : ''}
-                                </div>
-                            </div>
-                        `).join('')}
-                        </div>
-                        <div class="mt-2">
-                            <small class="source-sum-indicator" data-transfer-id="${transfer.transferId}"></small>
-                        </div>
                     </div>
-                `;
-            }
-
-            return `
-                <div class="mb-3 ${isDisabled ? 'opacity-50' : ''}">
-                    <div class="custom-control custom-checkbox">
-                        <input type="checkbox" 
-                               class="custom-control-input transfer-checkbox" 
-                               id="trans-${transfer.transferId}"
-                               data-transfer-id="${transfer.transferId}"
-                               data-commission-id="${commissionId}"
-                               ${isDisabled ? 'disabled' : ''}>
-                        <label class="custom-control-label" for="trans-${transfer.transferId}">
-                            <strong>${transfer.componentName}</strong>
-                        </label>
+                    <div id="${collapseId}" class="collapse mt-2">
+                        ${renderCancellationTransfersSummary(cancellationTransfers)}
                     </div>
-                    <small class="text-muted d-block ml-4">
-                        Przetransferowano: ${transfer.qtyTransferred} | 
-                        Użyto: ${transfer.qtyUsed} | 
-                        Do zwrotu: <span class="${qtyClass}">${displayQty}</span>
-                        ${isDisabled ? ' <span class="badge badge-danger">Brak do zwrotu</span>' : ''}
-                    </small>
-                    ${sourcesHtml}
                 </div>
             `;
-        }).join('')}
-        </div>
-    `;
+        }
+
+        html += '</div>';
+        return html;
+    }
+
+    function renderCancellationTransfersSummary(cancellationTransfers) {
+        let html = '<div class="small">';
+
+        cancellationTransfers.forEach(transfer => {
+            const componentName = transfer.componentName;
+            const notes = transfer.transferGroupNotes || '';
+
+            html += `
+                <div class="mb-2 pb-2 border-bottom">
+                    <div class="text-muted">
+                        <strong>${componentName}</strong>
+                        ${notes ? `<span class="ml-2" style="font-size: 0.85em; font-style: italic;" title="${notes}">
+                            <i class="bi bi-info-circle-fill"></i>
+                        </span>` : ''}
+                    </div>
+            `;
+
+            // Show where the quantities were returned to
+            if (transfer.sources && transfer.sources.length > 0) {
+                html += '<div class="ml-3 mt-1">';
+                transfer.sources.forEach(source => {
+                    if (source.quantity > 0) {
+                        html += `
+                            <div style="font-size: 0.9em;">
+                                <i class="bi bi-arrow-return-left text-secondary"></i>
+                                <strong>${source.quantity}</strong> zwrócono do <strong>${source.warehouseName}</strong>
+                            </div>
+                        `;
+                    }
+                });
+                html += '</div>';
+            }
+
+            html += '</div>';
+        });
+
+        html += '</div>';
+        return html;
+    }
+
+    function renderSingleTransfer(transfer, commissionId, commissionIsCancelled) {
+        const isDisabled = transfer.qtyAvailable <= 0 || transfer.isCancelled || commissionIsCancelled;
+        const displayQty = Math.abs(transfer.qtyAvailable);
+        const qtyClass = transfer.qtyAvailable < 0 ? 'text-danger' : 'text-success';
+        const isCancelled = transfer.isCancelled;
+
+        let sourcesHtml = '';
+        if (transfer.sources && transfer.sources.length > 1) {
+            sourcesHtml = `
+                <div class="sources-distribution mt-2" data-transfer-id="${transfer.transferId}">
+                    <small class="text-muted font-weight-bold d-block mb-2">
+                        <i class="bi bi-diagram-3"></i> Rozkład zwrotu:
+                    </small>
+                    <div class="d-flex flex-wrap gap-2">
+                    ${transfer.sources.map((source, srcIndex) => `
+                        <div class="d-inline-flex align-items-center mr-3 mb-2 ${source.isMainWarehouse ? 'main-source-container' : 'external-source-container'}">
+                            <small class="mr-2" style="min-width: 180px;">
+                                ${source.warehouseName}<br>
+                                <span class="text-muted" style="font-size: 0.8em;">przetransf: ${source.originalQty}</span>
+                            </small>
+                            <div class="input-group" style="width: 140px;">
+                                ${!source.isMainWarehouse ? `
+                                <div class="input-group-prepend">
+                                    <button class="btn btn-outline-secondary btn-sm source-qty-minus"
+                                            type="button"
+                                            data-transfer-id="${transfer.transferId}"
+                                            data-source-index="${srcIndex}"
+                                            ${isDisabled ? 'disabled' : ''}>-</button>
+                                </div>
+                                ` : ''}
+                                <input type="number"
+                                       class="form-control form-control-sm text-center source-qty-input"
+                                       value="${source.quantity}"
+                                       min="0"
+                                       data-transfer-id="${transfer.transferId}"
+                                       data-source-index="${srcIndex}"
+                                       ${source.isMainWarehouse ? 'readonly' : ''}
+                                       ${isDisabled ? 'disabled' : ''}>
+                                ${!source.isMainWarehouse ? `
+                                <div class="input-group-append">
+                                    <button class="btn btn-outline-secondary btn-sm source-qty-plus"
+                                            type="button"
+                                            data-transfer-id="${transfer.transferId}"
+                                            data-source-index="${srcIndex}"
+                                            ${isDisabled ? 'disabled' : ''}>+</button>
+                                </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                    `).join('')}
+                    </div>
+                    <div class="mt-2">
+                        <small class="source-sum-indicator" data-transfer-id="${transfer.transferId}"></small>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Add styling for cancelled transfers
+        let containerStyle = '';
+        if (isCancelled) {
+            containerStyle = 'background-color: #f8d7da; padding: 8px; border-radius: 4px; border: 1px solid #dc3545;';
+        }
+
+        return `
+            <div class="mb-3 ${isDisabled ? 'opacity-50' : ''}" style="${containerStyle}">
+                <div class="custom-control custom-checkbox">
+                    <input type="checkbox"
+                           class="custom-control-input transfer-checkbox"
+                           id="trans-${transfer.transferId}"
+                           data-transfer-id="${transfer.transferId}"
+                           data-commission-id="${commissionId}"
+                           ${isDisabled ? 'disabled' : ''}>
+                    <label class="custom-control-label" for="trans-${transfer.transferId}">
+                        <strong>${transfer.componentName}</strong>
+                        ${isCancelled ? ' <span class="badge badge-danger ml-2"><i class="bi bi-x-circle"></i> ANULOWANY</span>' : ''}
+                    </label>
+                </div>
+                <small class="${isCancelled ? 'text-danger' : 'text-muted'} d-block ml-4">
+                    Przetransferowano: ${transfer.qtyTransferred} |
+                    Użyto: ${transfer.qtyUsed} |
+                    Do zwrotu: <span class="${qtyClass}">${displayQty}</span>
+                    ${!isCancelled && isDisabled ? ' <span class="badge badge-danger">Brak do zwrotu</span>' : ''}
+                </small>
+                ${sourcesHtml}
+            </div>
+        `;
     }
 
     function attachEventHandlers() {

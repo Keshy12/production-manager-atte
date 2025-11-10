@@ -40,6 +40,9 @@ foreach($commissions as $key => $commission)
     $bomId = $bom -> id; // This is the ID from bom__smd, bom__tht, etc.
 
     // --- REFACTORED DUPLICATE CHECK ---
+    $totalExistingQty = 0;
+    $foundDuplicate = false;
+
     foreach ($magazineToCommissions as $activeCommission) {
         $activeCommission->getReceivers(); // Ensure receivers are loaded
         $activeCommValues = $activeCommission->commissionValues; // Get the raw data
@@ -51,28 +54,38 @@ foreach($commissions as $key => $commission)
             && isset($activeCommValues['warehouse_from_id']) && $activeCommValues['warehouse_from_id'] == $transferFrom
             && $commission['receiversIds'] == $activeCommission->getReceivers()
         ) {
-            // Enhanced duplicate info with version and laminate
-            $duplicateInfo = [
-                $activeCommValues["id"],
-                $commission['deviceName'],
-                $activeCommValues["created_at"], // Use correct 'created_at' column
-                $key
-            ];
+            // Sum up quantities from all matching commissions
+            $totalExistingQty += isset($activeCommValues['qty']) ? (int)$activeCommValues['qty'] : 0;
 
-            // Add version info
-            $version = $commission['version'] !== 'n/d' ? $commission['version'] : '';
-            if (!empty($version)) {
-                $duplicateInfo[1] .= " (wersja: {$version})";
+            if (!$foundDuplicate) {
+                // Enhanced duplicate info with version and laminate (only create once)
+                $duplicateInfo = [
+                    $activeCommValues["id"],
+                    $commission['deviceName'],
+                    $activeCommValues["created_at"], // Use correct 'created_at' column
+                    $key,
+                    $totalExistingQty // Will be updated with total at the end
+                ];
+
+                // Add version info
+                $version = $commission['version'] !== 'n/d' ? $commission['version'] : '';
+                if (!empty($version)) {
+                    $duplicateInfo[1] .= " (wersja: {$version})";
+                }
+
+                // Add laminate info for SMD
+                if ($deviceType === 'smd' && !empty($commission['laminate'])) {
+                    $duplicateInfo[1] .= " (laminat: {$commission['laminate']})";
+                }
+
+                $foundDuplicate = true;
             }
-
-            // Add laminate info for SMD
-            if ($deviceType === 'smd' && !empty($commission['laminate'])) {
-                $duplicateInfo[1] .= " (laminat: {$commission['laminate']})";
-            }
-
-            $existingCommissions[] = $duplicateInfo;
-            break; // Found a duplicate, no need to check other active commissions
         }
+    }
+
+    if ($foundDuplicate) {
+        $duplicateInfo[4] = $totalExistingQty; // Update with total quantity
+        $existingCommissions[] = $duplicateInfo;
     }
     // --- END REFACTORED DUPLICATE CHECK ---
 

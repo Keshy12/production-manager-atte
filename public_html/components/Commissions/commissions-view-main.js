@@ -30,6 +30,28 @@ function initializeBootstrapComponents() {
 
     // Initialize popovers
     $('[data-toggle="popover"]').popover();
+
+    // Initialize cancelled option visibility
+    toggleCancelledStateOption($("#showCancelled").prop('checked'));
+}
+
+/**
+ * Toggle cancelled state option visibility based on showCancelled checkbox
+ */
+function toggleCancelledStateOption(showCancelled) {
+    const $cancelledOption = $("#state option[value='cancelled']");
+
+    if (showCancelled) {
+        $cancelledOption.prop('disabled', false).show();
+    } else {
+        // Deselect cancelled if it was selected
+        if ($cancelledOption.prop('selected')) {
+            $cancelledOption.prop('selected', false);
+        }
+        $cancelledOption.prop('disabled', true).hide();
+    }
+
+    $("#state").selectpicker('refresh');
 }
 
 /**
@@ -61,6 +83,11 @@ function attachFilterHandlers() {
         clearMagazineFilter();
     });
 
+    // Clear dates filter
+    $("#clearDates").click(function() {
+        clearDatesFilter();
+    });
+
     // Transfer warehouses change
     $("#transferFrom, #transferTo").change(function() {
         commissionsRenderer.resetToFirstPage();
@@ -75,6 +102,7 @@ function attachFilterHandlers() {
 
     // Show cancelled checkbox
     $("#showCancelled").change(function() {
+        toggleCancelledStateOption(this.checked);
         commissionsRenderer.resetToFirstPage();
         commissionsRenderer.render();
     });
@@ -95,6 +123,12 @@ function attachFilterHandlers() {
     $("#transferTo").change(function() {
         const transferTo = this.value;
         filterUsersByWarehouse(transferTo);
+    });
+
+    // Date range filters
+    $("#dateFrom, #dateTo").change(function() {
+        commissionsRenderer.resetToFirstPage();
+        commissionsRenderer.render();
     });
 }
 
@@ -276,6 +310,17 @@ function clearMagazineFilter() {
     $('#transferFrom, #transferTo').selectpicker('refresh');
 
     filterUsersByWarehouse('');
+
+    commissionsRenderer.render();
+}
+
+/**
+ * Clear dates filter
+ */
+function clearDatesFilter() {
+    commissionsRenderer.resetToFirstPage();
+
+    $('#dateFrom, #dateTo').val('');
 
     commissionsRenderer.render();
 }
