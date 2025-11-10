@@ -6,12 +6,22 @@ function render(props) {
 }
 
 function submitTransfer(transferFrom, transferTo, components, commissions, componentSources) {
+    const duplicateKeys = typeof duplicateCommissionKeys !== 'undefined'
+        ? Array.from(duplicateCommissionKeys)
+        : [];
+
+    const duplicateQuantities = typeof duplicateCommissionQuantities !== 'undefined'
+        ? duplicateCommissionQuantities
+        : {};
+
     const data = {
         components: components,
         commissions: commissions,
         transferFrom: transferFrom,
         transferTo: transferTo,
-        componentSources: componentSources
+        componentSources: componentSources,
+        duplicateCommissionKeys: duplicateKeys,
+        duplicateCommissionQuantities: duplicateQuantities
     };
 
     return new Promise((resolve, reject) => {
@@ -113,12 +123,20 @@ $("#submitTransfer").click(function() {
                 if (commissionResult && commissionResult.length > 0) {
                     $("#commissionResultTableContainer").show();
 
-                    commissionResult.forEach(commission => {
+                    commissionResult.forEach((commission, index) => {
+                        // Use the isDuplicate flag returned from backend
+                        const isDuplicate = commission.isDuplicate === true;
+
+                        let quantityDisplay = `<b>${commission.quantity}</b>`;
+                        if (isDuplicate && commission.existingQty > 0) {
+                            quantityDisplay = `<small>${commission.existingQty} + </small><b>${commission.quantity}</b><small> = ${commission.totalQty}</small>`;
+                        }
+
                         const displayCommission = {
                             ...commission,
-                            quantityDisplay: `<b>${commission.quantity}</b>`,
-                            statusText: "Nowe",
-                            statusBadgeClass: "badge-success"
+                            quantityDisplay: quantityDisplay,
+                            statusText: isDuplicate ? "Część grupy" : "Nowe",
+                            statusBadgeClass: isDuplicate ? "badge-info" : "badge-success"
                         };
 
                         const row = commissionResultTableRow_template.map(render(displayCommission)).join('');

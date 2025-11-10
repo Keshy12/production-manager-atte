@@ -1,6 +1,8 @@
 const transferCommissionTableRow_template = $('script[data-template="transferCommissionTableRow_template"]').text().split(/\$\{(.+?)\}/g);
 
 const commissions = [];
+const duplicateCommissionKeys = new Set();
+const duplicateCommissionQuantities = {}; // Map of commission key -> existing quantity
 
 $(document).ready(function() {
     $("#list__priority").val(0).selectpicker('refresh');
@@ -85,8 +87,22 @@ $(document).ready(function() {
 
             if (foundExistingCommissions.length > 0) {
                 $(".commissionSubmitSpinner").hide();
+
+                // Store duplicate commission keys and their existing quantities
+                duplicateCommissionKeys.clear();
+                for (let key in duplicateCommissionQuantities) {
+                    delete duplicateCommissionQuantities[key];
+                }
+
+                foundExistingCommissions.forEach(ec => {
+                    const commissionKey = ec[3]; // The commission key is at index 3
+                    const existingQty = ec[4];   // The existing quantity is at index 4
+                    duplicateCommissionKeys.add(commissionKey);
+                    duplicateCommissionQuantities[commissionKey] = existingQty;
+                });
+
                 const items = foundExistingCommissions
-                    .map(ec => `<li><strong>${ec[1]}</strong> - ID: ${ec[0]} <small class="text-muted">(utworzono: ${ec[2]})</small></li>`)
+                    .map(ec => `<li><strong>${ec[1]}</strong> - ID: ${ec[0]} <small class="text-muted">(utworzono: ${ec[2]}, ilość: ${ec[4]})</small></li>`)
                     .join('');
                 const $alert = $(`<div class="alert-existing-commission alert alert-info alert-dismissible fade show" role="alert">
                           <h5 class="alert-heading"><i class="bi bi-info-circle"></i> Wykryto istniejące zlecenia</h5>

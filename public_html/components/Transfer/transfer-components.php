@@ -10,6 +10,8 @@ try {
     $components = isset($_POST["components"]) ? array_filter($_POST["components"]) : [];
     $commissions = isset($_POST["commissions"]) ? array_filter($_POST["commissions"]) : [];
     $componentSources = isset($_POST["componentSources"]) ? $_POST["componentSources"] : [];
+    $duplicateCommissionKeys = isset($_POST["duplicateCommissionKeys"]) ? $_POST["duplicateCommissionKeys"] : [];
+    $duplicateCommissionQuantities = isset($_POST["duplicateCommissionQuantities"]) ? $_POST["duplicateCommissionQuantities"] : [];
 
     $magazineNamesCache = [];
     $allMagazines = $MsaDB->query("SELECT sub_magazine_id, sub_magazine_name FROM magazine__list");
@@ -86,6 +88,14 @@ try {
             $bom = $bomsFound[0];
             $bomId = $bom->id;
 
+            // Check if this is a duplicate and get existing quantity
+            $isDuplicate = in_array($index, $duplicateCommissionKeys);
+            $existingQty = 0;
+
+            if ($isDuplicate && isset($duplicateCommissionQuantities[$index])) {
+                $existingQty = (int)$duplicateCommissionQuantities[$index];
+            }
+
             $commission_id = $MsaDB->insert("commission__list",
                 ["created_by", "warehouse_from_id", "warehouse_to_id", "device_type", "bom_id", "qty",
                     "created_at", "state", "priority", "transfer_group_id"],
@@ -103,7 +113,11 @@ try {
                 "deviceDescription" => $bom->description,
                 "laminate" => $bom->laminateName ?? "",
                 "version" => $bom->version ?? "",
-                "quantity" => $qty
+                "quantity" => $qty,
+                "isDuplicate" => $isDuplicate,
+                "existingQty" => $existingQty,
+                "totalQty" => $existingQty + $qty,
+                "commissionKey" => $index
             ];
 
             $receivers = $commission['receiversIds'];
