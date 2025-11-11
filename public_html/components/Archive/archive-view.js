@@ -1,77 +1,899 @@
+/**
+ * archive-view.js
+ * Handles archive view with transfer group rendering and filtering
+ */
 
-function loadarchive()
-{   
-    $("#archiveTable").empty();
-    let device_type = $("#magazine").val();
-    let page = parseInt($("#currentpage").text());
-    let input_type_id = $("#input_type").val();
-    let limit = $("#limit").val();
-    let user_ids = $("#user").val();
-    let device_ids = $("#list__device").val();
+// State management
+let currentPage = 1;
+let totalCount = 0;
+let hasNextPage = false;
+let itemsPerPage = 20;
+let isLoading = false;
+
+// Selection tracking for cancellation
+let selectedTransferIds = new Set();
+let selectedGroupIndexes = new Set();
+let groupTransferMap = new Map(); // Maps groupIndex -> Set of transfer IDs
+
+$(document).ready(function() {
+    // Initialize Bootstrap components
+    $('.selectpicker').selectpicker();
+
+    // Set default values
+    $('#noGrouping').prop('checked', true);
+    $('#quickNoGrouping').prop('checked', true);
+
+    // Attach event handlers
+    attachEventHandlers();
+});
+
+/**
+ * Attach all event handlers for filters and pagination
+ */
+function attachEventHandlers() {
+    // Quick device type change
+    $("#quickDeviceType").change(function() {
+        const deviceType = $(this).val();
+        $("#deviceType").val(deviceType);
+        $('.selectpicker').selectpicker('refresh');
+        handleDeviceTypeChange(deviceType);
+    });
+
+    // Device type change (from filter)
+    $("#deviceType").change(function() {
+        const deviceType = $(this).val();
+        $("#quickDeviceType").val(deviceType);
+        handleDeviceTypeChange(deviceType);
+    });
+
+    // Device selection change
+    $("#list__device").change(function() {
+        resetToFirstPage();
+        loadArchive();
+    });
+
+    // Filter changes
+    $("#magazine, #user, #input_type").on('hide.bs.select', function() {
+        resetToFirstPage();
+        loadArchive();
+    });
+
+    // Date filters
+    $("#dateFrom, #dateTo").change(function() {
+        resetToFirstPage();
+        loadArchive();
+    });
+
+    // Quick checkboxes
+    $("#quickShowCancelled").change(function() {
+        const isChecked = $(this).prop('checked');
+        $("#showCancelled").prop('checked', isChecked);
+        resetToFirstPage();
+        loadArchive();
+    });
+
+    $("#quickNoGrouping").change(function() {
+        const isChecked = $(this).prop('checked');
+        $("#noGrouping").prop('checked', isChecked);
+        resetToFirstPage();
+        loadArchive();
+    });
+
+    // Filter checkboxes (sync with quick controls)
+    $("#showCancelled").change(function() {
+        const isChecked = $(this).prop('checked');
+        $("#quickShowCancelled").prop('checked', isChecked);
+        resetToFirstPage();
+        loadArchive();
+    });
+
+    $("#noGrouping").change(function() {
+        const isChecked = $(this).prop('checked');
+        $("#quickNoGrouping").prop('checked', isChecked);
+        resetToFirstPage();
+        loadArchive();
+    });
+
+    // Clear buttons
+    $("#clearDevice").click(function() {
+        clearDeviceFilter();
+    });
+
+    $("#clearMagazineUser").click(function() {
+        clearMagazineUserFilter();
+    });
+
+    $("#clearInputType").click(function() {
+        clearInputTypeFilter();
+    });
+
+    $("#clearDates").click(function() {
+        clearDatesFilter();
+    });
+
+    // Cancel selected button
+    $("#cancelSelectedBtn").click(function() {
+        handleCancelSelected();
+    });
+
+    // Pagination handlers will be attached after rendering
+}
+
+/**
+ * Handle device type change
+ */
+function handleDeviceTypeChange(deviceType) {
+    // Clear device selection
+    $("#list__device").empty();
+
+    if (!deviceType) {
+        $("#list__device").prop("disabled", true);
+        $('.selectpicker').selectpicker('refresh');
+        clearTable();
+        return;
+    }
+
+    // Clone options from hidden select
+    $('#list__' + deviceType + ' option').clone().appendTo('#list__device');
+
+    // Enable device select
+    $('#list__device').prop("disabled", false);
+    $('.selectpicker').selectpicker('refresh');
+
+    // Load data
+    resetToFirstPage();
+    loadArchive();
+}
+
+/**
+ * Clear device filter
+ */
+function clearDeviceFilter() {
+    $('#deviceType').val('');
+    $('#quickDeviceType').val('');
+    $("#list__device").empty();
+    $("#list__device").prop('disabled', true);
+    $('.selectpicker').selectpicker('refresh');
+    resetToFirstPage();
+    clearTable();
+}
+
+/**
+ * Clear magazine and user filter
+ */
+function clearMagazineUserFilter() {
+    $('#magazine, #user').val([]);
+    $('.selectpicker').selectpicker('refresh');
+    resetToFirstPage();
+    loadArchive();
+}
+
+/**
+ * Clear input type filter
+ */
+function clearInputTypeFilter() {
+    $('#input_type').val([]);
+    $('.selectpicker').selectpicker('refresh');
+    resetToFirstPage();
+    loadArchive();
+}
+
+/**
+ * Clear dates filter
+ */
+function clearDatesFilter() {
+    $('#dateFrom, #dateTo').val('');
+    resetToFirstPage();
+    loadArchive();
+}
+
+/**
+ * Reset to first page
+ */
+function resetToFirstPage() {
+    currentPage = 1;
+}
+
+/**
+ * Load archive data via AJAX
+ */
+function loadArchive() {
+    if (isLoading) return;
+
+    const deviceType = $("#quickDeviceType").val() || $("#deviceType").val();
+
+    // If no device type selected, show message and return
+    if (!deviceType) {
+        clearTable();
+        return;
+    }
+
+    isLoading = true;
+    $("#transferSpinner").show();
+
+    const data = {
+        device_type: deviceType,
+        device_ids: $("#list__device").val() || [],
+        user_ids: $("#user").val() || [],
+        magazine_ids: $("#magazine").val() || [],
+        input_type_id: $("#input_type").val() || [],
+        date_from: $("#dateFrom").val() || null,
+        date_to: $("#dateTo").val() || null,
+        show_cancelled: $("#quickShowCancelled").is(':checked') ? '1' : '0',
+        no_grouping: $("#quickNoGrouping").is(':checked') ? '1' : '0',
+        page: currentPage
+    };
+
     $.ajax({
         type: "POST",
-        url:  COMPONENTS_PATH+"/archive/archive-table.php",
-        data: {device_type: device_type, user_ids: user_ids, device_ids: device_ids, page: page, input_type_id: input_type_id, limit: limit},
-        success: function(data) {
-            let archiveData = JSON.parse(data)[0];
-            let nextPageAvailable = JSON.parse(data)[1];
-            $("#nextpage").prop('disabled', !nextPageAvailable);
-            $("#previouspage").prop('disabled', (page==1));
-            for(const entry of Object.entries(archiveData))
-            {
-                let row = entry[1];
-                let tableRow = `
-                <tr>
-                    <td>`+row[0]+`</td>
-                    <td>`+row[1]+`</td>
-                    <td>`+row[2]+`</td> 
-                    <td>`+row[3]+`</td>
-                    <td>`+row[4]+`</td>
-                </tr>`
-                $("#archiveTable").append(tableRow);
-            }
+        url: COMPONENTS_PATH + "/archive/archive-table.php",
+        data: data,
+        dataType: "json",
+        success: function(response) {
+            renderArchiveTable(response);
+            totalCount = response.totalCount;
+            hasNextPage = response.hasNextPage;
+            renderPagination();
+            isLoading = false;
+            $("#transferSpinner").hide();
+        },
+        error: function(xhr, status, error) {
+            console.error("Error loading archive:", error);
+            showErrorMessage("Błąd podczas ładowania danych archiwum");
+            isLoading = false;
+            $("#transferSpinner").hide();
+        }
+    });
+}
+
+/**
+ * Render archive table with grouped data
+ */
+function renderArchiveTable(response) {
+    const $tbody = $("#archiveTableBody");
+    $tbody.empty();
+
+    // Clear selections when rendering new data
+    clearSelections();
+
+    if (!response.groups || response.groups.length === 0) {
+        $tbody.append(`
+            <tr>
+                <td colspan="8" class="text-center text-muted">
+                    Brak danych do wyświetlenia
+                </td>
+            </tr>
+        `);
+        return;
+    }
+
+    const noGrouping = $("#quickNoGrouping").is(':checked');
+
+    response.groups.forEach((group, groupIndex) => {
+        const collapseClass = `collapse-group-${groupIndex}`;
+        const isNoGroup = !group.group_id;
+        const userName = `${group.user_name || ''} ${group.user_surname || ''}`.trim();
+
+        if (noGrouping) {
+            // No grouping mode - simple rows
+            group.entries.forEach(entry => {
+                renderSingleRow(entry, groupIndex);
+            });
+        } else if (isNoGroup) {
+            // Individual row that looks like a group but isn't collapsible
+            renderIndividualRow(group, groupIndex, userName);
+        } else {
+            // Build group transfer map for selection logic
+            const transferIds = group.entries.map(entry => entry.id);
+            groupTransferMap.set(groupIndex, new Set(transferIds));
+
+            // Render collapsible group header
+            renderGroupHeader(group, groupIndex, collapseClass, userName);
+
+            // Render detail rows (collapsible)
+            group.entries.forEach(entry => {
+                renderDetailRow(entry, groupIndex, collapseClass);
+            });
         }
     });
 
+    // Attach collapse event handlers
+    attachCollapseHandlers();
+
+    // Attach checkbox event handlers
+    attachCheckboxHandlers();
+
+    // Update cancel button visibility
+    updateCancelButtonVisibility();
 }
 
-$("#magazine, #user, #list__device, #input_type").change(function(){
-    $("#currentpage").text(1);
-    loadarchive();
-});
+/**
+ * Render a single row (no grouping mode)
+ */
+function renderSingleRow(entry, groupIndex) {
+    const isCancelled = entry.is_cancelled == 1;
+    const rowClass = isCancelled ? 'cancelled-row' : '';
+    const transferGroupInfo = entry.transfer_group_id ? `Grupa #${entry.transfer_group_id}` : '-';
+    const userName = `${entry.user_name || ''} ${entry.user_surname || ''}`.trim() || '-';
 
-$("#magazine").change(function(){
-    $("#list__device").empty();
-    $('#list__'+this.value+' option').clone().appendTo('#list__device');
-    $('#user, #list__device, #input_type, #limit, #previouspage, #nextpage, #clearselect').prop("disabled", false);
-    $('.selectpicker').selectpicker('refresh');
-});
+    const row = `
+        <tr class="${rowClass}" data-row-id="${entry.id}">
+            <td class="text-center">
+                <div class="custom-control custom-checkbox d-inline-block">
+                    <input type="checkbox" class="custom-control-input transfer-checkbox"
+                           id="transfer-${entry.id}"
+                           data-transfer-id="${entry.id}">
+                    <label class="custom-control-label" for="transfer-${entry.id}"></label>
+                </div>
+            </td>
+            <td>${escapeHtml(userName)}</td>
+            <td>${escapeHtml(entry.sub_magazine_name)}</td>
+            <td>${escapeHtml(entry.device_name)}</td>
+            <td>${escapeHtml(entry.input_type_name || '')}</td>
+            <td>${entry.qty > 0 ? '+' : ''}${parseFloat(entry.qty).toFixed(2)}</td>
+            <td>${formatDateTime(entry.timestamp)}</td>
+            <td><small>${escapeHtml(entry.comment || '')}</small></td>
+        </tr>
+    `;
 
-$("#user").change(function(){
-    $('#list__device').prop("disabled", false);
-});
+    $("#archiveTableBody").append(row);
+}
 
-$('#limitTable').submit(function(e){
-    e.preventDefault();
-    $("#currentpage").text(1);
-    loadarchive();
-});
+/**
+ * Render individual row (looks like group but not collapsible)
+ */
+function renderIndividualRow(group, groupIndex, userName) {
+    const entry = group.entries[0]; // Single entry
+    const groupClass = group.all_cancelled ? 'cancelled-group' : '';
+    const displayUserName = userName || '-';
 
+    const row = `
+        <tr class="group-row ${groupClass}"
+            data-group-id=""
+            data-group-index="${groupIndex}"
+            data-row-id="${entry.id}">
+            <td class="text-center">
+                <div class="custom-control custom-checkbox d-inline-block">
+                    <input type="checkbox" class="custom-control-input transfer-checkbox"
+                           id="transfer-${entry.id}"
+                           data-transfer-id="${entry.id}">
+                    <label class="custom-control-label" for="transfer-${entry.id}"></label>
+                </div>
+            </td>
+            <td>${escapeHtml(displayUserName)}</td>
+            <td>${escapeHtml(entry.sub_magazine_name)}</td>
+            <td>${escapeHtml(entry.device_name)}</td>
+            <td>${escapeHtml(entry.input_type_name || '')}</td>
+            <td><strong>${group.total_qty > 0 ? '+' : ''}${parseFloat(group.total_qty).toFixed(2)}</strong></td>
+            <td>${formatDateTime(group.group_created_at)}</td>
+            <td><small>${escapeHtml(entry.comment || '')}</small></td>
+        </tr>
+    `;
 
-$("#previouspage").click(function () {
-    $("#nextpage, #previouspage").prop('disabled', true);
-    let page = parseInt($("#currentpage").text());
-    if (page != 1) {
-        page--;
-        $("#currentpage").text(page);
-        loadarchive();
+    $("#archiveTableBody").append(row);
+}
+
+/**
+ * Render group header row (collapsible)
+ */
+function renderGroupHeader(group, groupIndex, collapseClass, userName) {
+    const groupClass = group.all_cancelled ? 'cancelled-group' : '';
+    const entryCount = group.entries_count;
+    const entryWord = getPolishPlural(entryCount, 'wpis', 'wpisy', 'wpisów');
+    const displayUserName = userName || '-';
+
+    let cancelledBadge = '';
+    if (group.has_cancelled && !group.all_cancelled) {
+        cancelledBadge = `
+            <span class="badge badge-warning badge-cancelled-partial ml-1">
+                ${group.cancelled_count} anulowanych
+            </span>
+        `;
     }
-});
 
-$("#nextpage").click(function () {
-    $("#nextpage, #previouspage").prop('disabled', true);
-    let page = parseInt($("#currentpage").text());
-    page++;
-    $("#currentpage").text(page);
-    loadarchive();
-});
+    const row = `
+        <tr class="group-row ${groupClass}"
+            data-toggle="collapse"
+            data-target=".${collapseClass}"
+            aria-expanded="false"
+            aria-controls="${collapseClass}"
+            data-group-id="${group.group_id || ''}"
+            data-group-index="${groupIndex}">
+            <td class="text-center d-flex">
+                <div class="custom-control custom-checkbox d-inline-block" onclick="event.stopPropagation();">
+                    <input type="checkbox" class="custom-control-input group-checkbox"
+                           id="group-${groupIndex}"
+                           data-group-id="${group.group_id || ''}"
+                           data-group-index="${groupIndex}">
+                    <label class="custom-control-label" for="group-${groupIndex}"></label>
+                </div>
+                <i class="bi bi-chevron-right toggle-icon ml-1"></i>
+            </td>
+            <td>${escapeHtml(displayUserName)}</td>
+            <td colspan="3">
+                <strong>Grupa transferowa #${group.group_id || groupIndex}</strong>
+                <span class="badge badge-secondary badge-count ml-2">
+                    ${entryCount} ${entryWord}
+                </span>
+                ${cancelledBadge}
+                ${group.group_notes ? `<br><small class="text-muted">${escapeHtml(group.group_notes)}</small>` : ''}
+            </td>
+            <td><strong>${group.total_qty > 0 ? '+' : ''}${parseFloat(group.total_qty).toFixed(2)}</strong></td>
+            <td>${formatDateTime(group.group_created_at)}</td>
+            <td></td>
+        </tr>
+    `;
+
+    $("#archiveTableBody").append(row);
+}
+
+/**
+ * Render detail row (collapsible)
+ */
+function renderDetailRow(entry, groupIndex, collapseClass) {
+    const isCancelled = entry.is_cancelled == 1;
+    const rowClass = isCancelled ? 'cancelled-row' : '';
+    const userName = `${entry.user_name || ''} ${entry.user_surname || ''}`.trim() || '-';
+
+    const row = `
+        <tr class="collapse ${collapseClass} ${rowClass}"
+            data-group-index="${groupIndex}"
+            data-row-id="${entry.id}">
+            <td class="text-center indent-cell">
+                <div class="custom-control custom-checkbox d-inline-block">
+                    <input type="checkbox" class="custom-control-input transfer-checkbox"
+                           id="transfer-${entry.id}"
+                           data-transfer-id="${entry.id}"
+                           data-group-index="${groupIndex}">
+                    <label class="custom-control-label" for="transfer-${entry.id}"></label>
+                </div>
+            </td>
+            <td class="indent-cell">${escapeHtml(userName)}</td>
+            <td>${escapeHtml(entry.sub_magazine_name)}</td>
+            <td>${escapeHtml(entry.device_name)}</td>
+            <td>${escapeHtml(entry.input_type_name || '')}</td>
+            <td>${entry.qty > 0 ? '+' : ''}${parseFloat(entry.qty).toFixed(2)}</td>
+            <td>${formatDateTime(entry.timestamp)}</td>
+            <td><small>${escapeHtml(entry.comment || '')}</small></td>
+        </tr>
+    `;
+
+    $("#archiveTableBody").append(row);
+}
+
+/**
+ * Attach collapse event handlers
+ */
+function attachCollapseHandlers() {
+    $('.group-row').off('click').on('click', function(e) {
+        const $this = $(this);
+        const isExpanded = $this.attr('aria-expanded') === 'true';
+        $this.attr('aria-expanded', !isExpanded);
+    });
+}
+
+/**
+ * Render pagination
+ */
+function renderPagination() {
+    const paginationHtml = buildPaginationHtml();
+
+    $("#paginationTop").html(paginationHtml);
+    $("#paginationBottom").html(paginationHtml);
+
+    attachPaginationHandlers();
+}
+
+/**
+ * Build pagination HTML
+ */
+function buildPaginationHtml() {
+    if (totalCount === 0) {
+        return '';
+    }
+
+    const totalPages = getTotalPages();
+    const start = (currentPage - 1) * itemsPerPage + 1;
+    const end = Math.min(currentPage * itemsPerPage, totalCount);
+
+    return `
+        <div class="d-flex flex-column align-items-center mb-3">
+            <div class="text-muted small mb-2">
+                Wyświetlanie <strong>${start}-${end}</strong> z <strong>${totalCount}</strong> elementów
+                ${totalPages > 0 ? `(Strona ${currentPage} z ${totalPages})` : ''}
+            </div>
+
+            <div class="btn-group btn-group-sm" role="group">
+                <button class="btn btn-outline-primary pagination-btn"
+                        data-action="first"
+                        ${currentPage === 1 ? 'disabled' : ''}>
+                    <i class="bi bi-chevron-double-left"></i>
+                </button>
+                <button class="btn btn-outline-primary pagination-btn"
+                        data-action="prev"
+                        ${currentPage === 1 ? 'disabled' : ''}>
+                    <i class="bi bi-chevron-left"></i> Poprzednia
+                </button>
+
+                <div class="btn-group" role="group">
+                    <button type="button"
+                            class="btn btn-primary dropdown-toggle"
+                            data-toggle="dropdown"
+                            aria-expanded="false">
+                            ${currentPage}
+                    </button>
+                    <div class="dropdown-menu page-dropdown-menu" style="max-height: 300px; overflow-y: auto;">
+                        ${buildPageDropdownItems(totalPages)}
+                    </div>
+                </div>
+
+                <button class="btn btn-outline-primary pagination-btn"
+                        data-action="next"
+                        ${!hasNextPage || (totalPages > 0 && currentPage >= totalPages) ? 'disabled' : ''}>
+                    Następna <i class="bi bi-chevron-right"></i>
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+/**
+ * Build page dropdown items
+ */
+function buildPageDropdownItems(totalPages) {
+    let items = '';
+
+    if (totalPages > 0) {
+        for (let i = 1; i <= totalPages; i++) {
+            const isActive = i === currentPage ? 'active' : '';
+            items += `
+                <a class="dropdown-item page-dropdown-item ${isActive}"
+                   href="#"
+                   data-page="${i}">
+                   ${i}
+                </a>
+            `;
+        }
+    } else {
+        const pagesToShow = Math.max(currentPage + 10, 20);
+
+        for (let i = 1; i <= pagesToShow; i++) {
+            const isActive = i === currentPage ? 'active' : '';
+            items += `
+                <a class="dropdown-item page-dropdown-item ${isActive}"
+                   href="#"
+                   data-page="${i}">
+                    Strona ${i}
+                </a>
+            `;
+        }
+    }
+
+    return items;
+}
+
+/**
+ * Get total pages
+ */
+function getTotalPages() {
+    if (totalCount === 0) return 0;
+    return Math.ceil(totalCount / itemsPerPage);
+}
+
+/**
+ * Attach pagination handlers
+ */
+function attachPaginationHandlers() {
+    // Pagination button clicks
+    $('.pagination-btn').off('click').on('click', function() {
+        const action = $(this).data('action');
+
+        switch(action) {
+            case 'first':
+                currentPage = 1;
+                loadArchive();
+                break;
+            case 'prev':
+                if (currentPage > 1) {
+                    currentPage--;
+                    loadArchive();
+                }
+                break;
+            case 'next':
+                if (hasNextPage) {
+                    currentPage++;
+                    loadArchive();
+                }
+                break;
+        }
+    });
+
+    // Page dropdown clicks
+    $('.page-dropdown-item').off('click').on('click', function(e) {
+        e.preventDefault();
+        const page = parseInt($(this).data('page'));
+        if (page !== currentPage) {
+            currentPage = page;
+            loadArchive();
+        }
+    });
+}
+
+/**
+ * Clear table
+ */
+function clearTable() {
+    $("#archiveTableBody").html(`
+        <tr>
+            <td colspan="8" class="text-center text-muted">
+                Wybierz typ urządzenia aby wyświetlić historię transferów
+            </td>
+        </tr>
+    `);
+    $("#paginationTop, #paginationBottom").html('');
+}
+
+/**
+ * Get Polish plural form
+ */
+function getPolishPlural(count, singular, few, many) {
+    if (count === 1) return singular;
+    if (count >= 2 && count <= 4) return few;
+    return many;
+}
+
+/**
+ * Format date time
+ */
+function formatDateTime(dateTimeString) {
+    if (!dateTimeString) return '';
+    return dateTimeString.replace(' ', '<br><small>') + '</small>';
+}
+
+/**
+ * Escape HTML to prevent XSS
+ */
+function escapeHtml(text) {
+    if (!text) return '';
+    const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+    };
+    return text.toString().replace(/[&<>"']/g, m => map[m]);
+}
+
+/**
+ * Show error message
+ */
+function showErrorMessage(message) {
+    const alertHtml = `
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            ${message}
+            <button type="button" class="close" data-dismiss="alert">
+                <span aria-hidden="true">&times;</span>
+            </button>
+        </div>
+    `;
+
+    $("#ajaxResult").append(alertHtml);
+
+    setTimeout(function() {
+        $(".alert-danger").alert('close');
+    }, 5000);
+}
+
+/**
+ * Show success message
+ */
+function showSuccessMessage(message) {
+    const alertHtml = `
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            ${message}
+            <button type="button" class="close" data-dismiss="alert">
+                <span aria-hidden="true">&times;</span>
+            </button>
+        </div>
+    `;
+
+    $("#ajaxResult").append(alertHtml);
+
+    setTimeout(function() {
+        $(".alert-success").alert('close');
+    }, 3000);
+}
+
+/**
+ * Clear all selections
+ */
+function clearSelections() {
+    selectedTransferIds.clear();
+    selectedGroupIndexes.clear();
+    groupTransferMap.clear();
+}
+
+/**
+ * Attach checkbox event handlers
+ */
+function attachCheckboxHandlers() {
+    // Group checkbox handler
+    $('.group-checkbox').off('change').on('change', function(e) {
+        const groupIndex = parseInt($(this).data('group-index'));
+        const isChecked = $(this).prop('checked');
+        handleGroupCheckboxChange(groupIndex, isChecked);
+    });
+
+    // Transfer checkbox handler
+    $('.transfer-checkbox').off('change').on('change', function(e) {
+        const transferId = parseInt($(this).data('transfer-id'));
+        const groupIndex = $(this).data('group-index');
+        const isChecked = $(this).prop('checked');
+        handleTransferCheckboxChange(transferId, groupIndex, isChecked);
+    });
+}
+
+/**
+ * Handle group checkbox change
+ */
+function handleGroupCheckboxChange(groupIndex, isChecked) {
+    const transferIds = groupTransferMap.get(groupIndex);
+
+    if (!transferIds) return;
+
+    if (isChecked) {
+        // Check if ALL transfers can be selected (all exist)
+        let allTransfersExist = true;
+        transferIds.forEach(id => {
+            if (!$(`#transfer-${id}`).length) {
+                allTransfersExist = false;
+            }
+        });
+
+        if (allTransfersExist) {
+            // Select all child transfers
+            transferIds.forEach(id => {
+                selectedTransferIds.add(id);
+                $(`#transfer-${id}`).prop('checked', true);
+            });
+            selectedGroupIndexes.add(groupIndex);
+        } else {
+            // Cannot select group - uncheck it
+            $(`#group-${groupIndex}`).prop('checked', false);
+        }
+    } else {
+        // Deselect all child transfers
+        transferIds.forEach(id => {
+            selectedTransferIds.delete(id);
+            $(`#transfer-${id}`).prop('checked', false);
+        });
+        selectedGroupIndexes.delete(groupIndex);
+    }
+
+    updateCancelButtonVisibility();
+}
+
+/**
+ * Handle transfer checkbox change
+ */
+function handleTransferCheckboxChange(transferId, groupIndex, isChecked) {
+    if (isChecked) {
+        selectedTransferIds.add(transferId);
+
+        // Check if this transfer belongs to a group
+        if (groupIndex !== undefined && groupIndex !== null && groupIndex !== '') {
+            const groupTransfers = groupTransferMap.get(parseInt(groupIndex));
+
+            if (groupTransfers) {
+                // Check if ALL siblings are now selected
+                let allSelected = true;
+                groupTransfers.forEach(id => {
+                    if (!selectedTransferIds.has(id)) {
+                        allSelected = false;
+                    }
+                });
+
+                if (allSelected) {
+                    // Check the group checkbox
+                    selectedGroupIndexes.add(parseInt(groupIndex));
+                    $(`#group-${groupIndex}`).prop('checked', true);
+                }
+            }
+        }
+    } else {
+        selectedTransferIds.delete(transferId);
+
+        // If this transfer belongs to a group, uncheck the group
+        if (groupIndex !== undefined && groupIndex !== null && groupIndex !== '') {
+            selectedGroupIndexes.delete(parseInt(groupIndex));
+            $(`#group-${groupIndex}`).prop('checked', false);
+        }
+    }
+
+    updateCancelButtonVisibility();
+}
+
+/**
+ * Update cancel button visibility
+ */
+function updateCancelButtonVisibility() {
+    const selectedCount = selectedTransferIds.size;
+    const $cancelBtn = $('#cancelSelectedBtn');
+
+    if (selectedCount > 0) {
+        $cancelBtn.show();
+        $cancelBtn.find('.badge').text(selectedCount);
+    } else {
+        $cancelBtn.hide();
+    }
+}
+
+/**
+ * Handle cancel selected transfers
+ */
+function handleCancelSelected() {
+    const selectedCount = selectedTransferIds.size;
+
+    if (selectedCount === 0) {
+        showErrorMessage('Nie zaznaczono żadnych transferów do anulowania');
+        return;
+    }
+
+    // Show confirmation dialog
+    const confirmMessage = `Czy na pewno chcesz anulować ${selectedCount} zaznaczonych transferów? Tej operacji nie można cofnąć.`;
+
+    if (!confirm(confirmMessage)) {
+        return;
+    }
+
+    // Proceed with cancellation
+    cancelSelectedTransfers();
+}
+
+/**
+ * Cancel selected transfers via AJAX
+ */
+function cancelSelectedTransfers() {
+    const transferIds = Array.from(selectedTransferIds);
+
+    // Show loading state
+    const $cancelBtn = $('#cancelSelectedBtn');
+    const originalHtml = $cancelBtn.html();
+    $cancelBtn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm mr-2"></span>Anulowanie...');
+
+    $.ajax({
+        type: 'POST',
+        url: COMPONENTS_PATH + '/archive/cancel-transfer.php',
+        data: {
+            action: 'cancel_transfers',
+            transfer_ids: JSON.stringify(transferIds)
+        },
+        dataType: 'json',
+        success: function(response) {
+            if (response.success) {
+                showSuccessMessage(response.message || 'Transfery zostały pomyślnie anulowane');
+
+                // Clear selections
+                clearSelections();
+                updateCancelButtonVisibility();
+
+                // Reload archive table
+                loadArchive();
+            } else {
+                showErrorMessage('Błąd: ' + (response.message || 'Nie udało się anulować transferów'));
+            }
+
+            // Reset button state
+            $cancelBtn.prop('disabled', false).html(originalHtml);
+        },
+        error: function(xhr, status, error) {
+            console.error('AJAX Error:', error);
+            console.log('Response text:', xhr.responseText);
+            showErrorMessage('Błąd podczas anulowania transferów');
+
+            // Reset button state
+            $cancelBtn.prop('disabled', false).html(originalHtml);
+        }
+    });
+}
