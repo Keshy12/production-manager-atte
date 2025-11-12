@@ -47,6 +47,17 @@ $magazine_list = $MsaDB->readIdName("magazine__list", "sub_magazine_id", "sub_ma
         background-color: #f5c6cb !important;
         opacity: 0.85;
     }
+    .cancelled-row .custom-control-input:disabled ~ .custom-control-label,
+    .cancelled-group .custom-control-input:disabled ~ .custom-control-label {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+    .cancelled-row .custom-control-input:disabled ~ .custom-control-label::before,
+    .cancelled-group .custom-control-input:disabled ~ .custom-control-label::before {
+        background-color: #e9ecef;
+        border-color: #adb5bd;
+        cursor: not-allowed;
+    }
 </style>
 
 <div class="d-flex justify-content-center">
@@ -283,5 +294,7 @@ $magazine_list = $MsaDB->readIdName("magazine__list", "sub_magazine_id", "sub_ma
         </div>
     </div>
 </div>
+
+<?php include_once 'modals.php'; ?>
 
 <script src="http://<?=BASEURL?>/public_html/components/archive/archive-view.js"></script>

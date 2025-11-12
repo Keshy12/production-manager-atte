@@ -116,6 +116,12 @@ function attachEventHandlers() {
         handleCancelSelected();
     });
 
+    // Confirm cancel in modal
+    $("#confirmCancelTransfers").click(function() {
+        $('#cancelTransfersModal').modal('hide');
+        cancelSelectedTransfers();
+    });
+
     // Pagination handlers will be attached after rendering
 }
 
@@ -313,16 +319,18 @@ function renderArchiveTable(response) {
 function renderSingleRow(entry, groupIndex) {
     const isCancelled = entry.is_cancelled == 1;
     const rowClass = isCancelled ? 'cancelled-row' : '';
+    const checkboxDisabled = isCancelled ? 'disabled' : '';
     const transferGroupInfo = entry.transfer_group_id ? `Grupa #${entry.transfer_group_id}` : '-';
     const userName = `${entry.user_name || ''} ${entry.user_surname || ''}`.trim() || '-';
 
     const row = `
-        <tr class="${rowClass}" data-row-id="${entry.id}">
+        <tr class="${rowClass}" data-row-id="${entry.id}" data-is-cancelled="${isCancelled ? '1' : '0'}">
             <td class="text-center">
                 <div class="custom-control custom-checkbox d-inline-block">
                     <input type="checkbox" class="custom-control-input transfer-checkbox"
                            id="transfer-${entry.id}"
-                           data-transfer-id="${entry.id}">
+                           data-transfer-id="${entry.id}"
+                           ${checkboxDisabled}>
                     <label class="custom-control-label" for="transfer-${entry.id}"></label>
                 </div>
             </td>
@@ -344,19 +352,23 @@ function renderSingleRow(entry, groupIndex) {
  */
 function renderIndividualRow(group, groupIndex, userName) {
     const entry = group.entries[0]; // Single entry
+    const isCancelled = entry.is_cancelled == 1;
     const groupClass = group.all_cancelled ? 'cancelled-group' : '';
+    const checkboxDisabled = isCancelled ? 'disabled' : '';
     const displayUserName = userName || '-';
 
     const row = `
         <tr class="group-row ${groupClass}"
             data-group-id=""
             data-group-index="${groupIndex}"
-            data-row-id="${entry.id}">
+            data-row-id="${entry.id}"
+            data-is-cancelled="${isCancelled ? '1' : '0'}">
             <td class="text-center">
                 <div class="custom-control custom-checkbox d-inline-block">
                     <input type="checkbox" class="custom-control-input transfer-checkbox"
                            id="transfer-${entry.id}"
-                           data-transfer-id="${entry.id}">
+                           data-transfer-id="${entry.id}"
+                           ${checkboxDisabled}>
                     <label class="custom-control-label" for="transfer-${entry.id}"></label>
                 </div>
             </td>
@@ -378,6 +390,7 @@ function renderIndividualRow(group, groupIndex, userName) {
  */
 function renderGroupHeader(group, groupIndex, collapseClass, userName) {
     const groupClass = group.all_cancelled ? 'cancelled-group' : '';
+    const groupCheckboxDisabled = group.all_cancelled ? 'disabled' : '';
     const entryCount = group.entries_count;
     const entryWord = getPolishPlural(entryCount, 'wpis', 'wpisy', 'wpisów');
     const displayUserName = userName || '-';
@@ -404,7 +417,8 @@ function renderGroupHeader(group, groupIndex, collapseClass, userName) {
                     <input type="checkbox" class="custom-control-input group-checkbox"
                            id="group-${groupIndex}"
                            data-group-id="${group.group_id || ''}"
-                           data-group-index="${groupIndex}">
+                           data-group-index="${groupIndex}"
+                           ${groupCheckboxDisabled}>
                     <label class="custom-control-label" for="group-${groupIndex}"></label>
                 </div>
                 <i class="bi bi-chevron-right toggle-icon ml-1"></i>
@@ -433,18 +447,21 @@ function renderGroupHeader(group, groupIndex, collapseClass, userName) {
 function renderDetailRow(entry, groupIndex, collapseClass) {
     const isCancelled = entry.is_cancelled == 1;
     const rowClass = isCancelled ? 'cancelled-row' : '';
+    const checkboxDisabled = isCancelled ? 'disabled' : '';
     const userName = `${entry.user_name || ''} ${entry.user_surname || ''}`.trim() || '-';
 
     const row = `
         <tr class="collapse ${collapseClass} ${rowClass}"
             data-group-index="${groupIndex}"
-            data-row-id="${entry.id}">
+            data-row-id="${entry.id}"
+            data-is-cancelled="${isCancelled ? '1' : '0'}">
             <td class="text-center indent-cell">
                 <div class="custom-control custom-checkbox d-inline-block">
                     <input type="checkbox" class="custom-control-input transfer-checkbox"
                            id="transfer-${entry.id}"
                            data-transfer-id="${entry.id}"
-                           data-group-index="${groupIndex}">
+                           data-group-index="${groupIndex}"
+                           ${checkboxDisabled}>
                     <label class="custom-control-label" for="transfer-${entry.id}"></label>
                 </div>
             </td>
@@ -743,23 +760,28 @@ function handleGroupCheckboxChange(groupIndex, isChecked) {
     if (!transferIds) return;
 
     if (isChecked) {
-        // Check if ALL transfers can be selected (all exist)
-        let allTransfersExist = true;
+        // Count how many transfers are selectable (exist and not cancelled)
+        let selectableCount = 0;
         transferIds.forEach(id => {
-            if (!$(`#transfer-${id}`).length) {
-                allTransfersExist = false;
+            const $checkbox = $(`#transfer-${id}`);
+            if ($checkbox.length && !$checkbox.prop('disabled')) {
+                selectableCount++;
             }
         });
 
-        if (allTransfersExist) {
-            // Select all child transfers
+        // If there's at least one selectable transfer, proceed
+        if (selectableCount > 0) {
+            // Select all child transfers that are not cancelled
             transferIds.forEach(id => {
-                selectedTransferIds.add(id);
-                $(`#transfer-${id}`).prop('checked', true);
+                const $checkbox = $(`#transfer-${id}`);
+                if ($checkbox.length && !$checkbox.prop('disabled')) {
+                    selectedTransferIds.add(id);
+                    $checkbox.prop('checked', true);
+                }
             });
             selectedGroupIndexes.add(groupIndex);
         } else {
-            // Cannot select group - uncheck it
+            // Cannot select group - uncheck it (all transfers are cancelled)
             $(`#group-${groupIndex}`).prop('checked', false);
         }
     } else {
@@ -779,6 +801,13 @@ function handleGroupCheckboxChange(groupIndex, isChecked) {
  */
 function handleTransferCheckboxChange(transferId, groupIndex, isChecked) {
     if (isChecked) {
+        // Don't allow selection of cancelled transfers
+        const $row = $(`tr[data-row-id="${transferId}"]`);
+        if ($row.attr('data-is-cancelled') === '1') {
+            $(`#transfer-${transferId}`).prop('checked', false);
+            return;
+        }
+
         selectedTransferIds.add(transferId);
 
         // Check if this transfer belongs to a group
@@ -786,10 +815,12 @@ function handleTransferCheckboxChange(transferId, groupIndex, isChecked) {
             const groupTransfers = groupTransferMap.get(parseInt(groupIndex));
 
             if (groupTransfers) {
-                // Check if ALL siblings are now selected
+                // Check if ALL non-cancelled siblings are now selected
                 let allSelected = true;
                 groupTransfers.forEach(id => {
-                    if (!selectedTransferIds.has(id)) {
+                    const $checkbox = $(`#transfer-${id}`);
+                    // Skip cancelled transfers
+                    if (!$checkbox.prop('disabled') && !selectedTransferIds.has(id)) {
                         allSelected = false;
                     }
                 });
@@ -840,15 +871,57 @@ function handleCancelSelected() {
         return;
     }
 
-    // Show confirmation dialog
-    const confirmMessage = `Czy na pewno chcesz anulować ${selectedCount} zaznaczonych transferów? Tej operacji nie można cofnąć.`;
+    // Populate the modal with transfer details
+    populateCancelModal();
 
-    if (!confirm(confirmMessage)) {
-        return;
-    }
+    // Show the modal
+    $('#cancelTransfersModal').modal('show');
+}
 
-    // Proceed with cancellation
-    cancelSelectedTransfers();
+/**
+ * Populate cancel modal with transfer details
+ */
+function populateCancelModal() {
+    const selectedCount = selectedTransferIds.size;
+
+    // Update count badge
+    $('#cancelCount').text(selectedCount);
+
+    // Clear and populate summary table
+    const $summaryBody = $('#cancelSummaryBody');
+    $summaryBody.empty();
+
+    // Collect transfer data from the table
+    selectedTransferIds.forEach(transferId => {
+        const $row = $(`tr[data-row-id="${transferId}"]`);
+
+        if ($row.length > 0) {
+            // Extract data from the row
+            const $cells = $row.find('td');
+
+            // Get text content from cells (skip checkbox cell at index 0)
+            const userName = $cells.eq(1).text().trim();
+            const magazineName = $cells.eq(2).text().trim();
+            const deviceName = $cells.eq(3).text().trim();
+            const inputType = $cells.eq(4).text().trim();
+            const qty = $cells.eq(5).text().trim();
+            const date = $cells.eq(6).html().trim(); // Use html() to preserve formatting
+
+            // Create summary row
+            const summaryRow = `
+                <tr>
+                    <td>${escapeHtml(userName)}</td>
+                    <td>${escapeHtml(magazineName)}</td>
+                    <td>${escapeHtml(deviceName)}</td>
+                    <td>${escapeHtml(inputType)}</td>
+                    <td>${qty}</td>
+                    <td>${date}</td>
+                </tr>
+            `;
+
+            $summaryBody.append(summaryRow);
+        }
+    });
 }
 
 /**
@@ -856,6 +929,7 @@ function handleCancelSelected() {
  */
 function cancelSelectedTransfers() {
     const transferIds = Array.from(selectedTransferIds);
+    const deviceType = $("#quickDeviceType").val() || $("#deviceType").val();
 
     // Show loading state
     const $cancelBtn = $('#cancelSelectedBtn');
@@ -867,7 +941,8 @@ function cancelSelectedTransfers() {
         url: COMPONENTS_PATH + '/archive/cancel-transfer.php',
         data: {
             action: 'cancel_transfers',
-            transfer_ids: JSON.stringify(transferIds)
+            transfer_ids: JSON.stringify(transferIds),
+            device_type: deviceType
         },
         dataType: 'json',
         success: function(response) {
