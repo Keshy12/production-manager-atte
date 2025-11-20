@@ -141,6 +141,17 @@ function attachEventHandlers() {
         cancelSelectedTransfers();
     });
 
+    // Load more entries button (using event delegation for dynamically added elements)
+    $(document).on('click', '.load-group-entries', function(e) {
+        e.stopPropagation();
+        const $btn = $(this);
+        const groupId = $btn.data('group-id');
+        const groupIndex = $btn.data('group-index');
+        const offset = parseInt($btn.data('offset'));
+
+        loadGroupEntries(groupId, groupIndex, offset);
+    });
+
     // Pagination handlers will be attached after rendering
 }
 
@@ -155,6 +166,15 @@ function handleDeviceTypeChange(deviceType) {
         $("#list__device").prop("disabled", true);
         $('.selectpicker').selectpicker('refresh');
         clearTable();
+        return;
+    }
+
+    // If "all" type selected, disable device select and load data
+    if (deviceType === 'all') {
+        $("#list__device").prop("disabled", true);
+        $('.selectpicker').selectpicker('refresh');
+        resetToFirstPage();
+        loadArchive();
         return;
     }
 
@@ -320,6 +340,11 @@ function renderArchiveTable(response) {
             group.entries.forEach(entry => {
                 renderDetailRow(entry, groupIndex, collapseClass);
             });
+
+            // Add "Load More" button if group has more entries
+            if (group.has_more_entries) {
+                renderLoadMoreRow(group, groupIndex, collapseClass);
+            }
         }
     });
 
@@ -343,6 +368,10 @@ function renderSingleRow(entry, groupIndex) {
     const transferGroupInfo = entry.transfer_group_id ? `Grupa #${entry.transfer_group_id}` : '-';
     const userName = `${entry.user_name || ''} ${entry.user_surname || ''}`.trim() || '-';
 
+    // Get device type for badge
+    const deviceType = entry.device_type || $("#quickDeviceType").val() || $("#deviceType").val();
+    const deviceTypeBadge = getDeviceTypeBadge(deviceType);
+
     const row = `
         <tr class="${rowClass}" data-row-id="${entry.id}" data-is-cancelled="${isCancelled ? '1' : '0'}">
             <td class="text-center">
@@ -356,7 +385,7 @@ function renderSingleRow(entry, groupIndex) {
             </td>
             <td>${escapeHtml(userName)}</td>
             <td>${escapeHtml(entry.sub_magazine_name)}</td>
-            <td>${escapeHtml(entry.device_name)}</td>
+            <td>${deviceTypeBadge}${escapeHtml(entry.device_name)}</td>
             <td>${escapeHtml(entry.input_type_name || '')}</td>
             <td>${entry.qty > 0 ? '+' : ''}${parseFloat(entry.qty).toFixed(2)}</td>
             <td>${formatDateTime(entry.timestamp)}</td>
@@ -377,6 +406,10 @@ function renderIndividualRow(group, groupIndex, userName) {
     const checkboxDisabled = isCancelled ? 'disabled' : '';
     const displayUserName = userName || '-';
 
+    // Get device type for badge
+    const deviceType = entry.device_type || $("#quickDeviceType").val() || $("#deviceType").val();
+    const deviceTypeBadge = getDeviceTypeBadge(deviceType);
+
     const row = `
         <tr class="group-row ${groupClass}"
             data-group-id=""
@@ -394,7 +427,7 @@ function renderIndividualRow(group, groupIndex, userName) {
             </td>
             <td>${escapeHtml(displayUserName)}</td>
             <td>${escapeHtml(entry.sub_magazine_name)}</td>
-            <td>${escapeHtml(entry.device_name)}</td>
+            <td>${deviceTypeBadge}${escapeHtml(entry.device_name)}</td>
             <td>${escapeHtml(entry.input_type_name || '')}</td>
             <td><strong>${group.total_qty > 0 ? '+' : ''}${parseFloat(group.total_qty).toFixed(2)}</strong></td>
             <td>${formatDateTime(group.group_created_at)}</td>
@@ -424,6 +457,13 @@ function renderGroupHeader(group, groupIndex, collapseClass, userName) {
         `;
     }
 
+    // Show device types in group when viewing "all" types
+    let deviceTypesBadges = '';
+    const currentDeviceType = $("#quickDeviceType").val() || $("#deviceType").val();
+    if (currentDeviceType === 'all' && group.device_types && group.device_types.length > 0) {
+        deviceTypesBadges = ' ' + group.device_types.map(type => getDeviceTypeBadge(type)).join(' ');
+    }
+
     const row = `
         <tr class="group-row ${groupClass}"
             data-toggle="collapse"
@@ -450,6 +490,7 @@ function renderGroupHeader(group, groupIndex, collapseClass, userName) {
                     ${entryCount} ${entryWord}
                 </span>
                 ${cancelledBadge}
+                ${deviceTypesBadges}
                 ${group.group_notes ? `<br><small class="text-muted">${escapeHtml(group.group_notes)}</small>` : ''}
             </td>
             <td><strong>${group.total_qty > 0 ? '+' : ''}${parseFloat(group.total_qty).toFixed(2)}</strong></td>
@@ -470,6 +511,10 @@ function renderDetailRow(entry, groupIndex, collapseClass) {
     const checkboxDisabled = isCancelled ? 'disabled' : '';
     const userName = `${entry.user_name || ''} ${entry.user_surname || ''}`.trim() || '-';
 
+    // Get device type for badge
+    const deviceType = entry.device_type || $("#quickDeviceType").val() || $("#deviceType").val();
+    const deviceTypeBadge = getDeviceTypeBadge(deviceType);
+
     const row = `
         <tr class="collapse ${collapseClass} ${rowClass}"
             data-group-index="${groupIndex}"
@@ -487,7 +532,7 @@ function renderDetailRow(entry, groupIndex, collapseClass) {
             </td>
             <td class="indent-cell">${escapeHtml(userName)}</td>
             <td>${escapeHtml(entry.sub_magazine_name)}</td>
-            <td>${escapeHtml(entry.device_name)}</td>
+            <td>${deviceTypeBadge}${escapeHtml(entry.device_name)}</td>
             <td>${escapeHtml(entry.input_type_name || '')}</td>
             <td>${entry.qty > 0 ? '+' : ''}${parseFloat(entry.qty).toFixed(2)}</td>
             <td>${formatDateTime(entry.timestamp)}</td>
@@ -496,6 +541,125 @@ function renderDetailRow(entry, groupIndex, collapseClass) {
     `;
 
     $("#archiveTableBody").append(row);
+}
+
+/**
+ * Render "Load More" row for groups with many entries
+ */
+function renderLoadMoreRow(group, groupIndex, collapseClass) {
+    const remaining = group.entries_count - group.entries_loaded;
+    const row = `
+        <tr class="collapse ${collapseClass} load-more-row"
+            data-group-id="${group.group_id}"
+            data-group-index="${groupIndex}">
+            <td colspan="8" class="text-center py-3" style="background-color: #f8f9fa;">
+                <button class="btn btn-sm btn-outline-primary load-group-entries"
+                        data-group-id="${group.group_id}"
+                        data-group-index="${groupIndex}"
+                        data-offset="${group.entries_loaded}">
+                    <i class="bi bi-arrow-down-circle"></i> Załaduj więcej wpisów
+                    <span class="badge badge-secondary ml-1">${remaining} pozostało</span>
+                </button>
+            </td>
+        </tr>
+    `;
+
+    $("#archiveTableBody").append(row);
+}
+
+/**
+ * Load additional entries for a group via AJAX
+ */
+function loadGroupEntries(groupId, groupIndex, offset) {
+    const deviceType = $("#quickDeviceType").val() || $("#deviceType").val();
+    const collapseClass = `collapse-group-${groupIndex}`;
+
+    // Show loading state
+    const $btn = $(`.load-group-entries[data-group-id="${groupId}"]`);
+    const originalHtml = $btn.html();
+    $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Ładowanie...');
+
+    $.ajax({
+        type: "POST",
+        url: COMPONENTS_PATH + "/archive/archive-load-group-entries.php",
+        data: {
+            transfer_group_id: groupId,
+            device_type: deviceType,
+            offset: offset,
+            limit: 50,
+            show_cancelled: $("#quickShowCancelled").is(':checked') ? '1' : '0'
+        },
+        dataType: "json",
+        success: function(response) {
+            if (!response.success) {
+                showErrorMessage(response.message || 'Błąd podczas ładowania wpisów');
+                $btn.prop('disabled', false).html(originalHtml);
+                return;
+            }
+
+            // Insert new entries before the "Load More" row
+            const $loadMoreRow = $(`.load-more-row[data-group-id="${groupId}"]`);
+
+            response.entries.forEach(entry => {
+                // Build detail row HTML
+                const isCancelled = entry.is_cancelled == 1;
+                const rowClass = isCancelled ? 'cancelled-row' : '';
+                const checkboxDisabled = isCancelled ? 'disabled' : '';
+                const userName = `${entry.user_name || ''} ${entry.user_surname || ''}`.trim() || '-';
+                const deviceTypeBadge = getDeviceTypeBadge(entry.device_type);
+
+                const rowHtml = `
+                    <tr class="collapse ${collapseClass} show ${rowClass}"
+                        data-group-index="${groupIndex}"
+                        data-row-id="${entry.id}"
+                        data-is-cancelled="${isCancelled ? '1' : '0'}">
+                        <td class="text-center indent-cell">
+                            <div class="custom-control custom-checkbox d-inline-block">
+                                <input type="checkbox" class="custom-control-input transfer-checkbox"
+                                       id="transfer-${entry.id}"
+                                       data-transfer-id="${entry.id}"
+                                       data-group-index="${groupIndex}"
+                                       ${checkboxDisabled}>
+                                <label class="custom-control-label" for="transfer-${entry.id}"></label>
+                            </div>
+                        </td>
+                        <td class="indent-cell">${escapeHtml(userName)}</td>
+                        <td>${escapeHtml(entry.sub_magazine_name)}</td>
+                        <td>${deviceTypeBadge}${escapeHtml(entry.device_name)}</td>
+                        <td>${escapeHtml(entry.input_type_name || '')}</td>
+                        <td>${entry.qty > 0 ? '+' : ''}${parseFloat(entry.qty).toFixed(2)}</td>
+                        <td>${formatDateTime(entry.timestamp)}</td>
+                        <td><small>${escapeHtml(entry.comment || '')}</small></td>
+                    </tr>
+                `;
+
+                // Add to group transfer map for checkbox logic
+                if (!groupTransferMap.has(groupIndex)) {
+                    groupTransferMap.set(groupIndex, new Set());
+                }
+                groupTransferMap.get(groupIndex).add(entry.id);
+
+                $loadMoreRow.before(rowHtml);
+            });
+
+            // Update or remove "Load More" button
+            if (response.hasMore) {
+                $btn.prop('disabled', false)
+                    .attr('data-offset', offset + response.loaded)
+                    .html(`<i class="bi bi-arrow-down-circle"></i> Załaduj więcej wpisów <span class="badge badge-secondary ml-1">${response.remaining} pozostało</span>`);
+            } else {
+                $loadMoreRow.remove();
+            }
+
+            // Re-attach checkbox handlers for new rows
+            attachCheckboxHandlers();
+        },
+        error: function(xhr, status, error) {
+            console.error('AJAX Error:', error);
+            showErrorMessage('Błąd podczas ładowania wpisów');
+            $btn.prop('disabled', false).html('<i class="bi bi-exclamation-triangle"></i> Błąd - spróbuj ponownie');
+        }
+    });
 }
 
 /**
@@ -700,6 +864,27 @@ function escapeHtml(text) {
         "'": '&#039;'
     };
     return text.toString().replace(/[&<>"']/g, m => map[m]);
+}
+
+/**
+ * Get device type badge HTML
+ * @param {string} deviceType - The device type (sku, tht, smd, parts)
+ * @returns {string} Badge HTML
+ */
+function getDeviceTypeBadge(deviceType) {
+    if (!deviceType) return '';
+
+    const badgeClasses = {
+        'sku': 'badge-primary',
+        'tht': 'badge-success',
+        'smd': 'badge-info',
+        'parts': 'badge-warning'
+    };
+
+    const badgeClass = badgeClasses[deviceType.toLowerCase()] || 'badge-secondary';
+    const typeLabel = deviceType.toUpperCase();
+
+    return `<span class="badge ${badgeClass} badge-device-type">${typeLabel}</span>`;
 }
 
 /**

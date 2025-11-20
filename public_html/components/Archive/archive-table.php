@@ -31,6 +31,226 @@ if (!$deviceType) {
     exit;
 }
 
+// Handle "all" device types separately
+if ($deviceType === 'all') {
+    $deviceTypes = ['sku', 'tht', 'smd', 'parts'];
+
+    // Build WHERE conditions (without device_ids filter)
+    $conditions = ["1=1"];
+
+    // User IDs filter
+    if (!empty($userIds)) {
+        $userIdsStr = implode(',', array_map('intval', $userIds));
+        $conditions[] = "tg.created_by IN ($userIdsStr)";
+    }
+
+    // Input types filter
+    if (!empty($inputTypesIds)) {
+        $inputTypesStr = implode(',', array_map('intval', $inputTypesIds));
+        $conditions[] = "i.input_type_id IN ($inputTypesStr)";
+    }
+
+    // Magazine filter
+    if (!empty($magazineIds)) {
+        $magazineIdsStr = implode(',', array_map('intval', $magazineIds));
+        $conditions[] = "i.sub_magazine_id IN ($magazineIdsStr)";
+    }
+
+    // FlowPin session filter
+    if ($flowpinSessionId) {
+        $conditions[] = "i.flowpin_update_session_id = $flowpinSessionId";
+    }
+
+    // Date range filter
+    if ($dateFrom) {
+        $conditions[] = "DATE(COALESCE(tg.created_at, i.timestamp)) >= '$dateFrom'";
+    }
+    if ($dateTo) {
+        $conditions[] = "DATE(COALESCE(tg.created_at, i.timestamp)) <= '$dateTo'";
+    }
+
+    // Cancelled filter
+    $cancelledCondition = $showCancelled ? "" : "AND i.is_cancelled = 0";
+    $whereClause = implode(" AND ", $conditions);
+
+    // Build UNION query for all device types
+    $unionParts = [];
+    foreach ($deviceTypes as $type) {
+        $unionParts[] = "
+            SELECT
+                i.id,
+                i.{$type}_id as device_id,
+                i.sub_magazine_id,
+                i.qty,
+                i.timestamp,
+                i.comment,
+                i.input_type_id,
+                i.transfer_group_id,
+                i.is_cancelled,
+                i.cancelled_at,
+                i.flowpin_update_session_id,
+                tg.created_by as group_created_by,
+                tg.notes as group_notes,
+                tg.created_at as group_created_at,
+                l.name as device_name,
+                m.sub_magazine_name,
+                u.name as user_name,
+                u.surname as user_surname,
+                it.name as input_type_name,
+                '$type' as device_type
+            FROM `inventory__{$type}` i
+            LEFT JOIN inventory__transfer_groups tg ON i.transfer_group_id = tg.id
+            LEFT JOIN list__{$type} l ON i.{$type}_id = l.id
+            LEFT JOIN magazine__list m ON i.sub_magazine_id = m.sub_magazine_id
+            LEFT JOIN user u ON u.user_id = tg.created_by
+            LEFT JOIN inventory__input_type it ON i.input_type_id = it.id
+            WHERE $whereClause $cancelledCondition
+        ";
+    }
+
+    $unionQuery = implode(" UNION ALL ", $unionParts);
+
+    if ($noGrouping) {
+        // NO GROUPING MODE - Count and fetch
+        $countQuery = "SELECT COUNT(*) as total FROM ($unionQuery) as combined";
+        $countResult = $MsaDB->query($countQuery, PDO::FETCH_ASSOC);
+        $totalCount = (int)$countResult[0]['total'];
+
+        $dataQuery = "
+            SELECT * FROM ($unionQuery) as combined
+            ORDER BY timestamp DESC
+            LIMIT $itemsPerPage OFFSET $offset
+        ";
+
+        $records = $MsaDB->query($dataQuery, PDO::FETCH_ASSOC);
+
+        // Format as groups
+        $groups = [];
+        foreach ($records as $record) {
+            $groups[] = [
+                'group_id' => null,
+                'group_notes' => '',
+                'group_created_at' => $record['timestamp'],
+                'user_name' => $record['user_name'],
+                'user_surname' => $record['user_surname'],
+                'total_qty' => $record['qty'],
+                'entries_count' => 1,
+                'cancelled_count' => $record['is_cancelled'] ? 1 : 0,
+                'has_cancelled' => (bool)$record['is_cancelled'],
+                'all_cancelled' => (bool)$record['is_cancelled'],
+                'entries' => [$record]
+            ];
+        }
+
+        $hasNextPage = $totalCount > ($offset + $itemsPerPage);
+
+    } else {
+        // GROUPING MODE - Group by transfer_group_id
+        $groupQuery = "
+            SELECT
+                COALESCE(transfer_group_id, CONCAT('no_group_', id)) as group_key,
+                transfer_group_id,
+                COALESCE(group_created_at, timestamp) as sort_timestamp,
+                group_notes,
+                group_created_at,
+                user_name,
+                user_surname
+            FROM ($unionQuery) as combined
+            GROUP BY group_key
+            ORDER BY sort_timestamp DESC
+            LIMIT " . ($itemsPerPage + 1) . " OFFSET $offset
+        ";
+
+        $groupResults = $MsaDB->query($groupQuery, PDO::FETCH_ASSOC);
+
+        // Check if there's a next page
+        $hasNextPage = count($groupResults) > $itemsPerPage;
+        if ($hasNextPage) {
+            array_pop($groupResults);
+        }
+
+        // Count total groups
+        $countQuery = "
+            SELECT COUNT(DISTINCT COALESCE(transfer_group_id, CONCAT('no_group_', id))) as total
+            FROM ($unionQuery) as combined
+        ";
+        $countResult = $MsaDB->query($countQuery, PDO::FETCH_ASSOC);
+        $totalCount = (int)$countResult[0]['total'];
+
+        // Fetch entries for each group
+        $groups = [];
+        foreach ($groupResults as $groupInfo) {
+            $transferGroupId = $groupInfo['transfer_group_id'];
+
+            if ($transferGroupId) {
+                // First get total count for this group
+                $countEntriesQuery = "
+                    SELECT COUNT(*) as total FROM ($unionQuery) as combined
+                    WHERE transfer_group_id = $transferGroupId
+                ";
+                $countEntries = $MsaDB->query($countEntriesQuery, PDO::FETCH_ASSOC);
+                $totalEntriesInGroup = (int)$countEntries[0]['total'];
+
+                // Then fetch only first 10 entries
+                $entriesQuery = "
+                    SELECT * FROM ($unionQuery) as combined
+                    WHERE transfer_group_id = $transferGroupId
+                    ORDER BY id DESC
+                    LIMIT 10
+                ";
+            } else {
+                $noGroupId = (int)str_replace('no_group_', '', $groupInfo['group_key']);
+                $totalEntriesInGroup = 1; // Single ungrouped entry
+                $entriesQuery = "
+                    SELECT * FROM ($unionQuery) as combined
+                    WHERE id = $noGroupId
+                ";
+            }
+
+            $entries = $MsaDB->query($entriesQuery, PDO::FETCH_ASSOC);
+
+            // Calculate group totals and collect device types
+            $totalQty = 0;
+            $cancelledCount = 0;
+            $deviceTypesInGroup = [];
+            foreach ($entries as $entry) {
+                $totalQty += $entry['qty'];
+                if ($entry['is_cancelled']) {
+                    $cancelledCount++;
+                }
+                if (!in_array($entry['device_type'], $deviceTypesInGroup)) {
+                    $deviceTypesInGroup[] = $entry['device_type'];
+                }
+            }
+
+            $groups[] = [
+                'group_id' => $transferGroupId,
+                'group_notes' => $groupInfo['group_notes'] ?? '',
+                'group_created_at' => $groupInfo['group_created_at'] ?? $groupInfo['sort_timestamp'],
+                'user_name' => $groupInfo['user_name'],
+                'user_surname' => $groupInfo['user_surname'],
+                'total_qty' => $totalQty,
+                'entries_count' => $totalEntriesInGroup,
+                'entries_loaded' => count($entries),
+                'cancelled_count' => $cancelledCount,
+                'has_cancelled' => $cancelledCount > 0,
+                'all_cancelled' => $cancelledCount === count($entries),
+                'device_types' => $deviceTypesInGroup,
+                'has_more_entries' => $totalEntriesInGroup > 10,
+                'entries' => $entries
+            ];
+        }
+    }
+
+    echo json_encode([
+        'groups' => $groups,
+        'totalCount' => $totalCount,
+        'hasNextPage' => $hasNextPage,
+        'currentPage' => $page
+    ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 // Build WHERE conditions
 $conditions = ["1=1"];
 
@@ -189,7 +409,17 @@ if ($noGrouping) {
         $transferGroupId = $groupInfo['transfer_group_id'];
 
         if ($transferGroupId) {
-            // Fetch all entries in this transfer group
+            // First get total count for this group
+            $countEntriesQuery = "
+                SELECT COUNT(*) as total
+                FROM `inventory__{$deviceType}` i
+                WHERE i.transfer_group_id = $transferGroupId
+                AND $whereClause $cancelledCondition
+            ";
+            $countEntries = $MsaDB->query($countEntriesQuery, PDO::FETCH_ASSOC);
+            $totalEntriesInGroup = (int)$countEntries[0]['total'];
+
+            // Then fetch only first 10 entries in this transfer group
             $entriesQuery = "
                 SELECT
                     i.id,
@@ -215,10 +445,12 @@ if ($noGrouping) {
                 WHERE i.transfer_group_id = $transferGroupId
                 AND $whereClause $cancelledCondition
                 ORDER BY i.id DESC
+                LIMIT 10
             ";
         } else {
             // Single ungrouped entry - extract ID from group_key
             $noGroupId = (int)str_replace('no_group_', '', $groupInfo['group_key']);
+            $totalEntriesInGroup = 1;
             $entriesQuery = "
                 SELECT
                     i.id,
@@ -264,10 +496,12 @@ if ($noGrouping) {
             'user_name' => $groupInfo['user_name'],
             'user_surname' => $groupInfo['user_surname'],
             'total_qty' => $totalQty,
-            'entries_count' => count($entries),
+            'entries_count' => $totalEntriesInGroup,
+            'entries_loaded' => count($entries),
             'cancelled_count' => $cancelledCount,
             'has_cancelled' => $cancelledCount > 0,
             'all_cancelled' => $cancelledCount === count($entries),
+            'has_more_entries' => $totalEntriesInGroup > 10,
             'entries' => $entries
         ];
     }

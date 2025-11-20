@@ -39,6 +39,11 @@ $magazine_list = $MsaDB->readIdName("magazine__list", "sub_magazine_id", "sub_ma
         font-size: 0.75em;
         vertical-align: middle;
     }
+    .badge-device-type {
+        font-size: 0.75em;
+        margin-right: 4px;
+        vertical-align: middle;
+    }
     .cancelled-row {
         background-color: #f8d7da !important;
         opacity: 0.8;
@@ -98,6 +103,7 @@ $magazine_list = $MsaDB->readIdName("magazine__list", "sub_magazine_id", "sub_ma
                             <div class="col-md-3 col-12 mb-2">
                                 <label class="small mb-1"><strong>Typ urządzenia:</strong></label>
                                 <select class="selectpicker form-control form-control-sm" id="deviceType" data-width="100%" title="Wybierz typ...">
+                                    <option value="all">Wszystkie</option>
                                     <option value="sku">SKU</option>
                                     <option value="tht">THT</option>
                                     <option value="smd">SMD</option>
@@ -269,6 +275,7 @@ $magazine_list = $MsaDB->readIdName("magazine__list", "sub_magazine_id", "sub_ma
                             <label class="small mb-1"><strong>Typ urządzenia:</strong></label>
                             <select class="form-control form-control-sm" id="quickDeviceType">
                                 <option value="">Wybierz typ...</option>
+                                <option value="all">Wszystkie</option>
                                 <option value="sku">SKU</option>
                                 <option value="tht">THT</option>
                                 <option value="smd">SMD</option>
