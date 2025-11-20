@@ -9,6 +9,7 @@ $userIds = $_POST["user_ids"] ?? [];
 $deviceIds = $_POST["device_ids"] ?? [];
 $inputTypesIds = $_POST["input_type_id"] ?? [];
 $magazineIds = $_POST["magazine_ids"] ?? [];
+$flowpinSessionId = !empty($_POST["flowpin_session_id"]) ? (int)$_POST["flowpin_session_id"] : null;
 $dateFrom = $_POST["date_from"] ?? null;
 $dateTo = $_POST["date_to"] ?? null;
 $showCancelled = isset($_POST["show_cancelled"]) && $_POST["show_cancelled"] == '1';
@@ -55,6 +56,11 @@ if (!empty($inputTypesIds)) {
 if (!empty($magazineIds)) {
     $magazineIdsStr = implode(',', array_map('intval', $magazineIds));
     $conditions[] = "i.sub_magazine_id IN ($magazineIdsStr)";
+}
+
+// FlowPin session filter
+if ($flowpinSessionId) {
+    $conditions[] = "i.flowpin_update_session_id = $flowpinSessionId";
 }
 
 // Date range filter

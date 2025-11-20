@@ -7,6 +7,7 @@ use Atte\DB\FlowpinDB;
 use Atte\Utils\BomRepository;
 use Atte\Utils\NotificationRepository;
 use Atte\Utils\UserRepository;
+use Atte\Utils\TransferGroupManager;
 use Exception;
 use PDO;
 
@@ -15,6 +16,7 @@ class SkuProductionProcessor {
     private $FlowpinDB;
     private $notificationRepository;
     private $userRepository;
+    private $transferGroupManager;
     private $flowpinQueryTypeId = 1;
 
     public function __construct(MsaDB $MsaDB, FlowpinDB $FlowpinDB) {
@@ -22,6 +24,7 @@ class SkuProductionProcessor {
         $this->FlowpinDB = $FlowpinDB;
         $this->notificationRepository = new NotificationRepository($MsaDB);
         $this->userRepository = new UserRepository($MsaDB);
+        $this->transferGroupManager = new TransferGroupManager($MsaDB);
     }
 
     /**
@@ -29,9 +32,10 @@ class SkuProductionProcessor {
      *
      * @param array $production Production data from FlowPin
      * @param string|null $productionDate Optional production date
+     * @param int|null $transferGroupId Optional transfer group ID for grouping operations
      * @return array Array of queries indexed by event ID
      */
-    public function processProduction(array $production, $productionDate = null) {
+    public function processProduction(array $production, $productionDate = null, $transferGroupId = null, $sessionRecordId = null, $currentEventId = null) {
         $isResolving = is_array($production[0][1] ?? null);
         $result = [];
 
@@ -46,9 +50,13 @@ class SkuProductionProcessor {
                 $idToDel = $eventId;
             }
 
+            // Use the passed currentEventId or fall back to extracted eventId
+            $trackingEventId = $currentEventId ?? $eventId;
+            $sessionIdValue = $sessionRecordId ?? 'NULL';
+
             // Validate deviceId before using it in SQL query
             if (empty($deviceId) || !is_numeric($deviceId)) {
-                $exception = new Exception("Invalid or empty deviceId: " . var_export($deviceId, true), 2);
+                $exception = new Exception("Invalid or empty deviceId: " . var_export($deviceId, true), 0);
                 if ($isResolving) {
                     $this->notificationRepository->createNotificationFromException($exception, $row[1], $this->flowpinQueryTypeId);
                 } else {
@@ -64,7 +72,7 @@ class SkuProductionProcessor {
                 try {
                     $newSKU = $this->FlowpinDB->query("SELECT Symbol, Description FROM ProductTypes WHERE Id = " . (int)$deviceId);
                     if (empty($newSKU)) {
-                        throw new Exception("SKU with ID $deviceId not found in FlowPin database", 3);
+                        throw new Exception("SKU with ID $deviceId not found in FlowPin database", 0);
                     }
                     $newSKU = $newSKU[0];
                     $this->MsaDB->insert("list__sku", ["id", "name", "description", "isActive"], [$deviceId, $newSKU["Symbol"], $newSKU["Description"], 1]);
@@ -82,6 +90,34 @@ class SkuProductionProcessor {
             try {
                 $user = $this->userRepository->getUserByEmail($userEmail);
                 $userId = $user->userId;
+                $userinfo = $user->getUserInfo();
+
+                if (empty($userinfo)) {
+                    throw new Exception("User info not found for user email: $userEmail", 2);
+                }
+
+                // Check if user has no magazine assigned
+                if (is_null($userinfo["sub_magazine_id"])) {
+                    throw new Exception("User has no magazine assigned for user email: $userEmail", 3);
+                }
+
+                // Check if user account is disabled
+                if ($userinfo["user_isActive"] == 0) {
+                    throw new Exception("User account is disabled for user email: $userEmail", 4);
+                }
+
+                // Check if user's magazine is disabled
+                if ($userinfo["magazine_isActive"] == 0) {
+                    // Add sub_magazine_id to row for notification
+                    if ($isResolving) {
+                        $row[1]["sub_magazine_id"] = $userinfo["sub_magazine_id"];
+                    } else {
+                        $row["sub_magazine_id"] = $userinfo["sub_magazine_id"];
+                    }
+                    throw new Exception("User's magazine is disabled for user email: $userEmail", 5);
+                }
+
+                $sub_magazine_id = $userinfo["sub_magazine_id"];
             } catch (\Throwable $exception) {
                 if ($isResolving) {
                     $this->notificationRepository->createNotificationFromException($exception, $row[1], $this->flowpinQueryTypeId);
@@ -93,8 +129,6 @@ class SkuProductionProcessor {
             }
 
             $comment = "Automatyczna produkcja z FlowPin, EventId:" . $eventId;
-            $userinfo = $user->getUserInfo();
-            $sub_magazine_id = $userinfo["sub_magazine_id"];
             $version = null;
             $executionTimestamp = "'" . $executionTimestamp . "'";
             $formattedProductionDate = !empty($productionDate) ? "'" . $productionDate . "'" : 'null';
@@ -135,14 +169,14 @@ class SkuProductionProcessor {
 
             /**
              * Filters all commissions to only get relevant to production
-             * type == 1             - commissions for SKU
-             * bom_tht_id == bomId   - commissions for produced SKU
-             * state_id == 1         - commissions that still need production
+             * type == 'sku'         - commissions for SKU
+             * bom_id == bomId       - commissions for produced SKU
+             * state == 'active'     - commissions that still need production
              */
             $getRelevant = function ($var) use ($bomId, $type) {
                 return ($var->deviceType == $type
-                    && $var->commissionValues['bom_sku_id'] == $bomId
-                    && $var->commissionValues['state_id'] == 1);
+                    && $var->commissionValues['bom_id'] == $bomId
+                    && $var->commissionValues['state'] == 'active');
             };
 
             $commissions = $user->getActiveCommissions();
@@ -154,11 +188,11 @@ class SkuProductionProcessor {
                 }
                 $row = $commission['row'];
                 $commission_id = $row["id"];
-                $quantity_needed = $row["quantity"] - $row["quantity_produced"];
+                $quantity_needed = $row["qty"] - $row["qty_produced"];
                 $quantity -= $quantity_needed;
-                $state_id = 2;
+                $state = 'completed';
                 if ($quantity < 0) {
-                    $state_id = 1;
+                    $state = 'active';
                     $quantity_needed += $quantity;
                     $quantity = 0;
                 }
@@ -166,11 +200,14 @@ class SkuProductionProcessor {
                     $type = $component["type"];
                     $component_id = $component["component_id"];
                     $component_quantity = ($component["quantity"] * $quantity_needed) * -1;
-                    $queries[] = "INSERT INTO `inventory__" . $type . "` (`" . $type . "_id`, `commission_id`, `user_id`, `sub_magazine_id`, `quantity`, `timestamp`, `input_type_id`, `comment`) VALUES ('$component_id', '$commission_id', '$userId', '$sub_magazine_id', '$component_quantity', $executionTimestamp, '6', 'Zejście z magazynu do produkcji')";
+                    $transferGroupIdValue = $transferGroupId ?? 'NULL';
+                    // Component deductions don't include BOM ID (parts table doesn't have this column)
+                    $queries[] = "INSERT INTO `inventory__" . $type . "` (`" . $type . "_id`, `commission_id`, `sub_magazine_id`, `qty`, `timestamp`, `production_date`, `input_type_id`, `comment`, `transfer_group_id`, `flowpin_update_session_id`, `flowpin_event_id`) VALUES ('$component_id', '$commission_id', '$sub_magazine_id', '$component_quantity', $executionTimestamp, $formattedProductionDate, '6', 'Zejście z magazynu do produkcji', $transferGroupIdValue, $sessionIdValue, '$trackingEventId')";
                 }
-                $quantity_produced = $row["quantity_produced"] + $quantity_needed;
-                $queries[] = "INSERT INTO `inventory__sku` (`sku_id`, `commission_id`, `user_id`, `sub_magazine_id`, `quantity`, `timestamp`, `input_type_id`, `comment`, `production_date`) VALUES ('$deviceId', '$commission_id', '$userId', '$sub_magazine_id', '$quantity_needed', $executionTimestamp, '4', '$comment', $formattedProductionDate)";
-                $queries[] = "UPDATE `commission__list` SET `quantity_produced` = '$quantity_produced', state_id = '$state_id' WHERE `commission__list`.`id` = $commission_id";
+                $quantity_produced = $row["qty_produced"] + $quantity_needed;
+                $transferGroupIdValue = $transferGroupId ?? 'NULL';
+                $queries[] = "INSERT INTO `inventory__sku` (`sku_id`, `commission_id`, `sub_magazine_id`, `qty`, `timestamp`, `production_date`, `input_type_id`, `comment`, `transfer_group_id`, `sku_bom_id`, `flowpin_update_session_id`, `flowpin_event_id`) VALUES ('$deviceId', '$commission_id', '$sub_magazine_id', '$quantity_needed', $executionTimestamp, $formattedProductionDate, '4', '$comment', $transferGroupIdValue, '$bomId', $sessionIdValue, '$trackingEventId')";
+                $queries[] = "UPDATE `commission__list` SET `qty_produced` = '$quantity_produced', state = '$state' WHERE `commission__list`.`id` = $commission_id";
             }
 
             if ($quantity != 0) {
@@ -178,9 +215,12 @@ class SkuProductionProcessor {
                     $type = $component["type"];
                     $component_id = $component["component_id"];
                     $component_quantity = ($component["quantity"] * $quantity) * -1;
-                    $queries[] = "INSERT INTO `inventory__" . $type . "` (`" . $type . "_id`, `user_id`, `sub_magazine_id`, `quantity`, `timestamp`, `input_type_id`, `comment`) VALUES ('$component_id', '$userId', '$sub_magazine_id', '$component_quantity', $executionTimestamp, '6', 'Zejście z magazynu do produkcji')";
+                    $transferGroupIdValue = $transferGroupId ?? 'NULL';
+                    // Component deductions don't include BOM ID (parts table doesn't have this column)
+                    $queries[] = "INSERT INTO `inventory__" . $type . "` (`" . $type . "_id`, `sub_magazine_id`, `qty`, `timestamp`, `production_date`, `input_type_id`, `comment`, `transfer_group_id`, `flowpin_update_session_id`, `flowpin_event_id`) VALUES ('$component_id', '$sub_magazine_id', '$component_quantity', $executionTimestamp, $formattedProductionDate, '6', 'Zejście z magazynu do produkcji', $transferGroupIdValue, $sessionIdValue, '$trackingEventId')";
                 }
-                $queries[] = "INSERT INTO `inventory__sku` (`sku_id`, `user_id`, `sub_magazine_id`, `quantity`, `timestamp`, `input_type_id`, `comment`, `production_date`) VALUES ('$deviceId', '$userId', '$sub_magazine_id', '$quantity', $executionTimestamp, '4', '$comment', $formattedProductionDate)";
+                $transferGroupIdValue = $transferGroupId ?? 'NULL';
+                $queries[] = "INSERT INTO `inventory__sku` (`sku_id`, `sub_magazine_id`, `qty`, `timestamp`, `production_date`, `input_type_id`, `comment`, `transfer_group_id`, `sku_bom_id`, `flowpin_update_session_id`, `flowpin_event_id`) VALUES ('$deviceId', '$sub_magazine_id', '$quantity', $executionTimestamp, $formattedProductionDate, '4', '$comment', $transferGroupIdValue, '$bomId', $sessionIdValue, '$trackingEventId')";
             }
 
             $result[$idToDel] = $queries;
@@ -195,6 +235,7 @@ class SkuProductionProcessor {
      *
      * @param array $production Production data from FlowPin (single row or array of rows)
      * @param string|null $productionDate Optional production date
+     * @param int|null $transferGroupId Optional transfer group ID for grouping operations
      * @return array Array containing overall results and individual row results
      *               Format: [
      *                  'overall' => ['success' => bool, 'processedCount' => int, 'errorCount' => int, 'highestEventId' => int],
@@ -202,7 +243,7 @@ class SkuProductionProcessor {
      *                  'errorSummary' => ['DATABASE_ERROR' => int, 'PROCESSING_ERROR' => int, 'NO_DATA' => int, 'BOM_ERROR' => int, 'USER_ERROR' => int]
      *               ]
      */
-    public function processAndExecuteProduction(array $production, $productionDate = null) {
+    public function processAndExecuteProduction(array $production, $productionDate = null, $transferGroupId = null, $sessionRecordId = null, $currentEventId = null) {
         if (empty($production)) {
             return [
                 'overall' => [
@@ -216,7 +257,7 @@ class SkuProductionProcessor {
             ];
         }
 
-        $queries = $this->processProduction($production, $productionDate);
+        $queries = $this->processProduction($production, $productionDate, $transferGroupId, $sessionRecordId, $currentEventId);
         $results = [];
         $errorSummary = ['DATABASE_ERROR' => 0, 'PROCESSING_ERROR' => 0, 'NO_DATA' => 0, 'BOM_ERROR' => 0, 'USER_ERROR' => 0];
         $processedCount = 0;

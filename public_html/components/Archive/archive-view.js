@@ -23,6 +23,19 @@ $(document).ready(function() {
     $('#noGrouping').prop('checked', true);
     $('#quickNoGrouping').prop('checked', true);
 
+    // Check for FlowPin session filter from URL parameter
+    const urlParams = new URLSearchParams(window.location.search);
+    const flowpinSessionParam = urlParams.get('flowpin_session');
+    if (flowpinSessionParam) {
+        $('#flowpinSession').val(flowpinSessionParam).selectpicker('refresh');
+        // Auto-load archive with the session filter
+        setTimeout(function() {
+            if ($('#quickDeviceType').val() || $('#deviceType').val()) {
+                loadArchive();
+            }
+        }, 500);
+    }
+
     // Attach event handlers
     attachEventHandlers();
 });
@@ -53,7 +66,7 @@ function attachEventHandlers() {
     });
 
     // Filter changes
-    $("#magazine, #user, #input_type").on('hide.bs.select', function() {
+    $("#magazine, #user, #input_type, #flowpinSession").on('hide.bs.select', function() {
         resetToFirstPage();
         loadArchive();
     });
@@ -109,6 +122,12 @@ function attachEventHandlers() {
 
     $("#clearDates").click(function() {
         clearDatesFilter();
+    });
+
+    $("#clearSessionFilter").click(function() {
+        $("#flowpinSession").val('').selectpicker('refresh');
+        resetToFirstPage();
+        loadArchive();
     });
 
     // Cancel selected button
@@ -223,6 +242,7 @@ function loadArchive() {
         user_ids: $("#user").val() || [],
         magazine_ids: $("#magazine").val() || [],
         input_type_id: $("#input_type").val() || [],
+        flowpin_session_id: $("#flowpinSession").val() || null,
         date_from: $("#dateFrom").val() || null,
         date_to: $("#dateTo").val() || null,
         show_cancelled: $("#quickShowCancelled").is(':checked') ? '1' : '0',

@@ -90,6 +90,17 @@ switch ($request) {
         require $componentsDir . '/admin/magazines/edit/edit-magazines-view.php';
         break;
 
+    case 'admin/flowpin/update':
+        includeWithVariables($headerDir, array('title' => 'Zarządzanie aktualizacją FlowPin'));
+        require $componentsDir . '/FlowpinUpdate/flowpin-update-view.php';
+        break;
+
+    case 'admin/flowpin/sessions':
+        includeWithVariables($headerDir, array('title' => 'Zarządzanie aktualizacją FlowPin'));
+        require $componentsDir . '/FlowpinSessions/flowpin-sessions-view.php';
+        break;
+
+
     case 'test':
 //        includeWithVariables($headerDir, array('title' => 'Test'));
         require $componentsDir . '/tests/test1.php';

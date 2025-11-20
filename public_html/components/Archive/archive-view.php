@@ -168,6 +168,40 @@ $magazine_list = $MsaDB->readIdName("magazine__list", "sub_magazine_id", "sub_ma
 
                         <hr class="my-2">
 
+                        <!-- FlowPin Update Session Filter -->
+                        <div class="form-row mb-2">
+                            <div class="col-md-10 col-12 mb-2">
+                                <label class="small mb-1"><strong>FlowPin Update Session:</strong></label>
+                                <select class="selectpicker form-control form-control-sm" id="flowpinSession"
+                                        title="Wszystkie sesje..." data-live-search="true" data-width="100%">
+                                    <?php
+                                    // Fetch recent FlowPin update sessions
+                                    $sessions = $MsaDB->query("
+                                        SELECT id, session_id, started_at, created_transfer_count, created_group_count
+                                        FROM ref__flowpin_update_progress
+                                        WHERE status = 'completed' AND created_transfer_count > 0
+                                        ORDER BY started_at DESC
+                                        LIMIT 50
+                                    ");
+                                    foreach ($sessions as $session) {
+                                        $label = htmlspecialchars($session['session_id']) .
+                                                 ' (' . date('Y-m-d H:i', strtotime($session['started_at'])) . ')' .
+                                                 ' - ' . $session['created_transfer_count'] . ' transfers, ' .
+                                                 $session['created_group_count'] . ' groups';
+                                        echo '<option value="' . $session['id'] . '">' . $label . '</option>';
+                                    }
+                                    ?>
+                                </select>
+                            </div>
+                            <div class="col-md-2 col-12 d-flex align-items-end">
+                                <button type="button" id="clearSessionFilter" class="btn btn-danger btn-sm btn-block mb-2">
+                                    Wyczyść
+                                </button>
+                            </div>
+                        </div>
+
+                        <hr class="my-2">
+
                         <!-- Date Range Filter -->
                         <div class="form-row mb-2">
                             <div class="col-md-5 col-12 mb-2">
