@@ -1,10 +1,10 @@
 <?php
-namespace Atte\Utils;  
+namespace Atte\Utils;
 
 use Atte\DB\BaseDB;
 use \PDO;
 
-class User 
+class User
 {
     private $MsaDB;
     public int $userId;
@@ -26,25 +26,31 @@ class User
     public function getUserInfo(){
         $MsaDB = $this -> MsaDB;
         $id = $this -> userId;
-        $sql = "SELECT u.*, 
+        $sql = "SELECT u.*,
                    s.*,
                    u.isActive as user_isActive,
                    s.isActive as magazine_isActive
-            FROM user u 
-            JOIN magazine__list s 
-            ON u.sub_magazine_id = s.sub_magazine_id 
+            FROM user u
+            LEFT JOIN magazine__list s
+            ON u.sub_magazine_id = s.sub_magazine_id
             WHERE user_id = $id";
         $result = $MsaDB -> query($sql, PDO::FETCH_ASSOC);
+
+        // Return null if no results found
+        if (empty($result)) {
+            return null;
+        }
+
         // To avoid confusion, we remove isActive since it can mean both user and magazine
         unset($result[0]['isActive']);
         return $result[0];
     }
 
     /**
-    * Get array of active commissions where user 
-    * is the receiver of given commission.
-    * @return array Array of Commission classes
-    */
+     * Get array of active commissions where user
+     * is the receiver of given commission.
+     * @return array Array of Commission classes
+     */
     public function getActiveCommissions(){
         $MsaDB = $this -> MsaDB;
         $id = $this->userId;
@@ -53,11 +59,11 @@ class User
                                            FROM `commission__receivers` cr 
                                            JOIN commission__list cl 
                                            ON cr.commission_id = cl.id 
-                                           WHERE cl.isCancelled = 0 
+                                           WHERE cl.is_cancelled = 0 
                                            AND cr.user_id = $id 
-                                           AND cl.state_id != 3
-                                           ORDER BY priority DESC", 
-                                           PDO::FETCH_COLUMN);
+                                           AND cl.state != 'returned'
+                                           ORDER BY priority DESC",
+            PDO::FETCH_COLUMN);
         if(empty($queryResult)) return $result;
         $commissionRepository = new \Atte\Utils\CommissionRepository($MsaDB);
         foreach($queryResult as $commissionId)
@@ -72,8 +78,8 @@ class User
         $userId = $this -> userId;
         return $MsaDB -> query("SELECT {$deviceType}_id 
                                    FROM `used__{$deviceType}` 
-                                   WHERE user_id = '{$userId}'", 
-                                   PDO::FETCH_COLUMN);
+                                   WHERE user_id = '{$userId}'",
+            PDO::FETCH_COLUMN);
     }
 
 }

@@ -1,144 +1,226 @@
 <?php
-use Atte\Utils\ProductionManager;
-use Atte\Utils\BomRepository;
+use Atte\Utils\TransferGroupManager;
 use Atte\Utils\CommissionRepository;
 
 $MsaDB = Atte\DB\MsaDB::getInstance();
 $userRepository = new Atte\Utils\UserRepository($MsaDB);
-$bomRepository = new BomRepository($MsaDB);
-$commissionRepository = new CommissionRepository($MsaDB);
 $user = $userRepository->getUserById($_SESSION["userid"]);
 $userInfo = $user->getUserInfo();
 
 $deviceType = $_POST["deviceType"] ?? "";
 $deviceId = $_POST["deviceId"] ?? "";
-$rollbackIds = $_POST["rollbackIds"] ?? ""; // Comma-separated list of IDs to rollback
-$subMagazineId = $userInfo["sub_magazine_id"];
+$transferGroupIds = $_POST["transferGroupIds"] ?? "";
+$entryIds = $_POST["entryIds"] ?? "";
+$userId = $_SESSION["userid"];
 
 $MsaDB->db->beginTransaction();
 try {
-    if (empty($rollbackIds)) {
-        throw new Exception("Brak wpisów do cofnięcia");
+    if (empty($transferGroupIds) && empty($entryIds)) {
+        throw new Exception("Brak grup transferów lub wpisów do cofnięcia");
     }
 
-    // Parse the comma-separated list of IDs
-    $idsToRollback = array_map('intval', explode(',', $rollbackIds));
-    $idsString = implode(',', $idsToRollback);
+    $transferGroupManager = new TransferGroupManager($MsaDB);
+    $commissionRepository = new CommissionRepository($MsaDB);
 
-    // Build different queries based on device type
-    if ($deviceType === 'smd') {
-        $selectQuery = "
-            SELECT i.id, i.quantity, i.user_id, i.timestamp, i.comment, i.commission_id, i.smd_bom_id
-            FROM `inventory__smd` i 
-            JOIN list__smd l on i.smd_id = l.id 
-            WHERE i.id IN ({$idsString})
-            AND l.id = '$deviceId' 
-            AND i.sub_magazine_id = '{$subMagazineId}' 
-            AND input_type_id = 4 
-            ORDER BY i.`id` DESC
-        ";
-    } else {
-        $selectQuery = "
-            SELECT i.id, i.quantity, i.user_id, i.timestamp, i.comment, i.commission_id, i.tht_bom_id
-            FROM `inventory__tht` i 
-            JOIN list__tht l on i.tht_id = l.id 
-            WHERE i.id IN ({$idsString})
-            AND l.id = '$deviceId' 
-            AND i.sub_magazine_id = '{$subMagazineId}' 
-            AND input_type_id = 4 
-            ORDER BY i.`id` DESC
-        ";
-    }
-
-    // Get the specific entries to rollback
-    $entriesToRollback = $MsaDB->query($selectQuery);
-
-    if (empty($entriesToRollback)) {
-        throw new Exception("Nie znaleziono wpisów do cofnięcia");
-    }
-
-    $rollbackResultIds = [];
-    $totalRollbackQuantity = 0;
+    $totalCancelled = 0;
     $allAlerts = [];
+    $processedEntries = []; // Track processed entries to avoid duplicates
 
-    // Process each entry to rollback
-    foreach ($entriesToRollback as $entry) {
-        $entryId = $entry[0];
-        $quantity = $entry[1];
-        $userId = $entry[2];
-        $commissionId = $entry[5] ?? null; // commission_id might be null
-        $bomId = $entry[6]; // This is smd_bom_id or tht_bom_id
+    // Process transfer groups
+    if (!empty($transferGroupIds)) {
+        $groupIdsToCancel = array_filter(array_map('intval', explode(',', $transferGroupIds)));
 
-        $rollbackQuantity = -$quantity; // Reverse the quantity
-        $rollbackComment = "ROLLBACK: " . $entry[4] . " (ID: " . $entryId . ")";
-        $totalRollbackQuantity += abs($quantity);
+        foreach ($groupIdsToCancel as $groupId) {
+            $entries = $MsaDB->query("
+                SELECT id, {$deviceType}_id, qty, comment, transfer_group_id, sub_magazine_id,
+                       {$deviceType}_bom_id, commission_id, input_type_id
+                FROM inventory__{$deviceType}
+                WHERE transfer_group_id = {$groupId} AND is_cancelled = 0
+            ");
 
-        // Get BOM details using BomRepository
-        $bom = $bomRepository->getBomById($deviceType, $bomId);
-        $version = $bom->version;
-        $laminateId = $deviceType === 'smd' ? $bom->laminateId : null;
+            foreach ($entries as $entry) {
+                $entryId = $entry['id'];
+                $processedEntries[$entryId] = true;
 
-        // The quantity from the database entry represents the original operation
-        // To rollback, we need to do the opposite operation
-        // So we just pass the original quantity as-is, rollback method will handle the reversal
-        $rollbackComment = "ROLLBACK: " . $entry[4] . " (ID: " . $entryId . ")";
+                $deviceItemId = $entry["{$deviceType}_id"];
+                $qty = $entry['qty'];
+                $comment = $entry['comment'];
+                $transferGroupId = $entry['transfer_group_id'];
+                $subMagazineId = $entry['sub_magazine_id'];
+                $bomId = $entry["{$deviceType}_bom_id"];
+                $commissionId = $entry['commission_id'];
+                $inputTypeId = $entry['input_type_id'];
 
-        // Create rollback entry using ProductionManager's rollback method
-        $productionManager = new ProductionManager($MsaDB);
+                $MsaDB->update(
+                    "inventory__{$deviceType}",
+                    [
+                        'is_cancelled' => 1,
+                        'cancelled_at' => date('Y-m-d H:i:s'),
+                        'cancelled_by' => $userId
+                    ],
+                    'id',
+                    $entryId
+                );
 
-        if ($deviceType === 'smd') {
-            list($rollbackFirstId, $rollbackLastId, $alerts, $commissionAlerts) = $productionManager->rollback(
-                $userId,
-                $deviceId,
-                $version,
-                $quantity, // Pass original quantity, rollback method will reverse it
-                $rollbackComment,
-                NULL, // current timestamp
-                'smd',
-                $laminateId,
-                $commissionId
-            );
-        } else {
-            list($rollbackFirstId, $rollbackLastId, $alerts, $commissionAlerts) = $productionManager->rollback(
-                $userId,
-                $deviceId,
-                $version,
-                $quantity, // Pass original quantity, rollback method will reverse it
-                $rollbackComment,
-                NULL, // current timestamp
-                'tht',
-                null,
-                $commissionId
-            );
+                $oppositeQty = -$qty;
+                $rollbackComment = "ROLLBACK: {$comment} (ID: {$entryId})";
+
+                $columns = [
+                    "{$deviceType}_id",
+                    "{$deviceType}_bom_id",
+                    'commission_id',
+                    'sub_magazine_id',
+                    'qty',
+                    'transfer_group_id',
+                    'is_cancelled',
+                    'cancelled_at',
+                    'cancelled_by',
+                    'timestamp',
+                    'input_type_id',
+                    'comment',
+                    'isVerified'
+                ];
+
+                $values = [
+                    $deviceItemId,
+                    $bomId,
+                    $commissionId,
+                    $subMagazineId,
+                    $oppositeQty,
+                    $transferGroupId,
+                    1,
+                    date('Y-m-d H:i:s'),
+                    $userId,
+                    date('Y-m-d H:i:s'),
+                    $inputTypeId,
+                    $rollbackComment,
+                    1
+                ];
+
+                $MsaDB->insert("inventory__{$deviceType}", $columns, $values);
+
+                if ($commissionId) {
+                    $commission = $commissionRepository->getCommissionById($commissionId);
+                    $commission->addToQuantity(-$qty, 'qty_produced');
+                }
+
+                $totalCancelled++;
+            }
+
+            $result = $transferGroupManager->cancelTransferGroup($groupId, $userId);
+            $allAlerts = array_merge($allAlerts, $result['alerts']);
         }
-
-        $rollbackResultIds[] = $rollbackFirstId;
-        if ($rollbackLastId !== $rollbackFirstId) {
-            $rollbackResultIds[] = $rollbackLastId;
-        }
-
-        // Merge alerts
-        $allAlerts = array_merge($allAlerts, $alerts, $commissionAlerts);
-
-        // Note: Commission quantity updates are handled automatically by ProductionManager->produce()
-        // when processing negative quantities (rollbacks)
     }
 
-    // Create ID range for highlighting rollback entries
-    if (!empty($rollbackResultIds)) {
-        $firstRollbackId = min($rollbackResultIds);
-        $lastRollbackId = max($rollbackResultIds);
-        $idRange = ($firstRollbackId === $lastRollbackId) ? $firstRollbackId : $firstRollbackId . '-' . $lastRollbackId;
+    // Process individual entries
+    if (!empty($entryIds)) {
+        $individualEntryIds = array_filter(array_map('intval', explode(',', $entryIds)));
+
+        foreach ($individualEntryIds as $entryId) {
+            // Skip if already processed as part of a group
+            if (isset($processedEntries[$entryId])) {
+                continue;
+            }
+
+            $entry = $MsaDB->query("
+                SELECT id, {$deviceType}_id, qty, comment, transfer_group_id, sub_magazine_id,
+                       {$deviceType}_bom_id, commission_id, input_type_id
+                FROM inventory__{$deviceType}
+                WHERE id = {$entryId} AND is_cancelled = 0
+            ");
+
+            if (empty($entry)) {
+                continue; // Entry not found or already cancelled
+            }
+
+            $entry = $entry[0];
+            $deviceItemId = $entry["{$deviceType}_id"];
+            $qty = $entry['qty'];
+            $comment = $entry['comment'];
+            $originalTransferGroupId = $entry['transfer_group_id'];
+            $subMagazineId = $entry['sub_magazine_id'];
+            $bomId = $entry["{$deviceType}_bom_id"];
+            $commissionId = $entry['commission_id'];
+            $inputTypeId = $entry['input_type_id'];
+
+            // Create a new transfer group for this individual cancellation
+            $cancellationNote = "Anulacja pojedynczego wpisu produkcji #$entryId";
+            $newTransferGroupId = $transferGroupManager->createTransferGroup($userId, $cancellationNote);
+
+            $MsaDB->update(
+                "inventory__{$deviceType}",
+                [
+                    'is_cancelled' => 1,
+                    'cancelled_at' => date('Y-m-d H:i:s'),
+                    'cancelled_by' => $userId
+                ],
+                'id',
+                $entryId
+            );
+
+            $oppositeQty = -$qty;
+            $rollbackComment = "ROLLBACK (pojedynczy wpis): {$comment} (ID: {$entryId})";
+
+            $columns = [
+                "{$deviceType}_id",
+                "{$deviceType}_bom_id",
+                'commission_id',
+                'sub_magazine_id',
+                'qty',
+                'transfer_group_id',
+                'is_cancelled',
+                'cancelled_at',
+                'cancelled_by',
+                'timestamp',
+                'input_type_id',
+                'comment',
+                'isVerified'
+            ];
+
+            $values = [
+                $deviceItemId,
+                $bomId,
+                $commissionId,
+                $subMagazineId,
+                $oppositeQty,
+                $newTransferGroupId,
+                1,
+                date('Y-m-d H:i:s'),
+                $userId,
+                date('Y-m-d H:i:s'),
+                $inputTypeId,
+                $rollbackComment,
+                1
+            ];
+
+            $MsaDB->insert("inventory__{$deviceType}", $columns, $values);
+
+            if ($commissionId) {
+                $commission = $commissionRepository->getCommissionById($commissionId);
+                $commission->addToQuantity(-$qty, 'qty_produced');
+            }
+
+            $totalCancelled++;
+        }
+    }
+
+    $groupCount = !empty($transferGroupIds) ? count(array_filter(array_map('intval', explode(',', $transferGroupIds)))) : 0;
+    $individualCount = !empty($entryIds) ? count(array_filter(array_map('intval', explode(',', $entryIds)))) - count($processedEntries) : 0;
+
+    $message = "Pomyślnie cofnięto produkcję";
+    if ($groupCount > 0 && $individualCount > 0) {
+        $message .= " ({$groupCount} grup, {$individualCount} pojedynczych wpisów, razem {$totalCancelled} wpisów)";
+    } elseif ($groupCount > 0) {
+        $message .= " ({$groupCount} grup, {$totalCancelled} wpisów)";
     } else {
-        $idRange = '';
+        $message .= " ({$individualCount} wpisów)";
     }
 
     echo json_encode([
         'success' => true,
-        'rollbackIdRange' => $idRange,
-        'rollbackIds' => $rollbackResultIds,
+        'transferGroupId' => '',
         'alerts' => $allAlerts,
-        'message' => "Pomyślnie cofnięto produkcję ({$totalRollbackQuantity} szt., " . count($entriesToRollback) . " wpisów)"
+        'message' => $message
     ]);
 
     $MsaDB->db->commit();

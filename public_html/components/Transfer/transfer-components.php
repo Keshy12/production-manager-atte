@@ -6,190 +6,223 @@ use Atte\Utils\CommissionRepository;
 $MsaDB = MsaDB::getInstance();
 $MsaDB->db->beginTransaction();
 
-$components = isset($_POST["components"]) ? array_filter($_POST["components"]) : "";
-$commissions = isset($_POST["commissions"]) ? array_filter($_POST["commissions"]) : "";
-$existingCommissions = isset($_POST["existingCommissions"]) ? array_filter($_POST["existingCommissions"]) : [];
-$componentSources = isset($_POST["componentSources"]) ? $_POST["componentSources"] : [];
-$existingCommissionsIds = array_column($existingCommissions, 0, 3);
+try {
+    $components = isset($_POST["components"]) ? array_filter($_POST["components"]) : [];
+    $commissions = isset($_POST["commissions"]) ? array_filter($_POST["commissions"]) : [];
+    $componentSources = isset($_POST["componentSources"]) ? $_POST["componentSources"] : [];
+    $duplicateCommissionKeys = isset($_POST["duplicateCommissionKeys"]) ? $_POST["duplicateCommissionKeys"] : [];
+    $duplicateCommissionQuantities = isset($_POST["duplicateCommissionQuantities"]) ? $_POST["duplicateCommissionQuantities"] : [];
 
-$magazineNamesCache = [];
-$allMagazines = $MsaDB->query("SELECT sub_magazine_id, sub_magazine_name FROM magazine__list");
-foreach($allMagazines as $magazine) {
-    $magazineNamesCache[$magazine['sub_magazine_id']] = $magazine['sub_magazine_name'];
-}
-
-$userid = $_SESSION["userid"];
-$now = date("Y/m/d H:i:s", time());
-$transferFrom = $_POST["transferFrom"];
-$transferTo = $_POST["transferTo"];
-
-function getBomValues($bomType, $bomId, $bomVer, $bomLamId) {
-    $bomValues = [
-        $bomType.'_id' => $bomId['deviceId'],
-        'version' => $bomVer == 'n/d' ? null : $bomVer,
-    ];
-
-    if($bomType == 'smd') {
-        $bomValues['laminate_id'] = $bomLamId;
+    $magazineNamesCache = [];
+    $allMagazines = $MsaDB->query("SELECT sub_magazine_id, sub_magazine_name FROM magazine__list");
+    foreach($allMagazines as $magazine) {
+        $magazineNamesCache[$magazine['sub_magazine_id']] = $magazine['sub_magazine_name'];
     }
 
-    return $bomValues;
-}
+    $userid = $_SESSION["userid"];
+    $now = date("Y-m-d H:i:s", time());
+    $transferFrom = $_POST["transferFrom"];
+    $transferTo = $_POST["transferTo"];
 
-$commissionRepository = new CommissionRepository($MsaDB);
-$bomRepository = new BomRepository($MsaDB);
+    function getMagazineNameCached($magazineId, $cache) {
+        return $cache[$magazineId] ?? 'Unknown';
+    }
 
-// Tworzenie grupy zleceń
-$groupId = null;
-if (!empty($commissions)) {
-    $groupId = $commissionRepository->createCommissionGroup(
-        $userid,
-        $transferFrom,
-        $transferTo,
-        "Multi-source transfer group"
-    );
-}
+    function getPriorityName($priorityId) {
+        $priorities = [
+            0 => 'none',
+            1 => 'standard',
+            2 => 'urgent',
+            3 => 'critical'
+        ];
+        return $priorities[$priorityId] ?? 'none';
+    }
 
-$commissionKeyToId = [];
-$commissionResult = [];
-
-if (!empty($commissions)) {
-    $comment = "Przekazanie materiałów do zlecenia";
-    $input_type_id = 8;
-
-    foreach ($commissions as $index => $commission) {
-        $type = $commission['deviceType'];
-        $priorityId = $commission['priorityId'];
-        $qty = $commission['quantity'];
-        $version = $commission['version'];
-        $laminateId = $commission['laminateId'] ?? null;
-        $bomValues = getBomValues($type, $commission, $version, $laminateId);
-        $bomsFound = $bomRepository->getBomByValues($type, $bomValues);
-
-        if(count($bomsFound) > 1) throw new \Exception("Multiple BOM records found for the provided values. 
-                                                        Unable to proceed with the production.");
-        $bom = $bomsFound[0];
-        $bomId = $bom->id;
-
-        $isExpanded = false;
-        $initialQty = 0;
-
-        if (isset($existingCommissionsIds[$index])) {
-            // Extend existing commission
-            $existingId = $existingCommissionsIds[$index];
-            $commissionObj = $commissionRepository->getCommissionById($existingId);
-            $initialQty = $commissionObj->commissionValues['quantity']; // Store initial quantity
-            $commissionObj->addToQuantity($qty);
-            $newQty = $commissionObj->commissionValues['quantity'];
-            $commission_id = $existingId;
-            $isExpanded = true;
-        } else {
-            // Create new commission with group_id
-            $commission_id = $MsaDB->insert("commission__list",
-                ["user_id", "magazine_from", "magazine_to", "bom_" . $type . "_id", "quantity",
-                    "timestamp_created", "state_id", "priority", "commission_group_id"],
-                [$userid, $transferFrom, $transferTo, $bomId, $qty, $now, '1', $priorityId, $groupId]
-            );
-            $newQty = $qty;
-            $initialQty = 0;
-        }
-
-        $commissionKeyToId[$index] = $commission_id;
-
-        $bom->getNameAndDescription();
-        $commissionResult[] = [
-            "priorityColor" => $commission["priorityColor"],
-            "receivers" => $commission["receivers"],
-            "deviceName" => $bom->name,
-            "deviceDescription" => $bom->description,
-            "laminate" => $bom->laminateName ?? "",
-            "version" => $bom->version ?? "",
-            "quantity" => $newQty,
-            "isExpanded" => $isExpanded,
-            "initialQuantity" => $initialQty,
-            "addedQuantity" => $qty
+    function getBomValues($bomType, $bomId, $bomVer, $bomLamId) {
+        $bomValues = [
+            $bomType.'_id' => $bomId['deviceId'],
+            'version' => $bomVer == 'n/d' ? null : $bomVer,
         ];
 
-        // Add receivers only for new commissions
-        if (!$isExpanded) {
+        if($bomType == 'smd') {
+            $bomValues['laminate_id'] = $bomLamId;
+        }
+
+        return $bomValues;
+    }
+
+    $commissionRepository = new CommissionRepository($MsaDB);
+    $bomRepository = new BomRepository($MsaDB);
+
+    $groupId = null;
+    if (!empty($commissions) || !empty($components)) {
+        $groupId = $MsaDB->insert("inventory__transfer_groups",
+            ["created_by", "notes", "created_at"],
+            [$userid, "Multi-source transfer group", $now]
+        );
+    }
+
+    $commissionKeyToId = [];
+    $commissionResult = [];
+
+    if (!empty($commissions)) {
+        $comment = "Przekazanie materiałów do zlecenia";
+        $input_type_id = 8;
+
+        foreach ($commissions as $index => $commission) {
+            $type = $commission['deviceType'];
+            $priorityId = $commission['priorityId'];
+            $qty = $commission['quantity'];
+            $version = $commission['version'];
+            $laminateId = $commission['laminateId'] ?? null;
+            $bomValues = getBomValues($type, $commission, $version, $laminateId);
+            $bomsFound = $bomRepository->getBomByValues($type, $bomValues);
+
+            if(count($bomsFound) < 1) {
+                throw new \Exception("BOM not found for the provided values.");
+            }
+            if(count($bomsFound) > 1) {
+                throw new \Exception("Multiple BOM records found for the provided values. Unable to proceed.");
+            }
+
+            $bom = $bomsFound[0];
+            $bomId = $bom->id;
+
+            // Check if this is a duplicate and get existing quantity
+            $isDuplicate = in_array($index, $duplicateCommissionKeys);
+            $existingQty = 0;
+
+            if ($isDuplicate && isset($duplicateCommissionQuantities[$index])) {
+                $existingQty = (int)$duplicateCommissionQuantities[$index];
+            }
+
+            $commission_id = $MsaDB->insert("commission__list",
+                ["created_by", "warehouse_from_id", "warehouse_to_id", "device_type", "bom_id", "qty",
+                    "created_at", "state", "priority", "transfer_group_id"],
+                [$userid, $transferFrom, $transferTo, $type, $bomId, $qty, $now, 'active',
+                    getPriorityName($priorityId), $groupId]
+            );
+
+            $commissionKeyToId[$index] = $commission_id;
+
+            $bom->getNameAndDescription();
+            $commissionResult[] = [
+                "priorityColor" => $commission["priorityColor"],
+                "receivers" => $commission["receivers"],
+                "deviceName" => $bom->name,
+                "deviceDescription" => $bom->description,
+                "laminate" => $bom->laminateName ?? "",
+                "version" => $bom->version ?? "",
+                "quantity" => $qty,
+                "isDuplicate" => $isDuplicate,
+                "existingQty" => $existingQty,
+                "totalQty" => $existingQty + $qty,
+                "commissionKey" => $index
+            ];
+
             $receivers = $commission['receiversIds'];
             foreach ($receivers as $user) {
                 $MsaDB->insert("commission__receivers", ["commission_id", "user_id"], [$commission_id, $user]);
             }
         }
     }
-}
 
-$componentsResult = [];
-$input_type_id = 2;
-$comment = "Transfer komponentów";
+    $componentsResult = [];
+    $input_type_id = 2;
+    $comment = "Transfer komponentów";
 
-if (!empty($components)) {
-    foreach ($components as $componentIndex => $component) {
-        $type = $component['type'];
-        $deviceId = $component['componentId'];
-        $totalQty = $component['transferQty'];
+    if (!empty($components)) {
+        foreach ($components as $componentIndex => $component) {
+            $type = $component['type'];
+            $deviceId = $component['componentId'];
+            $totalQty = $component['transferQty'];
 
-        // Determine the commission_id based on commissionKey
-        $commission_id = null;
-        if (isset($component['commissionKey']) && $component['commissionKey'] !== null && $component['commissionKey'] !== '') {
-            $commissionKey = $component['commissionKey'];
-            if (isset($commissionKeyToId[$commissionKey])) {
-                $commission_id = $commissionKeyToId[$commissionKey];
-            } else {
-                throw new \Exception("Commission key $commissionKey not found in mapping. Component index: $componentIndex");
-            }
-        }
+            $commission_id = null;
 
-        // Get sources for this component (from transferSources JS object)
-        $sources = $componentSources[$componentIndex] ?? [
-            ['warehouseId' => $transferFrom, 'quantity' => $totalQty]
-        ];
-
-        $transferredSources = [];
-        $isNonDefaultTransfer = false;
-
-        foreach($sources as $source) {
-            $sourceWarehouse = $source['warehouseId'];
-            $sourceQty = $source['quantity'];
-
-            if($sourceQty <= 0) continue;
-
-            // Check if this source is different from default
-            if($sourceWarehouse != $transferFrom) {
-                $isNonDefaultTransfer = true;
+            if (isset($component['commissionKey']) && $component['commissionKey'] !== null && $component['commissionKey'] !== '') {
+                $commissionKey = $component['commissionKey'];
+                if (isset($commissionKeyToId[$commissionKey])) {
+                    $commission_id = $commissionKeyToId[$commissionKey];
+                } else {
+                    throw new \Exception("Commission key $commissionKey not found in mapping. Component index: $componentIndex");
+                }
             }
 
-            // Remove from source warehouse (negative quantity)
-            $MsaDB->insert("inventory__".$type,
-                [$type."_id", "commission_id", "user_id", "sub_magazine_id", "quantity", "timestamp", "input_type_id", "comment"],
-                [$deviceId, $commission_id, $userid, $sourceWarehouse, $sourceQty * -1, $now, $input_type_id, $comment . " - Grupa: $groupId (źródło)"]);
+            $sources = $componentSources[$componentIndex] ?? [
+                ['warehouseId' => $transferFrom, 'quantity' => $totalQty]
+            ];
 
-            $transferredSources[] = [
-                'warehouseName' => getMagazineNameCached($sourceWarehouse, $magazineNamesCache),
-                'quantity' => $sourceQty
+            $transferredSources = [];
+            $isNonDefaultTransfer = false;
+
+            foreach($sources as $source) {
+                $sourceWarehouse = $source['warehouseId'];
+                $sourceQty = $source['quantity'];
+
+                if($sourceQty <= 0) continue;
+
+                if($sourceWarehouse != $transferFrom) {
+                    $isNonDefaultTransfer = true;
+                }
+
+                $tableName = "inventory__" . $type;
+
+                $insertFields = [$type."_id", "sub_magazine_id", "qty", "timestamp", "input_type_id", "comment"];
+                $insertValues = [$deviceId, $sourceWarehouse, $sourceQty * -1, $now, 6, $comment . " - Grupa: $groupId (źródło)"];
+
+                if ($commission_id) {
+                    $insertFields[] = "commission_id";
+                    $insertValues[] = $commission_id;
+                }
+
+                $insertFields[] = "transfer_group_id";
+                $insertValues[] = $groupId;
+
+                $MsaDB->insert($tableName, $insertFields, $insertValues);
+
+                $transferredSources[] = [
+                    'warehouseName' => getMagazineNameCached($sourceWarehouse, $magazineNamesCache),
+                    'quantity' => $sourceQty
+                ];
+            }
+
+            $tableName = "inventory__" . $type;
+            $insertFields = [$type."_id", "sub_magazine_id", "qty", "timestamp", "input_type_id", "comment"];
+            $insertValues = [$deviceId, $transferTo, $totalQty, $now, 8, $comment . " - Grupa: $groupId (cel)"];
+
+            if ($commission_id) {
+                $insertFields[] = "commission_id";
+                $insertValues[] = $commission_id;
+            }
+
+            $insertFields[] = "transfer_group_id";
+            $insertValues[] = $groupId;
+
+            $MsaDB->insert($tableName, $insertFields, $insertValues);
+
+            $componentsResult[] = [
+                "deviceName" => $component['componentName'],
+                "deviceDescription" => $component['componentDescription'],
+                "transferQty" => $totalQty,
+                "sources" => $transferredSources,
+                "showSources" => $isNonDefaultTransfer || count($transferredSources) > 1,
+                "isDefaultTransfer" => !$isNonDefaultTransfer && count($transferredSources) === 1
             ];
         }
-
-        // Add to destination warehouse (positive quantity)
-        $MsaDB->insert("inventory__".$type,
-            [$type."_id", "commission_id", "user_id", "sub_magazine_id", "quantity", "timestamp", "input_type_id", "comment"],
-            [$deviceId, $commission_id, $userid, $transferTo, $totalQty, $now, $input_type_id, $comment . " - Grupa: $groupId (cel)"]);
-
-        $componentsResult[] = [
-            "deviceName" => $component['componentName'],
-            "deviceDescription" => $component['componentDescription'],
-            "transferQty" => $totalQty,
-            "sources" => $transferredSources,
-            "showSources" => $isNonDefaultTransfer || count($transferredSources) > 1, // Flag to show sources
-            "isDefaultTransfer" => !$isNonDefaultTransfer && count($transferredSources) === 1
-        ];
     }
-}
 
-function getMagazineNameCached($magazineId, $cache) {
-    return $cache[$magazineId] ?? 'Unknown';
-}
-    echo json_encode([$commissionResult, $componentsResult], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
+    $MsaDB->db->commit();
 
-$MsaDB->db->commit();
+    echo json_encode([
+        'success' => true,
+        'data' => [$commissionResult, $componentsResult]
+    ], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
+
+} catch (\Exception $e) {
+    $MsaDB->db->rollBack();
+
+    echo json_encode([
+        'success' => false,
+        'message' => $e->getMessage()
+    ], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
+}

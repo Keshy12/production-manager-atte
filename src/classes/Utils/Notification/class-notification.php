@@ -251,7 +251,7 @@ class Notification {
 
     public function returnDropdownItem(){
         $MsaDB = $this -> MsaDB;
-        $alerts = ["alert-danger", "alert-info", "alert-warning"];
+        $alerts = ["alert-danger", "alert-info", "alert-warning", "alert-secondary", "alert-secondary", "alert-secondary"];
         $notificationValues = $this -> notificationValues;
         $id = $notificationValues["id"];
         $link = "http://".BASEURL."/notification?id=$id";

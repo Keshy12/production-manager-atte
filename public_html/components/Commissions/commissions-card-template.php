@@ -1,55 +1,134 @@
 <script type="text/template" data-template="commissionCard">
-<div class="card w-25 text-center m-4 ${class}" style="box-shadow: -7px 0px 0px 0px ${color}; min-width: 360px;">
-    <div class="card-header">
-        <button type="button" style="float: left;" class="close" tabindex="0" role="button" data-toggle="popover" data-trigger="focus" title="Zlecono:" data-html="true" data-content="
-        Z: <b>${magazineFrom}</b><br>
-        Dla: <b>${magazineTo}</b>">
-            <img src="http://<?=BASEURL?>/public_html/assets/img/warehouse.svg" style="width: 20px;">
-        </button>
-        <span ${isHidden}>
-        <button type="button" class="close" id="dropdownMenuButton" data-toggle="dropdown">
-            <svg style="width: 20px;" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Pro 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license (Commercial License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"></path></svg>
-        </button>
-        <div class="dropdown-menu">
-            <a class="dropdown-item editCommission" data-id="${id}" data-submag-id="${magazineToId}" data-receivers="${receivers}" data-priority="${priority}">Edytuj zlecenie</a>
-            <a class="dropdown-item cancelCommission" data-id="${id}">Anuluj zlecenie</a>
-        </div>
+    <div class="card text-center m-2 ${class} ${cancelledClass}"
+         style="min-width: 360px; max-width: 400px; box-shadow: -5px 0px 0px 0px ${color}; ${cancelledStyle}"
+         ${showGroupBadge}data-grouped-ids="${groupedIds}">
+        <div class="card-header py-2">
+            <button type="button"
+                    style="float: left;"
+                    class="btn btn-sm btn-link p-0 commission-info-btn"
+                    tabindex="0"
+                    role="button"
+                    data-toggle="popover"
+                    data-trigger="click"
+                    data-placement="bottom"
+                    title="Informacje o zleceniu"
+                    data-html="true"
+                    data-content="<strong>Z magazynu:</strong> ${warehouseFrom}<br><strong>Do magazynu:</strong> ${warehouseTo}">
+                <i class="bi bi-info-circle" style="font-size: 1.2rem;"></i>
+            </button>
+
+            <span ${isHidden}>
+            <div class="dropdown" style="float: right;">
+                <button type="button"
+                        class="btn btn-sm btn-link p-0"
+                        data-toggle="dropdown"
+                        aria-expanded="false">
+                    <i class="bi bi-three-dots-vertical" style="font-size: 1.2rem;"></i>
+                </button>
+                <div class="dropdown-menu dropdown-menu-right">
+                    <a class="dropdown-item editCommission"
+                       data-id="${id}"
+                       data-submag-id="${warehouseToId}"
+                       data-receivers="${receivers}"
+                       data-priority="${priority}">
+                        <i class="bi bi-pencil"></i> Edytuj zlecenie
+                    </a>
+                    <div class="dropdown-divider"></div>
+                    <a class="dropdown-item text-danger cancelCommission"
+                       data-id="${id}">
+                        <i class="bi bi-x-circle"></i> Anuluj zlecenie
+                    </a>
+                </div>
+            </div>
         </span>
-        <a data-toggle="popover" style="font-size: 1.25rem;" data-placement="top" data-content="${deviceDescription}">${deviceName}</a>
-        <br><small>${deviceLaminateAndVersion}</small>
-        <br>
-        <span class="${class2}">Zlecono dla: <b>${receiversName}</b></span>
-    </div>
-    <div class="card-body">
-        <table style="table-layout: fixed" class="table table-bordered table-sm">
-            <thead>
+
+            <div class="mt-2">
+                <div style="font-size: 1.1rem; font-weight: 600;">
+                    ${deviceName}
+                    <button class="btn btn-sm btn-link p-0 ml-1"
+                            type="button"
+                            data-toggle="collapse"
+                            data-target="#deviceDesc-${id}"
+                            aria-expanded="false"
+                            aria-controls="deviceDesc-${id}">
+                        <i class="bi bi-chevron-down" style="font-size: 0.9rem;"></i>
+                    </button>
+                </div>
+                <div class="collapse mt-2" id="deviceDesc-${id}">
+                    <small class="text-muted">
+                        ${deviceDescription}
+                    </small>
+                </div>
+                <small class="text-muted">${deviceLaminateAndVersion}</small>
+            </div>
+
+            <div class="mt-1 ${class2}">
+                <small>
+                    <i class="bi bi-person"></i>
+                    <strong>${receiversName}</strong>
+                </small>
+            </div>
+        </div>
+
+        <div class="card-body p-3">
+            <div ${showGroupBadge} class="mb-2">
+                <span class="badge badge-warning">
+                    <i class="bi bi-layers"></i> Zgrupowane: ${groupedCount} zleceń
+                </span>
+            </div>
+
+            <div ${showPartialCancellationBadge} class="mb-2">
+                <span class="badge badge-danger">
+                    <i class="bi bi-exclamation-circle"></i> ${cancelledInGroup}/${totalInGroup} anulowane
+                </span>
+            </div>
+
+            <div ${showPotentialGroupBadge} class="mb-2">
+                <span class="badge badge-secondary">
+                    <i class="bi bi-stack"></i> Możliwe do zgrupowania: ${potentialGroupCount} zleceń
+                </span>
+            </div>
+
+            <table class="table table-bordered table-sm mb-2">
+                <thead class="thead-light">
                 <tr class="${class3}">
                     <th>Zlecono</th>
                     <th>Wyprodukowano</th>
                 </tr>
-            </thead>
-            <tbody>
+                </thead>
+                <tbody>
                 <tr class="${class3}">
-                    <td class="quantity">${quantity}</td>
-                    <td class="quantityProduced">${quantityProduced}</td>
+                    <td class="quantity">
+                        <strong>${quantity}</strong>
+                    </td>
+                    <td class="quantityProduced">
+                        <strong>${quantityProduced}</strong>
+                    </td>
                 </tr>
-            </tbody>
-        </table>
-        <table class="table table-bordered table-sm">
-            <thead>
+                </tbody>
+            </table>
+
+            <table class="table table-bordered table-sm mb-0">
+                <thead class="thead-light">
                 <tr class="${class3}">
-                    <th>Dostarczono:</th>
+                    <th>Dostarczono</th>
                 </tr>
-            </thead>
-            <tbody>
+                </thead>
+                <tbody>
                 <tr class="${class3}">
-                    <td class="quantityReturned">${quantityReturned}</td>
+                    <td class="quantityReturned">
+                        <strong>${quantityReturned}</strong>
+                    </td>
                 </tr>
-            </tbody>
-        </table>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="card-footer ${class2} py-2">
+            <small>
+                <i class="bi bi-calendar"></i>
+                ${timestampCreated}
+            </small>
+        </div>
     </div>
-    <div class="card-footer ${class2}">
-        Data zlecenia: ${timestampCreated}
-    </div>
-</div>
 </script>

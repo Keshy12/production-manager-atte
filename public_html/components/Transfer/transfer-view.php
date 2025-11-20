@@ -16,7 +16,12 @@ $list__warehouse = $MsaDB -> readIdName(table: 'magazine__list',
     id: 'sub_magazine_id',
     name: 'sub_magazine_name',
     add: 'WHERE isActive = 1 ORDER BY type_id, sub_magazine_id ASC');
-$list__priority = array_reverse($MsaDB -> readIdName("commission__priority"), true);
+$list__priority = [
+    3 => 'critical',
+    2 => 'urgent',
+    1 => 'standard',
+    0 => 'none'
+];
 
 $allUsers = $userRepository -> getAllUsers();
 $magazineRepo = new Atte\Utils\MagazineRepository($MsaDB);

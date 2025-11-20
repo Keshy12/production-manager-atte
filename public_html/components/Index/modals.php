@@ -1,6 +1,14 @@
 <?php
 $MsaDB = Atte\DB\MsaDB::getInstance();
-$list__priority = array_reverse($MsaDB -> readIdName("commission__priority"), true);
+
+// Priority options directly from the ENUM
+$list__priority = [
+    'none' => 'Brak',
+    'standard' => 'Standardowy',
+    'urgent' => 'Pilny',
+    'critical' => 'Krytyczny'
+];
+
 $users_name = $MsaDB -> readIdName('user', 'user_id', 'name');
 $users_surname = $MsaDB -> readIdName('user', 'user_id', 'surname');
 $users_submag = $MsaDB -> readIdName('user', 'user_id', 'sub_magazine_id');
@@ -29,7 +37,7 @@ $users_submag = $MsaDB -> readIdName('user', 'user_id', 'sub_magazine_id');
                     </div>
                     <select class="selectpicker" id='editPriority'>
                         <?php foreach ($list__priority as $key => $priority) {
-                            echo "<option value=" . $key . ">" . $priority . "</option>";
+                            echo "<option value=\"" . $key . "\">" . $priority . "</option>";
                         } ?>
                     </select>
                 </div>
@@ -37,7 +45,7 @@ $users_submag = $MsaDB -> readIdName('user', 'user_id', 'sub_magazine_id');
                     <div class="input-group-prepend">
                         <span class="input-group-text" id="">Subkontraktorzy: </span>
                     </div>
-                    <select class="selectpicker" id='editSubcontractors' multiple 
+                    <select class="selectpicker" id='editSubcontractors' multiple
                             data-selected-text-format="count > 2"
                             data-actions-box="true">
                     </select>

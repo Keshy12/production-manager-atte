@@ -121,6 +121,18 @@ class NotificationRepository {
                 $actionNeeded = 2;
                 $valueForAction = $this->getValueForAction($row, 'ByUserEmail');
                 break;
+            case 3:
+                $actionNeeded = 3;
+                $valueForAction = $this->getValueForAction($row, 'ByUserEmail');
+                break;
+            case 4:
+                $actionNeeded = 4;
+                $valueForAction = $this->getValueForAction($row, 'ByUserEmail');
+                break;
+            case 5:
+                $actionNeeded = 5;
+                $valueForAction = $this->getValueForAction($row, 'sub_magazine_id');
+                break;
 
             default:
                 $actionNeeded = 0;
