@@ -18,11 +18,11 @@ if ($action === 'cancel_transfers') {
 
 function cancelTransfers($MsaDB) {
     try {
-        // Get transfer IDs from POST
-        $transferIdsJson = $_POST['transfer_ids'] ?? '[]';
-        $transferIds = json_decode($transferIdsJson, true);
+        // Get transfer IDs grouped by device type from POST
+        $transferIdsByTypeJson = $_POST['transfer_ids_by_type'] ?? '{}';
+        $transferIdsByType = json_decode($transferIdsByTypeJson, true);
 
-        if (empty($transferIds) || !is_array($transferIds)) {
+        if (empty($transferIdsByType) || !is_array($transferIdsByType)) {
             echo json_encode([
                 'success' => false,
                 'message' => 'No transfer IDs provided'
@@ -30,17 +30,9 @@ function cancelTransfers($MsaDB) {
             return;
         }
 
-        // Get device type from POST
-        $deviceType = $_POST['device_type'] ?? '';
-        $allowedTypes = ['sku', 'tht', 'smd', 'parts'];
-
-        if (!in_array($deviceType, $allowedTypes)) {
-            echo json_encode([
-                'success' => false,
-                'message' => 'Invalid or missing device type'
-            ]);
-            return;
-        }
+        // Get transfer groups to cancel (if complete group cancellation)
+        $cancelGroupsJson = $_POST['cancel_groups'] ?? '[]';
+        $cancelGroups = json_decode($cancelGroupsJson, true) ?: [];
 
         // Get user ID from session
         $userId = $_SESSION['userid'] ?? 1;
@@ -54,42 +46,54 @@ function cancelTransfers($MsaDB) {
         $transfersToCancel = [];
         $cancelledTransferGroups = [];
 
-        $tableName = "inventory__{$deviceType}";
+        $allowedTypes = ['sku', 'tht', 'smd', 'parts'];
 
-        // First pass: collect all transfer data
-        foreach ($transferIds as $transferId) {
-            $transferId = (int)$transferId;
-
-            // Query the specific device type table
-            $check = $MsaDB->query("
-                SELECT * FROM {$tableName}
-                WHERE id = $transferId
-                LIMIT 1
-            ");
-
-            if (empty($check)) {
-                $errors[] = "Transfer ID $transferId not found in {$tableName}";
+        // First pass: collect all transfer data organized by device type
+        foreach ($transferIdsByType as $deviceType => $transferIds) {
+            // Validate device type
+            if (!in_array($deviceType, $allowedTypes)) {
+                $errors[] = "Invalid device type: $deviceType";
                 continue;
             }
 
-            $transfer = $check[0];
+            // Sanitize transfer IDs
+            $transferIds = array_map('intval', $transferIds);
+            $tableName = "inventory__{$deviceType}";
 
-            if ($transfer['is_cancelled'] == 1) {
-                $errors[] = "Transfer ID $transferId is already cancelled";
-                continue;
-            }
+            // Query transfers for this device type
+            foreach ($transferIds as $transferId) {
+                $transferId = (int)$transferId;
 
-            // Store transfer data for creating compensating entries
-            $transfersToCancel[] = [
-                'id' => $transferId,
-                'table' => $tableName,
-                'type' => $deviceType,
-                'data' => $transfer
-            ];
+                // Query the specific device type table
+                $check = $MsaDB->query("
+                    SELECT * FROM {$tableName}
+                    WHERE id = $transferId
+                    LIMIT 1
+                ");
 
-            // Track cancelled transfer groups
-            if (!empty($transfer['transfer_group_id'])) {
-                $cancelledTransferGroups[$transfer['transfer_group_id']] = true;
+                if (!empty($check)) {
+                    $transfer = $check[0];
+
+                    if ($transfer['is_cancelled'] == 1) {
+                        $errors[] = "Transfer ID $transferId is already cancelled";
+                        continue;
+                    }
+
+                    // Store transfer data for creating compensating entries
+                    $transfersToCancel[] = [
+                        'id' => $transferId,
+                        'table' => $tableName,
+                        'type' => $deviceType,
+                        'data' => $transfer
+                    ];
+
+                    // Track cancelled transfer groups
+                    if (!empty($transfer['transfer_group_id'])) {
+                        $cancelledTransferGroups[$transfer['transfer_group_id']] = true;
+                    }
+                } else {
+                    $errors[] = "Transfer ID $transferId not found in {$deviceType} inventory";
+                }
             }
         }
 
@@ -196,11 +200,35 @@ function cancelTransfers($MsaDB) {
             $cancellationGroupId
         );
 
+        // Mark original transfer groups as cancelled if complete group cancellation
+        $cancelledGroupIds = [];
+        if (!empty($cancelGroups)) {
+            foreach ($cancelGroups as $groupId) {
+                $groupId = (int)$groupId;
+                $MsaDB->update(
+                    'inventory__transfer_groups',
+                    [
+                        'is_cancelled' => 1,
+                        'cancelled_at' => $now,
+                        'cancelled_by' => $userId
+                    ],
+                    'id',
+                    $groupId
+                );
+                $cancelledGroupIds[] = $groupId;
+            }
+        }
+
         // Commit transaction
         $MsaDB->db->commit();
 
         // Prepare response message
         $message = "Pomyślnie anulowano $cancelledCount transferów";
+
+        if (!empty($cancelledGroupIds)) {
+            $groupCount = count($cancelledGroupIds);
+            $message .= " i $groupCount " . ($groupCount === 1 ? 'grupę transferów' : 'grup transferów');
+        }
 
         if (!empty($errors)) {
             $message .= ". Błędy: " . implode(', ', $errors);
@@ -210,6 +238,7 @@ function cancelTransfers($MsaDB) {
             'success' => true,
             'message' => $message,
             'cancelled_count' => $cancelledCount,
+            'cancelled_groups' => $cancelledGroupIds,
             'cancellation_group_id' => $cancellationGroupId,
             'errors' => $errors
         ]);

@@ -15,6 +15,27 @@
                     <br>Tej operacji nie można cofnąć.
                 </div>
 
+                <!-- Group cancellation warning (hidden by default) -->
+                <div id="groupCancellationWarning" class="alert alert-info" style="display: none;">
+                    <h6><i class="bi bi-info-circle"></i> Anulacja grupy transferów</h6>
+                    <div id="groupCancellationDetails"></div>
+                </div>
+
+                <!-- Incomplete group warning (hidden by default) -->
+                <div id="incompleteGroupWarning" class="alert alert-danger" style="display: none;">
+                    <h6><i class="bi bi-exclamation-triangle-fill"></i> Niekompletna grupa transferów</h6>
+                    <p id="incompleteGroupMessage"></p>
+                    <button type="button" id="loadMissingTransfers" class="btn btn-sm btn-primary">
+                        <i class="bi bi-download"></i> Załaduj brakujące transfery
+                    </button>
+                </div>
+
+                <!-- Manual unchecked warning (hidden by default) -->
+                <div id="manualUncheckedWarning" class="alert alert-warning" style="display: none;">
+                    <h6><i class="bi bi-exclamation-triangle"></i> Transfery odznaczone</h6>
+                    <p id="manualUncheckedMessage"></p>
+                </div>
+
                 <h6 class="mb-3">Podsumowanie anulacji:</h6>
 
                 <div class="mb-3">
@@ -22,10 +43,17 @@
                     <span class="badge badge-danger badge-pill ml-2" id="cancelCount">0</span>
                 </div>
 
-                <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                <!-- Collapsible group structure container -->
+                <div id="groupedCancellationView" style="display: none;">
+                    <!-- Will be populated with grouped structure via JavaScript -->
+                </div>
+
+                <!-- Traditional flat table view -->
+                <div id="flatCancellationView" class="table-responsive" style="max-height: 400px; overflow-y: auto;">
                     <table class="table table-sm table-bordered">
                         <thead class="thead-light" style="position: sticky; top: 0; z-index: 1;">
                             <tr>
+                                <th></th>
                                 <th>Użytkownik</th>
                                 <th>Magazyn</th>
                                 <th>Urządzenie</th>

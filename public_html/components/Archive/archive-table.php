@@ -63,10 +63,18 @@ if ($deviceType === 'all') {
 
     // Date range filter
     if ($dateFrom) {
-        $conditions[] = "DATE(COALESCE(tg.created_at, i.timestamp)) >= '$dateFrom'";
+        if ($noGrouping) {
+            $conditions[] = "DATE(i.timestamp) >= '$dateFrom'";
+        } else {
+            $conditions[] = "DATE(COALESCE(tg.created_at, i.timestamp)) >= '$dateFrom'";
+        }
     }
     if ($dateTo) {
-        $conditions[] = "DATE(COALESCE(tg.created_at, i.timestamp)) <= '$dateTo'";
+        if ($noGrouping) {
+            $conditions[] = "DATE(i.timestamp) <= '$dateTo'";
+        } else {
+            $conditions[] = "DATE(COALESCE(tg.created_at, i.timestamp)) <= '$dateTo'";
+        }
     }
 
     // Cancelled filter
@@ -191,12 +199,11 @@ if ($deviceType === 'all') {
                 $countEntries = $MsaDB->query($countEntriesQuery, PDO::FETCH_ASSOC);
                 $totalEntriesInGroup = (int)$countEntries[0]['total'];
 
-                // Then fetch only first 10 entries
+                // Fetch all entries for this group (will be aggregated by device)
                 $entriesQuery = "
                     SELECT * FROM ($unionQuery) as combined
                     WHERE transfer_group_id = $transferGroupId
                     ORDER BY id DESC
-                    LIMIT 10
                 ";
             } else {
                 $noGroupId = (int)str_replace('no_group_', '', $groupInfo['group_key']);
@@ -213,6 +220,9 @@ if ($deviceType === 'all') {
             $totalQty = 0;
             $cancelledCount = 0;
             $deviceTypesInGroup = [];
+            $qtyByDeviceType = [];
+            $deviceAggregation = []; // Aggregate by device_id
+
             foreach ($entries as $entry) {
                 $totalQty += $entry['qty'];
                 if ($entry['is_cancelled']) {
@@ -221,6 +231,40 @@ if ($deviceType === 'all') {
                 if (!in_array($entry['device_type'], $deviceTypesInGroup)) {
                     $deviceTypesInGroup[] = $entry['device_type'];
                 }
+
+                // Aggregate qty by device type
+                $devType = $entry['device_type'];
+                if (!isset($qtyByDeviceType[$devType])) {
+                    $qtyByDeviceType[$devType] = 0;
+                }
+                $qtyByDeviceType[$devType] += $entry['qty'];
+
+                // Aggregate by device_id (for Level 2 display)
+                $deviceKey = $devType . '_' . $entry['device_id'];
+                if (!isset($deviceAggregation[$deviceKey])) {
+                    $deviceAggregation[$deviceKey] = [
+                        'device_id' => $entry['device_id'],
+                        'device_type' => $devType,
+                        'device_name' => $entry['device_name'],
+                        'total_qty' => 0,
+                        'entries' => [],
+                        'entries_count' => 0
+                    ];
+                }
+                $deviceAggregation[$deviceKey]['total_qty'] += $entry['qty'];
+                $deviceAggregation[$deviceKey]['entries'][] = $entry;
+                $deviceAggregation[$deviceKey]['entries_count']++;
+            }
+
+            // Process devices - limit entries per device to 3
+            $devices = [];
+            foreach ($deviceAggregation as $deviceData) {
+                $allEntries = $deviceData['entries'];
+                $deviceData['total_entries_count'] = count($allEntries);
+                $deviceData['entries'] = array_slice($allEntries, 0, 3);
+                $deviceData['entries_loaded'] = count($deviceData['entries']);
+                $deviceData['has_more_entries'] = $deviceData['total_entries_count'] > 3;
+                $devices[] = $deviceData;
             }
 
             $groups[] = [
@@ -230,6 +274,8 @@ if ($deviceType === 'all') {
                 'user_name' => $groupInfo['user_name'],
                 'user_surname' => $groupInfo['user_surname'],
                 'total_qty' => $totalQty,
+                'qty_by_device_type' => $qtyByDeviceType,
+                'devices' => $devices,
                 'entries_count' => $totalEntriesInGroup,
                 'entries_loaded' => count($entries),
                 'cancelled_count' => $cancelledCount,
@@ -285,10 +331,18 @@ if ($flowpinSessionId) {
 
 // Date range filter
 if ($dateFrom) {
-    $conditions[] = "DATE(COALESCE(tg.created_at, i.timestamp)) >= '$dateFrom'";
+    if ($noGrouping) {
+        $conditions[] = "DATE(i.timestamp) >= '$dateFrom'";
+    } else {
+        $conditions[] = "DATE(COALESCE(tg.created_at, i.timestamp)) >= '$dateFrom'";
+    }
 }
 if ($dateTo) {
-    $conditions[] = "DATE(COALESCE(tg.created_at, i.timestamp)) <= '$dateTo'";
+    if ($noGrouping) {
+        $conditions[] = "DATE(i.timestamp) <= '$dateTo'";
+    } else {
+        $conditions[] = "DATE(COALESCE(tg.created_at, i.timestamp)) <= '$dateTo'";
+    }
 }
 
 // Cancelled filter
@@ -329,7 +383,8 @@ if ($noGrouping) {
             m.sub_magazine_name,
             u.name as user_name,
             u.surname as user_surname,
-            it.name as input_type_name
+            it.name as input_type_name,
+            '$deviceType' as device_type
         FROM `inventory__{$deviceType}` i
         LEFT JOIN inventory__transfer_groups tg ON i.transfer_group_id = tg.id
         LEFT JOIN list__{$deviceType} l ON i.{$deviceType}_id = l.id
@@ -413,13 +468,14 @@ if ($noGrouping) {
             $countEntriesQuery = "
                 SELECT COUNT(*) as total
                 FROM `inventory__{$deviceType}` i
+                LEFT JOIN inventory__transfer_groups tg ON i.transfer_group_id = tg.id
                 WHERE i.transfer_group_id = $transferGroupId
                 AND $whereClause $cancelledCondition
             ";
             $countEntries = $MsaDB->query($countEntriesQuery, PDO::FETCH_ASSOC);
             $totalEntriesInGroup = (int)$countEntries[0]['total'];
 
-            // Then fetch only first 10 entries in this transfer group
+            // Fetch all entries for this group (will be aggregated by device)
             $entriesQuery = "
                 SELECT
                     i.id,
@@ -436,8 +492,10 @@ if ($noGrouping) {
                     m.sub_magazine_name,
                     u.name as user_name,
                     u.surname as user_surname,
-                    it.name as input_type_name
+                    it.name as input_type_name,
+                    '$deviceType' as device_type
                 FROM `inventory__{$deviceType}` i
+                LEFT JOIN inventory__transfer_groups tg ON i.transfer_group_id = tg.id
                 LEFT JOIN list__{$deviceType} l ON i.{$deviceType}_id = l.id
                 LEFT JOIN magazine__list m ON i.sub_magazine_id = m.sub_magazine_id
                 LEFT JOIN user u ON u.user_id = (SELECT created_by FROM inventory__transfer_groups WHERE id = $transferGroupId)
@@ -445,7 +503,6 @@ if ($noGrouping) {
                 WHERE i.transfer_group_id = $transferGroupId
                 AND $whereClause $cancelledCondition
                 ORDER BY i.id DESC
-                LIMIT 10
             ";
         } else {
             // Single ungrouped entry - extract ID from group_key
@@ -467,7 +524,8 @@ if ($noGrouping) {
                     m.sub_magazine_name,
                     u.name as user_name,
                     u.surname as user_surname,
-                    it.name as input_type_name
+                    it.name as input_type_name,
+                    '$deviceType' as device_type
                 FROM `inventory__{$deviceType}` i
                 LEFT JOIN list__{$deviceType} l ON i.{$deviceType}_id = l.id
                 LEFT JOIN magazine__list m ON i.sub_magazine_id = m.sub_magazine_id
@@ -482,11 +540,40 @@ if ($noGrouping) {
         // Calculate group totals
         $totalQty = 0;
         $cancelledCount = 0;
+        $deviceAggregation = []; // Aggregate by device_id
+
         foreach ($entries as $entry) {
             $totalQty += $entry['qty'];
             if ($entry['is_cancelled']) {
                 $cancelledCount++;
             }
+
+            // Aggregate by device_id (for Level 2 display)
+            $deviceKey = $deviceType . '_' . $entry['device_id'];
+            if (!isset($deviceAggregation[$deviceKey])) {
+                $deviceAggregation[$deviceKey] = [
+                    'device_id' => $entry['device_id'],
+                    'device_type' => $deviceType,
+                    'device_name' => $entry['device_name'],
+                    'total_qty' => 0,
+                    'entries' => [],
+                    'entries_count' => 0
+                ];
+            }
+            $deviceAggregation[$deviceKey]['total_qty'] += $entry['qty'];
+            $deviceAggregation[$deviceKey]['entries'][] = $entry;
+            $deviceAggregation[$deviceKey]['entries_count']++;
+        }
+
+        // Process devices - limit entries per device to 3
+        $devices = [];
+        foreach ($deviceAggregation as $deviceData) {
+            $allEntries = $deviceData['entries'];
+            $deviceData['total_entries_count'] = count($allEntries);
+            $deviceData['entries'] = array_slice($allEntries, 0, 3);
+            $deviceData['entries_loaded'] = count($deviceData['entries']);
+            $deviceData['has_more_entries'] = $deviceData['total_entries_count'] > 3;
+            $devices[] = $deviceData;
         }
 
         $groups[] = [
@@ -496,6 +583,7 @@ if ($noGrouping) {
             'user_name' => $groupInfo['user_name'],
             'user_surname' => $groupInfo['user_surname'],
             'total_qty' => $totalQty,
+            'devices' => $devices,
             'entries_count' => $totalEntriesInGroup,
             'entries_loaded' => count($entries),
             'cancelled_count' => $cancelledCount,

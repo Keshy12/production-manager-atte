@@ -31,6 +31,39 @@ $magazine_list = $MsaDB->readIdName("magazine__list", "sub_magazine_id", "sub_ma
     .indent-cell {
         padding-left: 30px !important;
     }
+    .indent-cell-2 {
+        padding-left: 60px !important;
+    }
+    /* Device row styling (Level 2) */
+    .device-row {
+        background-color: #f0f4f8 !important;
+        cursor: pointer;
+    }
+    .device-row:hover {
+        background-color: #e3e9f0 !important;
+    }
+    .device-row .toggle-icon-device {
+        transition: transform 0.2s;
+        display: inline-block;
+        font-size: 12px;
+        color: #6c757d;
+    }
+    .device-row[aria-expanded="true"] .toggle-icon-device {
+        transform: rotate(90deg);
+    }
+    /* Detail row Level 2 styling */
+    .detail-row-level-2 {
+        background-color: #fff !important;
+    }
+    /* Qty breakdown in group header */
+    .qty-breakdown {
+        font-size: 0.85em;
+    }
+    .qty-breakdown-item {
+        display: inline-block;
+        margin-right: 10px;
+        white-space: nowrap;
+    }
     .badge-count {
         font-size: 0.85em;
         vertical-align: middle;
@@ -296,9 +329,15 @@ $magazine_list = $MsaDB->readIdName("magazine__list", "sub_magazine_id", "sub_ma
                                         Nie grupuj
                                     </label>
                                 </div>
+                                <button type="button" id="refreshArchive" class="btn btn-primary btn-sm ml-3">
+                                    <i class="bi bi-arrow-clockwise"></i> Odśwież
+                                </button>
                             </div>
                         </div>
                     </div>
+                </div>
+                <div class="card-footer py-1 small text-muted">
+                    <i class="bi bi-info-circle"></i> Domyślnie wyświetlane są dane z ostatniego miesiąca (ze względu na optymalizację). Możesz zmienić zakres dat w filtrach.
                 </div>
             </div>
 
