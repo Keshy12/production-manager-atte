@@ -74,6 +74,29 @@ if ($deviceType === 'all') {
         ";
 
         $entries = $MsaDB->query($entriesQuery, PDO::FETCH_ASSOC);
+
+        // Calculate remaining active vs cancelled for "all" mode with specific device
+        $remainingActiveCount = 0;
+        $remainingCancelledCount = 0;
+        $loadedCount = count($entries);
+        $hasMore = ($offset + $loadedCount) < $totalEntries;
+        $remaining = $totalEntries - ($offset + $loadedCount);
+
+        if ($hasMore) {
+            $remainingCountQuery = "
+                SELECT
+                    SUM(CASE WHEN i.is_cancelled = 0 THEN 1 ELSE 0 END) as active_count,
+                    SUM(CASE WHEN i.is_cancelled = 1 THEN 1 ELSE 0 END) as cancelled_count
+                FROM `inventory__{$type}` i
+                WHERE i.transfer_group_id = $transferGroupId
+                AND i.{$type}_id = $deviceId
+                ORDER BY i.id DESC
+                LIMIT $remaining OFFSET " . ($offset + $loadedCount) . "
+            ";
+            $remainingCountResult = $MsaDB->query($remainingCountQuery, PDO::FETCH_ASSOC);
+            $remainingActiveCount = (int)($remainingCountResult[0]['active_count'] ?? 0);
+            $remainingCancelledCount = (int)($remainingCountResult[0]['cancelled_count'] ?? 0);
+        }
     } else {
         // Original behavior - load all entries across all device types
         $deviceTypes = ['sku', 'tht', 'smd', 'parts'];
@@ -171,12 +194,39 @@ if ($deviceType === 'all') {
     foreach ($entries as &$entry) {
         $entry['device_type'] = $deviceType;
     }
+
+    // Calculate remaining active vs cancelled for single device type mode
+    $remainingActiveCount = 0;
+    $remainingCancelledCount = 0;
+    $loadedCount = count($entries);
+    $hasMore = ($offset + $loadedCount) < $totalEntries;
+    $remaining = $totalEntries - ($offset + $loadedCount);
+
+    if ($hasMore) {
+        $remainingCountQuery = "
+            SELECT
+                SUM(CASE WHEN i.is_cancelled = 0 THEN 1 ELSE 0 END) as active_count,
+                SUM(CASE WHEN i.is_cancelled = 1 THEN 1 ELSE 0 END) as cancelled_count
+            FROM `inventory__{$deviceType}` i
+            WHERE i.transfer_group_id = $transferGroupId
+            $deviceIdCondition
+            ORDER BY i.id DESC
+            LIMIT $remaining OFFSET " . ($offset + $loadedCount) . "
+        ";
+        $remainingCountResult = $MsaDB->query($remainingCountQuery, PDO::FETCH_ASSOC);
+        $remainingActiveCount = (int)($remainingCountResult[0]['active_count'] ?? 0);
+        $remainingCancelledCount = (int)($remainingCountResult[0]['cancelled_count'] ?? 0);
+    }
 }
 
-// Calculate if there are more entries
-$loadedCount = count($entries);
-$hasMore = ($offset + $loadedCount) < $totalEntries;
-$remaining = $totalEntries - ($offset + $loadedCount);
+// If not set by earlier code blocks (for "all" mode without specific device), calculate here
+if (!isset($loadedCount)) {
+    $loadedCount = count($entries);
+    $hasMore = ($offset + $loadedCount) < $totalEntries;
+    $remaining = $totalEntries - ($offset + $loadedCount);
+    $remainingActiveCount = 0;
+    $remainingCancelledCount = 0;
+}
 
 echo json_encode([
     'success' => true,
@@ -185,5 +235,7 @@ echo json_encode([
     'total' => $totalEntries,
     'offset' => $offset,
     'loaded' => $loadedCount,
-    'remaining' => $remaining
+    'remaining' => $remaining,
+    'remaining_active' => $remainingActiveCount,
+    'remaining_cancelled' => $remainingCancelledCount
 ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);

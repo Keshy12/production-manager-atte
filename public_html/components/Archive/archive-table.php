@@ -261,9 +261,42 @@ if ($deviceType === 'all') {
             foreach ($deviceAggregation as $deviceData) {
                 $allEntries = $deviceData['entries'];
                 $deviceData['total_entries_count'] = count($allEntries);
+
+                // Calculate total cancelled count across all entries
+                $totalCancelledInDevice = 0;
+                foreach ($allEntries as $entry) {
+                    if ($entry['is_cancelled']) {
+                        $totalCancelledInDevice++;
+                    }
+                }
+
+                // Limit to first 3 entries (loaded)
                 $deviceData['entries'] = array_slice($allEntries, 0, 3);
                 $deviceData['entries_loaded'] = count($deviceData['entries']);
                 $deviceData['has_more_entries'] = $deviceData['total_entries_count'] > 3;
+
+                // Calculate loaded cancelled count
+                $loadedCancelledCount = 0;
+                foreach ($deviceData['entries'] as $entry) {
+                    if ($entry['is_cancelled']) {
+                        $loadedCancelledCount++;
+                    }
+                }
+
+                // Calculate unloaded statistics
+                $unloadedCount = $deviceData['total_entries_count'] - $deviceData['entries_loaded'];
+                $unloadedCancelledCount = $totalCancelledInDevice - $loadedCancelledCount;
+                $unloadedActiveCount = $unloadedCount - $unloadedCancelledCount;
+
+                // Add metadata
+                $deviceData['total_cancelled_count'] = $totalCancelledInDevice;
+                $deviceData['loaded_cancelled_count'] = $loadedCancelledCount;
+                $deviceData['unloaded_count'] = $unloadedCount;
+                $deviceData['unloaded_cancelled_count'] = $unloadedCancelledCount;
+                $deviceData['unloaded_active_count'] = $unloadedActiveCount;
+                $deviceData['all_unloaded_cancelled'] = $unloadedCount > 0 && $unloadedActiveCount === 0;
+                $deviceData['all_cancelled'] = $totalCancelledInDevice === $deviceData['total_entries_count'];
+
                 $devices[] = $deviceData;
             }
 
@@ -570,9 +603,42 @@ if ($noGrouping) {
         foreach ($deviceAggregation as $deviceData) {
             $allEntries = $deviceData['entries'];
             $deviceData['total_entries_count'] = count($allEntries);
+
+            // Calculate total cancelled count across all entries
+            $totalCancelledInDevice = 0;
+            foreach ($allEntries as $entry) {
+                if ($entry['is_cancelled']) {
+                    $totalCancelledInDevice++;
+                }
+            }
+
+            // Limit to first 3 entries (loaded)
             $deviceData['entries'] = array_slice($allEntries, 0, 3);
             $deviceData['entries_loaded'] = count($deviceData['entries']);
             $deviceData['has_more_entries'] = $deviceData['total_entries_count'] > 3;
+
+            // Calculate loaded cancelled count
+            $loadedCancelledCount = 0;
+            foreach ($deviceData['entries'] as $entry) {
+                if ($entry['is_cancelled']) {
+                    $loadedCancelledCount++;
+                }
+            }
+
+            // Calculate unloaded statistics
+            $unloadedCount = $deviceData['total_entries_count'] - $deviceData['entries_loaded'];
+            $unloadedCancelledCount = $totalCancelledInDevice - $loadedCancelledCount;
+            $unloadedActiveCount = $unloadedCount - $unloadedCancelledCount;
+
+            // Add metadata
+            $deviceData['total_cancelled_count'] = $totalCancelledInDevice;
+            $deviceData['loaded_cancelled_count'] = $loadedCancelledCount;
+            $deviceData['unloaded_count'] = $unloadedCount;
+            $deviceData['unloaded_cancelled_count'] = $unloadedCancelledCount;
+            $deviceData['unloaded_active_count'] = $unloadedActiveCount;
+            $deviceData['all_unloaded_cancelled'] = $unloadedCount > 0 && $unloadedActiveCount === 0;
+            $deviceData['all_cancelled'] = $totalCancelledInDevice === $deviceData['total_entries_count'];
+
             $devices[] = $deviceData;
         }
 

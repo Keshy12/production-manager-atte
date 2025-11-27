@@ -643,6 +643,20 @@ function renderDeviceRow(device, groupIndex, deviceIndex, groupCollapseClass, de
     const entriesLoaded = device.entries_loaded || device.entries.length;
     const entryWord = getPolishPlural(entriesCount, 'wpis', 'wpisy', 'wpisów');
 
+    // Determine if device checkbox should be disabled (all entries are cancelled)
+    const deviceCheckboxDisabled = device.all_cancelled ? 'disabled' : '';
+
+    // Show cancelled count badge if there are cancelled entries but not all are cancelled
+    let cancelledBadge = '';
+    const hasCancelled = device.total_cancelled_count && device.total_cancelled_count > 0;
+    if (hasCancelled && !device.all_cancelled) {
+        cancelledBadge = `
+            <span class="badge badge-warning badge-cancelled-partial ml-1">
+                ${device.total_cancelled_count} anulowanych
+            </span>
+        `;
+    }
+
     const row = `
         <tr class="collapse ${groupCollapseClass} device-row"
             data-toggle="collapse"
@@ -658,7 +672,8 @@ function renderDeviceRow(device, groupIndex, deviceIndex, groupCollapseClass, de
                     <input type="checkbox" class="custom-control-input device-checkbox"
                            id="device-${groupIndex}-${deviceIndex}"
                            data-group-index="${groupIndex}"
-                           data-device-index="${deviceIndex}">
+                           data-device-index="${deviceIndex}"
+                           ${deviceCheckboxDisabled}>
                     <label class="custom-control-label" for="device-${groupIndex}-${deviceIndex}"></label>
                 </div>
             </td>
@@ -670,6 +685,7 @@ function renderDeviceRow(device, groupIndex, deviceIndex, groupCollapseClass, de
                 <span class="badge badge-light ml-1 device-entries-badge"
                       id="device-badge-${groupIndex}-${deviceIndex}"
                       data-total="${entriesCount}">${entriesLoaded}/${entriesCount} ${entryWord}</span>
+                ${cancelledBadge}
             </td>
             <td></td>
             <td>${deviceTypeBadge}<strong>${device.total_qty > 0 ? '+' : ''}${parseFloat(device.total_qty).toFixed(2)}</strong></td>
@@ -694,8 +710,28 @@ function renderDeviceLoadMoreRow(device, groupId, groupIndex, deviceIndex, devic
         deviceId: device.device_id,
         deviceType: device.device_type,
         totalCount: device.total_entries_count,
-        loadedCount: device.entries_loaded
+        loadedCount: device.entries_loaded,
+        unloadedActiveCount: device.unloaded_active_count || 0,
+        unloadedCancelledCount: device.unloaded_cancelled_count || 0
     });
+
+    // Only show unloaded checkbox if there are active unloaded entries
+    const showUnloadedCheckbox = !device.all_unloaded_cancelled;
+
+    // Build badge with active vs cancelled breakdown
+    let badgeHtml = '';
+    if (device.unloaded_active_count > 0 && device.unloaded_cancelled_count > 0) {
+        badgeHtml = `
+            <span class="badge badge-secondary ml-1">${device.unloaded_active_count} aktywnych</span>
+            <span class="badge badge-warning ml-1">${device.unloaded_cancelled_count} anulowanych</span>
+        `;
+    } else if (device.unloaded_active_count > 0) {
+        badgeHtml = `<span class="badge badge-secondary ml-1">${device.unloaded_active_count} pozostało</span>`;
+    } else if (device.unloaded_cancelled_count > 0) {
+        badgeHtml = `<span class="badge badge-warning ml-1">${device.unloaded_cancelled_count} anulowanych</span>`;
+    } else {
+        badgeHtml = `<span class="badge badge-secondary ml-1">${remaining} pozostało</span>`;
+    }
 
     const row = `
         <tr class="collapse ${deviceCollapseClass} load-more-row load-more-device-row"
@@ -706,16 +742,18 @@ function renderDeviceLoadMoreRow(device, groupId, groupIndex, deviceIndex, devic
             data-device-index="${deviceIndex}"
             data-remaining="${remaining}">
             <td class="text-center indent-cell-2" onclick="event.stopPropagation();">
-                <div class="custom-control custom-checkbox d-inline-block">
-                    <input type="checkbox" class="custom-control-input unloaded-checkbox"
-                           id="unloaded-${groupIndex}-${deviceIndex}"
-                           data-group-id="${groupId}"
-                           data-group-index="${groupIndex}"
-                           data-device-id="${device.device_id}"
-                           data-device-type="${device.device_type}"
-                           data-device-index="${deviceIndex}">
-                    <label class="custom-control-label" for="unloaded-${groupIndex}-${deviceIndex}"></label>
-                </div>
+                ${showUnloadedCheckbox ? `
+                    <div class="custom-control custom-checkbox d-inline-block">
+                        <input type="checkbox" class="custom-control-input unloaded-checkbox"
+                               id="unloaded-${groupIndex}-${deviceIndex}"
+                               data-group-id="${groupId}"
+                               data-group-index="${groupIndex}"
+                               data-device-id="${device.device_id}"
+                               data-device-type="${device.device_type}"
+                               data-device-index="${deviceIndex}">
+                        <label class="custom-control-label" for="unloaded-${groupIndex}-${deviceIndex}"></label>
+                    </div>
+                ` : ''}
             </td>
             <td colspan="7" class="text-center py-2">
                 <button class="btn btn-sm btn-outline-secondary load-device-entries"
@@ -726,7 +764,7 @@ function renderDeviceLoadMoreRow(device, groupId, groupIndex, deviceIndex, devic
                         data-device-index="${deviceIndex}"
                         data-offset="${device.entries_loaded}">
                     <i class="bi bi-arrow-down-circle"></i> Załaduj więcej
-                    <span class="badge badge-secondary ml-1">${remaining} pozostało</span>
+                    ${badgeHtml}
                 </button>
                 <button class="btn btn-sm btn-outline-primary ml-2 load-all-device-entries"
                         data-group-id="${groupId}"
@@ -967,14 +1005,35 @@ function loadDeviceEntries(groupId, groupIndex, deviceId, deviceTypeFilter, devi
 
             // Update or remove "Load More" button
             if (response.hasMore) {
+                // Build updated badge with active vs cancelled breakdown
+                let badgeHtml = '';
+                if (response.remaining_active > 0 && response.remaining_cancelled > 0) {
+                    badgeHtml = `
+                        <span class="badge badge-secondary ml-1">${response.remaining_active} aktywnych</span>
+                        <span class="badge badge-warning ml-1">${response.remaining_cancelled} anulowanych</span>
+                    `;
+                } else if (response.remaining_active > 0) {
+                    badgeHtml = `<span class="badge badge-secondary ml-1">${response.remaining_active} pozostało</span>`;
+                } else if (response.remaining_cancelled > 0) {
+                    badgeHtml = `<span class="badge badge-warning ml-1">${response.remaining_cancelled} anulowanych</span>`;
+                } else {
+                    badgeHtml = `<span class="badge badge-secondary ml-1">${response.remaining} pozostało</span>`;
+                }
+
                 $btn.prop('disabled', false)
                     .data('offset', offset + response.loaded)
-                    .html(`<i class="bi bi-arrow-down-circle"></i> Załaduj więcej <span class="badge badge-secondary ml-1">${response.remaining} pozostało</span>`);
+                    .html(`<i class="bi bi-arrow-down-circle"></i> Załaduj więcej ${badgeHtml}`);
 
                 // Also update the "Load All" button's remaining count and offset
                 const $loadAllBtn = $loadMoreRow.find('.load-all-device-entries');
                 $loadAllBtn.data('offset', offset + response.loaded);
                 $loadAllBtn.data('remaining', response.remaining);
+
+                // Remove unloaded checkbox if all remaining are cancelled
+                if (response.remaining_active === 0 && response.remaining_cancelled > 0) {
+                    const $unloadedCheckbox = $(`#unloaded-${groupIndex}-${deviceIndex}`);
+                    $unloadedCheckbox.closest('.custom-control').remove();
+                }
             } else {
                 $loadMoreRow.remove();
             }
@@ -1627,8 +1686,12 @@ function handleDeviceCheckboxChange(groupIndex, deviceIndex, isChecked) {
             }
         });
 
-        // If there's at least one selectable transfer, proceed
-        if (selectableCount > 0) {
+        // Check if there are active unloaded items (checkbox only exists if there are active unloaded)
+        const $unloadedCheckbox = $(`#unloaded-${groupIndex}-${deviceIndex}`);
+        const hasActiveUnloadedItems = $unloadedCheckbox.length > 0;
+
+        // If there's at least one selectable transfer OR active unloaded items, proceed
+        if (selectableCount > 0 || hasActiveUnloadedItems) {
             // Select all child transfers that are not cancelled
             transferIds.forEach(id => {
                 const $checkbox = $(`#transfer-${id}`);
@@ -1646,9 +1709,8 @@ function handleDeviceCheckboxChange(groupIndex, deviceIndex, isChecked) {
                 }
             });
 
-            // Check unloaded checkbox if it exists
-            const $unloadedCheckbox = $(`#unloaded-${groupIndex}-${deviceIndex}`);
-            if ($unloadedCheckbox.length) {
+            // Check unloaded checkbox if it exists (and has active items)
+            if (hasActiveUnloadedItems) {
                 $unloadedCheckbox.prop('checked', true);
                 deviceUnloadedSelections.set(deviceKey, true);
             }
@@ -1656,21 +1718,9 @@ function handleDeviceCheckboxChange(groupIndex, deviceIndex, isChecked) {
             // Check if all devices in the group are now selected - if so, check the group checkbox
             checkGroupCheckboxState(groupIndex);
         } else {
-            // All loaded transfers are cancelled/disabled
-            // Check if there are unloaded items - if so, select them
-            const $unloadedCheckbox = $(`#unloaded-${groupIndex}-${deviceIndex}`);
-            if ($unloadedCheckbox.length) {
-                // Unloaded items exist - check the unloaded checkbox
-                $unloadedCheckbox.prop('checked', true);
-                deviceUnloadedSelections.set(deviceKey, true);
-                // Keep device checkbox checked (user is selecting the device's unloaded items)
-
-                // Check if all devices in the group are now selected
-                checkGroupCheckboxState(groupIndex);
-            } else {
-                // No unloaded items and no selectable transfers - uncheck device
-                $(`#device-${groupIndex}-${deviceIndex}`).prop('checked', false);
-            }
+            // All loaded transfers are cancelled AND no active unloaded items
+            // Uncheck the device checkbox - nothing to select
+            $(`#device-${groupIndex}-${deviceIndex}`).prop('checked', false);
         }
     } else {
         // Deselect all child transfers
@@ -1886,12 +1936,12 @@ function updateCancelButtonVisibility() {
     // Add count of unloaded rows from checked unloaded checkboxes
     deviceUnloadedSelections.forEach((isSelected, deviceKey) => {
         if (isSelected) {
-            // Find the load-more row and get the remaining count
-            const [groupIndex, deviceIndex] = deviceKey.split('-');
-            const $loadMoreRow = $(`.load-more-device-row[data-group-index="${groupIndex}"][data-device-index="${deviceIndex}"]`);
-            if ($loadMoreRow.length) {
-                const remaining = parseInt($loadMoreRow.data('remaining')) || 0;
-                totalCount += remaining;
+            // Get the unloaded info to count only active (non-cancelled) unloaded rows
+            const unloadedInfo = deviceUnloadedInfo.get(deviceKey);
+            if (unloadedInfo) {
+                // Only count active unloaded rows, not cancelled ones
+                const activeUnloadedCount = unloadedInfo.unloadedActiveCount || 0;
+                totalCount += activeUnloadedCount;
             }
         }
     });
@@ -2462,8 +2512,11 @@ function populateCancelModal() {
             // Store for later validation
             window.currentModalTransfers = allTransfers;
 
-            // Calculate and update total count
-            $('#cancelCount').text(totalCount);
+            // Calculate count of non-cancelled transfers only
+            const nonCancelledCount = allTransfers.filter(t => !t.is_cancelled || t.is_cancelled == 0).length;
+
+            // Update total count (only non-cancelled)
+            $('#cancelCount').text(nonCancelledCount);
 
             // Clear loading message
             $summaryBody.empty();
@@ -2665,8 +2718,9 @@ function loadMissingTransfers() {
                 renderDeviceGroups(allDeviceGroups, $summaryBody);
             }
 
-            // Update count
-            $('#cancelCount').text(window.currentModalTransfers.length);
+            // Update count (only non-cancelled)
+            const nonCancelledCount = window.currentModalTransfers.filter(t => !t.is_cancelled || t.is_cancelled == 0).length;
+            $('#cancelCount').text(nonCancelledCount);
 
             // Update warning - now complete
             $('#incompleteGroupWarning').hide();
