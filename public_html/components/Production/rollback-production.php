@@ -31,81 +31,110 @@ try {
         $groupIdsToCancel = array_filter(array_map('intval', explode(',', $transferGroupIds)));
 
         foreach ($groupIdsToCancel as $groupId) {
-            $entries = $MsaDB->query("
-                SELECT id, {$deviceType}_id, qty, comment, transfer_group_id, sub_magazine_id,
-                       {$deviceType}_bom_id, commission_id, input_type_id
-                FROM inventory__{$deviceType}
-                WHERE transfer_group_id = {$groupId} AND is_cancelled = 0
-            ");
+            // Create NEW transfer group for this rollback
+            $cancellationNote = "Anulacja grupy transferów #$groupId";
+            $newTransferGroupId = $transferGroupManager->createTransferGroup($userId, $cancellationNote);
 
-            foreach ($entries as $entry) {
-                $entryId = $entry['id'];
-                $processedEntries[$entryId] = true;
+            // Define all device types to check
+            $deviceTypes = ['sku', 'smd', 'tht', 'parts'];
 
-                $deviceItemId = $entry["{$deviceType}_id"];
-                $qty = $entry['qty'];
-                $comment = $entry['comment'];
-                $transferGroupId = $entry['transfer_group_id'];
-                $subMagazineId = $entry['sub_magazine_id'];
-                $bomId = $entry["{$deviceType}_bom_id"];
-                $commissionId = $entry['commission_id'];
-                $inputTypeId = $entry['input_type_id'];
+            // Loop through ALL device types to find all entries in this transfer group
+            // Bug fix: Production creates entries in multiple device type tables.
+            // E.g., producing 1 SMD device creates:
+            //   - Negative entries in inventory__smd, inventory__tht, inventory__parts (consumed components)
+            //   - Positive entry in inventory__smd (produced product)
+            // We must loop through ALL device types to find and cancel all entries.
+            foreach ($deviceTypes as $currentType) {
+                // Note: inventory__parts does NOT have a bom_id column
+                $hasBomId = in_array($currentType, ['sku', 'smd', 'tht']);
 
-                $MsaDB->update(
-                    "inventory__{$deviceType}",
-                    [
-                        'is_cancelled' => 1,
-                        'cancelled_at' => date('Y-m-d H:i:s'),
-                        'cancelled_by' => $userId
-                    ],
-                    'id',
-                    $entryId
-                );
+                $bomField = $hasBomId ? "{$currentType}_bom_id," : "";
+                $entries = $MsaDB->query("
+                    SELECT id, {$currentType}_id, qty, comment, transfer_group_id, sub_magazine_id,
+                           {$bomField} commission_id, input_type_id
+                    FROM inventory__{$currentType}
+                    WHERE transfer_group_id = {$groupId} AND is_cancelled = 0
+                ");
 
-                $oppositeQty = -$qty;
-                $rollbackComment = "ROLLBACK: {$comment} (ID: {$entryId})";
-
-                $columns = [
-                    "{$deviceType}_id",
-                    "{$deviceType}_bom_id",
-                    'commission_id',
-                    'sub_magazine_id',
-                    'qty',
-                    'transfer_group_id',
-                    'is_cancelled',
-                    'cancelled_at',
-                    'cancelled_by',
-                    'timestamp',
-                    'input_type_id',
-                    'comment',
-                    'isVerified'
-                ];
-
-                $values = [
-                    $deviceItemId,
-                    $bomId,
-                    $commissionId,
-                    $subMagazineId,
-                    $oppositeQty,
-                    $transferGroupId,
-                    1,
-                    date('Y-m-d H:i:s'),
-                    $userId,
-                    date('Y-m-d H:i:s'),
-                    $inputTypeId,
-                    $rollbackComment,
-                    1
-                ];
-
-                $MsaDB->insert("inventory__{$deviceType}", $columns, $values);
-
-                if ($commissionId) {
-                    $commission = $commissionRepository->getCommissionById($commissionId);
-                    $commission->addToQuantity(-$qty, 'qty_produced');
+                // Skip if no entries for this device type
+                if (empty($entries)) {
+                    continue;
                 }
 
-                $totalCancelled++;
-            }
+                foreach ($entries as $entry) {
+                    $entryId = $entry['id'];
+                    $processedEntries[$entryId] = true;
+
+                    $deviceItemId = $entry["{$currentType}_id"];
+                    $qty = $entry['qty'];
+                    $comment = $entry['comment'];
+                    $transferGroupId = $entry['transfer_group_id'];
+                    $subMagazineId = $entry['sub_magazine_id'];
+                    $bomId = $hasBomId ? $entry["{$currentType}_bom_id"] : null;
+                    $commissionId = $entry['commission_id'];
+                    $inputTypeId = $entry['input_type_id'];
+
+                    $MsaDB->update(
+                        "inventory__{$currentType}",
+                        [
+                            'is_cancelled' => 1,
+                            'cancelled_at' => date('Y-m-d H:i:s'),
+                            'cancelled_by' => $userId
+                        ],
+                        'id',
+                        $entryId
+                    );
+
+                    $oppositeQty = -$qty;
+                    $rollbackComment = "ROLLBACK: {$comment} (ID: {$entryId})";
+
+                    // Build columns and values arrays conditionally based on whether bom_id exists
+                    $columns = ["{$currentType}_id"];
+                    $values = [$deviceItemId];
+
+                    if ($hasBomId) {
+                        $columns[] = "{$currentType}_bom_id";
+                        $values[] = $bomId;
+                    }
+
+                    $columns = array_merge($columns, [
+                        'commission_id',
+                        'sub_magazine_id',
+                        'qty',
+                        'transfer_group_id',
+                        'is_cancelled',
+                        'cancelled_at',
+                        'cancelled_by',
+                        'timestamp',
+                        'input_type_id',
+                        'comment',
+                        'isVerified'
+                    ]);
+
+                    $values = array_merge($values, [
+                        $commissionId,
+                        $subMagazineId,
+                        $oppositeQty,
+                        $newTransferGroupId,
+                        1,
+                        date('Y-m-d H:i:s'),
+                        $userId,
+                        date('Y-m-d H:i:s'),
+                        $inputTypeId,
+                        $rollbackComment,
+                        1
+                    ]);
+
+                    $MsaDB->insert("inventory__{$currentType}", $columns, $values);
+
+                    if ($commissionId) {
+                        $commission = $commissionRepository->getCommissionById($commissionId);
+                        $commission->addToQuantity(-$qty, 'qty_produced');
+                    }
+
+                    $totalCancelled++;
+                }
+            } // End foreach deviceTypes
 
             $result = $transferGroupManager->cancelTransferGroup($groupId, $userId);
             $allAlerts = array_merge($allAlerts, $result['alerts']);

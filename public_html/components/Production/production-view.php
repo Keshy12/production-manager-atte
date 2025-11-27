@@ -118,4 +118,70 @@ $pageTitle = $isSMD ? 'Produkcja SMD' : 'Produkcja THT';
 <div id="lastProduction" data-last-id="" class="d-flex align-items-center justify-content-center">
 </div>
 
+<!-- Rollback Confirmation Modal -->
+<div class="modal fade" id="rollbackProductionModal" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Cofnij produkcję</h5>
+                <button type="button" class="close" data-dismiss="modal">
+                    <span>&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    <strong>Uwaga!</strong> Czy na pewno chcesz cofnąć zaznaczone transfery?
+                    <br>Tej operacji nie można cofnąć.
+                </div>
+
+                <!-- Group rollback warning -->
+                <div id="groupRollbackWarning" class="alert alert-info" style="display: none;">
+                    <h6><i class="bi bi-info-circle"></i> Cofanie całej akcji produkcji</h6>
+                    <div id="groupRollbackDetails"></div>
+                    <p class="mb-0"><strong>Zostaną cofnięte wszystkie transfery</strong> (w tym zużyte komponenty) z zaznaczonych grup.</p>
+                    Dla większej kontroli nad cofaniem transferów, spróbuj użyć zakładki "Archiwum".
+                </div>
+
+                <h6 class="mb-3">Podsumowanie cofnięcia:</h6>
+
+                <div class="mb-3">
+                    <strong>Liczba transferów do cofnięcia:</strong>
+                    <span class="badge badge-danger badge-pill ml-2" id="rollbackCount">0</span>
+                </div>
+
+                <!-- Collapsible group structure container -->
+                <div id="groupedRollbackView" style="display: none;">
+                    <!-- Will be populated with grouped structure via JavaScript -->
+                </div>
+
+                <!-- Traditional flat table view -->
+                <div id="flatRollbackView" class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                    <table class="table table-sm table-bordered">
+                        <thead class="thead-light" style="position: sticky; top: 0; z-index: 1;">
+                            <tr>
+                                <th>Użytkownik</th>
+                                <th>Urządzenie</th>
+                                <th>Typ operacji</th>
+                                <th>Ilość</th>
+                                <th>Komentarz</th>
+                                <th>Data</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rollbackSummaryBody">
+                            <!-- Will be populated via JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Anuluj</button>
+                <button type="button" id="confirmRollback" class="btn btn-danger">
+                    <i class="bi bi-arrow-counterclockwise"></i> Potwierdź cofnięcie
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script src="http://<?=BASEURL?>/public_html/components/production/production-view.js?deviceType=<?=$deviceType?>"></script>

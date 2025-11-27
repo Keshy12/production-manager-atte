@@ -27,11 +27,65 @@ AND i.input_type_id = 4
 {$cancelledCondition}
 ORDER BY i.transfer_group_id DESC, i.`id` DESC LIMIT 50;");
 
+// Stage 2: For grouped mode, fetch ALL device types for these groups
+$allTransfers = [];
+if (!$noGrouping && !empty($lastProduction)) {
+    // Extract transfer group IDs from Stage 1
+    $transferGroupIds = array_filter(array_unique(array_column($lastProduction, 'transfer_group_id')));
+
+    if (!empty($transferGroupIds)) {
+        $groupIdsStr = implode(',', array_map('intval', $transferGroupIds));
+        $deviceTypes = ['sku', 'smd', 'tht', 'parts'];
+
+        foreach ($deviceTypes as $type) {
+            $hasBomId = in_array($type, ['sku', 'smd', 'tht']);
+            $bomField = $hasBomId ? "i.{$type}_bom_id," : "";
+
+            $query = "
+                SELECT
+                    i.id,
+                    i.{$type}_id as device_id,
+                    i.qty,
+                    i.timestamp,
+                    i.comment,
+                    i.transfer_group_id,
+                    i.commission_id,
+                    i.is_cancelled,
+                    {$bomField}
+                    l.name as name,
+                    '$type' as device_type,
+                    tg.notes as transfer_notes,
+                    tg.created_at as transfer_created_at,
+                    u.login
+                FROM `inventory__{$type}` i
+                LEFT JOIN inventory__transfer_groups tg ON i.transfer_group_id = tg.id
+                LEFT JOIN user u ON tg.created_by = u.user_id
+                JOIN list__{$type} l ON i.{$type}_id = l.id
+                WHERE i.transfer_group_id IN ($groupIdsStr)
+                AND i.sub_magazine_id = '{$subMagazineId}'
+                {$cancelledCondition}
+                ORDER BY i.id DESC
+            ";
+
+            $transfers = $MsaDB->query($query);
+            if (!empty($transfers)) {
+                $allTransfers = array_merge($allTransfers, $transfers);
+            }
+        }
+    }
+
+    // Use allTransfers for grouped mode
+    $dataToGroup = !empty($allTransfers) ? $allTransfers : $lastProduction;
+} else {
+    // Ungrouped mode - use original query results
+    $dataToGroup = $lastProduction;
+}
+
 // Group entries by transfer_group_id (or treat each as individual if noGrouping)
 $groupedProduction = [];
 if ($noGrouping) {
     // Don't group - each entry is its own "group"
-    foreach ($lastProduction as $row) {
+    foreach ($dataToGroup as $row) {
         $groupId = 'no_group_' . $row['id'];
         $groupedProduction[$groupId] = [
             'entries' => [$row],
@@ -47,7 +101,7 @@ if ($noGrouping) {
     }
 } else {
     // Group by transfer_group_id
-    foreach ($lastProduction as $row) {
+    foreach ($dataToGroup as $row) {
         $groupId = $row['transfer_group_id'] ?: 'no_group_' . $row['id'];
         if (!isset($groupedProduction[$groupId])) {
             $groupedProduction[$groupId] = [
@@ -74,6 +128,46 @@ if ($noGrouping) {
         $groupData['all_cancelled'] = $groupData['cancelled_count'] === $groupData['total_count'];
     }
     unset($groupData);
+
+    // Sort entries within each group: produced product (selectable) first, then components
+    foreach ($groupedProduction as &$groupData) {
+        usort($groupData['entries'], function($a, $b) use ($deviceType, $deviceId) {
+            $aDeviceType = $a['device_type'] ?? $deviceType;
+            $aDeviceId = (int)$a['device_id'];
+            $aIsComponent = !($aDeviceType == $deviceType && $aDeviceId == $deviceId);
+
+            $bDeviceType = $b['device_type'] ?? $deviceType;
+            $bDeviceId = (int)$b['device_id'];
+            $bIsComponent = !($bDeviceType == $deviceType && $bDeviceId == $deviceId);
+
+            // Produced product (not component) comes first
+            if (!$aIsComponent && $bIsComponent) return -1;
+            if ($aIsComponent && !$bIsComponent) return 1;
+
+            // If both are same type, maintain original order (by id descending)
+            return (int)$b['id'] - (int)$a['id'];
+        });
+    }
+    unset($groupData);
+}
+
+/**
+ * Generate device type badge HTML
+ */
+function getDeviceTypeBadgeHtml($deviceType) {
+    if (empty($deviceType)) return '';
+
+    $badgeClasses = [
+        'sku' => 'badge-primary',
+        'tht' => 'badge-success',
+        'smd' => 'badge-info',
+        'parts' => 'badge-warning'
+    ];
+
+    $badgeClass = $badgeClasses[strtolower($deviceType)] ?? 'badge-secondary';
+    $typeLabel = strtoupper($deviceType);
+
+    return "<span class='badge {$badgeClass} badge-sm mr-1'>{$typeLabel}</span>";
 }
 ?>
 <style>
@@ -117,6 +211,15 @@ if ($noGrouping) {
         background-color: #f5c6cb !important;
         opacity: 0.85;
     }
+    /* Style for disabled component checkboxes */
+    .component-checkbox:disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
+    }
+    /* Optional: Style for component rows */
+    tr[data-is-component="1"] .row-checkbox {
+        cursor: not-allowed;
+    }
 </style>
 
 <table id="lastProductionTable" class="table mt-4 table-striped w-75"
@@ -125,7 +228,21 @@ if ($noGrouping) {
        data-no-grouping="<?= $noGrouping ? '1' : '0' ?>">
     <thead class="thead-light">
     <tr>
-        <th scope="col" style="width: 30px;"></th>
+        <th scope="col" style="width: 30px;">
+            <?php if (!$noGrouping): ?>
+                <!-- Device Type Filter (only in grouped mode) -->
+                <div class="form-group mb-0 mr-3">
+                    <label for="deviceTypeFilter" class="mr-2 mb-0" style="font-size: 0.875rem;">Typ urządzenia:</label>
+                    <select id="deviceTypeFilter" class="form-control form-control-sm d-inline-block" style="width: auto;">
+                        <option value="all" selected>Wszystkie</option>
+                        <option value="sku">SKU</option>
+                        <option value="smd">SMD</option>
+                        <option value="tht">THT</option>
+                        <option value="parts">PARTS</option>
+                    </select>
+                </div>
+            <?php endif; ?>
+        </th>
         <th scope="col" style="width: 30px;"></th>
         <th scope="col">Użytkownik</th>
         <th scope="col">Zlecenie</th>
@@ -135,6 +252,7 @@ if ($noGrouping) {
         <th scope="col">Komentarz</th>
         <th scope="col" class="text-right">
             <div class="d-flex justify-content-end align-items-center">
+
                 <div class="form-check mr-3 mb-0">
                     <input type="checkbox" class="form-check-input" id="showCancelledCheckbox" <?= $showCancelled ? 'checked' : '' ?>>
                     <label class="form-check-label" for="showCancelledCheckbox" style="font-size: 0.875rem; font-weight: normal;">
@@ -172,10 +290,11 @@ if ($noGrouping) {
             $isCancelled = (bool)$row['is_cancelled'];
             $transferGroupInfo = $row['transfer_group_id'] ? "Grupa #" . $row['transfer_group_id'] : "-";
             ?>
-            <tr class="<?= $isCancelled ? 'cancelled-row' : '' ?>"
+            <tr class="<?= $isCancelled ? 'cancelled-row' : '' ?> transfer-row"
                 data-row-id="<?= $currentId ?>"
                 data-transfer-group-id="<?= $row['transfer_group_id'] ?>"
-                data-is-cancelled="<?= $isCancelled ? '1' : '0' ?>">
+                data-is-cancelled="<?= $isCancelled ? '1' : '0' ?>"
+                data-device-type="<?= htmlspecialchars($row['device_type'] ?? $deviceType) ?>">
                 <td></td>
                 <td>
                     <?php if (!$isCancelled): ?>
@@ -187,7 +306,10 @@ if ($noGrouping) {
                 </td>
                 <td><?= htmlspecialchars($row['login'] ?? '') ?></td>
                 <td><?= htmlspecialchars($commissionInfo) ?></td>
-                <td><?= htmlspecialchars($row['name']) ?></td>
+                <td>
+                    <?= getDeviceTypeBadgeHtml($row['device_type'] ?? $deviceType) ?>
+                    <?= htmlspecialchars($row['name']) ?>
+                </td>
                 <td><?= $row['qty'] > 0 ? '+' : '' ?><?= $row['qty']+0 ?></td>
                 <td><?= htmlspecialchars($row['timestamp']) ?></td>
                 <td><small><?= htmlspecialchars($row['comment']) ?></small></td>
@@ -256,24 +378,37 @@ if ($noGrouping) {
                 $currentId = (int)$row['id'];
                 $commissionInfo = $row['commission_id'] ? "Zlecenie #{$row['commission_id']}" : "Bez zlecenia";
                 $isCancelled = (bool)$row['is_cancelled'];
+
+                // Determine if this transfer is a consumed component or produced product
+                $transferDeviceType = $row['device_type'] ?? $deviceType;
+                $transferDeviceId = (int)$row['device_id'];
+                $isComponent = !($transferDeviceType == $deviceType && $transferDeviceId == $deviceId);
             ?>
-            <tr class="collapse <?= $collapseClass ?> <?= $isCancelled ? 'cancelled-row' : '' ?>"
+            <tr class="collapse <?= $collapseClass ?> <?= $isCancelled ? 'cancelled-row' : '' ?> transfer-row"
                 data-group-index="<?= $groupIndex ?>"
                 data-row-id="<?= $currentId ?>"
                 data-transfer-group-id="<?= $realGroupId ?>"
-                data-is-cancelled="<?= $isCancelled ? '1' : '0' ?>">
+                data-is-cancelled="<?= $isCancelled ? '1' : '0' ?>"
+                data-device-type="<?= htmlspecialchars($transferDeviceType) ?>"
+                data-device-id="<?= $transferDeviceId ?>"
+                data-is-component="<?= $isComponent ? '1' : '0' ?>">
                 <td></td>
                 <td>
                     <?php if (!$isCancelled): ?>
-                    <input type="checkbox" class="row-checkbox"
+                    <input type="checkbox"
+                           class="row-checkbox <?= $isComponent ? 'component-checkbox' : '' ?>"
                            data-row-id="<?= $currentId ?>"
                            data-group-index="<?= $groupIndex ?>"
-                           data-transfer-group-id="<?= $realGroupId ?>">
+                           data-transfer-group-id="<?= $realGroupId ?>"
+                           <?= $isComponent ? 'disabled' : '' ?>>
                     <?php endif; ?>
                 </td>
                 <td class="indent-cell"><?= htmlspecialchars($row['login'] ?? '') ?></td>
                 <td><?= htmlspecialchars($commissionInfo) ?></td>
-                <td><?= htmlspecialchars($row['name']) ?></td>
+                <td>
+                    <?= getDeviceTypeBadgeHtml($row['device_type'] ?? $deviceType) ?>
+                    <?= htmlspecialchars($row['name']) ?>
+                </td>
                 <td><?= $row['qty'] > 0 ? '+' : '' ?><?= $row['qty']+0 ?></td>
                 <td><?= htmlspecialchars($row['timestamp']) ?></td>
                 <td><small><?= htmlspecialchars($row['comment']) ?></small></td>
@@ -350,25 +485,43 @@ $(document).ready(function() {
         var groupIndex = $(this).data('group-index');
         var isChecked = $(this).prop('checked');
 
-        // Check/uncheck all child rows
-        $('.row-checkbox[data-group-index="' + groupIndex + '"]').prop('checked', isChecked);
+        // Check/uncheck all child rows (including disabled component checkboxes)
+        // This ensures components are selected via group action
+        $('.row-checkbox[data-group-index="' + groupIndex + '"]').each(function() {
+            // Enable checkbox temporarily if it's a disabled component
+            var wasDisabled = $(this).prop('disabled');
+            if (wasDisabled) {
+                $(this).prop('disabled', false);
+            }
+
+            $(this).prop('checked', isChecked);
+
+            // Re-disable if it was originally disabled
+            if (wasDisabled) {
+                $(this).prop('disabled', true);
+            }
+        });
 
         updateRollbackButtonState();
     });
 
     // Handle individual row checkbox
     $('.row-checkbox').change(function() {
+        // Don't handle disabled checkboxes (they shouldn't fire this event, but just in case)
+        if ($(this).prop('disabled')) {
+            return;
+        }
+
         var groupIndex = $(this).data('group-index');
         var groupCheckbox = $('.group-checkbox[data-group-index="' + groupIndex + '"]');
 
-        // Check if all rows in group are checked
-        var totalRows = $('.row-checkbox[data-group-index="' + groupIndex + '"]').length;
-        var checkedRows = $('.row-checkbox[data-group-index="' + groupIndex + '"]:checked').length;
+        // Count only non-disabled rows when determining group checkbox state
+        var checkedRows = $('.row-checkbox[data-group-index="' + groupIndex + '"]:checked').not(':disabled').length;
 
-        if (checkedRows === totalRows && totalRows > 0) {
-            groupCheckbox.prop('checked', true);
-            groupCheckbox.prop('indeterminate', false);
-        } else if (checkedRows > 0) {
+        // Only show indeterminate state or unchecked - never auto-check the group checkbox
+        // User must explicitly click the group checkbox to select all
+        if (checkedRows > 0) {
+            groupCheckbox.prop('checked', false);
             groupCheckbox.prop('indeterminate', true);
         } else {
             groupCheckbox.prop('checked', false);
@@ -377,5 +530,75 @@ $(document).ready(function() {
 
         updateRollbackButtonState();
     });
+
+    // Device Type Filter Handler
+    $('#deviceTypeFilter').change(function() {
+        var selectedType = $(this).val();
+        filterTransfersByDeviceType(selectedType);
+    });
+
+    /**
+     * Filter transfer rows by device type
+     */
+    function filterTransfersByDeviceType(deviceType) {
+        if (deviceType === 'all') {
+            $('.transfer-row').show();
+        } else {
+            $('.transfer-row').hide();
+            $('.transfer-row[data-device-type="' + deviceType + '"]').show();
+        }
+
+        updateGroupHeaderCounts();
+    }
+
+    /**
+     * Update group header counts after filtering
+     */
+    function updateGroupHeaderCounts() {
+        $('.group-row').each(function() {
+            var $groupRow = $(this);
+            var groupIndex = $groupRow.data('group-index');
+
+            // Count visible (non-cancelled) transfers
+            var visibleCount = $('.transfer-row[data-group-index="' + groupIndex + '"]')
+                .filter(':visible')
+                .filter('[data-is-cancelled="0"]')
+                .length;
+
+            // Update badge count with proper Polish pluralization
+            var $badge = $groupRow.find('.badge-count');
+            if ($badge.length > 0) {
+                var countText = visibleCount;
+                if (visibleCount == 1) {
+                    countText += ' transfer';
+                } else if (visibleCount >= 2 && visibleCount <= 4) {
+                    countText += ' transfery';
+                } else {
+                    countText += ' transferów';
+                }
+                $badge.html(countText);
+            }
+
+            // Calculate total visible qty
+            var totalQty = 0;
+            $('.transfer-row[data-group-index="' + groupIndex + '"]')
+                .filter(':visible')
+                .each(function() {
+                    var qtyText = $(this).find('td').eq(5).text().trim();
+                    var qty = parseFloat(qtyText.replace('+', ''));
+                    if (!isNaN(qty)) {
+                        totalQty += qty;
+                    }
+                });
+
+            // Update total qty display
+            var $qtyCell = $groupRow.find('td').eq(5);
+            var qtyDisplay = totalQty > 0 ? '+' + totalQty : totalQty.toString();
+            $qtyCell.html('<strong>' + qtyDisplay + '</strong>');
+        });
+    }
+
+    // Make filtering functions globally accessible
+    window.filterTransfersByDeviceType = filterTransfersByDeviceType;
 });
 </script>
