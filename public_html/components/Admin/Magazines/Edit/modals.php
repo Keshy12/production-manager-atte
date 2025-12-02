@@ -207,3 +207,36 @@
         </div>
     </div>
 </div>
+
+<style>
+/* Magazine Inventory Grouping Styles */
+.magazine-inventory-table .group-row {
+    cursor: pointer;
+    font-weight: bold;
+    background-color: #f8f9fa !important;
+}
+
+.magazine-inventory-table .group-row:hover {
+    background-color: #e9ecef !important;
+}
+
+.magazine-inventory-table .group-row .toggle-icon {
+    transition: transform 0.2s ease;
+    display: inline-block;
+    font-size: 14px;
+    margin-right: 8px;
+}
+
+.magazine-inventory-table .group-row[aria-expanded="true"] .toggle-icon {
+    transform: rotate(90deg);
+}
+
+.magazine-inventory-table .indent-cell {
+    padding-left: 30px !important;
+}
+
+.magazine-inventory-table .badge-count {
+    font-size: 0.85em;
+    vertical-align: middle;
+}
+</style>

@@ -336,44 +336,90 @@ $(document).ready(function() {
                         $('#inventory_transfer').parent().addClass('text-muted');
                         $('#inventory_clear').parent().addClass('text-muted');
                     } else {
-                        inventoryHtml = `
-                        <div class="mb-2">
-                            <strong>Produkty w magazynie (${response.total_items} pozycji):</strong>
-                        </div>
-                        <div class="table-responsive" style="max-height: 200px; overflow-y: auto;">
-                            <table class="table table-sm table-striped">
-                                <thead>
-                                    <tr>
-                                        <th>Nazwa</th>
-                                        <th>Typ</th>
-                                        <th>Ilość</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                    `;
+                        // Group inventory by device type
+                        const groupedInventory = {
+                            parts: [],
+                            smd: [],
+                            tht: [],
+                            sku: []
+                        };
 
                         response.inventory.forEach(item => {
-                            const typeLabels = {
-                                'parts': 'Części',
-                                'smd': 'SMD',
-                                'tht': 'THT',
-                                'sku': 'SKU'
-                            };
+                            if (groupedInventory[item.type]) {
+                                groupedInventory[item.type].push(item);
+                            }
+                        });
 
-                            inventoryHtml += `
-                            <tr>
-                                <td title="${item.description || ''}">${item.name}</td>
-                                <td><span class="badge badge-secondary">${typeLabels[item.type] || item.type}</span></td>
-                                <td class="text-right">${parseFloat(item.total_quantity).toLocaleString()}</td>
-                            </tr>
+                        // Calculate counts for each type
+                        const typeCounts = {
+                            parts: groupedInventory.parts.length,
+                            smd: groupedInventory.smd.length,
+                            tht: groupedInventory.tht.length,
+                            sku: groupedInventory.sku.length
+                        };
+
+                        const totalItems = Object.values(typeCounts).reduce((sum, count) => sum + count, 0);
+
+                        // Define device types with display properties
+                        const deviceTypes = [
+                            { key: 'parts', label: 'Części', badgeClass: 'badge-warning' },
+                            { key: 'smd', label: 'SMD', badgeClass: 'badge-info' },
+                            { key: 'tht', label: 'THT', badgeClass: 'badge-success' },
+                            { key: 'sku', label: 'SKU', badgeClass: 'badge-primary' }
+                        ];
+
+                        inventoryHtml = `
+                            <div class="mb-2">
+                                <strong>Produkty w magazynie (${totalItems} pozycji):</strong>
+                            </div>
+                            <div class="table-responsive" style="max-height: 200px; overflow-y: auto;">
+                                <table class="table table-sm table-striped magazine-inventory-table">
+                                    <tbody>
                         `;
+
+                        // Generate collapsible groups for each device type
+                        deviceTypes.forEach((deviceType) => {
+                            const items = groupedInventory[deviceType.key];
+                            const count = typeCounts[deviceType.key];
+
+                            // Skip empty device types
+                            if (count === 0) return;
+
+                            const collapseId = `inventory-collapse-${deviceType.key}`;
+
+                            // Group header row
+                            inventoryHtml += `
+                                <tr class="group-row"
+                                    data-toggle="collapse"
+                                    data-target="#${collapseId}"
+                                    aria-expanded="false"
+                                    aria-controls="${collapseId}">
+                                    <td colspan="3">
+                                        <i class="bi bi-chevron-right toggle-icon"></i>
+                                        <span class="badge ${deviceType.badgeClass} mr-2">${deviceType.label}</span>
+                                        <strong>${deviceType.label}</strong>
+                                        <span class="badge badge-secondary badge-count ml-2">${count}</span>
+                                    </td>
+                                </tr>
+                            `;
+
+                            // Detail rows (collapsed by default)
+                            items.forEach(item => {
+                                inventoryHtml += `
+                                    <tr class="collapse" id="${collapseId}">
+                                        <td class="indent-cell">${item.name}</td>
+                                        <td class="text-muted"><small class="d-inline-block text-truncate" style="max-width: 400px;">${item.description || ''}</small></td>
+                                        <td class="text-right">${parseFloat(item.total_quantity).toLocaleString()}</td>
+                                    </tr>
+                                `;
+                            });
                         });
 
                         inventoryHtml += `
-                                </tbody>
-                            </table>
-                        </div>
-                    `;
+                                    </tbody>
+                                </table>
+                            </div>
+                        `;
 
                         $('#inventory_transfer, #inventory_clear').prop('disabled', false);
                         $('#inventory_transfer').parent().removeClass('text-muted');
@@ -381,6 +427,9 @@ $(document).ready(function() {
                     }
 
                     $('#magazine_inventory_display').html(inventoryHtml);
+
+                    // Initialize collapse event handlers after DOM is updated
+                    initializeInventoryCollapseHandlers();
                 }
             },
             error: function() {
@@ -897,4 +946,14 @@ $(document).ready(function() {
         $('#toggle_warnings').hide();
         $('#confirmToggleBtn').prop('disabled', false).removeClass('disabled');
     });
+
+    // Function to initialize inventory collapse handlers
+    function initializeInventoryCollapseHandlers() {
+        // Update aria-expanded attribute when collapse state changes
+        $('.magazine-inventory-table .group-row').on('click', function(e) {
+            const $this = $(this);
+            const isExpanded = $this.attr('aria-expanded') === 'true';
+            $this.attr('aria-expanded', !isExpanded);
+        });
+    }
 });
