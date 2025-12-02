@@ -56,21 +56,21 @@ $components = array_map(function ($deviceId) use ($deviceType) {
 }, $components);
 $conditions = empty($components) ? '1' : implode(" OR ", $components);
 
-$sql = "SELECT device_id, 
-               warehouse_id, 
-               type_id, 
+$sql = "SELECT device_id,
+               warehouse_id,
+               type_id,
                isActive,
-               SUM(quantity) as quantity 
-        FROM ( SELECT i.{$deviceType}_id as device_id, 
-                      i.quantity as quantity, 
-                      i.sub_magazine_id as warehouse_id, 
+               SUM(quantity) as quantity
+        FROM ( SELECT i.{$deviceType}_id as device_id,
+                      i.qty as quantity,
+                      i.sub_magazine_id as warehouse_id,
                       ml.type_id,
                       ml.isActive
-                      FROM `inventory__{$deviceType}` i 
-                      JOIN magazine__list ml ON i.sub_magazine_id = ml.sub_magazine_id 
-                      WHERE {$conditions}
-                      ORDER BY {$deviceType}_id ASC ) 
-               AS tmp_table 
+                      FROM `inventory__{$deviceType}` i
+                      JOIN magazine__list ml ON i.sub_magazine_id = ml.sub_magazine_id
+                      WHERE {$conditions} AND i.is_cancelled = 0
+                      ORDER BY {$deviceType}_id ASC )
+               AS tmp_table
         GROUP BY device_id, warehouse_id";
 
 $queryResult = $MsaDB -> query($sql, PDO::FETCH_BOTH);
