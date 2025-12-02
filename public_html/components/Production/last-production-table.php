@@ -115,7 +115,16 @@ if ($noGrouping) {
             ];
         }
         $groupedProduction[$groupId]['entries'][] = $row;
-        $groupedProduction[$groupId]['total_qty'] += $row['qty'];
+
+        // Only add quantity if this is the produced item, not a component
+        $rowDeviceType = $row['device_type'] ?? $deviceType;
+        $rowDeviceId = isset($row['device_id']) ? (int)$row['device_id'] : (int)$deviceId;
+        $isProducedItem = ($rowDeviceType == $deviceType && $rowDeviceId == $deviceId);
+
+        if ($isProducedItem) {
+            $groupedProduction[$groupId]['total_qty'] += $row['qty'];
+        }
+
         $groupedProduction[$groupId]['total_count']++;
         if ($row['is_cancelled']) {
             $groupedProduction[$groupId]['cancelled_count']++;
@@ -381,7 +390,7 @@ function getDeviceTypeBadgeHtml($deviceType) {
 
                 // Determine if this transfer is a consumed component or produced product
                 $transferDeviceType = $row['device_type'] ?? $deviceType;
-                $transferDeviceId = (int)$row['device_id'];
+                $transferDeviceId = isset($row['device_id']) ? (int)$row['device_id'] : (int)$deviceId;
                 $isComponent = !($transferDeviceType == $deviceType && $transferDeviceId == $deviceId);
             ?>
             <tr class="collapse <?= $collapseClass ?> <?= $isCancelled ? 'cancelled-row' : '' ?> transfer-row"
