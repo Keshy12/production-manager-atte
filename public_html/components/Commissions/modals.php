@@ -279,4 +279,40 @@ $selectRenderer = new SelectRenderer($MsaDB);
         border-radius: 4px;
         padding: 8px;
     }
+
+    /* Commission card chevron animation */
+    .collapse-icon {
+        transition: transform 0.2s ease;
+    }
+
+    [aria-expanded="true"] .collapse-icon.bi-chevron-right {
+        transform: rotate(90deg);
+    }
+
+    /* Warehouse grouping styles */
+    .warehouse-header-row {
+        background-color: #e9ecef !important;
+        font-weight: 600;
+    }
+
+    .warehouse-header-row:hover {
+        background-color: #dee2e6 !important;
+    }
+
+    .warehouse-component-row {
+        background-color: #ffffff;
+    }
+
+    .warehouse-component-row td:first-child {
+        padding-left: 2rem; /* Indent component names */
+    }
+
+    .warehouse-chevron {
+        transition: transform 0.2s ease;
+        display: inline-block;
+    }
+
+    .warehouse-header-row[aria-expanded="true"] .warehouse-chevron {
+        transform: rotate(90deg);
+    }
 </style>

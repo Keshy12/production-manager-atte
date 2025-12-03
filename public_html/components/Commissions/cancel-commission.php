@@ -165,7 +165,8 @@ function getCancellationData($MsaDB) {
             $transfersByCommission[$cId] = [];
 
             $flatBom = $MsaDB->query("
-                SELECT * FROM bom__flat 
+                SELECT DISTINCT parts_id, sku_id, tht_id, smd_id, quantity
+                FROM bom__flat
                 WHERE bom_{$deviceType}_id = $bomId
             ");
 
@@ -211,31 +212,62 @@ function getCancellationData($MsaDB) {
                     $transferGroupId = $transfer['transfer_group_id'];
 
                     $sources = [];
+                    $transferDetails = [];  // Separate array for collapsible details (includes both source and target)
+
                     if ($transferGroupId) {
+                        // Get source warehouses (negative qty) - for distribution
+                        // GROUP BY to prevent duplicate warehouse entries
                         $sourcesQuery = $MsaDB->query("
-                            SELECT sub_magazine_id, ABS(qty) as qty
+                            SELECT sub_magazine_id, SUM(ABS(qty)) as abs_qty, MIN(qty) as original_qty
                             FROM inventory__{$componentType}
                             WHERE transfer_group_id = {$transferGroupId}
                             AND {$componentType}_id = $componentId
                             AND commission_id = $cId
                             AND qty < 0
                             AND is_cancelled = 0
-                            ORDER BY sub_magazine_id = {$mainRow['warehouse_from_id']} DESC, qty DESC
+                            GROUP BY sub_magazine_id
+                            ORDER BY sub_magazine_id = {$mainRow['warehouse_from_id']} DESC, abs_qty DESC
                         ");
 
                         $remainingQty = $qtyAvailable;
 
                         foreach ($sourcesQuery as $src) {
-                            $sourceQty = (float)$src['qty'];
+                            $sourceQty = (float)$src['abs_qty'];
                             $allocatedQty = min($remainingQty, $sourceQty);
                             $remainingQty -= $allocatedQty;
 
-                            $sources[] = [
+                            $sourceData = [
                                 'warehouseId' => (int)$src['sub_magazine_id'],
                                 'warehouseName' => $magazines[$src['sub_magazine_id']],
                                 'quantity' => (float)$allocatedQty,
-                                'originalQty' => $sourceQty,
+                                'originalQty' => (float)$src['original_qty'],
                                 'isMainWarehouse' => $src['sub_magazine_id'] == $mainRow['warehouse_from_id']
+                            ];
+
+                            $sources[] = $sourceData;  // Add to sources (for distribution)
+                            $transferDetails[] = $sourceData;  // Also add to transferDetails
+                        }
+
+                        // Get target warehouse (positive qty) - ONLY for collapsible details display
+                        $targetQuery = $MsaDB->query("
+                            SELECT sub_magazine_id, qty as original_qty
+                            FROM inventory__{$componentType}
+                            WHERE transfer_group_id = {$transferGroupId}
+                            AND {$componentType}_id = $componentId
+                            AND commission_id = $cId
+                            AND qty > 0
+                            AND is_cancelled = 0
+                            LIMIT 1
+                        ");
+
+                        if (!empty($targetQuery)) {
+                            // Add ONLY to transferDetails, NOT to sources
+                            $transferDetails[] = [
+                                'warehouseId' => (int)$targetQuery[0]['sub_magazine_id'],
+                                'warehouseName' => $magazines[$targetQuery[0]['sub_magazine_id']],
+                                'quantity' => (float)$qtyAvailable,
+                                'originalQty' => (float)$targetQuery[0]['original_qty'],
+                                'isMainWarehouse' => false
                             ];
                         }
                     }
@@ -280,7 +312,8 @@ function getCancellationData($MsaDB) {
                         'qtyUsed' => (float)$qtyUsed,
                         'qtyAvailable' => (float)$qtyAvailable,
                         'qtyPerItem' => (float)$qtyPerItem,
-                        'sources' => $sources,
+                        'sources' => $sources,  // Only source warehouses (for distribution)
+                        'transferDetails' => $transferDetails,  // Source + target warehouses (for collapsible details)
                         'destinationWarehouseId' => (int)$transfer['sub_magazine_id'],
                         'transferGroupId' => $transferGroupId ? (int)$transferGroupId : null,
                         'isCancelled' => $isCancelled,
@@ -289,6 +322,18 @@ function getCancellationData($MsaDB) {
                     ];
                 }
             }
+
+            // Deduplicate transfers by transferId (in case same component appears multiple times in BOM)
+            $seen = [];
+            $deduplicated = [];
+            foreach ($transfersByCommission[$cId] as $transfer) {
+                $transferId = $transfer['transferId'];
+                if (!isset($seen[$transferId])) {
+                    $seen[$transferId] = true;
+                    $deduplicated[] = $transfer;
+                }
+            }
+            $transfersByCommission[$cId] = $deduplicated;
         }
 
         echo json_encode([
@@ -305,6 +350,43 @@ function getCancellationData($MsaDB) {
             'message' => $e->getMessage()
         ]);
     }
+}
+
+/**
+ * Mark all entries in a transfer group as cancelled for a specific commission
+ * This includes BOTH source (negative qty) and target (positive qty) entries
+ *
+ * @param MsaDB $MsaDB Database instance
+ * @param int $transferGroupId The original transfer group ID to cancel
+ * @param int $commissionId The commission ID
+ * @param int $userId User performing the cancellation
+ * @param string $now Current timestamp
+ * @return int Number of entries marked as cancelled
+ */
+function markAllEntriesInGroupAsCancelled($MsaDB, $transferGroupId, $commissionId, $userId, $now) {
+    $deviceTypes = ['parts', 'sku', 'smd', 'tht'];
+    $totalMarked = 0;
+
+    foreach ($deviceTypes as $deviceType) {
+        $entries = $MsaDB->query("
+            SELECT id FROM inventory__{$deviceType}
+            WHERE transfer_group_id = {$transferGroupId}
+            AND commission_id = {$commissionId}
+            AND is_cancelled = 0
+        ");
+
+        foreach ($entries as $entry) {
+            $MsaDB->update("inventory__{$deviceType}", [
+                'is_cancelled' => 1,
+                'cancelled_at' => $now,
+                'cancelled_by' => $userId
+            ], 'id', $entry['id']);
+
+            $totalMarked++;
+        }
+    }
+
+    return $totalMarked;
 }
 
 function submitCancellation($MsaDB) {
@@ -369,15 +451,13 @@ function submitCancellation($MsaDB) {
             }
         }
 
+        // PHASE 1: Group transfers by (commission_id, original_transfer_group_id)
+        $cancellationGroups = [];
+
         foreach ($selectedTransfers as $transfer) {
             $transferId = $transfer['transferId'];
             $componentType = $transfer['componentType'];
-            $componentId = $transfer['componentId'];
             $commissionId = $transfer['commissionId'];
-            $qtyToReturn = $transfer['qtyToReturn'];
-            $sources = $transfer['sources'];
-
-            if ($qtyToReturn <= 0) continue;
 
             $originalTransfer = $MsaDB->query("
                 SELECT * FROM inventory__{$componentType}
@@ -386,67 +466,155 @@ function submitCancellation($MsaDB) {
 
             $originalTransferGroupId = $originalTransfer['transfer_group_id'];
 
-            // Create a new transfer group for the cancellation
-            $cancellationNote = $originalTransferGroupId
-                ? "Anulacja grupy transferowej #$originalTransferGroupId dla zlecenia #$commissionId"
-                : "Anulacja transferu dla zlecenia #$commissionId";
-            $newTransferGroupId = $transferGroupManager->createTransferGroup($userId, $cancellationNote);
+            if (!$originalTransferGroupId) {
+                $originalTransferGroupId = 'null';
+            }
 
-            $MsaDB->update("inventory__{$componentType}", [
-                'is_cancelled' => 1,
-                'cancelled_at' => $now,
-                'cancelled_by' => $userId
-            ], 'id', $transferId);
+            $groupKey = "commission_{$commissionId}_group_{$originalTransferGroupId}";
 
-            $MsaDB->insert("inventory__{$componentType}", [
-                $componentType . '_id',
-                'commission_id',
-                'sub_magazine_id',
-                'qty',
-                'transfer_group_id',
-                'is_cancelled',
-                'cancelled_at',
-                'cancelled_by',
-                'input_type_id',
-                'comment'
-            ], [
-                $componentId,
-                $commissionId,
-                $originalTransfer['sub_magazine_id'],
-                -$qtyToReturn,
-                $newTransferGroupId,
-                1,
-                $now,
-                $userId,
-                3,
-                "Anulacja transferu - zlecenie #$commissionId"
+            if (!isset($cancellationGroups[$groupKey])) {
+                $cancellationGroups[$groupKey] = [
+                    'commissionId' => $commissionId,
+                    'originalGroupId' => $originalTransferGroupId,
+                    'transfers' => [],
+                    'newCancellationGroupId' => null
+                ];
+            }
+
+            $cancellationGroups[$groupKey]['transfers'][] = array_merge($transfer, [
+                'originalTransferData' => $originalTransfer
             ]);
+        }
 
-            foreach ($sources as $source) {
-                if ($source['quantity'] > 0) {
-                    $MsaDB->insert("inventory__{$componentType}", [
-                        $componentType . '_id',
-                        'commission_id',
-                        'sub_magazine_id',
-                        'qty',
-                        'transfer_group_id',
-                        'is_cancelled',
-                        'cancelled_at',
-                        'cancelled_by',
-                        'input_type_id',
-                        'comment'
-                    ], [
-                        $componentId,
-                        $commissionId,
-                        $source['warehouseId'],
-                        $source['quantity'],
-                        $newTransferGroupId,
-                        1,
-                        $now,
-                        $userId,
-                        3,
-                        "Zwrot komponentów do źródła - anulacja zlecenia #$commissionId"
-                    ]);
+        // PHASE 2: Create ONE cancellation transfer group for each original group
+        foreach ($cancellationGroups as $groupKey => &$group) {
+            $commissionId = $group['commissionId'];
+            $originalGroupId = $group['originalGroupId'];
+
+            if ($originalGroupId === 'null') {
+                $cancellationNote = "Anulacja transferów bez grupy dla zlecenia #$commissionId";
+            } else {
+                $cancellationNote = "Anulacja grupy transferowej #$originalGroupId dla zlecenia #$commissionId";
+            }
+
+            $group['newCancellationGroupId'] = $transferGroupManager->createTransferGroup($userId, $cancellationNote);
+        }
+
+        // PHASE 3: Mark entries in original transfer groups as cancelled
+        foreach ($cancellationGroups as $group) {
+            $originalGroupId = $group['originalGroupId'];
+            $commissionId = $group['commissionId'];
+
+            if ($originalGroupId === 'null') {
+                // Edge case: no group, mark specific transfers only
+                foreach ($group['transfers'] as $transfer) {
+                    $transferId = $transfer['transferId'];
+                    $componentType = $transfer['componentType'];
+
+                    $MsaDB->update("inventory__{$componentType}", [
+                        'is_cancelled' => 1,
+                        'cancelled_at' => $now,
+                        'cancelled_by' => $userId
+                    ], 'id', $transferId);
+                }
+            } else {
+                // Check if entire commission is being cancelled
+                if (in_array($commissionId, $selectedCommissions)) {
+                    // Commission checkbox was checked: mark ALL entries in the group
+                    markAllEntriesInGroupAsCancelled($MsaDB, $originalGroupId, $commissionId, $userId, $now);
+                } else {
+                    // Only specific transfer rows selected: mark ALL related entries for each transfer
+                    foreach ($group['transfers'] as $transfer) {
+                        $transferId = $transfer['transferId'];
+                        $componentType = $transfer['componentType'];
+                        $componentId = $transfer['componentId'];
+
+                        // Query ALL entries (source + target) for this specific transfer
+                        $entries = $MsaDB->query("
+                            SELECT id FROM inventory__{$componentType}
+                            WHERE transfer_group_id = {$originalGroupId}
+                            AND commission_id = {$commissionId}
+                            AND {$componentType}_id = {$componentId}
+                            AND is_cancelled = 0
+                        ");
+
+                        // Mark ALL related entries as cancelled (both negative and positive qty)
+                        foreach ($entries as $entry) {
+                            $MsaDB->update("inventory__{$componentType}", [
+                                'is_cancelled' => 1,
+                                'cancelled_at' => $now,
+                                'cancelled_by' => $userId
+                            ], 'id', $entry['id']);
+                        }
+                    }
+                }
+            }
+        }
+
+        // PHASE 4: Create reversal and return entries
+        foreach ($cancellationGroups as $group) {
+            $newCancellationGroupId = $group['newCancellationGroupId'];
+
+            foreach ($group['transfers'] as $transfer) {
+                $componentType = $transfer['componentType'];
+                $componentId = $transfer['componentId'];
+                $commissionId = $transfer['commissionId'];
+                $qtyToReturn = $transfer['qtyToReturn'];
+                $sources = $transfer['sources'];
+                $originalTransfer = $transfer['originalTransferData'];
+
+                if ($qtyToReturn <= 0) continue;
+
+                $MsaDB->insert("inventory__{$componentType}", [
+                    $componentType . '_id',
+                    'commission_id',
+                    'sub_magazine_id',
+                    'qty',
+                    'transfer_group_id',
+                    'is_cancelled',
+                    'cancelled_at',
+                    'cancelled_by',
+                    'input_type_id',
+                    'comment'
+                ], [
+                    $componentId,
+                    $commissionId,
+                    $originalTransfer['sub_magazine_id'],
+                    -$qtyToReturn,
+                    $newCancellationGroupId,
+                    1,
+                    $now,
+                    $userId,
+                    3,
+                    "Anulacja transferu - zlecenie #$commissionId"
+                ]);
+
+                foreach ($sources as $source) {
+                    if ($source['quantity'] > 0) {
+                        $MsaDB->insert("inventory__{$componentType}", [
+                            $componentType . '_id',
+                            'commission_id',
+                            'sub_magazine_id',
+                            'qty',
+                            'transfer_group_id',
+                            'is_cancelled',
+                            'cancelled_at',
+                            'cancelled_by',
+                            'input_type_id',
+                            'comment'
+                        ], [
+                            $componentId,
+                            $commissionId,
+                            $source['warehouseId'],
+                            $source['quantity'],
+                            $newCancellationGroupId,
+                            1,
+                            $now,
+                            $userId,
+                            3,
+                            "Zwrot komponentów do źródła - anulacja zlecenia #$commissionId"
+                        ]);
+                    }
                 }
             }
         }
