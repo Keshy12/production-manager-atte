@@ -61,6 +61,7 @@ $(document).ready(function() {
 
         // Sync component data and update display
         syncComponentQuantityFromSources(key);
+        updateGlobalSummary();
     });
 
     // Handle Edit button for component sources
@@ -456,9 +457,6 @@ function createGlobalSummary(allComponentValues) {
         componentSummary[key].totalTransferQty += parseInt(component.transferQty) || 0;
         componentSummary[key].componentKeys.push(componentIndex);
 
-        const transferQty = parseInt(component.transferQty) || 0;
-        componentSummary[key].totalTransferQty += transferQty;
-
         // Track sources for this component
         const sources = transferSources[componentIndex] || [{
             warehouseId: $("#transferFrom").val(),
@@ -466,7 +464,7 @@ function createGlobalSummary(allComponentValues) {
         }];
 
         sources.forEach(source => {
-            const warehouseName = availableWarehouses.find(wh => wh.id == source.warehouseId)?.name || 'Unknown';
+            const warehouseName = availableWarehouses.find(wh => wh.id === source.warehouseId)?.name || 'Unknown';
             if (!componentSummary[key].sources[warehouseName]) {
                 componentSummary[key].sources[warehouseName] = 0;
             }
