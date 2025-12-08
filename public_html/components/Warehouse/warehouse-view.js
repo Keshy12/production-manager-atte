@@ -184,8 +184,32 @@ $("#correctMagazineSubmit").click(function () {
             type: type,
             device_id: device_id
         },
-        success: function (data) {
-            loadMagazine();
+        success: function (response) {
+            try {
+                const data = typeof response === 'string' ? JSON.parse(response) : response;
+
+                if (data.success) {
+                    // Close modal and reload magazine view
+                    $("#correctMagazineModal").modal('hide');
+                    loadMagazine();
+
+                    // Optional: Show success message if needed
+                    console.log(data.message);
+                    if (data.transferGroupId) {
+                        console.log('Transfer Group ID:', data.transferGroupId);
+                    }
+                } else {
+                    // Show error message to user
+                    alert('Błąd: ' + (data.message || 'Nieznany błąd'));
+                }
+            } catch (e) {
+                // Fallback for backward compatibility
+                $("#correctMagazineModal").modal('hide');
+                loadMagazine();
+            }
+        },
+        error: function(xhr, status, error) {
+            alert('Wystąpił błąd podczas korekty magazynu: ' + error);
         }
     });
 });

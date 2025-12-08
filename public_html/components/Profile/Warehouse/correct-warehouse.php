@@ -15,8 +15,14 @@ $quantityDifference = $_POST["difference"];
 //input_type = korekta
 $inputTypeId = 3;
 $comment = "Korekta magazynu przez magazyn użytkownika";
-$insertColumns = ["{$type}_id", "user_id", "sub_magazine_id", "quantity", "input_type_id", "comment"];
 
-$insertValues = [$deviceId, $userId, $subMagazineId, $quantityDifference, $inputTypeId, $comment];
+if($quantityDifference != 0) {
+    // Create transfer group for this correction
+    $transferGroupManager = new Atte\Utils\TransferGroupManager($MsaDB);
+    $transferGroupId = $transferGroupManager->createTransferGroup($userId, "Korekta magazynu");
 
-if($quantityDifference != 0) $MsaDB -> insert("inventory__{$type}", $insertColumns, $insertValues);
+    $insertColumns = ["{$type}_id", "sub_magazine_id", "qty", "input_type_id", "comment", "transfer_group_id"];
+    $insertValues = [$deviceId, $subMagazineId, $quantityDifference, $inputTypeId, $comment, $transferGroupId];
+
+    $MsaDB -> insert("inventory__{$type}", $insertColumns, $insertValues);
+}

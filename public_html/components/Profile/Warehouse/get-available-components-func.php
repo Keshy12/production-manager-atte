@@ -10,11 +10,11 @@ $userSubmagazineId = $userInfo["sub_magazine_id"];
 function getAvailableComponents($componentType, $userSubmagazineId) {
     $MsaDB = MsaDB::getInstance();
     return $MsaDB->query("
-        SELECT {$componentType}_id 
-        FROM `inventory__{$componentType}` 
-        WHERE sub_magazine_id = $userSubmagazineId 
-        GROUP BY {$componentType}_id 
-        HAVING SUM(quantity) != 0
+        SELECT {$componentType}_id
+        FROM `inventory__{$componentType}`
+        WHERE sub_magazine_id = $userSubmagazineId
+        GROUP BY {$componentType}_id
+        HAVING SUM(qty) != 0
     ", PDO::FETCH_COLUMN);
 }
 

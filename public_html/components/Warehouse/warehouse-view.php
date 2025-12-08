@@ -44,10 +44,10 @@ $selectRenderer = new SelectRenderer($MsaDB);
 <div class="d-flex flex-column align-items-center justify-content-center mt-4">
     <div class="d-flex w-75">
         <div class="btn-group" role="group">
-            <button type="button" value="sku" class="magazineoption btn btn-outline-secondary">SKU</option>
-            <button type="button" value="tht" class="magazineoption btn btn-outline-secondary">THT</option>
-            <button type="button" value="smd" class="magazineoption btn btn-outline-secondary">SMD</option>
-            <button type="button" value="parts" class="magazineoption btn btn-secondary">Parts</option>
+            <button type="button" value="sku" class="magazineoption btn btn-outline-secondary">SKU</button>
+            <button type="button" value="tht" class="magazineoption btn btn-outline-secondary">THT</button>
+            <button type="button" value="smd" class="magazineoption btn btn-outline-secondary">SMD</button>
+            <button type="button" value="parts" class="magazineoption btn btn-secondary">Parts</button>
         </div>
         <select id="magazinecomponent" 
                 data-title="Typ:" 

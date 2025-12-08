@@ -32,11 +32,11 @@ if (!empty($selected)) {
     $nextPageAvailable = false;
 }
 
-$query = "SELECT {$deviceType}_id, 
-                SUM(quantity) as quantity
-            FROM `inventory__{$deviceType}` 
-            WHERE sub_magazine_id = '{$subMagazineId}' 
-            AND ({$conditions}) 
+$query = "SELECT {$deviceType}_id,
+                SUM(qty) as quantity
+            FROM `inventory__{$deviceType}`
+            WHERE sub_magazine_id = '{$subMagazineId}'
+            AND ({$conditions})
             GROUP BY {$deviceType}_id" .
     (empty($selected) ? " LIMIT {$limit} OFFSET {$offset}" : "");
 
