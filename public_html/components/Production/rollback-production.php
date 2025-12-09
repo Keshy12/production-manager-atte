@@ -127,7 +127,9 @@ try {
 
                     $MsaDB->insert("inventory__{$currentType}", $columns, $values);
 
-                    if ($commissionId) {
+                    // Only adjust commission qty_produced for positive entries (produced devices),
+                    // not for negative entries (consumed components)
+                    if ($commissionId && $qty > 0) {
                         $commission = $commissionRepository->getCommissionById($commissionId);
                         $commission->addToQuantity(-$qty, 'qty_produced');
                     }
@@ -224,7 +226,9 @@ try {
 
             $MsaDB->insert("inventory__{$deviceType}", $columns, $values);
 
-            if ($commissionId) {
+            // Only adjust commission qty_produced for positive entries (produced devices),
+            // not for negative entries (consumed components)
+            if ($commissionId && $qty > 0) {
                 $commission = $commissionRepository->getCommissionById($commissionId);
                 $commission->addToQuantity(-$qty, 'qty_produced');
             }
