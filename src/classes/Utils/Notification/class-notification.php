@@ -7,6 +7,7 @@ use Atte\DB\MsaDB;
 use Atte\Utils\Production\SkuProductionProcessor;
 use Atte\Utils\UserRepository;
 use Atte\Utils\NotificationRepository;
+use Atte\Utils\TransferGroupManager;
 
 class Notification {
     private $MsaDB;
@@ -33,11 +34,23 @@ class Notification {
         );
     }
 
-    public function tryToResolveNotification() {
+    public function tryToResolveNotification($userId) {
         $isResolved = $this -> notificationValues["isResolved"] == 1;
         if($isResolved) throw new \Exception("Cannot resolve notification that is already resolved.");
 
-        if($this -> retryQueries()){
+        if (!$userId) {
+            throw new \Exception("User ID is required to resolve notification.");
+        }
+
+        // Create transfer group for this notification resolution
+        $transferGroupManager = new TransferGroupManager($this->MsaDB);
+        $notificationId = $this->notificationValues["id"];
+        $transferGroupId = $transferGroupManager->createTransferGroup(
+            $userId,
+            "Notification resolution #{$notificationId}"
+        );
+
+        if($this -> retryQueries($transferGroupId)){
             $remainingQueries = $this->getValuesToResolve();
             if(empty($remainingQueries)) {
                 $this -> resolveNotification();
@@ -58,7 +71,7 @@ class Notification {
         return $result;
     }
 
-    private function retryQueries() {
+    private function retryQueries($transferGroupId) {
         $MsaDB = $this -> MsaDB;
         $valuesToResolve = $this -> getValuesToResolve();
         $valuesToResolveGroupedByFlowpinTypeId = $this -> groupValuesToResolveByFlowpinTypeId($valuesToResolve);
@@ -67,16 +80,16 @@ class Notification {
         foreach($valuesToResolveGroupedByFlowpinTypeId as $flowpinQueryTypeId => $valuesToResolve) {
             switch($flowpinQueryTypeId) {
                 case 1:
-                    if(!$this -> resolveSKUProduction($MsaDB, $valuesToResolve)) $wasSuccessful = false;
+                    if(!$this -> resolveSKUProduction($MsaDB, $valuesToResolve, $transferGroupId)) $wasSuccessful = false;
                     break;
                 case 2:
-                    if(!$this -> resolveSKUSold($MsaDB, $valuesToResolve)) $wasSuccessful = false;
+                    if(!$this -> resolveSKUSold($MsaDB, $valuesToResolve, $transferGroupId)) $wasSuccessful = false;
                     break;
                 case 3:
-                    if(!$this -> resolveSKUReturnal($MsaDB, $valuesToResolve)) $wasSuccessful = false;
+                    if(!$this -> resolveSKUReturnal($MsaDB, $valuesToResolve, $transferGroupId)) $wasSuccessful = false;
                     break;
                 case 4:
-                    if(!$this -> resolveSKUTransfer($MsaDB, $valuesToResolve)) $wasSuccessful = false;
+                    if(!$this -> resolveSKUTransfer($MsaDB, $valuesToResolve, $transferGroupId)) $wasSuccessful = false;
                     break;
 
                 default:
@@ -87,7 +100,7 @@ class Notification {
         return $wasSuccessful;
     }
 
-    private function resolveSKUProduction($MsaDB, $valuesToResolve) {
+    private function resolveSKUProduction($MsaDB, $valuesToResolve, $transferGroupId) {
         $FlowpinDB = FlowpinDB::getInstance();
         $productionProcessor = new SkuProductionProcessor($MsaDB, $FlowpinDB);
         $notificationRepository = new NotificationRepository($MsaDB);
@@ -98,7 +111,7 @@ class Notification {
 
             $MsaDB->db->beginTransaction();
             try {
-                $queries = $productionProcessor->processProduction($data);
+                $queries = $productionProcessor->processProduction($data, null, $transferGroupId);
 
                 foreach($queries as $eventId => $queryList) {
                     foreach($queryList as $query) {
@@ -122,7 +135,7 @@ class Notification {
         return true;
     }
 
-    private function resolveSKUSold($MsaDB, $valuesToResolve) {
+    private function resolveSKUSold($MsaDB, $valuesToResolve, $transferGroupId) {
         $userRepository = new UserRepository($MsaDB);
         $wasSuccessful = true;
         $notificationRepository = new NotificationRepository($MsaDB);
@@ -140,8 +153,8 @@ class Notification {
                 $userId = $user->userId;
 
                 $comment = "Finalizacja zamówienia, spakowano do wysyłki, EventId: " . $eventId;
-                $columns = ["sku_id", "user_id", "sub_magazine_id", "quantity", "timestamp", "input_type_id", "comment"];
-                $values = [$deviceId, $userId, "0", $qty, $executionDate, "9", $comment];
+                $columns = ["sku_id", "user_id", "sub_magazine_id", "quantity", "timestamp", "input_type_id", "comment", "transfer_group_id"];
+                $values = [$deviceId, $userId, "0", $qty, $executionDate, "9", $comment, $transferGroupId];
                 $MsaDB->insert("inventory__sku", $columns, $values);
                 $MsaDB->deleteById("notification__queries_affected", $rowId);
             } catch (\Throwable $exception) {
@@ -156,7 +169,7 @@ class Notification {
         return $wasSuccessful;
     }
 
-    private function resolveSKUReturnal($MsaDB, $valuesToResolve) {
+    private function resolveSKUReturnal($MsaDB, $valuesToResolve, $transferGroupId) {
         $userRepository = new UserRepository($MsaDB);
         $wasSuccessful = true;
         $notificationRepository = new NotificationRepository($MsaDB);
@@ -181,8 +194,8 @@ class Notification {
                 $userId = $user->userId;
 
                 $comment = "Zwrot SKU od klienta, EventId: " . $eventId;
-                $columns = ["sku_id", "user_id", "sub_magazine_id", "quantity", "timestamp", "input_type_id", "comment"];
-                $values = [$deviceId, $userId, "0", $qty, $executionDate, "10", $comment];
+                $columns = ["sku_id", "user_id", "sub_magazine_id", "quantity", "timestamp", "input_type_id", "comment", "transfer_group_id"];
+                $values = [$deviceId, $userId, "0", $qty, $executionDate, "10", $comment, $transferGroupId];
                 $MsaDB->insert("inventory__sku", $columns, $values);
                 $MsaDB->deleteById("notification__queries_affected", $rowId);
             } catch (\Throwable $exception) {
@@ -197,7 +210,7 @@ class Notification {
         return $wasSuccessful;
     }
 
-    private function resolveSKUTransfer($MsaDB, $valuesToResolve) {
+    private function resolveSKUTransfer($MsaDB, $valuesToResolve, $transferGroupId) {
         $userRepository = new UserRepository($MsaDB);
         $wasSuccessful = true;
         $notificationRepository = new NotificationRepository($MsaDB);
@@ -218,14 +231,14 @@ class Notification {
                 $comment = "Przesunięcie między magazynowe, EventId: " . $eventId;
 
                 if ($warehouseOut == 3 || $warehouseOut == 4) {
-                    $columns = ["sku_id", "user_id", "sub_magazine_id", "quantity", "timestamp", "input_type_id", "comment"];
-                    $values = [$deviceId, $userId, "0", $qtyOut, $executionDate, "2", $comment];
+                    $columns = ["sku_id", "user_id", "sub_magazine_id", "quantity", "timestamp", "input_type_id", "comment", "transfer_group_id"];
+                    $values = [$deviceId, $userId, "0", $qtyOut, $executionDate, "2", $comment, $transferGroupId];
                     $MsaDB->insert("inventory__sku", $columns, $values);
                 }
 
                 if ($warehouseIn == 3 || $warehouseIn == 4) {
-                    $columns = ["sku_id", "user_id", "sub_magazine_id", "quantity", "timestamp", "input_type_id", "comment"];
-                    $values = [$deviceId, $userId, "0", $qtyIn, $executionDate, "2", $comment];
+                    $columns = ["sku_id", "user_id", "sub_magazine_id", "quantity", "timestamp", "input_type_id", "comment", "transfer_group_id"];
+                    $values = [$deviceId, $userId, "0", $qtyIn, $executionDate, "2", $comment, $transferGroupId];
                     $MsaDB->insert("inventory__sku", $columns, $values);
                 }
 

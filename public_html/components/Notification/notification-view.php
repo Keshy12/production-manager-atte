@@ -1,11 +1,9 @@
 <?php
 
 use Atte\DB\MsaDB;
-use Atte\DB\FlowpinDB;
 use Atte\Utils\NotificationRepository;
 
 $MsaDB = MsaDB::getInstance();
-$FlowpinDB = FlowpinDB::getInstance();
 $notificationRepository = new NotificationRepository($MsaDB);
 $id = $_GET["id"];
 $notification = $notificationRepository -> getNotificationById($id);
@@ -16,7 +14,7 @@ $queriesAffectedCount = $MsaDB -> query("SELECT COUNT(*) FROM `notification__que
 
 $list__sku = $MsaDB -> readIdName("list__sku");
 
-$message = $MsaDB -> query("SELECT description FROM notification__action_needed 
+$message = $MsaDB -> query("SELECT description FROM notification__action_needed
                                 WHERE id = $actionNeededId", \PDO::FETCH_COLUMN)[0];
 $resolved = "nierozwiązane";
 $alert = "alert-danger";
@@ -25,7 +23,12 @@ if($isResolved) {
     $alert = "alert-success";
 }
 
+$userId = $_SESSION["userid"] ?? null;
+
 ?>
+<script>
+const userId = <?= json_encode($userId) ?>;
+</script>
 <div class="d-flex-column align-items-center justify-content-center mt-4">
     <div class="d-flex align-items-center justify-content-center text-center">
         <div>

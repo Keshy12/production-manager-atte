@@ -42,7 +42,7 @@ $("#tryResolve").click(function(){
     $(this).prop("disabled", true);
     $("#spinnerResolve").show();
     $(document).prop( 'title' , 'Ładowanie...' );
-    postData(COMPONENTS_PATH+"/notification/resolve-notification.php", { id: notificationId })
+    postData(COMPONENTS_PATH+"/notification/resolve-notification.php", { id: notificationId, userId: userId })
 .then((data) => {
         $("#result").html(data);
         $("#spinnerResolve").hide();

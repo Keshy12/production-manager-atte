@@ -7,6 +7,11 @@ use Atte\Utils\NotificationRepository;
 set_time_limit(0);
 
 $id = $_POST["id"];
+$userId = $_POST["userId"] ?? null;
+if (!$userId) {
+    echo "Musisz być zalogowany, aby rozwiązać powiadomienie.";
+    exit;
+}
 $locker = new Locker("notification-locks/notification".$id.".lock");
 $isLocked = !($locker -> lock(FALSE));
 $isResolvable = true;
@@ -39,7 +44,7 @@ if($isLocked) {
                 break;
         }
         if($isResolvable) {
-            if($unresolvedNotification -> tryToResolveNotification()){
+            if($unresolvedNotification -> tryToResolveNotification($userId)){
                 $result = "Pomyślnie rozwiązano powiadomienie.";
             } else {
                 $result = "Niestety powiadomienia nie udało się rozwiązać. Sprawdź jeszcze raz, czy aby na pewno
