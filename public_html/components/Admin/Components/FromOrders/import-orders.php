@@ -118,7 +118,7 @@ function importOrders($orders, $oldLastCell, $newLastCell) {
         return $importSummary;
 
     } catch (\Exception $e) {
-        $MsaDB->db->rollBack();
+        if($MsaDB -> isInTransaction()) $MsaDB->db->rollBack();
         throw $e;
     }
 }

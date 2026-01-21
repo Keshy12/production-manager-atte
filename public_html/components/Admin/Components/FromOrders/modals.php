@@ -63,7 +63,7 @@
                 <!-- Filtered View Warning -->
                 <div id="modalFilterWarning" class="alert alert-info" style="display: none;">
                     <i class="bi bi-funnel"></i>
-                    <strong>Uwaga:</strong> Aktywne są filtry. Import obejmie tylko zamówienia spełniające kryteria filtrów.
+                    <strong>Uwaga:</strong> Aktywne są filtry. Import zostanie zablokowany jeśli nie wszystkie zamówienia spełniają kryteria.
                 </div>
 
                 <!-- Confirmation Checkbox -->

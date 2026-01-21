@@ -134,9 +134,14 @@ $("#previousItem").click(function(){
 
 $("#nextItem").click(function(){
     let $selectedOption = $("#list__device option:selected");
-    $selectedOption.prop('selected', false)
-                    .next()
-                    .prop('selected', true);
+    let $nextOption = $selectedOption.next();
+    
+    if($nextOption.length === 0) {
+        return;
+    }
+    
+    $selectedOption.prop('selected', false);
+    $nextOption.prop('selected', true);
     $("#list__device").selectpicker('refresh').change();
 });
 

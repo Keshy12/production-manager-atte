@@ -30,7 +30,6 @@ function showAdditionalFields(type)
 }
 
 $("#versionSelect").change(function(){
-    let bomType = $("#bomTypeSelect").val();
     generateBomTable();
 });
 
@@ -106,6 +105,7 @@ function generateVersionSelect(possibleVersions){
             $("#versionSelect").append(option);
         }
     }
+    $("#versionField").show();
     $("#versionSelect").selectpicker('refresh');
 }
 
