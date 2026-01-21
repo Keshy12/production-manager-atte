@@ -28,7 +28,7 @@ class UserRepository {
 
     public function getUserById($id) {
         $MsaDB = $this -> MsaDB;
-        $query = "SELECT user_id as userId, login, name, surname, email, isAdmin, sub_magazine_id as subMagazineId 
+        $query = "SELECT user_id as userId, login, name, surname, email, isAdmin, isActive, sub_magazine_id as subMagazineId 
                     FROM `user` WHERE `user_id` = '$id'";
         $result = $MsaDB -> query($query, PDO::FETCH_CLASS, "Atte\\Utils\\User", [$MsaDB]);
         if(isset($result[0])) {
@@ -40,7 +40,7 @@ class UserRepository {
 
     public function getUserByEmail($email) {
         $MsaDB = $this -> MsaDB;
-        $query = "SELECT user_id as userId, login, name, surname, email, isAdmin, sub_magazine_id as subMagazineId 
+        $query = "SELECT user_id as userId, login, name, surname, email, isAdmin, isActive, sub_magazine_id as subMagazineId 
                     FROM `user` WHERE `email` = '$email'";
         $result = $MsaDB -> query($query, PDO::FETCH_CLASS, "Atte\\Utils\\User", [$MsaDB]);
         if(isset($result[0])) {

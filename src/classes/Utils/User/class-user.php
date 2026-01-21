@@ -13,6 +13,7 @@ class User
     public string $surname;
     public string $email;
     public bool $isAdmin;
+    public bool $isActive;
     public ?int $subMagazineId;
 
     public function __construct(BaseDB $MsaDB){

@@ -65,4 +65,27 @@ class Locker
             $this->_fh = NULL;
         }
     }
+
+    /**
+     * Check if the file is currently locked by another process.
+     * @return bool TRUE if locked, FALSE if free.
+     */
+    public function isLocked(): bool
+    {
+        // If we already hold the lock in this instance, it's "locked"
+        if ($this->_fh !== NULL) {
+            return true;
+        }
+
+        // Try to acquire a non-blocking lock
+        if ($this->lock(false)) {
+            // We got the lock, so it was free. Release it immediately.
+            $this->unlock();
+            return false;
+        }
+
+        // Could not acquire lock, so it's held by someone else
+        return true;
+    }
 }
+
