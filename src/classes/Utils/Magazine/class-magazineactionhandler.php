@@ -105,76 +105,83 @@ class MagazineActionHandler
         }
 
         $userId = $_SESSION['user_id'] ?? 1;
+        
+        // Create transfer group to track user and action
+        $this->MsaDB->insert("inventory__transfer_groups", 
+            ["created_by", "notes"], 
+            [$userId, "Transfer z magazynu {$fromMagazineId} do {$toMagazineId}"]
+        );
+        $transferGroupId = (int)$this->MsaDB->db->lastInsertId();
 
         try {
             $transferQueries = [
                 // Insert positive quantities to target magazine
-                "INSERT INTO inventory__parts (parts_id, sub_magazine_id, qty, timestamp, input_type_id, comment, isVerified)
+                "INSERT INTO inventory__parts (parts_id, sub_magazine_id, qty, timestamp, input_type_id, comment, isVerified, transfer_group_id)
              SELECT parts_id, {$toMagazineId}, SUM(qty), NOW(), 2,
-                    'Transfer z magazynu {$fromMagazineId}', 1
+                    'Transfer z magazynu {$fromMagazineId}', 1, {$transferGroupId}
              FROM inventory__parts
              WHERE sub_magazine_id = {$fromMagazineId}
              GROUP BY parts_id
              HAVING SUM(qty) > 0",
 
                 // Insert negative quantities to source magazine
-                "INSERT INTO inventory__parts (parts_id, sub_magazine_id, qty, timestamp, input_type_id, comment, isVerified)
+                "INSERT INTO inventory__parts (parts_id, sub_magazine_id, qty, timestamp, input_type_id, comment, isVerified, transfer_group_id)
              SELECT parts_id, {$fromMagazineId}, -SUM(qty), NOW(), 2,
-                    'Transfer do magazynu {$toMagazineId}', 1
+                    'Transfer do magazynu {$toMagazineId}', 1, {$transferGroupId}
              FROM inventory__parts
              WHERE sub_magazine_id = {$fromMagazineId}
              GROUP BY parts_id
              HAVING SUM(qty) > 0",
 
                 // SMD - positive to target
-                "INSERT INTO inventory__smd (smd_id, sub_magazine_id, qty, timestamp, input_type_id, comment, isVerified)
+                "INSERT INTO inventory__smd (smd_id, sub_magazine_id, qty, timestamp, input_type_id, comment, isVerified, transfer_group_id)
              SELECT smd_id, {$toMagazineId}, SUM(qty), NOW(), 2,
-                    'Transfer z magazynu {$fromMagazineId}', 1
+                    'Transfer z magazynu {$fromMagazineId}', 1, {$transferGroupId}
              FROM inventory__smd
              WHERE sub_magazine_id = {$fromMagazineId}
              GROUP BY smd_id
              HAVING SUM(qty) > 0",
 
                 // SMD - negative to source
-                "INSERT INTO inventory__smd (smd_id, sub_magazine_id, qty, timestamp, input_type_id, comment, isVerified)
+                "INSERT INTO inventory__smd (smd_id, sub_magazine_id, qty, timestamp, input_type_id, comment, isVerified, transfer_group_id)
              SELECT smd_id, {$fromMagazineId}, -SUM(qty), NOW(), 2,
-                    'Transfer do magazynu {$toMagazineId}', 1
+                    'Transfer do magazynu {$toMagazineId}', 1, {$transferGroupId}
              FROM inventory__smd
              WHERE sub_magazine_id = {$fromMagazineId}
              GROUP BY smd_id
              HAVING SUM(qty) > 0",
 
                 // THT - positive to target
-                "INSERT INTO inventory__tht (tht_id, sub_magazine_id, qty, timestamp, input_type_id, comment, isVerified)
+                "INSERT INTO inventory__tht (tht_id, sub_magazine_id, qty, timestamp, input_type_id, comment, isVerified, transfer_group_id)
              SELECT tht_id, {$toMagazineId}, SUM(qty), NOW(), 2,
-                    'Transfer z magazynu {$fromMagazineId}', 1
+                    'Transfer z magazynu {$fromMagazineId}', 1, {$transferGroupId}
              FROM inventory__tht
              WHERE sub_magazine_id = {$fromMagazineId}
              GROUP BY tht_id
              HAVING SUM(qty) > 0",
 
                 // THT - negative to source
-                "INSERT INTO inventory__tht (tht_id, sub_magazine_id, qty, timestamp, input_type_id, comment, isVerified)
+                "INSERT INTO inventory__tht (tht_id, sub_magazine_id, qty, timestamp, input_type_id, comment, isVerified, transfer_group_id)
              SELECT tht_id, {$fromMagazineId}, -SUM(qty), NOW(), 2,
-                    'Transfer do magazynu {$toMagazineId}', 1
+                    'Transfer do magazynu {$toMagazineId}', 1, {$transferGroupId}
              FROM inventory__tht
              WHERE sub_magazine_id = {$fromMagazineId}
              GROUP BY tht_id
              HAVING SUM(qty) > 0",
 
                 // SKU - positive to target
-                "INSERT INTO inventory__sku (sku_id, sub_magazine_id, qty, timestamp, input_type_id, comment, isVerified)
+                "INSERT INTO inventory__sku (sku_id, sub_magazine_id, qty, timestamp, input_type_id, comment, isVerified, transfer_group_id)
              SELECT sku_id, {$toMagazineId}, SUM(qty), NOW(), 2,
-                    'Transfer z magazynu {$fromMagazineId}', 1
+                    'Transfer z magazynu {$fromMagazineId}', 1, {$transferGroupId}
              FROM inventory__sku
              WHERE sub_magazine_id = {$fromMagazineId}
              GROUP BY sku_id
              HAVING SUM(qty) > 0",
 
                 // SKU - negative to source
-                "INSERT INTO inventory__sku (sku_id, sub_magazine_id, qty, timestamp, input_type_id, comment, isVerified)
+                "INSERT INTO inventory__sku (sku_id, sub_magazine_id, qty, timestamp, input_type_id, comment, isVerified, transfer_group_id)
              SELECT sku_id, {$fromMagazineId}, -SUM(qty), NOW(), 2,
-                    'Transfer do magazynu {$toMagazineId}', 1
+                    'Transfer do magazynu {$toMagazineId}', 1, {$transferGroupId}
              FROM inventory__sku
              WHERE sub_magazine_id = {$fromMagazineId}
              GROUP BY sku_id
@@ -197,38 +204,45 @@ class MagazineActionHandler
     {
         $userId = $_SESSION['user_id'] ?? 1;
 
+        // Create transfer group to track user and action
+        $this->MsaDB->insert("inventory__transfer_groups", 
+            ["created_by", "notes"], 
+            [$userId, "Inventory cleared during magazine {$magazineId} deactivation"]
+        );
+        $transferGroupId = (int)$this->MsaDB->db->lastInsertId();
+
         $clearQueries = [
-            "INSERT INTO inventory__parts (parts_id, sub_magazine_id, qty, timestamp, input_type_id, comment, isVerified)
-         SELECT parts_id, sub_magazine_id, -SUM(qty), NOW(), 3,
-                'Inventory cleared during magazine deactivation', 1
-         FROM inventory__parts
-         WHERE sub_magazine_id = {$magazineId}
-         GROUP BY parts_id
-         HAVING SUM(qty) > 0",
+            "INSERT INTO inventory__parts (parts_id, sub_magazine_id, qty, timestamp, input_type_id, comment, isVerified, transfer_group_id)
+          SELECT parts_id, sub_magazine_id, -SUM(qty), NOW(), 3,
+                 'Inventory cleared during magazine deactivation', 1, {$transferGroupId}
+          FROM inventory__parts
+          WHERE sub_magazine_id = {$magazineId}
+          GROUP BY parts_id
+          HAVING SUM(qty) > 0",
 
-            "INSERT INTO inventory__smd (smd_id, sub_magazine_id, qty, timestamp, input_type_id, comment, isVerified)
-         SELECT smd_id, sub_magazine_id, -SUM(qty), NOW(), 3,
-                'Inventory cleared during magazine deactivation', 1
-         FROM inventory__smd
-         WHERE sub_magazine_id = {$magazineId}
-         GROUP BY smd_id
-         HAVING SUM(qty) > 0",
+            "INSERT INTO inventory__smd (smd_id, sub_magazine_id, qty, timestamp, input_type_id, comment, isVerified, transfer_group_id)
+          SELECT smd_id, sub_magazine_id, -SUM(qty), NOW(), 3,
+                 'Inventory cleared during magazine deactivation', 1, {$transferGroupId}
+          FROM inventory__smd
+          WHERE sub_magazine_id = {$magazineId}
+          GROUP BY smd_id
+          HAVING SUM(qty) > 0",
 
-            "INSERT INTO inventory__tht (tht_id, sub_magazine_id, qty, timestamp, input_type_id, comment, isVerified)
-         SELECT tht_id, sub_magazine_id, -SUM(qty), NOW(), 3,
-                'Inventory cleared during magazine deactivation', 1
-         FROM inventory__tht
-         WHERE sub_magazine_id = {$magazineId}
-         GROUP BY tht_id
-         HAVING SUM(qty) > 0",
+            "INSERT INTO inventory__tht (tht_id, sub_magazine_id, qty, timestamp, input_type_id, comment, isVerified, transfer_group_id)
+          SELECT tht_id, sub_magazine_id, -SUM(qty), NOW(), 3,
+                 'Inventory cleared during magazine deactivation', 1, {$transferGroupId}
+          FROM inventory__tht
+          WHERE sub_magazine_id = {$magazineId}
+          GROUP BY tht_id
+          HAVING SUM(qty) > 0",
 
-            "INSERT INTO inventory__sku (sku_id, sub_magazine_id, qty, timestamp, input_type_id, comment, isVerified)
-         SELECT sku_id, sub_magazine_id, -SUM(qty), NOW(), 3,
-                'Inventory cleared during magazine deactivation', 1
-         FROM inventory__sku
-         WHERE sub_magazine_id = {$magazineId}
-         GROUP BY sku_id
-         HAVING SUM(qty) > 0"
+            "INSERT INTO inventory__sku (sku_id, sub_magazine_id, qty, timestamp, input_type_id, comment, isVerified, transfer_group_id)
+          SELECT sku_id, sub_magazine_id, -SUM(qty), NOW(), 3,
+                 'Inventory cleared during magazine deactivation', 1, {$transferGroupId}
+          FROM inventory__sku
+          WHERE sub_magazine_id = {$magazineId}
+          GROUP BY sku_id
+          HAVING SUM(qty) > 0"
         ];
 
         foreach ($clearQueries as $query) {
