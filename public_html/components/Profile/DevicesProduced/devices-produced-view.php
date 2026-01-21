@@ -109,4 +109,5 @@ $smdUnused = array_diff(array_keys($list__smd), $smdUsed);
         </div>
     </div>
 </div>
-<script src="http://<?=BASEURL?>/public_html/components/profile/devicesproduced/devices-produced-view.js"></script>
+<script src="<?= asset('public_html/components/profile/devicesproduced/devices-produced-view.js') ?>"></script>
+

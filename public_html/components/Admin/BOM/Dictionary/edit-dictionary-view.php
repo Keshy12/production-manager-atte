@@ -73,4 +73,4 @@ $value = $_GET['value'] ?? null;
     </table>
 </div>
 
-<script src="http://<?=BASEURL?>/public_html/components/admin/bom/dictionary/edit-dictionary-view.js"></script>
+<script src="<?= asset('public_html/components/admin/bom/dictionary/edit-dictionary-view.js') ?>"></script>

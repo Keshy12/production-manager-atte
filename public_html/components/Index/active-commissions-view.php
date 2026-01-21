@@ -31,4 +31,4 @@ echo '</div>';
         baseUrl: '<?=BASEURL?>',
     };
 </script>
-<script src="http://<?=BASEURL?>/public_html/components/index/active-commissions-view.js"></script>
+<script src="<?= asset('public_html/components/index/active-commissions-view.js') ?>"></script>

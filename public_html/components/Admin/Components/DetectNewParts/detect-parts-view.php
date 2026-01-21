@@ -54,4 +54,5 @@ include('modals.php');
     </button>
 </div>
 
-<script src="http://<?=BASEURL?>/public_html/components/admin/components/detectnewparts/detect-parts-view.js"></script>
+<script src="<?= asset('public_html/components/admin/components/detectnewparts/detect-parts-view.js') ?>"></script>
+

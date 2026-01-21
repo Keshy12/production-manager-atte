@@ -264,6 +264,6 @@ $paginationRenderer = new PaginationRenderer($currentPage, $totalItems, $itemsPe
     };
 </script>
 
-<script src="http://<?=BASEURL?>/public_html/components/commissions/commissions-view-renderer.js"></script>
-<script src="http://<?=BASEURL?>/public_html/components/commissions/commissions-view-main.js"></script>
-<script src="http://<?=BASEURL?>/public_html/components/commissions/commissions-view-cancel.js"></script>
+<script src="<?= asset('public_html/components/commissions/commissions-view-renderer.js') ?>"></script>
+<script src="<?= asset('public_html/components/commissions/commissions-view-main.js') ?>"></script>
+<script src="<?= asset('public_html/components/commissions/commissions-view-cancel.js') ?>"></script>

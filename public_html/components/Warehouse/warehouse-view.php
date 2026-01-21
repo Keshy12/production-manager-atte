@@ -90,4 +90,4 @@ $selectRenderer = new SelectRenderer($MsaDB);
     </div>
 </div>
 
-<script src="http://<?=BASEURL?>/public_html/components/warehouse/warehouse-view.js"></script>
+<script src="<?= asset('public_html/components/warehouse/warehouse-view.js') ?>"></script>

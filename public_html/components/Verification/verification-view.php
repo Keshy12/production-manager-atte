@@ -41,4 +41,5 @@
 
 </div>
 
-<script src="http://<?=BASEURL?>/public_html/components/verification/verification-view.js"></script>
+<script src="<?= asset('public_html/components/verification/verification-view.js') ?>"></script>
+

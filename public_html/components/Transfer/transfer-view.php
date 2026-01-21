@@ -244,6 +244,6 @@ include('table-row-template.php');
 
 <?php include('transfer-confirmation-template.php'); ?>
 
-<script src="http://<?=BASEURL?>/public_html/components/transfer/transfer-view.js"></script>
-<script src="http://<?=BASEURL?>/public_html/components/transfer/commissions.js"></script>
-<script src="http://<?=BASEURL?>/public_html/components/transfer/submit.js"></script>
+<script src="<?= asset('public_html/components/transfer/transfer-view.js') ?>"></script>
+<script src="<?= asset('public_html/components/transfer/commissions.js') ?>"></script>
+<script src="<?= asset('public_html/components/transfer/submit.js') ?>"></script>

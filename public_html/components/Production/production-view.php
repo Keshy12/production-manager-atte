@@ -184,4 +184,4 @@ $pageTitle = $isSMD ? 'Produkcja SMD' : 'Produkcja THT';
     </div>
 </div>
 
-<script src="http://<?=BASEURL?>/public_html/components/production/production-view.js?deviceType=<?=$deviceType?>"></script>
+<script src="<?= asset('public_html/components/production/production-view.js?deviceType=' . $deviceType) ?>"></script>

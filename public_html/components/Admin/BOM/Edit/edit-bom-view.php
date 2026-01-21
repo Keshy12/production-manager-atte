@@ -88,4 +88,5 @@ include('modals.php');
         </tbody>
     </table>
 </div>
-<script src="http://<?=BASEURL?>/public_html/components/admin/bom/edit/edit-bom-view.js"></script>
+<script src="<?= asset('public_html/components/admin/bom/edit/edit-bom-view.js') ?>"></script>
+

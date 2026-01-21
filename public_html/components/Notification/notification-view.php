@@ -87,4 +87,4 @@ const userId = <?= json_encode($userId) ?>;
     </div>
 </div>
 
-<script src="http://<?=BASEURL?>/public_html/components/notification/notification-view.js"></script>
+<script src="<?= asset('public_html/components/notification/notification-view.js') ?>"></script>

@@ -30,9 +30,10 @@ if(!isset($_SESSION["userid"]) && !isset($skip))
     <meta name="msapplication-TileColor" content="#da532c">
     <meta name="msapplication-config" content="http://<?=BASEURL?>/public_html/assets/img/browserconfig.xml">
     <meta name="theme-color" content="#ffffff">
-    <link rel="stylesheet" href="http://<?=BASEURL?>/public_html/assets/layout/header.css">
+    <link rel="stylesheet" href="<?= asset('public_html/assets/layout/header.css') ?>">
 
 </head>
+
 <body>
 <!-- Logout -->
 <div class="modal fade" id="logoutModal" tabindex="-1" role="dialog">
@@ -205,5 +206,5 @@ if(!isset($_SESSION["userid"]) && !isset($skip))
         </div>
     </div>
 <?php endif; ?>
-<script src="http://<?=BASEURL?>/public_html/assets/layout/header.js"></script>
-<script src="http://<?=BASEURL?>/public_html/assets/layout/side-menu/menu.js"></script>
+<script src="<?= asset('public_html/assets/layout/header.js') ?>"></script>
+<script src="<?= asset('public_html/assets/layout/side-menu/menu.js') ?>"></script>

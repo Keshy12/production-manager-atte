@@ -70,4 +70,4 @@ function postData(url, data) {
     });
 }
 </script>
-<script src="http://<?=BASEURL?>/public_html/components/FlowpinSessions/flowpin-sessions-view.js"></script>
+<script src="<?= asset('public_html/components/FlowpinSessions/flowpin-sessions-view.js') ?>"></script>

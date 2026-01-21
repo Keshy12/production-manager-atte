@@ -40,4 +40,5 @@ $submagazine_list = $MsaDB -> readIdName("magazine__list", "sub_magazine_id", "s
 </div>
 
 
-<script src="http://<?=BASEURL?>/public_html/components/profile/profile-view.js"></script>
+<script src="<?= asset('public_html/components/profile/profile-view.js') ?>"></script>
+

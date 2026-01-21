@@ -188,5 +188,5 @@ include('table-row-template.php');
 
 <?php include('modals.php'); ?>
 
-<script src="http://<?=BASEURL?>/public_html/components/admin/components/fromorders/from-orders-renderer.js"></script>
-<script src="http://<?=BASEURL?>/public_html/components/admin/components/fromorders/from-orders-view.js"></script>
+<script src="<?= asset('public_html/components/admin/components/fromorders/from-orders-renderer.js') ?>"></script>
+<script src="<?= asset('public_html/components/admin/components/fromorders/from-orders-view.js') ?>"></script>

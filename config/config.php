@@ -30,6 +30,19 @@ function includeWithVariables($filePath, $variables = array(), $print = true)
     return $output;
 }
 
+function asset($path)
+{
+    $parts = explode('?', $path);
+    $cleanPath = $parts[0];
+    $queryString = isset($parts[1]) ? '?' . $parts[1] . '&' : '?';
+    
+    $fullPath = ROOT_DIRECTORY . '/' . ltrim($cleanPath, '/');
+    $version = file_exists($fullPath) ? filemtime($fullPath) : time();
+    
+    return "http://" . BASEURL . "/" . ltrim($cleanPath, '/') . $queryString . "v=" . $version;
+}
+
+
 
 
 

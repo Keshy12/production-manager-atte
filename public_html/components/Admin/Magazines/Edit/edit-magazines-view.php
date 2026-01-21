@@ -174,4 +174,4 @@ include('modals.php');
     </div>
 </div>
 
-<script src="http://<?=BASEURL?>/public_html/components/admin/magazines/edit/edit-magazines-view.js"></script>
+<script src="<?= asset('public_html/components/admin/magazines/edit/edit-magazines-view.js') ?>"></script>

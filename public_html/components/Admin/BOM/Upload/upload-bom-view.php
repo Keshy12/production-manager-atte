@@ -57,4 +57,5 @@
     </table>
     <button id="sendBom" class="btn btn-primary my-4">Prześlij BOM</button>
 </div>
-<script src="http://<?=BASEURL?>/public_html/components/admin/bom/upload/upload-bom-view.js"></script>
+<script src="<?= asset('public_html/components/admin/bom/upload/upload-bom-view.js') ?>"></script>
+

@@ -175,4 +175,4 @@ $nextSubMagNumber = $maxNumber + 1;
         </div>
     </div>
 </div>
-<script src="http://<?=BASEURL?>/public_html/components/admin/profiles/edit/edit-profile-view.js"></script>
+<script src="<?= asset('public_html/components/admin/profiles/edit/edit-profile-view.js') ?>"></script>

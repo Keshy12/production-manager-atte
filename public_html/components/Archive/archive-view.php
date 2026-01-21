@@ -377,4 +377,4 @@ $magazine_list = $MsaDB->readIdName("magazine__list", "sub_magazine_id", "sub_ma
 
 <?php include_once 'modals.php'; ?>
 
-<script src="http://<?=BASEURL?>/public_html/components/archive/archive-view.js"></script>
+<script src="<?= asset('public_html/components/archive/archive-view.js') ?>"></script>

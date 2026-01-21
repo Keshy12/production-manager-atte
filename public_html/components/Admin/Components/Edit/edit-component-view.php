@@ -134,7 +134,7 @@ $list__laminate_desc = $MsaDB -> readIdName("list__laminate", "id", "description
             <label for="file-input">
                 <img id="deviceImage" class="border border-secondary" 
                         style="max-width: 500px;" 
-                        src="http://<?=BASEURL?>/public_html/assets/img/production/default.webp"/>
+                        src="<?= asset('public_html/assets/img/production/default.webp') ?>"/>
             </label>
             <input class="d-none" id="file-input" name="image" type="file" />
         </div>
@@ -145,4 +145,4 @@ $list__laminate_desc = $MsaDB -> readIdName("list__laminate", "id", "description
     </form>
 </div>
 
-<script src="http://<?=BASEURL?>/public_html/components/admin/components/edit/edit-component-view.js"></script>
+<script src="<?= asset('public_html/components/admin/components/edit/edit-component-view.js') ?>"></script>

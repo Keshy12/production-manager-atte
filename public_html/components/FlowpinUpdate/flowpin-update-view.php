@@ -217,4 +217,5 @@ if (!empty($latestProgress) && $latestProgress[0]['status'] === 'running') {
 
 <input type="hidden" id="latestSessionId" value="<?= $latestSessionId ?? '' ?>">
 
-<script src="http://<?=BASEURL?>/public_html/components/FlowpinUpdate/flowpin-update.js"></script>
+<script src="<?= asset('public_html/components/FlowpinUpdate/flowpin-update.js') ?>"></script>
+

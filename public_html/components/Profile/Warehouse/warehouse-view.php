@@ -97,4 +97,4 @@ $used__smd = $user -> getDevicesUsed("smd");
     </div>
 </div>
 
-<script src="http://<?=BASEURL?>/public_html/components/profile/warehouse/warehouse-view.js"></script>
+<script src="<?= asset('public_html/components/profile/warehouse/warehouse-view.js') ?>"></script>
