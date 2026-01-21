@@ -302,6 +302,94 @@ $getProducedSkuAndInter = function () use ($FlowpinDB, $MsaDB) {
     return $FlowpinDB->query($query);
 };
 
+// Register shutdown handler to catch fatal errors and mark session as error
+$sessionId = null; // Will be set after session creation
+$scriptCompletedNormally = false; // Will be set to true at the end of try block
+register_shutdown_function(function() use (&$sessionId, &$MsaDB, &$locker, &$sessionStartingEventId, &$overallHighestEventId, &$initialEventID, &$sessionRecordId, &$scriptCompletedNormally) {
+    $error = error_get_last();
+    
+    // Check if shutdown was due to a fatal error OR if script didn't complete normally
+    $isFatalError = ($error !== null && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR]));
+    
+    // Also check if session is still "running" (meaning script died unexpectedly)
+    $isUnexpectedExit = false;
+    if (!$scriptCompletedNormally && $sessionId !== null && $MsaDB !== null) {
+        try {
+            $sessionStatus = $MsaDB->query(
+                "SELECT status FROM ref__flowpin_update_progress WHERE session_id = " . $MsaDB->db->quote($sessionId),
+                PDO::FETCH_COLUMN
+            );
+            if (!empty($sessionStatus) && $sessionStatus[0] === 'running') {
+                $isUnexpectedExit = true;
+            }
+        } catch (\Exception $e) {
+            // Ignore errors checking session status
+        }
+    }
+    
+    if ($isFatalError || $isUnexpectedExit) {
+        if ($isFatalError) {
+            writeLog("FATAL ERROR DETECTED: " . $error['message'] . " in " . $error['file'] . " on line " . $error['line'], 'CRITICAL');
+        } else {
+            writeLog("UNEXPECTED EXIT DETECTED: Script terminated without completing normally", 'CRITICAL');
+        }
+        
+        // Mark session as error if it exists
+        if ($sessionId !== null && $MsaDB !== null && isset($sessionRecordId)) {
+            try {
+                $errorUpdate = [
+                    "status" => "error",
+                    "updated_at" => date('Y-m-d H:i:s')
+                ];
+                
+                // Add starting_event_id if we captured it
+                if (isset($sessionStartingEventId) && $sessionStartingEventId !== null) {
+                    $errorUpdate["starting_event_id"] = $sessionStartingEventId;
+                }
+                
+                // Add finishing_event_id if we processed any records
+                if (isset($overallHighestEventId) && isset($initialEventID) && $overallHighestEventId > $initialEventID) {
+                    $errorUpdate["finishing_event_id"] = $overallHighestEventId;
+                }
+                
+                // Count transfers created in this session across all inventory types
+                $transferCount = $MsaDB->query("
+                    SELECT 
+                        (SELECT COUNT(*) FROM inventory__sku WHERE flowpin_update_session_id = $sessionRecordId) +
+                        (SELECT COUNT(*) FROM inventory__tht WHERE flowpin_update_session_id = $sessionRecordId) +
+                        (SELECT COUNT(*) FROM inventory__smd WHERE flowpin_update_session_id = $sessionRecordId) +
+                        (SELECT COUNT(*) FROM inventory__parts WHERE flowpin_update_session_id = $sessionRecordId) as total
+                ", PDO::FETCH_COLUMN);
+                
+                // Count groups created in this session
+                $groupCount = $MsaDB->query("
+                    SELECT COUNT(DISTINCT id) FROM inventory__transfer_groups 
+                        WHERE flowpin_update_session_id = $sessionRecordId
+                ", PDO::FETCH_COLUMN);
+                
+                $errorUpdate["created_transfer_count"] = $transferCount[0] ?? 0;
+                $errorUpdate["created_group_count"] = $groupCount[0] ?? 0;
+                
+                $MsaDB->update("ref__flowpin_update_progress", $errorUpdate, "session_id", $sessionId);
+                writeLog("Session marked as error due to " . ($isFatalError ? "fatal error" : "unexpected exit"), 'CRITICAL');
+                writeLog("Transfers created: " . ($transferCount[0] ?? 0) . ", Groups created: " . ($groupCount[0] ?? 0), 'CRITICAL');
+            } catch (\Exception $e) {
+                writeLog("Failed to update session status on error: " . $e->getMessage(), 'CRITICAL');
+            }
+        }
+        
+        // Release lock if held
+        if (isset($locker)) {
+            try {
+                $locker->unlock();
+                writeLog("Lock released after error", 'CRITICAL');
+            } catch (\Exception $e) {
+                // Ignore lock release errors
+            }
+        }
+    }
+});
+
 $locker = new Locker('flowpin.lock');
 $is_locked = $locker->lock(FALSE);
 
@@ -313,16 +401,44 @@ if (!$is_locked) {
 writeLog("Lock acquired successfully");
 
 // Clean up any stale sessions from previous crashed runs
-$MsaDB->query("UPDATE ref__flowpin_update_progress SET status = 'error' WHERE status = 'running'");
-writeLog("Marked any previous running sessions as crashed");
+// Since we have the lock, any session marked as 'running' in the DB is stale/crashed
+$runningSessions = $MsaDB->query("SELECT id, session_id FROM ref__flowpin_update_progress WHERE status = 'running'");
+if (!empty($runningSessions)) {
+    foreach ($runningSessions as $stale) {
+        $staleId = $stale['id'];
+        
+        // Count transfers and groups for the stale session to have accurate final numbers
+        $transferCount = $MsaDB->query("
+            SELECT 
+                (SELECT COUNT(*) FROM inventory__sku WHERE flowpin_update_session_id = $staleId) +
+                (SELECT COUNT(*) FROM inventory__tht WHERE flowpin_update_session_id = $staleId) +
+                (SELECT COUNT(*) FROM inventory__smd WHERE flowpin_update_session_id = $staleId) +
+                (SELECT COUNT(*) FROM inventory__parts WHERE flowpin_update_session_id = $staleId) as total
+        ", PDO::FETCH_COLUMN);
+        
+        $groupCount = $MsaDB->query("
+            SELECT COUNT(DISTINCT id) FROM inventory__transfer_groups 
+                WHERE flowpin_update_session_id = $staleId
+        ", PDO::FETCH_COLUMN);
+
+        $MsaDB->update("ref__flowpin_update_progress", [
+            "status" => "error",
+            "updated_at" => date('Y-m-d H:i:s'),
+            "created_transfer_count" => $transferCount[0] ?? 0,
+            "created_group_count" => $groupCount[0] ?? 0
+        ], "id", $staleId);
+        
+        writeLog("Marked stale session {$stale['session_id']} (ID: $staleId) as error. Transfers: " . ($transferCount[0] ?? 0), 'WARNING');
+    }
+}
 
 // Create unique session ID for progress tracking
 $sessionId = 'flowpin_' . date('Ymd_His') . '_' . uniqid();
 
 // Initialize progress tracking (will be updated with total after data fetch)
 $MsaDB->insert("ref__flowpin_update_progress",
-    ["session_id", "total_records", "processed_records", "status", "started_at"],
-    [$sessionId, 0, 0, "running", date('Y-m-d H:i:s')]);
+    ["session_id", "total_records", "processed_records", "status", "started_at", "current_operation_type"],
+    [$sessionId, 0, 0, "running", date('Y-m-d H:i:s'), "Pobieranie danych z FlowPin..."]);
 writeLog("Created progress session: {$sessionId}");
 
 // Capture the auto-increment ID for use as foreign key in transfers
@@ -343,6 +459,55 @@ $updateProgress = function($processed, $total, $currentOp = null, $currentEventI
         $updates["current_event_id"] = $currentEventId;
     }
     $MsaDB->update("ref__flowpin_update_progress", $updates, "session_id", $sessionId);
+};
+
+/**
+ * Validates record data before processing to prevent empty transfer groups
+ * @return array [success => bool, user => User|null, bomId => int|null, error => Exception|null]
+ */
+$validateRecord = function($userEmail, $deviceId, $userRepository, $bomRepository, $MsaDB, $FlowpinDB) {
+    try {
+        // 1. Validate SKU
+        if (!ensureSkuExists($deviceId, $MsaDB, $FlowpinDB)) {
+            throw new \Exception("SKU with ID $deviceId not found in FlowPin database", 1);
+        }
+
+        // 2. Validate User
+        $user = $userRepository->getUserByEmail($userEmail);
+        if (!$user || !$user->userId) {
+            throw new \Exception("User with email $userEmail not found or invalid", 2);
+        }
+        
+        $userinfo = $user->getUserInfo();
+        if (empty($userinfo)) {
+            throw new Exception("User info not found for user email: $userEmail", 2);
+        }
+
+        // Check if user has no magazine assigned
+        if (is_null($userinfo["sub_magazine_id"])) {
+            throw new Exception("User has no magazine assigned for user email: $userEmail", 3);
+        }
+
+        // Check if user account is disabled
+        if ($userinfo["user_isActive"] == 0) {
+            throw new Exception("User account is disabled for user email: $userEmail", 4);
+        }
+
+        // Check if user's magazine is disabled
+        if ($userinfo["magazine_isActive"] == 0) {
+            throw new Exception("User's magazine is disabled for user email: $userEmail", 5);
+        }
+
+        // 3. Validate BOM
+        $bomId = getSkuBomId($deviceId, $bomRepository);
+        if (!$bomId) {
+            throw new \Exception("Active BOM not found for SKU $deviceId", 1);
+        }
+
+        return ['success' => true, 'user' => $user, 'userId' => $user->userId, 'bomId' => $bomId, 'userInfo' => $userinfo];
+    } catch (\Throwable $e) {
+        return ['success' => false, 'error' => $e];
+    }
 };
 
 try {
@@ -379,6 +544,13 @@ try {
             $sessionStartingEventId = min($allEventIds);
             writeLog("Session starting EventId: {$sessionStartingEventId}");
         }
+
+        // Store starting EventId in database immediately
+        if ($sessionStartingEventId !== null) {
+            $MsaDB->update("ref__flowpin_update_progress", 
+                ["starting_event_id" => $sessionStartingEventId],
+                "session_id", $sessionId);
+        }
     }
 
     // Update progress with total count
@@ -409,37 +581,30 @@ try {
     writeLog("=== Processing Sold SKUs ===");
     writeLog("Found " . count($soldSku) . " sold SKU records to process");
 
-    $batchCount = 0;
-    $transactionActive = false;
     $highestProcessedEventId = getCheckpoint($MsaDB, 'sold_sku');
 
-    if (count($soldSku) > 0) {
-        $MsaDB->db->beginTransaction();
-        $transactionActive = true;
-    }
-
     foreach ($soldSku as $row) {
+        $eventId = $row[0];
+        $MsaDB->db->beginTransaction();
         try {
             list($eventId, $executionDate, $userEmail, $deviceId, $qty) = $row;
             $flowpinQueryTypeId = 2;
 
             writeLog("Processing Sold SKU - EventId: {$eventId}, DeviceId: {$deviceId}, UserEmail: {$userEmail}, Qty: {$qty}");
 
-            if (!ensureSkuExists($deviceId, $MsaDB, $FlowpinDB)) {
-                throw new \Exception("Failed to ensure SKU $deviceId exists in database");
+            // 1. Validate Record
+            $validation = $validateRecord($userEmail, $deviceId, $userRepository, $bomRepository, $MsaDB, $FlowpinDB);
+            if (!$validation['success']) {
+                throw $validation['error'];
             }
 
-            $user = $userRepository->getUserByEmail($userEmail);
-            $userId = $user->userId;
+            $user = $validation['user'];
+            $userId = $validation['userId'];
+            $bomId = $validation['bomId'];
 
-            // Extract date for grouping (format: Y-m-d)
+            // 2. All good, now create group and insert
             $productionDate = date('Y-m-d', strtotime($executionDate));
-
-            // Get or create transfer group
             $transferGroupId = getOrCreateTransferGroup($userId, $deviceId, $productionDate, 'Sold', $transferGroupCache, $transferGroupManager, $MsaDB, $sessionRecordId, $sessionGroupCount);
-
-            // Get BOM ID
-            $bomId = getSkuBomId($deviceId, $bomRepository);
 
             $comment = "Finalizacja zamówienia, spakowano do wysyłki, EventId: " . $eventId;
             $columns = ["sku_id", "sub_magazine_id", "qty", "timestamp", "production_date", "input_type_id", "comment", "transfer_group_id", "sku_bom_id", "flowpin_update_session_id", "flowpin_event_id"];
@@ -449,48 +614,34 @@ try {
 
             // Track inventory change for summary
             trackInventoryChange($deviceId, $qty, "SOLD");
-
-            $processedCount++;
-            $batchCount++;
-            $highestProcessedEventId = max($highestProcessedEventId, $eventId);
-
+            
+            $MsaDB->db->commit();
             writeLog("Successfully processed Sold SKU - EventId: {$eventId}");
 
-            // Commit every batch and update checkpoint
-            if ($batchCount >= $commitBatchSize) {
-                $MsaDB->db->commit();
-                updateCheckpoint($MsaDB, 'sold_sku', $highestProcessedEventId);
-                writeLog("Committed batch of {$batchCount} sold SKU records. Checkpoint EventId: {$highestProcessedEventId}");
-                $updateProgress($processedCount, $totalRecords, 'sold_sku', $highestProcessedEventId);
-                $MsaDB->db->beginTransaction();
-                $batchCount = 0;
-            }
-
         } catch (\Throwable $exception) {
+            if ($MsaDB->db->inTransaction()) {
+                $MsaDB->db->rollBack();
+            }
             $errorCount++;
-            $errorMessage = "Error processing Sold SKU - EventId: {$eventId}, Error: " . $exception->getMessage() .
-                " in " . $exception->getFile() . " on line " . $exception->getLine();
+            $errorMessage = "Error processing Sold SKU - EventId: {$eventId}, Error: " . $exception->getMessage();
             writeLog($errorMessage, 'ERROR');
             writeLog("Row data: " . json_encode($row), 'ERROR');
 
-            $notification = $notificationRepository->createNotificationFromException($exception, $row, $flowpinQueryTypeId);
-            $notificationId = $notification->notificationValues['id'];
-            writeLog("Created notification ID: {$notificationId} for Sold SKU EventId: {$eventId}", 'ERROR');
-
-            continue;
+            $notification = $notificationRepository->createNotificationFromException($exception, $row, 2); // 2 = Sold SKU
+            writeLog("Created/Updated notification for Sold SKU EventId: {$eventId}", 'ERROR');
         }
-    }
 
-    // Commit remaining records and update checkpoint
-    if ($batchCount > 0 && $transactionActive) {
-        $MsaDB->db->commit();
+        $processedCount++;
+        $highestProcessedEventId = max($highestProcessedEventId, $eventId);
+        
+        // Update checkpoint and progress after each record (atomic)
         updateCheckpoint($MsaDB, 'sold_sku', $highestProcessedEventId);
-        writeLog("Committed final batch of {$batchCount} sold SKU records");
         $updateProgress($processedCount, $totalRecords, 'sold_sku', $highestProcessedEventId);
-        $transactionActive = false;
-    } elseif ($transactionActive) {
-        $MsaDB->db->rollBack();
-        $transactionActive = false;
+        
+        // Update finishing_event_id in database
+        $MsaDB->update("ref__flowpin_update_progress",
+            ["finishing_event_id" => $highestProcessedEventId],
+            "session_id", $sessionId);
     }
 
     $overallHighestEventId = max($overallHighestEventId, $highestProcessedEventId);
@@ -499,37 +650,30 @@ try {
     writeLog("=== Processing Returned SKUs ===");
     writeLog("Found " . count($returnedSku) . " returned SKU records to process");
 
-    $batchCount = 0;
-    $transactionActive = false;
     $highestProcessedEventId = getCheckpoint($MsaDB, 'returned_sku');
 
-    if (count($returnedSku) > 0) {
-        $MsaDB->db->beginTransaction();
-        $transactionActive = true;
-    }
-
     foreach ($returnedSku as $row) {
+        $eventId = $row[0];
+        $MsaDB->db->beginTransaction();
         try {
             list($eventId, $executionDate, $userEmail, $deviceId, $qty) = $row;
             $flowpinQueryTypeId = 3;
 
             writeLog("Processing Returned SKU - EventId: {$eventId}, DeviceId: {$deviceId}, UserEmail: {$userEmail}, Qty: {$qty}");
 
-            if (!ensureSkuExists($deviceId, $MsaDB, $FlowpinDB)) {
-                throw new \Exception("Failed to ensure SKU $deviceId exists in database");
+            // 1. Validate Record
+            $validation = $validateRecord($userEmail, $deviceId, $userRepository, $bomRepository, $MsaDB, $FlowpinDB);
+            if (!$validation['success']) {
+                throw $validation['error'];
             }
 
-            $user = $userRepository->getUserByEmail($userEmail);
-            $userId = $user->userId;
+            $user = $validation['user'];
+            $userId = $validation['userId'];
+            $bomId = $validation['bomId'];
 
-            // Extract date for grouping (format: Y-m-d)
+            // 2. All good, now create group and insert
             $productionDate = date('Y-m-d', strtotime($executionDate));
-
-            // Get or create transfer group
             $transferGroupId = getOrCreateTransferGroup($userId, $deviceId, $productionDate, 'Returned', $transferGroupCache, $transferGroupManager, $MsaDB, $sessionRecordId, $sessionGroupCount);
-
-            // Get BOM ID
-            $bomId = getSkuBomId($deviceId, $bomRepository);
 
             $comment = "Zwrot SKU od klienta, EventId: " . $eventId;
             $columns = ["sku_id", "sub_magazine_id", "qty", "timestamp", "production_date", "input_type_id", "comment", "transfer_group_id", "sku_bom_id", "flowpin_update_session_id", "flowpin_event_id"];
@@ -539,46 +683,34 @@ try {
 
             // Track inventory change for summary
             trackInventoryChange($deviceId, $qty, "RETURNED");
-
-            $processedCount++;
-            $batchCount++;
-            $highestProcessedEventId = max($highestProcessedEventId, $eventId);
-
+            
+            $MsaDB->db->commit();
             writeLog("Successfully processed Returned SKU - EventId: {$eventId}");
 
-            if ($batchCount >= $commitBatchSize) {
-                $MsaDB->db->commit();
-                updateCheckpoint($MsaDB, 'returned_sku', $highestProcessedEventId);
-                writeLog("Committed batch of {$batchCount} returned SKU records. Checkpoint EventId: {$highestProcessedEventId}");
-                $updateProgress($processedCount, $totalRecords, 'returned_sku', $highestProcessedEventId);
-                $MsaDB->db->beginTransaction();
-                $batchCount = 0;
-            }
-
         } catch (\Throwable $exception) {
+            if ($MsaDB->db->inTransaction()) {
+                $MsaDB->db->rollBack();
+            }
             $errorCount++;
-            $errorMessage = "Error processing Returned SKU - EventId: {$eventId}, Error: " . $exception->getMessage() .
-                " in " . $exception->getFile() . " on line " . $exception->getLine();
+            $errorMessage = "Error processing Returned SKU - EventId: {$eventId}, Error: " . $exception->getMessage();
             writeLog($errorMessage, 'ERROR');
             writeLog("Row data: " . json_encode($row), 'ERROR');
 
-            $notification = $notificationRepository->createNotificationFromException($exception, $row, $flowpinQueryTypeId);
-            $notificationId = $notification->notificationValues['id'];
-            writeLog("Created notification ID: {$notificationId} for Returned SKU EventId: {$eventId}", 'ERROR');
-
-            continue;
+            $notification = $notificationRepository->createNotificationFromException($exception, $row, 3); // 3 = Returned SKU
+            writeLog("Created/Updated notification for Returned SKU EventId: {$eventId}", 'ERROR');
         }
-    }
 
-    if ($batchCount > 0 && $transactionActive) {
-        $MsaDB->db->commit();
+        $processedCount++;
+        $highestProcessedEventId = max($highestProcessedEventId, $eventId);
+        
+        // Update checkpoint and progress after each record (atomic)
         updateCheckpoint($MsaDB, 'returned_sku', $highestProcessedEventId);
-        writeLog("Committed final batch of {$batchCount} returned SKU records");
         $updateProgress($processedCount, $totalRecords, 'returned_sku', $highestProcessedEventId);
-        $transactionActive = false;
-    } elseif ($transactionActive) {
-        $MsaDB->db->rollBack();
-        $transactionActive = false;
+        
+        // Update finishing_event_id in database
+        $MsaDB->update("ref__flowpin_update_progress",
+            ["finishing_event_id" => $highestProcessedEventId],
+            "session_id", $sessionId);
     }
 
     $overallHighestEventId = max($overallHighestEventId, $highestProcessedEventId);
@@ -587,16 +719,11 @@ try {
     writeLog("=== Processing Moved SKUs ===");
     writeLog("Found " . count($movedSku) . " moved SKU records to process");
 
-    $batchCount = 0;
-    $transactionActive = false;
     $highestProcessedEventId = getCheckpoint($MsaDB, 'moved_sku');
 
-    if (count($movedSku) > 0) {
-        $MsaDB->db->beginTransaction();
-        $transactionActive = true;
-    }
-
     foreach ($movedSku as $row) {
+        $eventId = $row[0];
+        $MsaDB->db->beginTransaction();
         try {
             list($eventId, $executionDate, $userEmail, $deviceId, $warehouseOut, $qtyOut, $warehouseIn, $qtyIn) = $row;
             $flowpinQueryTypeId = 4;
@@ -604,21 +731,19 @@ try {
             writeLog("Processing Moved SKU - EventId: {$eventId}, DeviceId: {$deviceId}, UserEmail: {$userEmail}, " .
                 "WarehouseOut: {$warehouseOut}, QtyOut: {$qtyOut}, WarehouseIn: {$warehouseIn}, QtyIn: {$qtyIn}");
 
-            if (!ensureSkuExists($deviceId, $MsaDB, $FlowpinDB)) {
-                throw new \Exception("Failed to ensure SKU $deviceId exists in database");
+            // 1. Validate Record
+            $validation = $validateRecord($userEmail, $deviceId, $userRepository, $bomRepository, $MsaDB, $FlowpinDB);
+            if (!$validation['success']) {
+                throw $validation['error'];
             }
 
-            $user = $userRepository->getUserByEmail($userEmail);
-            $userId = $user->userId;
+            $user = $validation['user'];
+            $userId = $validation['userId'];
+            $bomId = $validation['bomId'];
 
-            // Extract date for grouping (format: Y-m-d)
+            // 2. All good, now create group and insert
             $productionDate = date('Y-m-d', strtotime($executionDate));
-
-            // Get or create transfer group (same group for OUT and IN)
             $transferGroupId = getOrCreateTransferGroup($userId, $deviceId, $productionDate, 'Moved', $transferGroupCache, $transferGroupManager, $MsaDB, $sessionRecordId, $sessionGroupCount);
-
-            // Get BOM ID
-            $bomId = getSkuBomId($deviceId, $bomRepository);
 
             $comment = "Przesunięcie między magazynowe, EventId: " . $eventId;
 
@@ -644,45 +769,33 @@ try {
                 trackInventoryChange($deviceId, $qtyIn, "MOVED_IN");
             }
 
-            $processedCount++;
-            $batchCount++;
-            $highestProcessedEventId = max($highestProcessedEventId, $eventId);
-
+            $MsaDB->db->commit();
             writeLog("Successfully processed Moved SKU - EventId: {$eventId}");
 
-            if ($batchCount >= $commitBatchSize) {
-                $MsaDB->db->commit();
-                updateCheckpoint($MsaDB, 'moved_sku', $highestProcessedEventId);
-                writeLog("Committed batch of {$batchCount} moved SKU records. Checkpoint EventId: {$highestProcessedEventId}");
-                $updateProgress($processedCount, $totalRecords, 'moved_sku', $highestProcessedEventId);
-                $MsaDB->db->beginTransaction();
-                $batchCount = 0;
-            }
-
         } catch (\Throwable $exception) {
+            if ($MsaDB->db->inTransaction()) {
+                $MsaDB->db->rollBack();
+            }
             $errorCount++;
-            $errorMessage = "Error processing Moved SKU - EventId: {$eventId}, Error: " . $exception->getMessage() .
-                " in " . $exception->getFile() . " on line " . $exception->getLine();
+            $errorMessage = "Error processing Moved SKU - EventId: {$eventId}, Error: " . $exception->getMessage();
             writeLog($errorMessage, 'ERROR');
             writeLog("Row data: " . json_encode($row), 'ERROR');
 
-            $notification = $notificationRepository->createNotificationFromException($exception, $row, $flowpinQueryTypeId);
-            $notificationId = $notification->notificationValues['id'];
-            writeLog("Created notification ID: {$notificationId} for Moved SKU EventId: {$eventId}", 'ERROR');
-
-            continue;
+            $notification = $notificationRepository->createNotificationFromException($exception, $row, 4); // 4 = Moved SKU
+            writeLog("Created/Updated notification for Moved SKU EventId: {$eventId}", 'ERROR');
         }
-    }
 
-    if ($batchCount > 0 && $transactionActive) {
-        $MsaDB->db->commit();
+        $processedCount++;
+        $highestProcessedEventId = max($highestProcessedEventId, $eventId);
+        
+        // Update checkpoint and progress after each record (atomic)
         updateCheckpoint($MsaDB, 'moved_sku', $highestProcessedEventId);
-        writeLog("Committed final batch of {$batchCount} moved SKU records");
         $updateProgress($processedCount, $totalRecords, 'moved_sku', $highestProcessedEventId);
-        $transactionActive = false;
-    } elseif ($transactionActive) {
-        $MsaDB->db->rollBack();
-        $transactionActive = false;
+        
+        // Update finishing_event_id in database
+        $MsaDB->update("ref__flowpin_update_progress",
+            ["finishing_event_id" => $highestProcessedEventId],
+            "session_id", $sessionId);
     }
 
     $overallHighestEventId = max($overallHighestEventId, $highestProcessedEventId);
@@ -700,168 +813,90 @@ try {
     $productionBomErrors = 0;
     $productionUserErrors = 0;
 
-    $batchSize = 10; // Commit every 10 records
-    $batchCount = 0;
-    $transactionActive = false;
-
     if (count($producedSkuAndInter) > 0) {
         $productionProcessor = new SkuProductionProcessor($MsaDB, $FlowpinDB);
 
-        // Begin transaction
-        $MsaDB->db->beginTransaction();
-        $transactionActive = true;
-
         // Process records individually to handle transfer groups properly
         foreach ($producedSkuAndInter as $i => $row) {
+            $eventId = $row[0];
+            $MsaDB->db->beginTransaction();
             try {
                 list($eventId, $executionDate, $userEmail, $deviceId, $productionQty) = $row;
 
                 writeLog("Processing production record {$i} - EventId: {$eventId}, DeviceId: {$deviceId}, UserEmail: {$userEmail}, Qty: {$productionQty}");
 
-                // Get user for transfer group creation
-                try {
-                    $user = $userRepository->getUserByEmail($userEmail);
-                    $userId = $user->userId;
-                } catch (\Throwable $e) {
-                    writeLog("Could not get user for email {$userEmail}: " . $e->getMessage(), 'ERROR');
-                    $productionErrorCount++;
-                    $productionUserErrors++;
-                    continue;
+                // 1. Validate Record
+                $validation = $validateRecord($userEmail, $deviceId, $userRepository, $bomRepository, $MsaDB, $FlowpinDB);
+                if (!$validation['success']) {
+                    throw $validation['error'];
                 }
 
-                // Extract date for grouping (format: Y-m-d)
+                $user = $validation['user'];
+                $userId = $validation['userId'];
+                $bomId = $validation['bomId'];
+
+                // 2. Extract date for grouping (format: Y-m-d)
                 $productionDate = date('Y-m-d', strtotime($executionDate));
 
-                // Get or create transfer group
+                // 3. Get or create transfer group (Only now, after validations)
                 $transferGroupId = getOrCreateTransferGroup($userId, $deviceId, $productionDate, 'Production', $transferGroupCache, $transferGroupManager, $MsaDB, $sessionRecordId, $sessionGroupCount);
 
-                // Process single record with its transfer group
+                // 4. Process single record with its transfer group
+                // processAndExecuteProduction manages its own internal success tracking but we are inside an atomic transaction now
                 $batchResult = $productionProcessor->processAndExecuteProduction([$row], $productionDate, $transferGroupId, $sessionRecordId, $eventId);
 
-                // Update overall counters
-                $productionProcessedCount += $batchResult['overall']['processedCount'];
-                $productionErrorCount += $batchResult['overall']['errorCount'];
-
-                // Track session transfer count (production creates multiple transfers via BOM explosion)
-                $sessionTransferCount += $batchResult['overall']['processedCount'];
-                $productionDatabaseErrors += $batchResult['errorSummary']['DATABASE_ERROR'];
-                $productionProcessingErrors += $batchResult['errorSummary']['PROCESSING_ERROR'];
-                $productionNoDataErrors += $batchResult['errorSummary']['NO_DATA'];
-                $productionBomErrors += $batchResult['errorSummary']['BOM_ERROR'];
-                $productionUserErrors += $batchResult['errorSummary']['USER_ERROR'];
-
-                if ($batchResult['overall']['highestEventId'] > 0) {
-                    $highestProcessedEventId = max($highestProcessedEventId, $batchResult['overall']['highestEventId']);
-                }
-
-                // Log individual results for errors
-                foreach ($batchResult['results'] as $eventId => $result) {
+                // Check for errors in results
+                $hasError = false;
+                foreach ($batchResult['results'] as $resEventId => $result) {
                     if (!$result['success']) {
-                        writeLog("DEBUG: EventId {$eventId} has errorType: '{$result['errorType']}'", 'INFO');
-
-                        switch ($result['errorType']) {
-                            case 'DATABASE_ERROR':
-                                writeLog("Database error processing Production SKU - EventId: {$eventId}, Queries executed: {$result['queriesExecuted']}/{$result['totalQueries']}, Error: {$result['errorMessage']}", 'ERROR');
-                                break;
-                            case 'PROCESSING_ERROR':
-                                writeLog("Critical processing error for Production SKU - EventId: {$eventId}, Error: {$result['errorMessage']}", 'ERROR');
-                                break;
-                            case 'BOM_ERROR':
-                                writeLog("BOM/SKU error processing Production SKU - EventId: {$eventId}, Error: {$result['errorMessage']}", 'ERROR');
-                                break;
-                            case 'USER_ERROR':
-                                writeLog("User lookup error processing Production SKU - EventId: {$eventId}, Error: {$result['errorMessage']}", 'ERROR');
-                                break;
-                            case 'NO_DATA':
-                                writeLog("No data error processing Production SKU - EventId: {$eventId}, Error: {$result['errorMessage']}", 'WARNING');
-                                break;
-                            default:
-                                writeLog("Unknown error processing Production SKU - EventId: {$eventId}, ErrorType: '{$result['errorType']}', Error: {$result['errorMessage']}", 'ERROR');
-                        }
-
-                        writeLog("Row data: " . json_encode($row), 'ERROR');
-                        $exception = $result['exception'] ?? new \Exception($result['errorMessage'] ?? 'Unknown error');
-                        $notification = $notificationRepository->createNotificationFromException($exception, $row, 1);
-                        $notificationId = $notification->notificationValues['id'];
-                        writeLog("Created notification ID: {$notificationId} for Production SKU EventId: {$eventId}", 'ERROR');
-                    } else {
-                        // Track inventory change for successful processing
-                        trackInventoryChange($deviceId, $productionQty, "PRODUCED");
-                        $batchCount++;
+                        $hasError = true;
+                        $errorType = $result['errorType'];
+                        $errorMessage = $result['errorMessage'];
+                        throw new \Exception("Internal Production Error ($errorType): $errorMessage");
                     }
                 }
 
-                // Commit every batch and update checkpoint
-                if ($batchCount >= $batchSize) {
-                    $MsaDB->db->commit();
-                    updateCheckpoint($MsaDB, 'production_sku', $highestProcessedEventId);
-                    writeLog("Committed batch of {$batchCount} production records. Checkpoint EventId: {$highestProcessedEventId}");
-                    $updateProgress($processedCount + $productionProcessedCount, $totalRecords, 'production_sku', $highestProcessedEventId);
-                    $MsaDB->db->beginTransaction();
-                    $batchCount = 0;
-                }
+                // If we reach here, it was successful
+                trackInventoryChange($deviceId, $productionQty, "PRODUCED");
+                $sessionTransferCount += $batchResult['overall']['processedCount'];
+                $productionProcessedCount += $batchResult['overall']['processedCount'];
+                
+                $MsaDB->db->commit();
+                writeLog("Successfully processed Production record - EventId: {$eventId}");
 
             } catch (\Throwable $exception) {
+                if ($MsaDB->db->inTransaction()) {
+                    $MsaDB->db->rollBack();
+                }
                 $productionErrorCount++;
                 $errorCount++;
 
-                $errorMessage = "Exception processing Production record {$i} - EventId: {$eventId} - Error: " . $exception->getMessage() .
-                    " in " . $exception->getFile() . " on line " . $exception->getLine();
+                $errorMessage = "Exception processing Production record {$i} - EventId: {$eventId} - Error: " . $exception->getMessage();
                 writeLog($errorMessage, 'ERROR');
                 writeLog("Row data: " . json_encode($row), 'ERROR');
 
                 // Create notification for the error
-                $notification = $notificationRepository->createNotificationFromException($exception, $row, 1);
-                $notificationId = $notification->notificationValues['id'];
-                writeLog("Created notification ID: {$notificationId} for Production record EventId: {$eventId}", 'ERROR');
-
-                // Rollback current batch on critical error
-                if ($transactionActive) {
-                    $MsaDB->db->rollBack();
-                    writeLog("Rolled back current production batch due to exception", 'WARNING');
-                    $MsaDB->db->beginTransaction();
-                    $batchCount = 0;
-                }
-
-                continue;
+                $notification = $notificationRepository->createNotificationFromException($exception, $row, 1); // 1 = Production
+                writeLog("Created/Updated notification for Production record EventId: {$eventId}", 'ERROR');
             }
-        }
 
-        // Commit remaining records and update checkpoint
-        if ($batchCount > 0 && $transactionActive) {
-            $MsaDB->db->commit();
+            $processedCount++;
+            $highestProcessedEventId = max($highestProcessedEventId, $eventId);
+            
+            // Update checkpoint and progress after each record (atomic)
             updateCheckpoint($MsaDB, 'production_sku', $highestProcessedEventId);
-            writeLog("Committed final batch of {$batchCount} production records. Checkpoint EventId: {$highestProcessedEventId}");
-            $updateProgress($processedCount + $productionProcessedCount, $totalRecords, 'production_sku', $highestProcessedEventId);
-            $transactionActive = false;
-        } elseif ($transactionActive) {
-            $MsaDB->db->rollBack();
-            $transactionActive = false;
+            $updateProgress($processedCount, $totalRecords, 'production_sku', $highestProcessedEventId);
+            
+            // Update finishing_event_id in database
+            $MsaDB->update("ref__flowpin_update_progress",
+                ["finishing_event_id" => $highestProcessedEventId],
+                "session_id", $sessionId);
         }
-
-        // Update global counters
-        $processedCount += $productionProcessedCount;
-        $errorCount += $productionErrorCount;
-
-        // Update progress after production completes
-        $updateProgress($processedCount, $totalRecords, 'production_sku', $highestProcessedEventId);
 
         // Final summary
         writeLog("Final production processing summary:");
         writeLog("- Total Processed: {$productionProcessedCount}");
         writeLog("- Total Errors: {$productionErrorCount}");
-
-        if ($productionErrorCount > 0) {
-            writeLog("- Database Errors: {$productionDatabaseErrors}");
-            writeLog("- Processing Errors: {$productionProcessingErrors}");
-            writeLog("- BOM Errors: {$productionBomErrors}");
-            writeLog("- User Errors: {$productionUserErrors}");
-            writeLog("- No Data Errors: {$productionNoDataErrors}");
-        }
-
-        if ($productionProcessedCount > 0) {
-            writeLog("- Highest EventId: {$highestProcessedEventId}");
-        }
 
     } else {
         writeLog("No production records to process");
@@ -883,8 +918,9 @@ try {
     // Final summary
     writeLog("=== Process Summary ===");
     writeLog("Total records found: {$totalRecords}");
-    writeLog("Successfully processed: {$processedCount}");
+    writeLog("Successfully processed (success): " . ($processedCount - $errorCount));
     writeLog("Errors encountered: {$errorCount}");
+    writeLog("Total attempted: {$processedCount}");
     writeLog("Final EventId: {$overallHighestEventId}");
 
     if ($errorCount > 0) {
@@ -911,6 +947,8 @@ try {
     writeLog("Progress tracking completed for session: {$sessionId}");
     writeLog("Session metrics: {$sessionTransferCount} transfers, {$sessionGroupCount} groups created");
     writeLog("EventId range: {$sessionStartingEventId} - {$sessionFinishingEventId}");
+    // Mark that the script completed normally (prevents shutdown handler from marking as error)
+    $scriptCompletedNormally = true;
 
 } catch (\Throwable $exception) {
     if ($MsaDB->db->inTransaction()) {
@@ -923,14 +961,48 @@ try {
     writeLog($criticalError, 'CRITICAL');
     writeLog("Stack trace: " . $exception->getTraceAsString(), 'CRITICAL');
 
-    // Update progress status to error
-    $MsaDB->update("ref__flowpin_update_progress",
-        ["status" => "error", "updated_at" => date('Y-m-d H:i:s')],
-        "session_id", $sessionId);
+    // Update progress status to error, preserving EventId and counting transfers/groups
+    $errorUpdate = [
+        "status" => "error",
+        "updated_at" => date('Y-m-d H:i:s')
+    ];
+
+    // Add starting_event_id if we captured it
+    if ($sessionStartingEventId !== null) {
+        $errorUpdate["starting_event_id"] = $sessionStartingEventId;
+    }
+
+    // Add finishing_event_id if we processed any records
+    if ($overallHighestEventId > $initialEventID) {
+        $errorUpdate["finishing_event_id"] = $overallHighestEventId;
+    }
+
+    // Count transfers created in this session across all inventory types
+    $transferCount = $MsaDB->query("
+        SELECT 
+            (SELECT COUNT(*) FROM inventory__sku WHERE flowpin_update_session_id = $sessionRecordId) +
+            (SELECT COUNT(*) FROM inventory__tht WHERE flowpin_update_session_id = $sessionRecordId) +
+            (SELECT COUNT(*) FROM inventory__smd WHERE flowpin_update_session_id = $sessionRecordId) +
+            (SELECT COUNT(*) FROM inventory__parts WHERE flowpin_update_session_id = $sessionRecordId) as total
+    ", PDO::FETCH_COLUMN);
+
+    // Count groups created in this session
+    $groupCount = $MsaDB->query("
+        SELECT COUNT(DISTINCT id) FROM inventory__transfer_groups 
+        WHERE flowpin_update_session_id = $sessionRecordId
+    ", PDO::FETCH_COLUMN);
+
+    $errorUpdate["created_transfer_count"] = $transferCount[0] ?? 0;
+    $errorUpdate["created_group_count"] = $groupCount[0] ?? 0;
+
+    $MsaDB->update("ref__flowpin_update_progress", $errorUpdate, "session_id", $sessionId);
     writeLog("Progress tracking marked as error for session: {$sessionId}");
+    writeLog("Transfers created before error: " . ($transferCount[0] ?? 0) . ", Groups created: " . ($groupCount[0] ?? 0));
 
 } finally {
-    $locker->unlock();
-    writeLog("Lock released");
+    if (isset($locker)) {
+        $locker->unlock();
+        writeLog("Lock released");
+    }
     writeLog("=== FlowPin SKU Update Process Completed ===");
 }

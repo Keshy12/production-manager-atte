@@ -31,7 +31,7 @@ try {
     }
 
     // Validate user exists and has required properties
-    function validateUser($userEmail, $userRepository, &$issues) {
+    function validateUser($userEmail, $userRepository, $MsaDB, &$issues) {
         try {
             $user = $userRepository->getUserByEmail($userEmail);
 
@@ -47,7 +47,7 @@ try {
                 return false;
             }
 
-            if (empty($user->magazine)) {
+            if (empty($user->subMagazineId)) {
                 if (!isset($issues['users'][$userEmail])) {
                     $issues['users'][$userEmail] = [
                         'email' => $userEmail,
@@ -72,19 +72,19 @@ try {
             }
 
             // Check if warehouse is active
-            $warehouseResult = $userRepository->db->query(
-                "SELECT isActive FROM magazine__list WHERE sub_magazine_id = " . (int)$user->magazine
+            $warehouseResult = $MsaDB->query(
+                "SELECT isActive FROM magazine__list WHERE sub_magazine_id = " . (int)$user->subMagazineId
             );
 
             if (!empty($warehouseResult) && $warehouseResult[0]['isActive'] == 0) {
-                if (!isset($issues['warehouses'][$user->magazine])) {
-                    $issues['warehouses'][$user->magazine] = [
-                        'magazine_id' => $user->magazine,
+                if (!isset($issues['warehouses'][$user->subMagazineId])) {
+                    $issues['warehouses'][$user->subMagazineId] = [
+                        'magazine_id' => $user->subMagazineId,
                         'reason' => 'Warehouse is disabled',
                         'count' => 0
                     ];
                 }
-                $issues['warehouses'][$user->magazine]['count']++;
+                $issues['warehouses'][$user->subMagazineId]['count']++;
                 return false;
             }
 
@@ -273,7 +273,7 @@ try {
             }
 
             // Validate user
-            $userValid = validateUser($userEmail, $userRepository, $issues);
+            $userValid = validateUser($userEmail, $userRepository, $MsaDB, $issues);
             if (!$userValid) {
                 $issueCount++;
             }

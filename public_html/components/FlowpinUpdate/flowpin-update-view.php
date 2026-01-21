@@ -1,8 +1,11 @@
 <?php
 
 use Atte\DB\MsaDB;
+use Atte\Utils\Locker;
 
 $MsaDB = MsaDB::getInstance();
+$locker = new Locker('flowpin.lock');
+$isLocked = $locker->isLocked();
 
 // Get last update timestamp
 $lastUpdate = $MsaDB->query("SELECT last_timestamp FROM `ref__timestamp` WHERE id = 4")[0]["last_timestamp"] ?? 'Never';
@@ -19,20 +22,42 @@ $latestSessionId = null;
 $sessionInfo = null;
 
 if (!empty($latestProgress) && $latestProgress[0]['status'] === 'running') {
-    $updatedAt = strtotime($latestProgress[0]['updated_at']);
-    $now = time();
-    $minutesSinceUpdate = ($now - $updatedAt) / 60;
-
     $sessionInfo = $latestProgress[0];
     $latestSessionId = $sessionInfo['session_id'];
 
-    // Consider session stale if not updated in 10+ minutes
-    if ($minutesSinceUpdate > 10) {
+    // Use lock status to determine if session is truly running
+    if (!$isLocked) {
         $isStaleSession = true;
+        
+        // Mark session as error in DB proactively
+        $staleId = $sessionInfo['id'];
+        $transferCount = $MsaDB->query("
+            SELECT 
+                (SELECT COUNT(*) FROM inventory__sku WHERE flowpin_update_session_id = $staleId) +
+                (SELECT COUNT(*) FROM inventory__tht WHERE flowpin_update_session_id = $staleId) +
+                (SELECT COUNT(*) FROM inventory__smd WHERE flowpin_update_session_id = $staleId) +
+                (SELECT COUNT(*) FROM inventory__parts WHERE flowpin_update_session_id = $staleId) as total
+        ", PDO::FETCH_COLUMN);
+        
+        $groupCount = $MsaDB->query("
+            SELECT COUNT(DISTINCT id) FROM inventory__transfer_groups 
+                WHERE flowpin_update_session_id = $staleId
+        ", PDO::FETCH_COLUMN);
+
+        $MsaDB->update("ref__flowpin_update_progress", [
+            "status" => "error",
+            "updated_at" => date('Y-m-d H:i:s'),
+            "created_transfer_count" => $transferCount[0] ?? 0,
+            "created_group_count" => $groupCount[0] ?? 0
+        ], "id", $staleId);
+        
+        // Update sessionInfo for the view to show 'error' status instead of 'running'
+        $sessionInfo['status'] = 'error';
     } else {
         $hasRunningSession = true;
     }
 }
+
 
 ?>
 <div class="container-fluid mt-4">
@@ -116,6 +141,9 @@ if (!empty($latestProgress) && $latestProgress[0]['status'] === 'running') {
                         <strong>Uwaga:</strong> Problemy znalezione podczas analizy nie blokują aktualizacji.
                         Dla rekordów z problemami zostaną utworzone powiadomienia, które można później rozwiązać.
                     </p>
+                    <p class="text-muted">
+                        <small><strong>Info:</strong> Jeśli postęp aktualizacji wydaje się zablokowany, możesz ręcznie zatrzymać sesję używając przycisku "Resetuj" poniżej.</small>
+                    </p>
                     <button id="btnUpdate" class="btn btn-success" <?= ($hasRunningSession || $isStaleSession) ? 'disabled' : ''?>>
                         Uruchom aktualizację
                     </button>
@@ -128,9 +156,10 @@ if (!empty($latestProgress) && $latestProgress[0]['status'] === 'running') {
 
                     <?php if ($isStaleSession): ?>
                         <div class="alert alert-warning mt-3">
-                            <strong>Uwaga!</strong> Sesja <code><?= $latestSessionId ?></code> nie była aktualizowana przez ponad 10 minut i prawdopodobnie uległa awarii.
+                            <strong>Uwaga!</strong> Sesja <code><?= $latestSessionId ?></code> nie jest aktywna i prawdopodobnie uległa awarii (brak blokady systemowej).
                             <br>
                             <small>Ostatnia aktualizacja: <?= $sessionInfo['updated_at'] ?></small>
+
                             <br>
                             <button id="btnResetSession" class="btn btn-danger btn-sm mt-2" data-session-id="<?= $latestSessionId ?>">
                                 <i class="bi bi-x-circle"></i> Resetuj zablokowaną sesję

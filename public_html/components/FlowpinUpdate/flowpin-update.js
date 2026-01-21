@@ -13,11 +13,15 @@ async function postData(url = "", data = {}) {
 
 let progressInterval = null;
 let currentSessionId = $('#latestSessionId').val() || null;
+let isStartingNewUpdate = false;
 
 // Check if there's a running session on page load
 if (currentSessionId) {
+    // Only start polling if the session is actually running or we just started one
+    // We'll let checkProgress decide based on the initial state
     startProgressPolling(currentSessionId);
 }
+
 
 // Analysis button click handler
 $("#btnAnalyze").click(function() {
@@ -175,12 +179,16 @@ $("#btnUpdate").click(function() {
     });
 
     // Start the update process
+    isStartingNewUpdate = true;
+    currentSessionId = null;
+
     fetch("/atte_ms_new/src/cron/flowpin-sku-update.php", {
         method: "POST",
         credentials: "omit"
     })
-    .then(response => response.text())
-    .then(data => {
+    .then(async response => {
+        const fullText = await response.text();
+        
         $("#spinnerUpdate").hide();
 
         // Stop polling if still active
@@ -189,14 +197,9 @@ $("#btnUpdate").click(function() {
             progressInterval = null;
         }
 
-        // Final progress check
-        if (currentSessionId) {
-            checkProgress(currentSessionId, true);
-        }
-
         // Extract session_id from first line if present (JSON format)
-        let logData = data;
-        const lines = data.split('\n');
+        let logData = fullText;
+        const lines = fullText.split('\n');
         if (lines.length > 0 && lines[0].trim().startsWith('{')) {
             try {
                 const sessionInfo = JSON.parse(lines[0]);
@@ -210,9 +213,20 @@ $("#btnUpdate").click(function() {
             }
         }
 
+        // Final progress check to ensure UI is updated with 100% and correct counts
+        let finalData = null;
+        if (currentSessionId) {
+            finalData = await checkProgress(currentSessionId, true);
+        }
+
+        const alertClass = (finalData && finalData.status === 'error') ? 'alert-danger' : 'alert-success';
+        const titleText = (finalData && finalData.status === 'error') ? 'Aktualizacja zakończona z błędem!' : 'Aktualizacja zakończona!';
+        const recordSummary = finalData ? `<p>Przetworzono <strong>${finalData.processed_records}</strong> z <strong>${finalData.total_records}</strong> rekordów.</p>` : '';
+
         $("#updateResult").html(
-            '<div class="alert alert-success">' +
-            '<h4>Aktualizacja zakończona!</h4>' +
+            `<div class="alert ${alertClass}">` +
+            `<h4>${titleText}</h4>` +
+            recordSummary +
             '<p>Sprawdź logi po więcej szczegółów.</p>' +
             '<pre style="max-height: 300px; overflow-y: auto;">' + logData + '</pre>' +
             '</div>'
@@ -263,103 +277,93 @@ function startProgressPolling(sessionId) {
 }
 
 // Check progress
-function checkProgress(sessionId, isFinal = false) {
+async function checkProgress(sessionId, isFinal = false) {
     const data = sessionId ? { session_id: sessionId } : {};
 
-    postData(COMPONENTS_PATH + "/FlowpinUpdate/get-progress.php", data)
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                // Store session ID if we got it
-                if (!currentSessionId && data.session_id) {
-                    currentSessionId = data.session_id;
-                }
+    try {
+        const response = await postData(COMPONENTS_PATH + "/FlowpinUpdate/get-progress.php", data);
+        const dataJson = await response.json();
 
-                updateProgressDisplay(data);
-
-                // Check for stale session (not updated in 10+ minutes while status=running)
-                if (data.status === 'running' && data.updated_at) {
-                    const updatedAt = new Date(data.updated_at);
-                    const now = new Date();
-                    const minutesSinceUpdate = (now - updatedAt) / 1000 / 60;
-
-                    if (minutesSinceUpdate > 10) {
-                        // Session appears stale - stop polling
-                        if (progressInterval) {
-                            clearInterval(progressInterval);
-                            progressInterval = null;
-                        }
-
-                        $("#spinnerUpdate").hide();
-                        $("#updateResult").html(
-                            '<div class="alert alert-danger">' +
-                            '<h4>Sesja wygląda na zawieszoną!</h4>' +
-                            '<p>Aktualizacja nie była kontynuowana przez ponad 10 minut.</p>' +
-                            '<p><strong>Przeładuj stronę</strong> aby zobaczyć opcję resetowania sesji.</p>' +
-                            '</div>'
-                        );
-
-                        $("#btnUpdate").prop("disabled", false);
-                        $("#btnAnalyze").prop("disabled", false);
-                        return; // Don't process further
-                    }
-                }
-
-                // Stop polling if completed or error (unless it's just a final check)
-                if (!isFinal && (data.status === 'completed' || data.status === 'error')) {
-                    if (progressInterval) {
-                        clearInterval(progressInterval);
-                        progressInterval = null;
-                    }
-
-                    if (data.status === 'completed') {
-                        $("#updateResult").html(
-                            '<div class="alert alert-success">' +
-                            '<h4>Aktualizacja zakończona pomyślnie!</h4>' +
-                            '<p>Przetworzono ' + data.processed_records + ' z ' + data.total_records + ' rekordów.</p>' +
-                            '</div>'
-                        );
-                        $("#spinnerUpdate").hide();
-                        $("#btnUpdate").prop("disabled", false);
-                        $("#btnAnalyze").prop("disabled", false);
-                    } else if (data.status === 'error') {
-                        $("#updateResult").html(
-                            '<div class="alert alert-danger">' +
-                            '<h4>Aktualizacja zakończona z błędem!</h4>' +
-                            '<p>Sprawdź logi po więcej informacji.</p>' +
-                            '</div>'
-                        );
-                        $("#spinnerUpdate").hide();
-                        $("#btnUpdate").prop("disabled", false);
-                        $("#btnAnalyze").prop("disabled", false);
-                    }
-                }
+        if (dataJson.success) {
+            // If we are starting a new update and didn't provide a specific sessionId, 
+            // ignore any session that is already finished (to avoid picking up the previous run)
+            if (!sessionId && isStartingNewUpdate && dataJson.status !== 'running') {
+                return null;
             }
-        })
-        .catch(err => {
-            console.error("Error checking progress:", err);
-        });
+
+            // We found the new session (either specifically requested or picked up by polling)
+            if (isStartingNewUpdate && (dataJson.status === 'running' || sessionId)) {
+                isStartingNewUpdate = false;
+            }
+
+            // Store session ID if we got it
+            if (!currentSessionId && dataJson.session_id) {
+                currentSessionId = dataJson.session_id;
+            }
+
+            updateProgressDisplay(dataJson);
+            
+            // Stop polling if completed or error (unless it's just a final check)
+            if (!isFinal && (dataJson.status === 'completed' || dataJson.status === 'error')) {
+                if (progressInterval) {
+                    clearInterval(progressInterval);
+                    progressInterval = null;
+                }
+                
+                // Show completion message in UI
+                const alertClass = dataJson.status === 'error' ? 'alert-danger' : 'alert-success';
+                const titleText = dataJson.status === 'error' ? 'Aktualizacja zakończona z błędem!' : 'Aktualizacja zakończona pomyślnie!';
+                
+                $("#updateResult").html(
+                    `<div class="alert ${alertClass}">` +
+                    `<h4>${titleText}</h4>` +
+                    `<p>Przetworzono ${dataJson.processed_records} z ${dataJson.total_records} rekordów.</p>` +
+                    '</div>'
+                );
+                
+                $("#spinnerUpdate").hide();
+                $("#btnUpdate").prop("disabled", false);
+                $("#btnAnalyze").prop("disabled", false);
+            }
+            
+            return dataJson;
+        }
+    } catch (err) {
+        console.error("Error checking progress:", err);
+    }
+    return null;
 }
+
 
 // Update progress display
 function updateProgressDisplay(data) {
     const percentage = data.percentage || 0;
+    const isRunning = data.status === 'running';
+    const isInitializing = isRunning && (data.total_records === 0 || data.current_operation_type === 'Pobieranie danych z FlowPin...');
 
     $("#progressBar").css("width", percentage + "%");
     $("#percentCompleted").text(percentage.toFixed(2) + "%");
     $("#processedRecords").text(data.processed_records || 0);
-    $("#totalRecords").text(data.total_records || 0);
-    $("#currentOperation").text(data.current_operation_type || '-');
+    
+    if (isInitializing) {
+        $("#totalRecords").text('...');
+        $("#currentOperation").text(data.current_operation_type || 'Pobieranie danych...');
+    } else {
+        $("#totalRecords").text(data.total_records || 0);
+        $("#currentOperation").text(data.current_operation_type || '-');
+    }
+    
     $("#currentEventId").text(data.current_event_id || '-');
     $("#updateStatus").text(translateStatus(data.status));
 
     // Update page title to show progress
-    if (data.status === 'running') {
+    if (isRunning) {
         document.title = '[' + percentage.toFixed(0) + '%] Aktualizacja FlowPin';
     } else {
         document.title = 'Zarządzanie aktualizacją FlowPin';
     }
 }
+
 
 // Translate status to Polish
 function translateStatus(status) {

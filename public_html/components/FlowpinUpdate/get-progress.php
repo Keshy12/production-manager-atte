@@ -1,6 +1,7 @@
 <?php
 
 use Atte\DB\MsaDB;
+use Atte\Utils\Locker;
 
 header('Content-Type: application/json');
 
@@ -9,8 +10,11 @@ try {
     $sessionId = $_POST['session_id'] ?? null;
 
     $MsaDB = MsaDB::getInstance();
+    $locker = new Locker('flowpin.lock');
+    $isLocked = $locker->isLocked();
 
     if ($sessionId) {
+
         // Get specific session progress - properly escape the session_id
         $escapedSessionId = $MsaDB->db->quote($sessionId);
         $result = $MsaDB->query(
@@ -35,7 +39,38 @@ try {
 
     $progress = $result[0];
 
+    // Check for stale session using lock status
+    if ($progress['status'] === 'running' && !$isLocked) {
+        $staleId = $progress['id'];
+        
+        // Count transfers and groups for the stale session to have accurate final numbers
+        $transferCount = $MsaDB->query("
+            SELECT 
+                (SELECT COUNT(*) FROM inventory__sku WHERE flowpin_update_session_id = $staleId) +
+                (SELECT COUNT(*) FROM inventory__tht WHERE flowpin_update_session_id = $staleId) +
+                (SELECT COUNT(*) FROM inventory__smd WHERE flowpin_update_session_id = $staleId) +
+                (SELECT COUNT(*) FROM inventory__parts WHERE flowpin_update_session_id = $staleId) as total
+        ", PDO::FETCH_COLUMN);
+        
+        $groupCount = $MsaDB->query("
+            SELECT COUNT(DISTINCT id) FROM inventory__transfer_groups 
+                WHERE flowpin_update_session_id = $staleId
+        ", PDO::FETCH_COLUMN);
+
+        $MsaDB->update("ref__flowpin_update_progress", [
+            "status" => "error",
+            "updated_at" => date('Y-m-d H:i:s'),
+            "created_transfer_count" => $transferCount[0] ?? 0,
+            "created_group_count" => $groupCount[0] ?? 0
+        ], "id", $staleId);
+
+        // Update progress object for the response
+        $progress['status'] = 'error';
+        $progress['updated_at'] = date('Y-m-d H:i:s');
+    }
+
     // Calculate percentage
+
     $percentage = 0;
     if ($progress['total_records'] > 0) {
         $percentage = round(($progress['processed_records'] / $progress['total_records']) * 100, 2);
