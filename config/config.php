@@ -1,12 +1,17 @@
 <?php
-define('ROOT_DIRECTORY', $_SERVER['DOCUMENT_ROOT'].'/atte_ms_new');
+define('ROOT_DIRECTORY', isset($_SERVER['DOCUMENT_ROOT']) && !empty($_SERVER['DOCUMENT_ROOT']) 
+    ? $_SERVER['DOCUMENT_ROOT'].'/atte_ms_new' 
+    : str_replace('\\', '/', realpath(__DIR__ . '/..')));
 require_once ROOT_DIRECTORY.'/vendor/autoload.php';
 
 $dotenv = Dotenv\Dotenv::createImmutable(ROOT_DIRECTORY);
 $dotenv->load();
 define("BASEURL", $_ENV["BASEURL"]);
 
-session_start();
+if (php_sapi_name() !== 'cli') {
+    session_start();
+}
+
 
 function includeWithVariables($filePath, $variables = array(), $print = true)
 {
