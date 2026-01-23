@@ -31,7 +31,7 @@ try {
 
         // Get inventory data with magazine type information
         $inventoryDevice = $MsaDB->query("SELECT ".$type."_id, i.sub_magazine_id, 
-            sum(quantity) as sum, ml.type_id 
+            sum(qty) as sum, ml.type_id 
             FROM `inventory__".$type."` i 
             JOIN magazine__list ml 
             ON i.sub_magazine_id = ml.sub_magazine_id 

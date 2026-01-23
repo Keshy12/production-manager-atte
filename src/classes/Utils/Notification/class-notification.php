@@ -153,7 +153,7 @@ class Notification {
                 $userId = $user->userId;
 
                 $comment = "Finalizacja zamówienia, spakowano do wysyłki, EventId: " . $eventId;
-                $columns = ["sku_id", "user_id", "sub_magazine_id", "quantity", "timestamp", "input_type_id", "comment", "transfer_group_id"];
+                $columns = ["sku_id", "user_id", "sub_magazine_id", "qty", "timestamp", "input_type_id", "comment", "transfer_group_id"];
                 $values = [$deviceId, $userId, "0", $qty, $executionDate, "9", $comment, $transferGroupId];
                 $MsaDB->insert("inventory__sku", $columns, $values);
                 $MsaDB->deleteById("notification__queries_affected", $rowId);
@@ -194,7 +194,7 @@ class Notification {
                 $userId = $user->userId;
 
                 $comment = "Zwrot SKU od klienta, EventId: " . $eventId;
-                $columns = ["sku_id", "user_id", "sub_magazine_id", "quantity", "timestamp", "input_type_id", "comment", "transfer_group_id"];
+                $columns = ["sku_id", "user_id", "sub_magazine_id", "qty", "timestamp", "input_type_id", "comment", "transfer_group_id"];
                 $values = [$deviceId, $userId, "0", $qty, $executionDate, "10", $comment, $transferGroupId];
                 $MsaDB->insert("inventory__sku", $columns, $values);
                 $MsaDB->deleteById("notification__queries_affected", $rowId);
@@ -221,7 +221,7 @@ class Notification {
                 $data = $row[1];
 
                 if (count($data) < 8) {
-                    throw new InvalidArgumentException("Insufficient data elements for SKU Transfer - expected at least 8, got " . count($data) . ": " . print_r($data, true));
+                    throw new \InvalidArgumentException("Insufficient data elements for SKU Transfer - expected at least 8, got " . count($data) . ": " . print_r($data, true));
                 }
 
                 list($eventId, $executionDate, $userEmail, $deviceId, $warehouseOut, $qtyOut, $warehouseIn, $qtyIn) = $data;
@@ -231,13 +231,13 @@ class Notification {
                 $comment = "Przesunięcie między magazynowe, EventId: " . $eventId;
 
                 if ($warehouseOut == 3 || $warehouseOut == 4) {
-                    $columns = ["sku_id", "user_id", "sub_magazine_id", "quantity", "timestamp", "input_type_id", "comment", "transfer_group_id"];
+                    $columns = ["sku_id", "user_id", "sub_magazine_id", "qty", "timestamp", "input_type_id", "comment", "transfer_group_id"];
                     $values = [$deviceId, $userId, "0", $qtyOut, $executionDate, "2", $comment, $transferGroupId];
                     $MsaDB->insert("inventory__sku", $columns, $values);
                 }
 
                 if ($warehouseIn == 3 || $warehouseIn == 4) {
-                    $columns = ["sku_id", "user_id", "sub_magazine_id", "quantity", "timestamp", "input_type_id", "comment", "transfer_group_id"];
+                    $columns = ["sku_id", "user_id", "sub_magazine_id", "qty", "timestamp", "input_type_id", "comment", "transfer_group_id"];
                     $values = [$deviceId, $userId, "0", $qtyIn, $executionDate, "2", $comment, $transferGroupId];
                     $MsaDB->insert("inventory__sku", $columns, $values);
                 }
