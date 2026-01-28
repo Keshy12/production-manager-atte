@@ -47,8 +47,10 @@ class Notification {
         $notificationId = $this->notificationValues["id"];
         $transferGroupId = $transferGroupManager->createTransferGroup(
             $userId,
-            "Notification resolution #{$notificationId}"
+            'notification_resolve',
+            ['notification_id' => $notificationId]
         );
+
 
         if($this -> retryQueries($transferGroupId)){
             $remainingQueries = $this->getValuesToResolve();

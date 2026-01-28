@@ -23,12 +23,26 @@ try {
         throw new \Exception("Nieprawidłowe parametry korekty");
     }
 
+    // Fetch magazine names for the transfer group note
+    $magazineNames = [];
+    foreach ($result as $magazine) {
+        $subMagazineId = (int)$magazine[0];
+        $res = $MsaDB->query("SELECT sub_magazine_name FROM magazine__list WHERE sub_magazine_id = $subMagazineId");
+        if (!empty($res)) {
+            $magazineNames[] = $res[0]['sub_magazine_name'];
+        }
+    }
+    $magazineNameString = implode(', ', array_unique($magazineNames));
+
     // Create ONE transfer group for all corrections
     $transferGroupManager = new TransferGroupManager($MsaDB);
     $transferGroupId = $transferGroupManager->createTransferGroup(
         $userId,
-        "Korekta magazynu przez stronę Magazyn (admin)"
+        'warehouse_correct',
+        ['magazine_name' => $magazineNameString]
     );
+
+
 
     if (!$transferGroupId || $transferGroupId <= 0) {
         throw new \Exception("Nie udało się utworzyć grupy transferów");

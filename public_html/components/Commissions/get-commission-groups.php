@@ -13,9 +13,12 @@ try {
             tg.id as transfer_group_id,
             tg.created_at,
             tg.created_by,
-            tg.notes,
+            tgt.template as transfer_template,
+            tg.params as transfer_params,
             tg.is_cancelled
         FROM inventory__transfer_groups tg
+        LEFT JOIN ref__transfer_group_types tgt ON tg.type_id = tgt.id
+
         INNER JOIN (
             SELECT DISTINCT transfer_group_id FROM inventory__parts WHERE commission_id = $commissionId
             UNION
@@ -197,8 +200,9 @@ try {
         $groups[] = [
             'id' => $transferGroupId,
             'timestamp' => $transfer['created_at'],
-            'notes' => $transfer['notes'],
+            'notes' => \Atte\Utils\TransferGroupManager::formatNote($transfer['transfer_template'] ?? '', $transfer['transfer_params'] ?? '[]'),
             'createdBy' => $transfer['created_by'],
+
             'hasOtherCommissions' => count($allCommissionsInGroup) > 1 || $hasManualComponents,
             'allCommissions' => $commissionsWithDetails
         ];

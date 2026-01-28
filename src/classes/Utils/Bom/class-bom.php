@@ -11,6 +11,10 @@ class Bom {
     public ?int $laminateId = null;
     public ?string $version = null; 
     public bool $isActive;
+    public string $name;
+    public string $description;
+    public ?string $laminateName = null;
+
 
 
     public function __construct(MsaDB $MsaDB){

@@ -15,10 +15,11 @@ $cancelledCondition = $showCancelled ? "" : "AND i.is_cancelled = 0";
 
 $lastProduction = $MsaDB->query("
 SELECT i.id, u.login, l.name, i.qty, i.timestamp, i.comment, i.transfer_group_id,
-       i.commission_id, tg.notes as transfer_notes, tg.created_at as transfer_created_at,
-       i.is_cancelled
+       i.commission_id, tgt.template as transfer_template, tg.params as transfer_params,
+       tg.created_at as transfer_created_at, i.is_cancelled
 FROM `inventory__{$deviceType}` i
 LEFT JOIN inventory__transfer_groups tg ON i.transfer_group_id = tg.id
+LEFT JOIN ref__transfer_group_types tgt ON tg.type_id = tgt.id
 LEFT JOIN user u ON tg.created_by = u.user_id
 JOIN list__{$deviceType} l ON i.{$deviceType}_id = l.id
 WHERE l.id = '$deviceId'
@@ -26,6 +27,7 @@ AND i.sub_magazine_id = '{$subMagazineId}'
 AND i.input_type_id = 4
 {$cancelledCondition}
 ORDER BY i.transfer_group_id DESC, i.`id` DESC LIMIT 50;");
+
 
 // Stage 2: For grouped mode, fetch ALL device types for these groups
 $allTransfers = [];
@@ -54,12 +56,15 @@ if (!$noGrouping && !empty($lastProduction)) {
                     {$bomField}
                     l.name as name,
                     '$type' as device_type,
-                    tg.notes as transfer_notes,
+                    tgt.template as transfer_template,
+                    tg.params as transfer_params,
                     tg.created_at as transfer_created_at,
                     u.login
                 FROM `inventory__{$type}` i
                 LEFT JOIN inventory__transfer_groups tg ON i.transfer_group_id = tg.id
+                LEFT JOIN ref__transfer_group_types tgt ON tg.type_id = tgt.id
                 LEFT JOIN user u ON tg.created_by = u.user_id
+
                 JOIN list__{$type} l ON i.{$type}_id = l.id
                 WHERE i.transfer_group_id IN ($groupIdsStr)
                 AND i.sub_magazine_id = '{$subMagazineId}'
@@ -104,16 +109,18 @@ if ($noGrouping) {
     foreach ($dataToGroup as $row) {
         $groupId = $row['transfer_group_id'] ?: 'no_group_' . $row['id'];
         if (!isset($groupedProduction[$groupId])) {
+            $formattedNote = \Atte\Utils\TransferGroupManager::formatNote($row['transfer_template'] ?? '', $row['transfer_params'] ?? '[]');
             $groupedProduction[$groupId] = [
                 'entries' => [],
                 'login' => $row['login'],
                 'timestamp' => $row['transfer_created_at'] ?? $row['timestamp'],
-                'notes' => $row['transfer_notes'] ?? '',
+                'notes' => $formattedNote,
                 'total_qty' => 0,
                 'cancelled_count' => 0,
                 'total_count' => 0
             ];
         }
+
         $groupedProduction[$groupId]['entries'][] = $row;
 
         // Only add quantity if this is the produced item, not a component

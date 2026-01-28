@@ -50,6 +50,10 @@ class ProductionManager {
             $bomId = $bom->id;
             $bomComponents = $bom->getComponents(1);
 
+            // Fetch device name for the transfer group
+            $bom->getNameAndDescription();
+            $deviceName = $bom->name;
+
             $inventoryTable = "inventory__" . $deviceType;
             $deviceField = $deviceType . "_id";
             $bomField = $deviceType . "_bom_id";
@@ -58,8 +62,20 @@ class ProductionManager {
                 return $this->handleNegativeProduction($userId, $deviceId, $version, abs($quantity), $comment, $productionDate, $deviceType, $laminateId, $bom, $bomComponents);
             }
 
+            // Handle auto-comment if empty
+            if (empty($comment)) {
+                $comment = "Produkcja {$deviceName} przez formularz " . strtoupper($deviceType);
+            }
+
             // Create transfer group for this production
-            $transferGroupId = $this->transferGroupManager->createTransferGroup($userId, $comment);
+            $transferGroupId = $this->transferGroupManager->createTransferGroup($userId, 'production', [
+                'comment' => $comment,
+                'device_id' => $deviceId,
+                'device_name' => $deviceName,
+                'device_type' => $deviceType
+            ]);
+
+
 
             $commissionAlerts = [];
 
@@ -158,8 +174,24 @@ class ProductionManager {
         $deviceField = $deviceType . "_id";
         $bomField = $deviceType . "_bom_id";
 
+        // Fetch device name
+        $bom->getNameAndDescription();
+        $deviceName = $bom->name;
+
+        // Handle auto-comment if empty
+        if (empty($comment)) {
+            $comment = "Korekta produkcji {$deviceName} przez formularz " . strtoupper($deviceType);
+        }
+
         // Create transfer group for corrections
-        $transferGroupId = $this->transferGroupManager->createTransferGroup($userId, "CORRECTION: " . $comment);
+        $transferGroupId = $this->transferGroupManager->createTransferGroup($userId, 'production_correction', [
+            'comment' => $comment,
+            'device_id' => $deviceId,
+            'device_name' => $deviceName,
+            'device_type' => $deviceType
+        ]);
+
+
 
         // Add components back
         foreach ($bomComponents as $component) {

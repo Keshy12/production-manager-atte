@@ -68,8 +68,11 @@ function importOrders($orders, $oldLastCell, $newLastCell) {
             $grnIdsString = implode(', ', $grnIds);
 
             // Create transfer group for this PO
-            $notes = "Import zamówień: PO-{$poId}, GRN-{$grnIdsString}";
-            $transferGroupId = $transferGroupManager->createTransferGroup($userId, $notes);
+            $transferGroupId = $transferGroupManager->createTransferGroup($userId, 'order_import', [
+                'po_id' => $poId,
+                'grn_ids' => $grnIdsString
+            ]);
+
 
             if (!$transferGroupId || $transferGroupId <= 0) {
                 throw new \Exception("Nie udało się utworzyć grupy transferów dla PO-{$poId}");

@@ -154,11 +154,13 @@ function getOrCreateTransferGroup($userId, $deviceId, $date, $operationType, &$t
     $deviceName = $MsaDB->query("SELECT name FROM list__sku WHERE id = " . (int)$deviceId, PDO::FETCH_COLUMN);
     $deviceName = $deviceName[0] ?: "SKU_ID_{$deviceId}";
 
-    // Create comment with date and device info
-    $comment = "FlowPin {$operationType} {$date} - Device: {$deviceName}";
-
     // Create transfer group
-    $transferGroupId = $transferGroupManager->createTransferGroup($userId, $comment);
+    $transferGroupId = $transferGroupManager->createTransferGroup($userId, 'flowpin_sync', [
+        'operation' => $operationType,
+        'date' => $date,
+        'device_name' => $deviceName
+    ]);
+
 
     // Link transfer group to FlowPin update session
     $MsaDB->update("inventory__transfer_groups",

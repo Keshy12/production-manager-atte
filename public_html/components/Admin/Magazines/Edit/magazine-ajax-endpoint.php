@@ -28,7 +28,9 @@ if (json_last_error() !== JSON_ERROR_NONE) {
 $MsaDB = MsaDB::getInstance();
 $magazineRepository = new MagazineRepository($MsaDB);
 $userRepository = new UserRepository($MsaDB);
-$actionHandler = new MagazineActionHandler($MsaDB, $magazineRepository, $userRepository);
+$transferGroupManager = new Atte\Utils\TransferGroupManager($MsaDB);
+$actionHandler = new MagazineActionHandler($MsaDB, $magazineRepository, $userRepository, $transferGroupManager);
+
 
 // Action handlers array
 $actionHandlers = [

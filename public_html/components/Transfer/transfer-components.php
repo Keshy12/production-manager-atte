@@ -53,14 +53,13 @@ try {
 
     $commissionRepository = new CommissionRepository($MsaDB);
     $bomRepository = new BomRepository($MsaDB);
+    $transferGroupManager = new Atte\Utils\TransferGroupManager($MsaDB);
 
     $groupId = null;
     if (!empty($commissions) || !empty($components)) {
-        $groupId = $MsaDB->insert("inventory__transfer_groups",
-            ["created_by", "notes", "created_at"],
-            [$userid, "Multi-source transfer group", $now]
-        );
+        $groupId = $transferGroupManager->createTransferGroup($userid, 'multi_source');
     }
+
 
     $commissionKeyToId = [];
     $commissionResult = [];

@@ -9,13 +9,16 @@ class MagazineActionHandler
     private $MsaDB;
     private $magazineRepository;
     private $userRepository;
+    private $transferGroupManager;
 
-    public function __construct(MsaDB $MsaDB, MagazineRepository $magazineRepository, UserRepository $userRepository)
+    public function __construct(MsaDB $MsaDB, MagazineRepository $magazineRepository, UserRepository $userRepository, ?TransferGroupManager $transferGroupManager = null)
     {
         $this->MsaDB = $MsaDB;
         $this->magazineRepository = $magazineRepository;
         $this->userRepository = $userRepository;
+        $this->transferGroupManager = $transferGroupManager ?? new TransferGroupManager($MsaDB);
     }
+
 
     public function getNextSubMagNumber(): int
     {
@@ -107,11 +110,11 @@ class MagazineActionHandler
         $userId = $_SESSION['user_id'] ?? 1;
         
         // Create transfer group to track user and action
-        $this->MsaDB->insert("inventory__transfer_groups", 
-            ["created_by", "notes"], 
-            [$userId, "Transfer z magazynu {$fromMagazineId} do {$toMagazineId}"]
-        );
-        $transferGroupId = (int)$this->MsaDB->db->lastInsertId();
+        $transferGroupId = $this->transferGroupManager->createTransferGroup($userId, 'magazine_transfer', [
+            'from_id' => $fromMagazineId,
+            'to_id' => $toMagazineId
+        ]);
+
 
         try {
             $transferQueries = [
@@ -205,11 +208,10 @@ class MagazineActionHandler
         $userId = $_SESSION['user_id'] ?? 1;
 
         // Create transfer group to track user and action
-        $this->MsaDB->insert("inventory__transfer_groups", 
-            ["created_by", "notes"], 
-            [$userId, "Inventory cleared during magazine {$magazineId} deactivation"]
-        );
-        $transferGroupId = (int)$this->MsaDB->db->lastInsertId();
+        $transferGroupId = $this->transferGroupManager->createTransferGroup($userId, 'magazine_clear', [
+            'magazine_id' => $magazineId
+        ]);
+
 
         $clearQueries = [
             "INSERT INTO inventory__parts (parts_id, sub_magazine_id, qty, timestamp, input_type_id, comment, isVerified, transfer_group_id)

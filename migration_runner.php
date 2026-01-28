@@ -114,6 +114,18 @@ function migrateTable($sourceDb, $targetDb, $tableName, $customMapping = [], $ex
                 $insertData[] = 0;
             } elseif ($col == 'isVerified') {
                 $insertData[] = 1;
+            } elseif ($col == 'type_id' && $tableName == 'inventory__transfer_groups') {
+                // If migrating from a source that had 'notes', we might want to map it
+                // but for simplicity we'll just set migration type
+                static $migId = null;
+                if ($migId === null) {
+                    $res = $targetDb->query("SELECT id FROM ref__transfer_group_types WHERE slug = 'migration'")->fetch();
+                    $migId = $res ? $res['id'] : null;
+                }
+                $insertData[] = $migId;
+            } elseif ($col == 'params' && $tableName == 'inventory__transfer_groups') {
+                $note = $row['notes'] ?? 'Migracja';
+                $insertData[] = json_encode(['note' => $note], JSON_UNESCAPED_UNICODE);
             }
             // Priority 5: Extra data
             elseif (array_key_exists($col, $extraData)) {
@@ -173,12 +185,16 @@ if ($targetGroupCount == 0) {
     $gCountTotal = $sourceDb->query("SELECT COUNT(*) FROM ($groupsQuery) AS t")->fetchColumn();
     $gStmt = $sourceDb->query($groupsQuery);
 
-    $groupInsert = $targetDb->prepare("INSERT INTO inventory__transfer_groups (created_by, created_at, notes) VALUES (?, ?, 'Migracja danych')");
+    $migrationTypeResult = $targetDb->query("SELECT id FROM ref__transfer_group_types WHERE slug = 'migration'")->fetch(PDO::FETCH_ASSOC);
+    $migrationTypeId = $migrationTypeResult ? $migrationTypeResult['id'] : null;
+
+    $groupInsert = $targetDb->prepare("INSERT INTO inventory__transfer_groups (created_by, created_at, type_id, params) VALUES (?, ?, ?, ?)");
     $gCount = 0;
 
     updateProgress(0, $gCountTotal, "transfer_groups");
     while ($gRow = $gStmt->fetch(PDO::FETCH_ASSOC)) {
-        $groupInsert->execute([$gRow['user_id'], $gRow['timestamp']]);
+        $params = json_encode(['note' => 'Migracja danych'], JSON_UNESCAPED_UNICODE);
+        $groupInsert->execute([$gRow['user_id'], $gRow['timestamp'], $migrationTypeId, $params]);
         $gCount++;
         if ($gCount % 50 == 0 || $gCount == $gCountTotal) {
             updateProgress($gCount, $gCountTotal, "transfer_groups");

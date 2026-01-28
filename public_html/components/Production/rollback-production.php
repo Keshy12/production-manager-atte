@@ -32,8 +32,8 @@ try {
 
         foreach ($groupIdsToCancel as $groupId) {
             // Create NEW transfer group for this rollback
-            $cancellationNote = "Anulacja grupy transferów #$groupId";
-            $newTransferGroupId = $transferGroupManager->createTransferGroup($userId, $cancellationNote);
+            $newTransferGroupId = $transferGroupManager->createTransferGroup($userId, 'rollback_group', ['group_id' => $groupId]);
+
 
             // Define all device types to check
             $deviceTypes = ['sku', 'smd', 'tht', 'parts'];
@@ -175,8 +175,8 @@ try {
             $inputTypeId = $entry['input_type_id'];
 
             // Create a new transfer group for this individual cancellation
-            $cancellationNote = "Anulacja pojedynczego wpisu produkcji #$entryId";
-            $newTransferGroupId = $transferGroupManager->createTransferGroup($userId, $cancellationNote);
+            $newTransferGroupId = $transferGroupManager->createTransferGroup($userId, 'rollback_entry', ['entry_id' => $entryId]);
+
 
             $MsaDB->update(
                 "inventory__{$deviceType}",

@@ -491,14 +491,12 @@ function submitCancellation($MsaDB) {
             $commissionId = $group['commissionId'];
             $originalGroupId = $group['originalGroupId'];
 
-            if ($originalGroupId === 'null') {
-                $cancellationNote = "Anulacja transferów bez grupy dla zlecenia #$commissionId";
-            } else {
-                $cancellationNote = "Anulacja grupy transferowej #$originalGroupId dla zlecenia #$commissionId";
-            }
-
-            $group['newCancellationGroupId'] = $transferGroupManager->createTransferGroup($userId, $cancellationNote);
+            $group['newCancellationGroupId'] = $transferGroupManager->createTransferGroup($userId, 'rollback_commission', [
+                'group_id' => $originalGroupId === 'null' ? 'BRAK' : $originalGroupId,
+                'commission_id' => $commissionId
+            ]);
         }
+
 
         // PHASE 3: Mark entries in original transfer groups as cancelled
         foreach ($cancellationGroups as $group) {

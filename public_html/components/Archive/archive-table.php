@@ -98,7 +98,8 @@ if ($deviceType === 'all') {
                 i.cancelled_at,
                 i.flowpin_update_session_id,
                 tg.created_by as group_created_by,
-                tg.notes as group_notes,
+                tgt.template as group_template,
+                tg.params as group_params,
                 tg.created_at as group_created_at,
                 l.name as device_name,
                 m.sub_magazine_name,
@@ -108,7 +109,9 @@ if ($deviceType === 'all') {
                 '$type' as device_type
             FROM `inventory__{$type}` i
             LEFT JOIN inventory__transfer_groups tg ON i.transfer_group_id = tg.id
+            LEFT JOIN ref__transfer_group_types tgt ON tg.type_id = tgt.id
             LEFT JOIN list__{$type} l ON i.{$type}_id = l.id
+
             LEFT JOIN magazine__list m ON i.sub_magazine_id = m.sub_magazine_id
             LEFT JOIN user u ON u.user_id = tg.created_by
             LEFT JOIN inventory__input_type it ON i.input_type_id = it.id
@@ -155,15 +158,17 @@ if ($deviceType === 'all') {
     } else {
         // GROUPING MODE - Group by transfer_group_id
         $groupQuery = "
-            SELECT
-                COALESCE(transfer_group_id, CONCAT('no_group_', id)) as group_key,
-                transfer_group_id,
-                COALESCE(group_created_at, timestamp) as sort_timestamp,
-                group_notes,
-                group_created_at,
-                user_name,
-                user_surname
-            FROM ($unionQuery) as combined
+        SELECT
+            COALESCE(transfer_group_id, CONCAT('no_group_', id)) as group_key,
+            transfer_group_id,
+            COALESCE(group_created_at, timestamp) as sort_timestamp,
+            group_template,
+            group_params,
+            group_created_at,
+            user_name,
+            user_surname
+        FROM ($unionQuery) as combined
+
             GROUP BY group_key
             ORDER BY sort_timestamp DESC
             LIMIT " . ($itemsPerPage + 1) . " OFFSET $offset
@@ -302,8 +307,9 @@ if ($deviceType === 'all') {
 
             $groups[] = [
                 'group_id' => $transferGroupId,
-                'group_notes' => $groupInfo['group_notes'] ?? '',
+                'group_notes' => \Atte\Utils\TransferGroupManager::formatNote($groupInfo['group_template'] ?? '', $groupInfo['group_params'] ?? '[]'),
                 'group_created_at' => $groupInfo['group_created_at'] ?? $groupInfo['sort_timestamp'],
+
                 'user_name' => $groupInfo['user_name'],
                 'user_surname' => $groupInfo['user_surname'],
                 'total_qty' => $totalQty,
@@ -410,7 +416,8 @@ if ($noGrouping) {
             i.is_cancelled,
             i.cancelled_at,
             tg.created_by as group_created_by,
-            tg.notes as group_notes,
+            tgt.template as group_template,
+            tg.params as group_params,
             tg.created_at as group_created_at,
             l.name as device_name,
             m.sub_magazine_name,
@@ -420,7 +427,9 @@ if ($noGrouping) {
             '$deviceType' as device_type
         FROM `inventory__{$deviceType}` i
         LEFT JOIN inventory__transfer_groups tg ON i.transfer_group_id = tg.id
+        LEFT JOIN ref__transfer_group_types tgt ON tg.type_id = tgt.id
         LEFT JOIN list__{$deviceType} l ON i.{$deviceType}_id = l.id
+
         LEFT JOIN magazine__list m ON i.sub_magazine_id = m.sub_magazine_id
         LEFT JOIN user u ON u.user_id = tg.created_by
         LEFT JOIN inventory__input_type it ON i.input_type_id = it.id
@@ -460,13 +469,16 @@ if ($noGrouping) {
             COALESCE(i.transfer_group_id, CONCAT('no_group_', i.id)) as group_key,
             i.transfer_group_id,
             COALESCE(tg.created_at, i.timestamp) as sort_timestamp,
-            tg.notes as group_notes,
+            tgt.template as group_template,
+            tg.params as group_params,
             tg.created_at as group_created_at,
             u.name as user_name,
             u.surname as user_surname
         FROM `inventory__{$deviceType}` i
         LEFT JOIN inventory__transfer_groups tg ON i.transfer_group_id = tg.id
+        LEFT JOIN ref__transfer_group_types tgt ON tg.type_id = tgt.id
         LEFT JOIN user u ON u.user_id = tg.created_by
+
         WHERE $whereClause $cancelledCondition
         GROUP BY group_key
         ORDER BY sort_timestamp DESC
@@ -644,8 +656,9 @@ if ($noGrouping) {
 
         $groups[] = [
             'group_id' => $transferGroupId,
-            'group_notes' => $groupInfo['group_notes'] ?? '',
+            'group_notes' => \Atte\Utils\TransferGroupManager::formatNote($groupInfo['group_template'] ?? '', $groupInfo['group_params'] ?? '[]'),
             'group_created_at' => $groupInfo['group_created_at'] ?? $groupInfo['sort_timestamp'],
+
             'user_name' => $groupInfo['user_name'],
             'user_surname' => $groupInfo['user_surname'],
             'total_qty' => $totalQty,
