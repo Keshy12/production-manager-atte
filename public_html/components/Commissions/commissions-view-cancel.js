@@ -6,53 +6,69 @@ $(document).ready(function() {
     $(document).on('click', '.cancelCommission', function(e) {
         e.preventDefault();
         const commissionId = $(this).data('id');
+        const state = $(this).data('state');
+        const potentialCount = parseInt($(this).data('potential-count')) || 0;
         const $card = $(this).closest('.card');
         const groupedIdsAttr = $card.attr('data-grouped-ids');
-        const isGrouped = groupedIdsAttr && groupedIdsAttr.split(',').length > 1;
+        const isGroupedMode = $("#groupTogether").prop('checked');
+        const isActuallyGrouped = groupedIdsAttr && groupedIdsAttr.split(',').length > 1;
 
-        showCancellationTypeDialog(commissionId, isGrouped, groupedIdsAttr);
+        // Condition for showing the prompt:
+        // 1. We are NOT in grouped mode (if we were, the whole group is already selected)
+        // 2. The commission is not actually a part of a displayed group (isActuallyGrouped)
+        // 3. AND either the state is completed/returned OR there are other commissions to group with
+        const showPrompt = !isGroupedMode && !isActuallyGrouped && (state === 'completed' || state === 'returned' || potentialCount > 1);
+
+        if (isGroupedMode || isActuallyGrouped) {
+            loadCancellationData(commissionId, true, groupedIdsAttr, 'both');
+        } else if (showPrompt) {
+            showCancellationScopeDialog(commissionId, groupedIdsAttr);
+        } else {
+            // Only one commission, no need to ask
+            loadCancellationData(commissionId, false, groupedIdsAttr, 'both');
+        }
     });
 
-    function showCancellationTypeDialog(commissionId, isGrouped, groupedIds) {
-        const typeText = isGrouped ? 'zgrupowanych zleceń' : 'zlecenia';
+    $(document).on('click', '.viewDetails', function(e) {
+        e.preventDefault();
+        const commissionId = $(this).data('id');
+        const $card = $(this).closest('.card');
+        const groupedIdsAttr = $card.attr('data-grouped-ids');
+        const isGroupedMode = $("#groupTogether").prop('checked');
 
+        loadDetailsData(commissionId, isGroupedMode, groupedIdsAttr);
+    });
+
+    function showCancellationScopeDialog(commissionId, groupedIds) {
         const dialogHtml = `
-            <div class="modal fade" id="cancellationTypeModal" tabindex="-1">
+            <div class="modal fade" id="cancellationScopeModal" tabindex="-1">
                 <div class="modal-dialog">
                     <div class="modal-content">
                         <div class="modal-header bg-warning">
                             <h5 class="modal-title">
-                                <i class="bi bi-question-circle"></i> Wybierz typ anulacji
+                                <i class="bi bi-question-circle"></i> Wybierz zakres anulacji
                             </h5>
                             <button type="button" class="close" data-dismiss="modal">
                                 <span>&times;</span>
                             </button>
                         </div>
                         <div class="modal-body">
-                            <p class="mb-3">Wybierz, co chcesz anulować dla ${typeText}:</p>
+                            <p class="mb-3">Czy chcesz anulować tylko to zlecenie, czy całą grupę zleceń?</p>
                             <div class="list-group">
-                                <a href="#" class="list-group-item list-group-item-action" data-type="commissions">
+                                <a href="#" class="list-group-item list-group-item-action" data-scope="single">
                                     <h6 class="mb-1">
-                                        <i class="bi bi-file-text"></i> Tylko zlecenia
+                                        <i class="bi bi-file-text"></i> Tylko to zlecenie (#${commissionId})
                                     </h6>
                                     <small class="text-muted">
-                                        Anuluje zlecenia bez automatycznego zwrotu komponentów
+                                        Anulowanie pojedynczego wybranego zlecenia
                                     </small>
                                 </a>
-                                <a href="#" class="list-group-item list-group-item-action" data-type="transfers">
+                                <a href="#" class="list-group-item list-group-item-action list-group-item-danger" data-scope="group">
                                     <h6 class="mb-1">
-                                        <i class="bi bi-box"></i> Tylko transfery komponentów
+                                        <i class="bi bi-collection"></i> Cała grupa zleceń
                                     </h6>
                                     <small class="text-muted">
-                                        Zwraca komponenty bez anulowania zleceń
-                                    </small>
-                                </a>
-                                <a href="#" class="list-group-item list-group-item-action list-group-item-danger" data-type="both">
-                                    <h6 class="mb-1">
-                                        <i class="bi bi-exclamation-triangle"></i> Zlecenia i transfery (domyślne)
-                                    </h6>
-                                    <small class="text-muted">
-                                        Anuluje zlecenia I zwraca komponenty
+                                        Pokaż wszystkie aktywne zlecenia o tych samych parametrach
                                     </small>
                                 </a>
                             </div>
@@ -63,15 +79,16 @@ $(document).ready(function() {
         `;
 
         $('body').append(dialogHtml);
-        const $modal = $('#cancellationTypeModal');
+        const $modal = $('#cancellationScopeModal');
 
         $modal.find('.list-group-item').on('click', function(e) {
             e.preventDefault();
-            const type = $(this).data('type');
+            const scope = $(this).data('scope');
+            const isGrouped = (scope === 'group');
             $modal.modal('hide');
             setTimeout(() => {
                 $modal.remove();
-                loadCancellationData(commissionId, isGrouped, groupedIds, type);
+                loadCancellationData(commissionId, isGrouped, groupedIds, 'both');
             }, 300);
         });
 
@@ -84,6 +101,7 @@ $(document).ready(function() {
 
     function loadCancellationData(commissionId, isGrouped, groupedIds, cancellationType) {
         $('#cancelModalOverlay').show().addClass("d-flex");
+        switchStep(1);
         $('#cancelCommissionModal').modal({
             backdrop: 'static',
             keyboard: false,
@@ -108,12 +126,12 @@ $(document).ready(function() {
         };
 
         $.ajax({
-            type: 'POST',
-            url: COMPONENTS_PATH + '/commissions/cancel-commission.php',
+            type: "POST",
+            url: COMPONENTS_PATH + '/commissions/get-commission-data.php',
             data: {
                 action: 'get_cancellation_data',
                 commissionId: commissionId,
-                isGrouped: isGrouped,
+                isGrouped: isGrouped ? 'true' : 'false',
                 groupedIds: groupedIds || '',
                 filters: JSON.stringify(currentFilters)
             },
@@ -122,11 +140,11 @@ $(document).ready(function() {
 
                 if (response.success) {
                     cancellationData = response;
-                    cancellationData.cancellationType = cancellationType;
+                    cancellationData.cancellationType = 'both'; // Force 'both' as default
                     cancellationData.groupedIds = groupedIds;
                     cancellationData.isGrouped = isGrouped;
-                    renderCancellationModal(response);
-                    applyAutoSelection(cancellationType, isGrouped, commissionId);
+                    renderCancellationModal(response, isGrouped, commissionId);
+                    applyAutoSelection('both', isGrouped, commissionId);
                     $('#cancelModalOverlay').hide().removeClass("d-flex");
                 } else {
                     showErrorMessage('Błąd: ' + response.message);
@@ -144,11 +162,13 @@ $(document).ready(function() {
         });
     }
 
-    function renderCancellationModal(data) {
+    function renderCancellationModal(data, isGrouped, clickedCommissionId) {
         const $groupsList = $('#groupsList');
         $groupsList.empty();
         selectedCommissions.clear();
         selectedTransfers.clear();
+
+        const isGroupedFilterChecked = $("#groupTogether").prop('checked');
 
         const sortedCommissions = Object.keys(data.commissionsData).sort((a, b) => {
             return new Date(data.commissionsData[a].createdAt) - new Date(data.commissionsData[b].createdAt);
@@ -161,6 +181,19 @@ $(document).ready(function() {
             const hasUnreturned = unreturned > 0;
             // Use the actual commission's cancellation status
             const isCancelled = commission.isCancelled;
+
+            // Determine expansion state
+            let isExpanded = false;
+            if (!isGrouped) {
+                // Case 1: Single scope
+                isExpanded = true;
+            } else if (isGroupedFilterChecked) {
+                // Case 2: Grouped mode (filter checked) - all collapsed
+                isExpanded = false;
+            } else if (commissionId == clickedCommissionId) {
+                // Case 3: Manual group (filter unchecked) - expand clicked one
+                isExpanded = true;
+            }
 
             // Check if commission has any cancelled transfers
             const hasAnyCancelledTransfers = transfers.some(t => t.isCancelled);
@@ -215,10 +248,11 @@ $(document).ready(function() {
                                 </span>
                             </label>
                         </div>
-                        <button class="btn btn-sm btn-outline-secondary"
+                        <button class="btn btn-sm btn-outline-secondary ${isExpanded ? '' : 'collapsed'}"
                                 type="button"
                                 data-toggle="collapse"
-                                data-target="#transfers-${commissionId}">
+                                data-target="#transfers-${commissionId}"
+                                aria-expanded="${isExpanded}">
                             <i class="bi bi-chevron-down"></i>
                         </button>
                     </div>
@@ -230,7 +264,7 @@ $(document).ready(function() {
                         <i class="bi bi-info-circle"></i> Status: ${commission.state || 'Nieznany'}${cancelledTransfersCount > 0 ? ` | <i class="bi bi-x-circle"></i> Anulowane: ${cancelledTransfersCount} ${cancelledTransfersCount === 1 ? 'transfer' : 'transfery'}` : ''}
                     </small>
                 </div>
-                <div id="transfers-${commissionId}" class="collapse">
+                <div id="transfers-${commissionId}" class="collapse ${isExpanded ? 'show' : ''}">
                     <div class="card-body bg-light">
                         ${transfers.length > 0 ? renderTransfersList(transfers, commissionId, isCancelled) : '<p class="mb-0 text-muted">Brak dostępnych transferów do anulacji</p>'}
                     </div>
@@ -710,30 +744,13 @@ $(document).ready(function() {
     }
 
     function applyAutoSelection(cancellationType, isGrouped, clickedCommissionId) {
-        switch (cancellationType) {
-            case 'commissions':
-                if (isGrouped) {
-                    $('.commission-checkbox').not(':disabled').prop('checked', true).trigger('change');
-                } else {
-                    $(`.commission-checkbox[data-commission-id="${clickedCommissionId}"]`).not(':disabled').prop('checked', true).trigger('change');
-                }
-                break;
-
-            case 'transfers':
-                if (isGrouped) {
-                    $('.transfer-checkbox').not(':disabled').prop('checked', true).trigger('change');
-                } else {
-                    $(`.transfer-checkbox[data-commission-id="${clickedCommissionId}"]`).not(':disabled').prop('checked', true).trigger('change');
-                }
-                break;
-
-            case 'both':
-                if (isGrouped) {
-                    $('.commission-checkbox').not(':disabled').prop('checked', true).trigger('change');
-                } else {
-                    $(`.commission-checkbox[data-commission-id="${clickedCommissionId}"]`).not(':disabled').prop('checked', true).trigger('change');
-                }
-                break;
+        // In the new flow, we always default to selecting everything in the visible scope
+        if (isGrouped) {
+            $('.commission-checkbox').not(':disabled').prop('checked', true).trigger('change');
+            $('.transfer-checkbox').not(':disabled').prop('checked', true).trigger('change');
+        } else {
+            $(`.commission-checkbox[data-commission-id="${clickedCommissionId}"]`).not(':disabled').prop('checked', true).trigger('change');
+            $(`.transfer-checkbox[data-commission-id="${clickedCommissionId}"]`).not(':disabled').prop('checked', true).trigger('change');
         }
     }
 
@@ -787,20 +804,22 @@ $(document).ready(function() {
     function updateSummary() {
         const $summary = $('#cancellationSummary');
         const $content = $('#summaryContent');
-        const $confirmBtn = $('#confirmCancellation');
+        const $nextBtn = $('#nextToSummary');
 
-        if (selectedCommissions.size === 0 && selectedTransfers.size === 0) {
-            $summary.hide();
-            $confirmBtn.prop('disabled', true);
+        const hasSelection = selectedCommissions.size > 0 || selectedTransfers.size > 0;
+        $nextBtn.prop('disabled', !hasSelection);
+
+        if (!hasSelection) {
+            $content.empty();
             return;
         }
 
-        let html = '<h6 class="font-weight-bold mb-3">Wybrane elementy:</h6>';
+        let html = '<h6 class="font-weight-bold mb-3 text-muted">Wybrane elementy do przeglądu:</h6>';
 
         // === SEKCJA ZLECEŃ ===
         if (selectedCommissions.size > 0) {
             html += `<div class="mb-3">
-                <strong class="text-danger"><i class="bi bi-file-text"></i> Zlecenia do anulacji:</strong>
+                <strong class="text-secondary"><i class="bi bi-file-text"></i> Zlecenia do anulacji:</strong>
                 <div class="mt-2">`;
 
             const commissionArray = Array.from(selectedCommissions).sort((a, b) => a - b);
@@ -922,27 +941,29 @@ $(document).ready(function() {
         });
 
         // === RENDER COMPONENT AGGREGATION TABLE ===
-        if (Object.keys(componentAggregator).length > 0 || Object.keys(negativeAggregator).length > 0) {
+        html += `
+            <div class="mt-4">
+                <strong class="text-info">
+                    <i class="bi bi-calculator"></i> Podsumowanie komponentów (wg magazynu):
+                </strong>
+        `;
 
+        if (Object.keys(componentAggregator).length > 0 || Object.keys(negativeAggregator).length > 0) {
             // Reorganize data by warehouse
             const warehouseData = reorganizeByWarehouse(componentAggregator, negativeAggregator);
             const warehouseNames = Object.keys(warehouseData).sort();
 
             html += `
-                <div class="mt-4">
-                    <strong class="text-info">
-                        <i class="bi bi-calculator"></i> Podsumowanie komponentów (wg magazynu):
-                    </strong>
-                    <table class="table table-sm table-bordered table-hover mt-2" style="font-size: 0.9em;">
-                        <thead class="thead-light">
-                            <tr>
-                                <th style="width: 40%;">Komponent</th>
-                                <th style="width: 30%;">Magazyn</th>
-                                <th style="width: 15%;">Typ operacji</th>
-                                <th class="text-right" style="width: 15%;">Łączna ilość</th>
-                            </tr>
-                        </thead>
-                        <tbody>
+                <table class="table table-sm table-bordered table-hover mt-2" style="font-size: 0.9em;">
+                    <thead class="thead-light">
+                        <tr>
+                            <th style="width: 40%;">Komponent</th>
+                            <th style="width: 30%;">Magazyn</th>
+                            <th style="width: 15%;">Typ operacji</th>
+                            <th class="text-right" style="width: 15%;">Łączna ilość</th>
+                        </tr>
+                    </thead>
+                    <tbody>
             `;
 
             // Render warehouse groups
@@ -986,8 +1007,16 @@ $(document).ready(function() {
                 });
             });
 
-            html += '</tbody></table></div>';
+            html += '</tbody></table>';
+        } else {
+            html += `
+                <div class="alert alert-light border mt-2 py-3 text-center text-muted">
+                    <i class="bi bi-info-circle"></i> Brak wybranych transferów do zwrotu - nie zostaną wykonane żadne ruchy magazynowe.
+                </div>
+            `;
         }
+
+        html += '</div>';
 
         // === SEKCJA NIEWRÓCONYCH SZTUK (bez zmian) ===
         const commissionsWithUnreturned = {};
@@ -1048,10 +1077,37 @@ $(document).ready(function() {
             const isExpanded = $(this).attr('aria-expanded') === 'true';
             $(this).attr('aria-expanded', !isExpanded);
         });
-
-        $summary.show();
-        $confirmBtn.prop('disabled', false);
     }
+
+    function switchStep(step) {
+        if (step === 1) {
+            $('#selectionView').show();
+            $('#summaryView').hide();
+            $('#backToSelection').hide();
+            $('#cancelCloseBtn').show();
+            $('#nextToSummary').show();
+            $('#confirmCancellation').hide();
+            $('#cancelCommissionModal .modal-title').html('<i class="bi bi-exclamation-triangle"></i> Wybór elementów do anulacji');
+        } else {
+            $('#selectionView').hide();
+            $('#summaryView').show();
+            $('#backToSelection').show();
+            $('#cancelCloseBtn').hide();
+            $('#nextToSummary').hide();
+            $('#confirmCancellation').show();
+            $('#cancelCommissionModal .modal-title').html('<i class="bi bi-clipboard-check"></i> Podsumowanie i potwierdzenie');
+            $('#cancelCommissionModal .modal-body').scrollTop(0);
+        }
+    }
+
+    $('#nextToSummary').on('click', function() {
+        updateSummary();
+        switchStep(2);
+    });
+
+    $('#backToSelection').on('click', function() {
+        switchStep(1);
+    });
 
     $('#confirmCancellation').off('click').on('click', function() {
         if (selectedCommissions.size === 0 && selectedTransfers.size === 0) {
@@ -1208,6 +1264,184 @@ $(document).ready(function() {
         selectedCommissions.clear();
         selectedTransfers.clear();
         $('#groupsList').empty();
-        $('#cancellationSummary').hide();
+        $('#summaryContent').empty();
+        switchStep(1);
     });
+
+    function loadDetailsData(commissionId, isGrouped, groupedIds) {
+        $('#cancelModalOverlay').show().addClass("d-flex");
+        
+        $.ajax({
+            type: 'POST',
+            url: COMPONENTS_PATH + '/commissions/get-commission-data.php',
+            data: {
+                action: 'get_details_data',
+                commissionId: commissionId,
+                isGrouped: isGrouped ? 'true' : 'false',
+                groupedIds: groupedIds || ''
+            },
+            success: function(response) {
+                if (response.success) {
+                    renderDetailsModal(response.details);
+                    $('#commissionDetailsModal').modal('show');
+                } else {
+                    showErrorMessage('Błąd: ' + response.message);
+                }
+                $('#cancelModalOverlay').hide().removeClass("d-flex");
+            },
+            error: function(xhr, status, error) {
+                console.error('AJAX Error:', error);
+                showErrorMessage('Błąd podczas ładowania szczegółów');
+                $('#cancelModalOverlay').hide().removeClass("d-flex");
+            }
+        });
+    }
+
+    function renderDetailsModal(details) {
+        let html = `
+            <style>
+                .group-header {
+                    cursor: pointer;
+                    background-color: #f8f9fa;
+                }
+                .group-header:hover {
+                    background-color: #e9ecef;
+                }
+                .group-header .bi-chevron-right {
+                    transition: transform 0.2s;
+                }
+                .group-header:not(.collapsed) .bi-chevron-right {
+                    transform: rotate(90deg);
+                }
+                .badge-sku { background-color: #007bff; color: white; }
+                .badge-tht { background-color: #28a745; color: white; }
+                .badge-smd { background-color: #17a2b8; color: white; }
+                .badge-parts { background-color: #ffc107; color: #212529; }
+            </style>
+        `;
+        
+        const getBadgeClass = (type) => {
+            const map = {
+                'sku': 'badge-sku',
+                'tht': 'badge-tht',
+                'smd': 'badge-smd',
+                'parts': 'badge-parts'
+            };
+            return map[type.toLowerCase()] || 'badge-secondary';
+        };
+
+        for (let cId in details) {
+            const commission = details[cId];
+            const targetComponentId = commission.targetComponentId;
+
+            // Group movements by component
+            const groups = {};
+            commission.movements.forEach(m => {
+                const key = `${m.type}_${m.component_id}`;
+                if (!groups[key]) {
+                    groups[key] = {
+                        name: m.component_name,
+                        type: m.type,
+                        displayType: m.displayType || m.type,
+                        compId: m.component_id,
+                        movements: [],
+                        isTarget: m.isProduced
+                    };
+                }
+                groups[key].movements.push(m);
+            });
+
+            // Convert to array and sort: target component first
+            const sortedGroups = Object.values(groups).sort((a, b) => {
+                if (a.isTarget && !b.isTarget) return -1;
+                if (!a.isTarget && b.isTarget) return 1;
+                return a.name.localeCompare(b.name);
+            });
+
+            html += `
+                <div class="card mb-4 border-info">
+                    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <span class="badge badge-info mr-2">#${cId}</span>
+                            ${commission.deviceName}
+                        </h5>
+                        <div>
+                            <span class="badge badge-secondary">${commission.state}</span>
+                            <small class="text-muted ml-2">${commission.createdAt}</small>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover mb-0">
+                                <thead class="thead-light">
+                                    <tr>
+                                        <th style="width: 250px;">Komponent</th>
+                                        <th>Magazyn</th>
+                                        <th class="text-right">Ilość</th>
+                                        <th>Data</th>
+                                        <th>Komentarz</th>
+                                        <th class="text-center">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+            `;
+
+            if (sortedGroups.length === 0) {
+                html += '<tr><td colspan="6" class="text-center py-3 text-muted">Brak zarejestrowanych ruchów magazynowych</td></tr>';
+            } else {
+                sortedGroups.forEach((group, gIndex) => {
+                    const groupId = `group-${cId}-${gIndex}`;
+                    
+                    // Sort movements within group: produced first, then by date
+                    group.movements.sort((a, b) => {
+                        if (a.isProduced && !b.isProduced) return -1;
+                        if (!a.isProduced && b.isProduced) return 1;
+                        return new Date(a.timestamp) - new Date(b.timestamp);
+                    });
+
+                    // Group header row
+                    html += `
+                        <tr class="group-header collapsed" data-toggle="collapse" data-target=".${groupId}">
+                            <td colspan="6" class="py-2">
+                                <i class="bi bi-chevron-right mr-2"></i>
+                                <strong>${group.isTarget ? '<i class="bi bi-cpu"></i> ' : ''}${group.name}</strong>
+                                <span class="badge ${getBadgeClass(group.displayType)} ml-2">${group.displayType.toUpperCase()}</span>
+                            </td>
+                        </tr>
+                    `;
+
+                    group.movements.forEach((row) => {
+                        html += `
+                            <tr class="collapse ${groupId} ${row.isCancelled ? 'table-danger text-muted' : ''}">
+                                <td class="pl-4">
+                                    <small class="text-muted">${row.isProduced ? 'Produkcja' : 'Komponent'}</small>
+                                </td>
+                                <td>${row.warehouseName}</td>
+                                <td class="text-right font-weight-bold ${row.qty < 0 ? 'text-danger' : 'text-success'}">
+                                    ${row.qty > 0 ? '+' : ''}${row.qty}
+                                </td>
+                                <td><small>${row.timestamp}</small></td>
+                                <td><small>${row.comment || '-'}</small></td>
+                                <td class="text-center">
+                                    ${row.isCancelled ? 
+                                        '<span class="badge badge-danger"><i class="bi bi-x-circle"></i> Anulowano</span>' : 
+                                        ''}
+                                </td>
+                            </tr>
+                        `;
+                    });
+                });
+            }
+
+            html += `
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        $('#detailsModalBody').html(html);
+    }
 });

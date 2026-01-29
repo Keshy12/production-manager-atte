@@ -26,17 +26,23 @@
                     <i class="bi bi-three-dots-vertical" style="font-size: 1.2rem;"></i>
                 </button>
                 <div class="dropdown-menu dropdown-menu-right">
-                    <a class="dropdown-item editCommission"
+                    <a class="dropdown-item editCommission ${showCancelAction}"
                        data-id="${id}"
                        data-submag-id="${warehouseToId}"
                        data-receivers="${receivers}"
                        data-priority="${priority}">
                         <i class="bi bi-pencil"></i> Edytuj zlecenie
                     </a>
-                    <div class="dropdown-divider"></div>
-                    <a class="dropdown-item text-danger cancelCommission"
-                       data-id="${id}">
+                    <div class="dropdown-divider ${showCancelAction}"></div>
+                    <a class="dropdown-item text-danger cancelCommission ${showCancelAction}"
+                       data-id="${id}"
+                       data-state="${state}"
+                       data-potential-count="${potentialGroupCount}">
                         <i class="bi bi-x-circle"></i> Anuluj zlecenie
+                    </a>
+                    <a class="dropdown-item viewDetails ${showDetailsAction}"
+                       data-id="${id}">
+                        <i class="bi bi-search"></i> Zobacz szczegóły
                     </a>
                 </div>
             </div>

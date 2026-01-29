@@ -127,6 +127,13 @@ if(isset($resultQuery[10]))
 $groupedCommissionsMap = [];
 $potentialGroupsMap = [];
 
+$priorityMap = [
+    'none' => 0,
+    'standard' => 1,
+    'urgent' => 2,
+    'critical' => 3
+];
+
 foreach($allIdsQuery as $id) {
     $commission = $commissionRepository->getCommissionById($id);
     $type = $commission->deviceType;
@@ -134,7 +141,7 @@ foreach($allIdsQuery as $id) {
     $bomId = $row["bom_id"];
     $receivers = implode(',', $commission->getReceivers());
 
-    $groupKey = $type.'_'.$bomId.'_'.$row["warehouse_from_id"].'_'.$row["warehouse_to_id"].'_'.$receivers.'_'.$row["priority"];
+    $groupKey = $type.'_'.$bomId.'_'.$row["warehouse_from_id"].'_'.$row["warehouse_to_id"].'_'.$receivers.'_'.$row["state"];
 
     if(!isset($potentialGroupsMap[$groupKey])) {
         $potentialGroupsMap[$groupKey] = 1;
@@ -152,7 +159,7 @@ if($groupTogether) {
         $bomId = $row["bom_id"];
         $receivers = implode(',', $commission->getReceivers());
 
-        $groupKey = $type.'_'.$bomId.'_'.$row["warehouse_from_id"].'_'.$row["warehouse_to_id"].'_'.$receivers.'_'.$row["priority"];
+        $groupKey = $type.'_'.$bomId.'_'.$row["warehouse_from_id"].'_'.$row["warehouse_to_id"].'_'.$receivers.'_'.$row["state"];
 
         if(!isset($groupedCommissionsMap[$groupKey])) {
             $groupedCommissionsMap[$groupKey] = [
@@ -160,13 +167,21 @@ if($groupTogether) {
                 'ids' => [$id],
                 'totalQuantity' => (int)$row["qty"],
                 'totalProduced' => (int)$row["qty_produced"],
-                'totalReturned' => (int)$row["qty_returned"]
+                'totalReturned' => (int)$row["qty_returned"],
+                'maxPriority' => $row["priority"]
             ];
         } else {
             $groupedCommissionsMap[$groupKey]['ids'][] = $id;
             $groupedCommissionsMap[$groupKey]['totalQuantity'] += (int)$row["qty"];
             $groupedCommissionsMap[$groupKey]['totalProduced'] += (int)$row["qty_produced"];
             $groupedCommissionsMap[$groupKey]['totalReturned'] += (int)$row["qty_returned"];
+
+            $currentMaxPriority = $groupedCommissionsMap[$groupKey]['maxPriority'];
+            $newPriorityVal = $priorityMap[$row["priority"]] ?? 0;
+            $maxPriorityVal = $priorityMap[$currentMaxPriority] ?? 0;
+            if ($newPriorityVal > $maxPriorityVal) {
+                $groupedCommissionsMap[$groupKey]['maxPriority'] = $row["priority"];
+            }
         }
     }
     $totalCount = count($groupedCommissionsMap);
@@ -193,7 +208,8 @@ if($groupTogether) {
             'ids' => [$id],
             'totalQuantity' => (int)$commission->commissionValues["qty"],
             'totalProduced' => (int)$commission->commissionValues["qty_produced"],
-            'totalReturned' => (int)$commission->commissionValues["qty_returned"]
+            'totalReturned' => (int)$commission->commissionValues["qty_returned"],
+            'maxPriority' => $commission->commissionValues["priority"]
         ];
     }
 }
@@ -240,16 +256,14 @@ foreach($commissions as $commissionData) {
     }
     $state_numeric = $stateMap[$state] ?? 1;
 
-    $priorityMap = [
-        'none' => 0,
-        'standard' => 1,
-        'urgent' => 2,
-        'critical' => 3
-    ];
-    $priority = $row["priority"];
+    $priority = $commissionData['maxPriority'];
     $priority_numeric = $priorityMap[$priority] ?? 0;
 
-    $colors = ["none", "green", "yellow", "red"];
+    if ($isGrouped && $state === 'returned') {
+        $priority_numeric = 0;
+    }
+
+    $colors = ["transparent", "green", "yellow", "red"];
     $bomId = $row["bom_id"];
     $deviceBom = $bomRepository -> getBomById($type, $bomId);
     $deviceId = $deviceBom -> deviceId;
@@ -283,16 +297,21 @@ foreach($commissions as $commissionData) {
         $receiversName[] = $users[$receiver];
     }
 
-    $groupKey = $type.'_'.$bomId.'_'.$row["warehouse_from_id"].'_'.$row["warehouse_to_id"].'_'.implode(',', $receivers).'_'.$row["priority"];
+    $groupKey = $type.'_'.$bomId.'_'.$row["warehouse_from_id"].'_'.$row["warehouse_to_id"].'_'.implode(',', $receivers).'_'.$state;
     $canBeGrouped = !$groupTogether && isset($potentialGroupsMap[$groupKey]) && $potentialGroupsMap[$groupKey] > 1;
 
     $isPartiallyCancelled = $isGrouped && $cancelledCount > 0 && $cancelledCount < $totalInGroup;
+
+    $showCancelAction = ($state !== 'returned' && $state !== 'cancelled' && $isCancelled != 1);
+    $showDetailsAction = ($state === 'returned' || $state === 'cancelled' || $isCancelled == 1);
 
     $result[] = [
         "class" => $class,
         "class2" => ($state_numeric != 3) ? 'text-muted' : '',
         "class3" => ($state_numeric != 1 || $isCancelled == 1) ? 'table-light' : '',
         "isHidden" => $isCancelled == 1 ? "hidden" : "",
+        "showCancelAction" => $showCancelAction ? "" : "d-none",
+        "showDetailsAction" => $showDetailsAction ? "" : "d-none",
         "showGroupBadge" => $isGrouped ? "" : "hidden",
         "showPotentialGroupBadge" => $canBeGrouped ? "" : "hidden",
         "potentialGroupCount" => $canBeGrouped ? $potentialGroupsMap[$groupKey] : 0,

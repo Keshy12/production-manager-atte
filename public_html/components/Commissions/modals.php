@@ -76,111 +76,110 @@ $selectRenderer = new SelectRenderer($MsaDB);
             </div>
 
             <div class="modal-body">
-                <!-- Instructions Card -->
-                <div class="card border-info mb-3">
-                    <div class="card-header bg-info text-white py-2"
-                         style="cursor: pointer;"
-                         data-toggle="collapse"
-                         data-target="#instructionsCollapse"
-                         aria-expanded="false"
-                         aria-controls="instructionsCollapse">
-                        <div class="d-flex align-items-center justify-content-between">
-                            <strong>
-                                <i class="bi bi-info-circle"></i> Instrukcja obsługi
-                            </strong>
-                            <i class="bi bi-chevron-down"></i>
+                <div id="selectionView">
+                    <!-- Instructions Card -->
+                    <div class="card border-info mb-3">
+                        <div class="card-header bg-info text-white py-2"
+                             style="cursor: pointer;"
+                             data-toggle="collapse"
+                             data-target="#instructionsCollapse"
+                             aria-expanded="false"
+                             aria-controls="instructionsCollapse">
+                            <div class="d-flex align-items-center justify-content-between">
+                                <strong>
+                                    <i class="bi bi-info-circle"></i> Instrukcja obsługi
+                                </strong>
+                                <i class="bi bi-chevron-down"></i>
+                            </div>
+                        </div>
+                        <div id="instructionsCollapse" class="collapse">
+                            <div class="card-body">
+                                <h6 class="font-weight-bold mb-3">
+                                    <i class="bi bi-1-circle"></i> Cel operacji
+                                </h6>
+                                <p class="mb-3">To narzędzie służy do wycofywania zleceń produkcyjnych oraz powiązanych z nimi transferów komponentów. Domyślnie system zaznacza wszystkie elementy w wybranym zakresie (pojedyncze zlecenie lub grupa).</p>
+
+                                <h6 class="font-weight-bold mb-3">
+                                    <i class="bi bi-2-circle"></i> Co się stanie po potwierdzeniu?
+                                </h6>
+                                <ul class="mb-3">
+                                    <li><strong>Anulacja zlecenia:</strong> Zlecenie zmieni status na "Anulowane".</li>
+                                    <li><strong>Zwrot komponentów:</strong> Przetransferowane komponenty (pomniejszone o te już zużyte w produkcji) zostaną automatycznie zwrócone do magazynów, z których zostały pobrane.</li>
+                                </ul>
+
+                                <h6 class="font-weight-bold mb-3">
+                                    <i class="bi bi-3-circle"></i> Granularność (opcjonalnie)
+                                </h6>
+                                <ul class="mb-3">
+                                    <li>Możesz odznaczyć konkretne zlecenia lub poszczególne transfery, jeśli chcesz wycofać tylko część operacji.</li>
+                                    <li>Dla komponentów pobranych z wielu źródeł, możesz użyć przycisków <kbd>+</kbd> i <kbd>-</kbd> aby dostosować, do których magazynów mają wrócić sztuki.</li>
+                                </ul>
+
+                                <div class="alert alert-danger">
+                                    <i class="bi bi-exclamation-triangle-fill"></i>
+                                    <strong>Ważne:</strong> Operacja jest nieodwracalna. System automatycznie wylicza ilości do zwrotu na podstawie aktualnego stanu produkcji. Sprawdź dokładnie podsumowanie na dole przed kliknięciem "Potwierdź anulację".
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    <div id="instructionsCollapse" class="collapse">
-                        <div class="card-body">
-                            <h6 class="font-weight-bold mb-3">
-                                <i class="bi bi-1-circle"></i> Elementy do zaznaczenia
-                            </h6>
-                            <div class="alert alert-light border mb-3">
-                                <ul class="mb-0 mt-2">
-                                    <li><strong>Zlecenia</strong> - zaznaczenie anuluje całe zlecenie w systemie</li>
-                                    <li><strong>Transfery komponentów</strong> - zaznaczenie zwraca komponenty do magazynów źródłowych</li>
-                                </ul>
-                            </div>
 
-                            <h6 class="font-weight-bold mb-3">
-                                <i class="bi bi-2-circle"></i> Logika zaznaczania
-                            </h6>
-                            <ul class="mb-3">
-                                <li><strong>Zaznaczenie zlecenia</strong> automatycznie zaznacza wszystkie jego komponenty</li>
-                                <li><strong>Zaznaczenie komponentu</strong> nie zaznacza zlecenia - możesz zwrócić komponenty bez anulowania zlecenia</li>
-                                <li>Możesz ręcznie odznaczać i zaznaczać dowolne elementy według potrzeb</li>
-                            </ul>
-
-                            <h6 class="font-weight-bold mb-3">
-                                <i class="bi bi-3-circle"></i> Obliczanie ilości do zwrotu
-                            </h6>
-                            <div class="bg-light p-3 rounded mb-3">
-                                <code>Ilość do zwrotu = Przetransferowano - (Wyprodukowano × Komponenty na jednostkę)</code>
-                            </div>
-                            <p class="mb-3">System automatycznie odejmuje komponenty użyte w produkcji od ilości przetransferowanej.</p>
-
-                            <h6 class="font-weight-bold mb-3">
-                                <i class="bi bi-4-circle"></i> Rozkład zwrotu między źródła
-                            </h6>
-                            <p class="mb-2">Gdy komponenty pochodzą z wielu magazynów, możesz kontrolować rozkład zwrotu:</p>
-                            <ul class="mb-3">
-                                <li>Domyślnie: zwrot priorytetyzuje magazyn główny zlecenia</li>
-                                <li>Użyj przycisków <kbd>+</kbd> i <kbd>-</kbd> aby ręcznie dostosować ilości</li>
-                                <li>System automatycznie przelicza pozostałe magazyny</li>
-                                <li><span class="main-source-container d-inline-block px-2 py-1">Magazyn główny zlecenia</span></li>
-                                <li><span class="external-source-container d-inline-block px-2 py-1">Magazyny pomocnicze</span></li>
-                            </ul>
-
-                            <div class="alert alert-danger">
-                                <i class="bi bi-exclamation-triangle-fill"></i>
-                                <strong>Ważne ostrzeżenia:</strong>
-                                <ul class="mb-0 mt-2">
-                                    <li>Jeśli <span class="badge badge-danger">ilość do zwrotu jest ujemna</span>, oznacza to że użyto więcej komponentów niż przetransferowano. Takie transfery są zablokowane do anulacji.</li>
-                                    <li>Anulacja jest operacją <strong>nieodwracalną</strong></li>
-                                    <li>Komponenty zostaną zwrócone do magazynów źródłowych według wybranego rozkładu</li>
-                                    <li>W podsumowaniu zobaczysz dokładnie, które komponenty wrócą do których magazynów</li>
-                                </ul>
-                            </div>
-
-                            <h6 class="font-weight-bold mb-3 mt-3">
-                                <i class="bi bi-5-circle"></i> Proces anulacji krok po kroku
-                            </h6>
-                            <ol class="mb-0">
-                                <li>Wybierz zlecenia i/lub komponenty do anulacji</li>
-                                <li>Dla komponentów z wieloma źródłami - dostosuj rozkład zwrotu (opcjonalnie)</li>
-                                <li>Sprawdź podsumowanie anulacji - zobaczysz dokładny rozkład zwrotów do magazynów</li>
-                                <li>Potwierdź operację przyciskiem "Potwierdź anulację"</li>
-                                <li>System automatycznie wykona wszystkie operacje magazynowe</li>
-                            </ol>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Transfer Groups List -->
-                <div id="groupsList">
-                    <!-- Populated by JavaScript -->
-                </div>
-
-                <!-- Cancellation Summary -->
-                <div id="cancellationSummary" class="card border-danger mt-3" style="display: none;">
-                    <div class="card-header bg-danger text-white">
-                        <strong>
-                            <i class="bi bi-clipboard-check"></i> Podsumowanie anulacji
-                        </strong>
-                    </div>
-                    <div class="card-body" id="summaryContent">
+                    <!-- Transfer Groups List -->
+                    <div id="groupsList">
                         <!-- Populated by JavaScript -->
+                    </div>
+                </div>
+
+                <!-- Cancellation Summary View -->
+                <div id="summaryView" style="display: none;">
+                    <div id="cancellationSummary" class="card border-secondary">
+                        <div class="card-header bg-light text-danger">
+                            <strong>
+                                <i class="bi bi-clipboard-check"></i> Podsumowanie anulacji
+                            </strong>
+                        </div>
+                        <div class="card-body" id="summaryContent">
+                            <!-- Populated by JavaScript -->
+                        </div>
                     </div>
                 </div>
             </div>
 
             <div class="modal-footer bg-light">
-                <button type="button" class="btn btn-secondary" data-dismiss="modal">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal" id="cancelCloseBtn">
                     <i class="bi bi-x"></i> Zamknij
                 </button>
-                <button type="button" id="confirmCancellation" class="btn btn-danger" disabled>
+                <button type="button" class="btn btn-secondary" id="backToSelection" style="display: none;">
+                    <i class="bi bi-arrow-left"></i> Wróć do wyboru
+                </button>
+                <button type="button" id="nextToSummary" class="btn btn-primary" disabled>
+                    Dalej: Podsumowanie <i class="bi bi-arrow-right"></i>
+                </button>
+                <button type="button" id="confirmCancellation" class="btn btn-danger" style="display: none;">
                     <i class="bi bi-check-circle"></i> Potwierdź anulację
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Details Modal -->
+<div class="modal fade" id="commissionDetailsModal" tabindex="-1" role="dialog" aria-labelledby="commissionDetailsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl" role="document">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title" id="commissionDetailsModalLabel">
+                    <i class="bi bi-info-circle"></i> Szczegóły zlecenia i transferów
+                </h5>
+                <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body" id="detailsModalBody">
+                <!-- Populated by JavaScript -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">
+                    <i class="bi bi-x"></i> Zamknij
                 </button>
             </div>
         </div>
