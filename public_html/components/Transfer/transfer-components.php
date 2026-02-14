@@ -56,8 +56,16 @@ try {
     $transferGroupManager = new Atte\Utils\TransferGroupManager($MsaDB);
 
     $groupId = null;
-    if (!empty($commissions) || !empty($components)) {
-        $groupId = $transferGroupManager->createTransferGroup($userid, 'multi_source');
+    $commissionIds = [];
+    $firstDeviceName = null;
+
+    if (!empty($commissions)) {
+        $groupId = $transferGroupManager->createTransferGroup($userid, 'commission_transfer', ['commission_info' => 'In progress...']);
+    } elseif (!empty($components)) {
+        $groupId = $transferGroupManager->createTransferGroup($userid, 'magazine_transfer', [
+            'from_id' => $transferFrom,
+            'to_id' => $transferTo
+        ]);
     }
 
 
@@ -102,9 +110,14 @@ try {
                     getPriorityName($priorityId), $groupId]
             );
 
+            $commissionIds[] = $commission_id;
+
             $commissionKeyToId[$index] = $commission_id;
 
             $bom->getNameAndDescription();
+            if ($firstDeviceName === null) {
+                $firstDeviceName = $bom->name;
+            }
             $commissionResult[] = [
                 "priorityColor" => $commission["priorityColor"],
                 "receivers" => $commission["receivers"],
@@ -124,6 +137,20 @@ try {
                 $MsaDB->insert("commission__receivers", ["commission_id", "user_id"], [$commission_id, $user]);
             }
         }
+
+        // Update transfer group with final commission info
+        if (count($commissionIds) === 1) {
+            $commissionInfo = $commissionIds[0] . ": " . $firstDeviceName;
+        } else {
+            $commissionInfo = implode(", ", $commissionIds);
+        }
+
+        $MsaDB->update(
+            'inventory__transfer_groups',
+            ['params' => json_encode(['commission_info' => $commissionInfo], JSON_UNESCAPED_UNICODE)],
+            'id',
+            $groupId
+        );
     }
 
     $componentsResult = [];

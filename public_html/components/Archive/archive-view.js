@@ -121,7 +121,6 @@ function loadArchive() {
 
     isLoading = true;
     $("#transferSpinner").show();
-    if (currentPage === 1 && !currentSnapshotTs) currentSnapshotTs = new Date().toISOString().slice(0, 19).replace('T', ' ');
 
     const filters = {
         device_type: type,

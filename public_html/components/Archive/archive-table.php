@@ -17,7 +17,10 @@ $noGrouping = isset($_POST["no_grouping"]) && $_POST["no_grouping"] == '1';
 
 // Snapshot & Mode
 $mode = $_POST["mode"] ?? 'data'; 
-$snapshotTs = $_POST["snapshot_ts"] ?? date('Y-m-d H:i:s');
+$snapshotTs = $_POST["snapshot_ts"] ?? null;
+if (empty($snapshotTs)) {
+    $snapshotTs = $MsaDB->query("SELECT NOW() as now", \PDO::FETCH_ASSOC)[0]['now'];
+}
 
 // Pagination
 $page = isset($_POST["page"]) ? (int)$_POST["page"] : 1;

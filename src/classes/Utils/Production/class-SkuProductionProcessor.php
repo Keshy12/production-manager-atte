@@ -186,7 +186,7 @@ class SkuProductionProcessor {
                 if ($quantity == 0) {
                     break;
                 }
-                $row = $commission['row'];
+                $row = $commission->commissionValues;
                 $commission_id = $row["id"];
                 $quantity_needed = $row["qty"] - $row["qty_produced"];
                 $quantity -= $quantity_needed;

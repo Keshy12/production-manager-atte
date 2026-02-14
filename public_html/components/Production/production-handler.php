@@ -11,7 +11,7 @@ $deviceId = $_POST["device_id"];
 $deviceType = $_POST["device_type"];
 $version = $_POST["version"];
 $quantity = $_POST["qty"];
-$comment = !empty($_POST["comment"]) ? $_POST["comment"] : "Produkcja przez Formularz Produkcja " . strtoupper($deviceType);
+$comment = !empty($_POST["comment"]) ? $_POST["comment"] : "";
 $productionDate = !empty($_POST["prod_date"]) ? "'" . $_POST["prod_date"] . "'" : NULL;
 $laminateId = ($deviceType === 'smd' && !empty($_POST["laminate"])) ? $_POST["laminate"] : null;
 

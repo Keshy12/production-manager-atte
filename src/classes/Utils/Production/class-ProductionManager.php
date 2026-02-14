@@ -62,17 +62,18 @@ class ProductionManager {
                 return $this->handleNegativeProduction($userId, $deviceId, $version, abs($quantity), $comment, $productionDate, $deviceType, $laminateId, $bom, $bomComponents);
             }
 
+            $manualComment = trim((string)$comment);
             // Handle auto-comment if empty
-            if (empty($comment)) {
+            if (empty($manualComment)) {
                 $comment = "Produkcja {$deviceName} przez formularz " . strtoupper($deviceType);
             }
 
             // Create transfer group for this production
             $transferGroupId = $this->transferGroupManager->createTransferGroup($userId, 'production', [
-                'comment' => $comment,
+                'comment_suffix' => !empty($manualComment) ? ': ' . $manualComment : '',
                 'device_id' => $deviceId,
                 'device_name' => $deviceName,
-                'device_type' => $deviceType
+                'device_type' => strtoupper($deviceType)
             ]);
 
 
@@ -178,17 +179,18 @@ class ProductionManager {
         $bom->getNameAndDescription();
         $deviceName = $bom->name;
 
+        $manualComment = trim((string)$comment);
         // Handle auto-comment if empty
-        if (empty($comment)) {
+        if (empty($manualComment)) {
             $comment = "Korekta produkcji {$deviceName} przez formularz " . strtoupper($deviceType);
         }
 
         // Create transfer group for corrections
         $transferGroupId = $this->transferGroupManager->createTransferGroup($userId, 'production_correction', [
-            'comment' => $comment,
+            'comment_suffix' => !empty($manualComment) ? ': ' . $manualComment : '',
             'device_id' => $deviceId,
             'device_name' => $deviceName,
-            'device_type' => $deviceType
+            'device_type' => strtoupper($deviceType)
         ]);
 
 

@@ -36,7 +36,8 @@ function cancelTransfers($MsaDB) {
 
         // Get user ID from session
         $userId = $_SESSION['userid'] ?? 1;
-        $now = date('Y-m-d H:i:s');
+        $now = $MsaDB->query("SELECT NOW() as now", \PDO::FETCH_ASSOC)[0]['now'];
+
 
         // Begin transaction
         $MsaDB->db->beginTransaction();
@@ -117,11 +118,9 @@ function cancelTransfers($MsaDB) {
         }
 
         // Create new transfer group for compensating entries
-        $cancellationGroupId = $MsaDB->insert(
-            'inventory__transfer_groups',
-            ['created_by', 'notes', 'created_at'],
-            [$userId, $notes, $now]
-        );
+        $transferGroupManager = new \Atte\Utils\TransferGroupManager($MsaDB);
+        $cancellationGroupId = $transferGroupManager->createTransferGroup($userId, 'migration', ['note' => $notes]);
+
 
         // Second pass: mark original transfers as cancelled and create compensating entries
         foreach ($transfersToCancel as $transferInfo) {
