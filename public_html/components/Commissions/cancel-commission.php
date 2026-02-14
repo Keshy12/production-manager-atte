@@ -3,6 +3,7 @@ use Atte\DB\MsaDB;
 use Atte\Utils\CommissionRepository;
 use Atte\Utils\BomRepository;
 use Atte\Utils\TransferGroupManager;
+use Atte\Utils\MagazineRepository;
 
 header('Content-Type: application/json');
 
@@ -62,26 +63,46 @@ function submitCancellation($MsaDB) {
         $transferGroupManager = new TransferGroupManager($MsaDB);
 
         foreach ($selectedCommissions as $commissionId) {
+            $commission = $commissionRepository->getCommissionById($commissionId);
+            $row = $commission->commissionValues;
+            
+            $updateFields = [
+                'is_cancelled' => 1,
+                'cancelled_at' => $now,
+                'cancelled_by' => $userId,
+                'state' => 'cancelled'
+            ];
+
             if (isset($returnCompletedAsReturned[$commissionId]) && $returnCompletedAsReturned[$commissionId]) {
-                $commission = $commissionRepository->getCommissionById($commissionId);
-                $row = $commission->commissionValues;
                 $deviceType = $commission->deviceType;
-                $bomId = $row['bom_id'];
+                $bomId = (int)$row['bom_id'];
                 $bomRepository = new BomRepository($MsaDB);
+                $magazineRepository = new MagazineRepository($MsaDB);
                 $deviceBom = $bomRepository->getBomById($deviceType, $bomId);
                 $deviceId = $deviceBom->deviceId;
+                $deviceBom->getNameAndDescription();
+                $deviceName = $deviceBom->name;
 
-                $remaining = $row['qty_produced'] - $row['qty_returned'];
+                $remaining = (float)$row['qty_produced'] - (float)$row['qty_returned'];
 
                 if ($remaining > 0) {
-                    $MsaDB->update('commission__list', [
-                        'qty_returned' => $row['qty_produced'],
-                        'state' => 'returned'
-                    ], 'id', $commissionId);
+                    // Create a transfer group for the production return
+                    $returnGroupId = $transferGroupManager->createTransferGroup($userId, 'production', [
+                        'device_name' => $deviceName,
+                        'device_type' => $deviceType,
+                        'comment_suffix' => ' (automatyczny zwrot przy anulacji #' . $commissionId . ')'
+                    ]);
+
+                    $updateFields['qty_returned'] = $row['qty_produced'];
 
                     $inputTypeId = 5;
-                    $comment = "Automatyczny zwrot pozostałych sztuk przy anulacji";
+                    $comment = "Finalizacja produkcji, dostarczenie produktu";
 
+                    $magazineFrom = $row["warehouse_from_id"];
+                    $classMagazineFrom = $magazineRepository -> getMagazineById($magazineFrom);
+                    $magazineTo = $row["warehouse_to_id"];
+
+                    // 1. Negative entry for target magazine (where it was delivered from production)
                     $MsaDB->insert("inventory__".$deviceType, [
                         $deviceType."_id",
                         $deviceType."_bom_id",
@@ -89,25 +110,59 @@ function submitCancellation($MsaDB) {
                         "sub_magazine_id",
                         "qty",
                         "input_type_id",
-                        "comment"
+                        "comment",
+                        "transfer_group_id"
                     ], [
                         $deviceId,
                         $bomId,
                         $commissionId,
-                        $row['warehouse_to_id'],
+                        $magazineTo,
                         -$remaining,
                         $inputTypeId,
-                        $comment
+                        $comment,
+                        $returnGroupId
                     ]);
+
+                    // 2. Chained production logic
+                    $quantityToProcess = $remaining;
+                    if($classMagazineFrom -> typeId == 2 && $magazineFrom != $magazineTo) {
+                        $getRelevant = function ($var) use($bomId, $deviceType) {
+                            return ($var -> deviceType == $deviceType
+                                && $var -> commissionValues['bom_id'] == $bomId
+                                && $var -> commissionValues['state'] == 'active');
+                        };
+
+                        $activeCommissionsMagazineFrom = $classMagazineFrom -> getActiveCommissions();
+                        $activeCommissionsMagazineFrom = array_filter($activeCommissionsMagazineFrom, $getRelevant);
+                        foreach($activeCommissionsMagazineFrom as $parentCommission) {
+                            if($quantityToProcess <= 0) break;
+                            $pCommValues = $parentCommission -> commissionValues;
+                            $pCommId = $pCommValues["id"];
+                            $qtyNeeded = $pCommValues["qty"] - $pCommValues["qty_produced"];
+                            
+                            $qtyToIncrement = min($quantityToProcess, $qtyNeeded);
+                            $quantityToProcess -= $qtyToIncrement;
+
+                            $MsaDB -> insert("inventory__".$deviceType,
+                                [$deviceType."_id", $deviceType."_bom_id", "commission_id", "sub_magazine_id", "qty", "input_type_id", "comment", "isVerified", "transfer_group_id"],
+                                [$deviceId, $bomId, $pCommId, $magazineFrom, $qtyToIncrement, $inputTypeId, 'Automatyczna inkrementacja zlecenia nr '.$pCommId.', dostarczenie zlecenia do magazynu subkontraktora', '0', $returnGroupId]
+                            );
+                            $MsaDB -> update("commission__list", ["qty_produced" => $pCommValues["qty_produced"] + $qtyToIncrement], "id", $pCommId);
+                            $parentCommission -> updateStateAuto();
+                        }
+                    }
+
+                    // 3. Positive entry for source magazine (the rest)
+                    if($quantityToProcess > 0) {
+                        $MsaDB -> insert("inventory__".$deviceType,
+                            [$deviceType."_id", $deviceType."_bom_id", "commission_id", "sub_magazine_id", "qty", "input_type_id", "comment", "isVerified", "transfer_group_id"],
+                            [$deviceId, $bomId, $commissionId, $magazineFrom, $quantityToProcess, $inputTypeId, $comment, 0, $returnGroupId]
+                        );
+                    }
                 }
-            } else {
-                $MsaDB->update('commission__list', [
-                    'is_cancelled' => 1,
-                    'cancelled_at' => $now,
-                    'cancelled_by' => $userId,
-                    'state' => 'cancelled'
-                ], 'id', $commissionId);
             }
+
+            $MsaDB->update('commission__list', $updateFields, 'id', $commissionId);
         }
 
         // PHASE 1: Group transfers by (commission_id, original_transfer_group_id)

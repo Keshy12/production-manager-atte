@@ -33,11 +33,25 @@ if($quantityReturned > $quantityProduced) {
     throw new \Exception('Cannot make returned quantity higher than produced quantity.');
 }
 
+// Create a transfer group for the production return
+$transferGroupManager = new \Atte\Utils\TransferGroupManager($MsaDB);
+$bomRepository = new \Atte\Utils\BomRepository($MsaDB);
+$bom = $bomRepository->getBomById($deviceType, $bomId);
+$bom->getNameAndDescription();
+$deviceName = $bom->name;
+
+$groupId = $transferGroupManager->createTransferGroup($userId, 'production', [
+    'device_name' => $deviceName,
+    'device_type' => $deviceType,
+    'comment_suffix' => ' (zwrot ze zlecenia #' . $commissionId . ')'
+]);
+
 // Updated column names for inventory table
 $MsaDB -> insert("inventory__".$deviceType,
-    [$deviceType."_id", $deviceType."_bom_id", "commission_id", "sub_magazine_id", "qty", "input_type_id", "comment"],
-    [$deviceId, $bomId, $commissionId, $magazineTo, $quantityBeingReturned*-1, $inputTypeId, $comment]
+    [$deviceType."_id", $deviceType."_bom_id", "commission_id", "sub_magazine_id", "qty", "input_type_id", "comment", "transfer_group_id"],
+    [$deviceId, $bomId, $commissionId, $magazineTo, $quantityBeingReturned*-1, $inputTypeId, $comment, $groupId]
 );
+
 
 if($MsaDB -> update("commission__list", ["qty_returned" => $quantityReturned], "id", $commissionId)){
     $currentCommission -> commissionValues['qty_returned'] = $quantityReturned;
@@ -79,8 +93,8 @@ if($classMagazineFrom -> typeId == 2 && $magazineFrom != $magazineTo) {
         }
         $quantity_produced = $commissionValues["qty_produced"] + $quantity_needed;
         $MsaDB -> insert("inventory__".$deviceType,
-            [$deviceType."_id", $deviceType."_bom_id", "commission_id", "sub_magazine_id", "qty", "input_type_id", "comment", "isVerified"],
-            [$deviceId, $bomId, $commissionId, $magazineFrom, $quantity_needed, $inputTypeId, 'Automatyczna inkrementacja zlecenia nr '.$commission_id.', dostarczenie zlecenia do magazynu subkontraktora', '0']
+            [$deviceType."_id", $deviceType."_bom_id", "commission_id", "sub_magazine_id", "qty", "input_type_id", "comment", "isVerified", "transfer_group_id"],
+            [$deviceId, $bomId, $commissionId, $magazineFrom, $quantity_needed, $inputTypeId, 'Automatyczna inkrementacja zlecenia nr '.$commission_id.', dostarczenie zlecenia do magazynu subkontraktora', '0', $groupId]
         );
         $MsaDB -> update("commission__list", ["qty_produced" => $quantity_produced], "id", $commission_id);
         $commission -> updateStateAuto();
@@ -89,8 +103,8 @@ if($classMagazineFrom -> typeId == 2 && $magazineFrom != $magazineTo) {
 
 if($quantityBeingReturned != 0) {
     $MsaDB -> insert("inventory__".$deviceType,
-        [$deviceType."_id", $deviceType."_bom_id", "commission_id", "sub_magazine_id", "qty", "input_type_id", "comment", "isVerified"],
-        [$deviceId, $bomId, $commissionId, $magazineFrom, $quantityBeingReturned, $inputTypeId, $comment, 0]
+        [$deviceType."_id", $deviceType."_bom_id", "commission_id", "sub_magazine_id", "qty", "input_type_id", "comment", "isVerified", "transfer_group_id"],
+        [$deviceId, $bomId, $commissionId, $magazineFrom, $quantityBeingReturned, $inputTypeId, $comment, 0, $groupId]
     );
 }
 

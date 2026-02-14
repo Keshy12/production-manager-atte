@@ -3,6 +3,13 @@ $(document).ready(function() {
     let selectedCommissions = new Set();
     let selectedTransfers = new Set();
 
+    const PRIORITY_CONFIG = {
+        'critical': { label: 'Krytyczny', class: 'badge-danger', icon: 'bi-exclamation-triangle-fill', color: 'red' },
+        'urgent': { label: 'Pilny', class: 'badge-warning', icon: 'bi-lightning-fill', color: 'yellow' },
+        'standard': { label: 'Standardowy', class: 'badge-success', icon: 'bi-check-circle-fill', color: 'green' },
+        'none': { label: 'Brak', class: 'badge-secondary', icon: 'bi-dash-circle', color: 'transparent' }
+    };
+
     $(document).on('click', '.cancelCommission', function(e) {
         e.preventDefault();
         const commissionId = $(this).data('id');
@@ -204,6 +211,7 @@ $(document).ready(function() {
 
             // Determine color coding
             let headerClass, borderColor, cardOpacity;
+            const priorityColor = (PRIORITY_CONFIG[commission.priority] || PRIORITY_CONFIG['none']).color;
 
             if (isCancelled) {
                 // Commission itself is cancelled - RED
@@ -225,7 +233,7 @@ $(document).ready(function() {
             const cardHtml = `
             <div class="card mb-3 commission-card ${isCancelled ? 'commission-cancelled-in-modal' : ''}"
                  data-commission-id="${commissionId}"
-                 style="opacity: ${cardOpacity}; ${borderColor ? `border-color: ${borderColor} !important;` : ''}">
+                 style="opacity: ${cardOpacity}; ${borderColor ? `border-color: ${borderColor} !important;` : ''} box-shadow: -5px 0px 0px 0px ${priorityColor};">
                 <div class="card-header ${headerClass}">
                     <div class="d-flex align-items-center justify-content-between">
                         <div class="custom-control custom-checkbox">
@@ -237,9 +245,9 @@ $(document).ready(function() {
                                    data-unreturned-qty="${unreturned}"
                                    ${isCancelled ? 'disabled' : ''}>
                             <label class="custom-control-label font-weight-bold" for="comm-${commissionId}">
-                                <i class="bi bi-file-earmark-text"></i>
-                                Zlecenie #${commissionId}: ${commission.deviceName}
-                                ${isCancelled ? '<span class="badge badge-light ml-2"><i class="bi bi-x-circle"></i> ANULOWANE</span>' : ''}
+                                 <i class="bi bi-file-earmark-text"></i>
+                                 Zlecenie #${commissionId}: ${commission.deviceName}
+                                 ${isCancelled ? '<span class="badge badge-light ml-2"><i class="bi bi-x-circle"></i> ANULOWANE</span>' : ''}
                                 <span class="badge badge-secondary ml-2 selected-transfers-badge" data-commission-id="${commissionId}" style="display: none;">
                                     0 transferów
                                 </span>
@@ -826,8 +834,14 @@ $(document).ready(function() {
 
             commissionArray.forEach((commId) => {
                 const commission = cancellationData.commissionsData[commId];
+                const priorityColor = (PRIORITY_CONFIG[commission.priority] || PRIORITY_CONFIG['none']).color;
                 const selectedTransfersList = getSelectedTransfersForCommission(commId);
                 const transferCount = selectedTransfersList.length;
+                
+                // Check for partial selection
+                const availableTransfers = (cancellationData.transfersByCommission[commId] || []).filter(t => t.qtyAvailable > 0 && !t.isCancelled);
+                const isPartialSelection = transferCount < availableTransfers.length;
+
                 const collapseId = `summary-comm-${commId}`;
                 const createdDate = commission.createdAt || 'Brak daty';
                 const qtyText = `Zlecono: ${commission.qty} | Wyprodukowano: ${commission.qtyProduced}`;
@@ -836,35 +850,38 @@ $(document).ready(function() {
                     : '';
 
                 html += `
-                    <div class="card mb-2 border-danger">
+                    <div class="card mb-2" style="box-shadow: -5px 0px 0px 0px ${priorityColor};">
                         <div class="card-header bg-light py-2"
                              style="cursor: pointer;"
                              data-toggle="collapse"
                              data-target="#${collapseId}"
                              aria-expanded="false">
                             <div class="d-flex align-items-center justify-content-between">
-                                <div>
-                                    <i class="bi bi-chevron-right collapse-icon"></i>
-                                    <strong>Zlecenie #${commId}: ${commission.deviceName}</strong>
-                                    ${transferCount > 0 ? `<span class="badge badge-info ml-2">${transferCount} ${transferCount === 1 ? 'transfer' : 'transfery'}</span>` : ''}
-                                </div>
+                                 <div>
+                                     <i class="bi bi-chevron-right collapse-icon"></i>
+                                     <strong>Zlecenie #${commId}: ${commission.deviceName}</strong>
+                                     ${isPartialSelection ? '<span class="badge badge-danger ml-2"><i class="bi bi-exclamation-triangle"></i> Nie wszystkie transfery</span>' : ''}
+                                     ${transferCount > 0 ? `<span class="badge badge-info ml-2">${transferCount} ${transferCount === 1 ? 'transfer' : 'transfery'}</span>` : ''}
+                                 </div>
+                                 <div class="text-right">
+                                     <span class="badge badge-secondary mr-2">${commission.state || 'Nieznany'}</span>
+                                     <small class="text-muted"><i class="bi bi-calendar3"></i> ${createdDate}</small>
+                                 </div>
                             </div>
                         </div>
                         <div id="${collapseId}" class="collapse">
                             <div class="card-body py-2 small bg-white">
-                                <div class="mb-2"><i class="bi bi-calendar3"></i> <strong>Data:</strong> ${createdDate}</div>
-                                <div class="mb-2"><i class="bi bi-info-circle"></i> <strong>Status:</strong> ${commission.state || 'Nieznany'}</div>
                                 <div class="mb-2"><i class="bi bi-box-seam"></i> <strong>Ilości:</strong> ${qtyText}${unreturnedText}</div>
                                 ${transferCount > 0 ? `
-                                    <div class="mt-3">
-                                        <strong class="text-muted"><i class="bi bi-arrow-repeat"></i> Wybrane transfery (${transferCount}):</strong>
-                                        <ul class="mt-2 mb-0" style="font-size: 0.9em;">
-                                            ${selectedTransfersList.map(t => `
-                                                <li><strong>${t.componentName}</strong> (${t.componentType}) - Do zwrotu: <span class="text-success">${Math.abs(t.qtyAvailable).toFixed(5)}</span></li>
-                                            `).join('')}
-                                        </ul>
-                                    </div>
-                                ` : '<div class="text-muted">Brak wybranych transferów</div>'}
+                                     <div class="mt-3">
+                                         <strong class="text-muted"><i class="bi bi-arrow-repeat"></i> Wybrane transfery (${transferCount}):</strong>
+                                         <ul class="mt-2 mb-0" style="font-size: 0.9em;">
+                                             ${selectedTransfersList.map(t => `
+                                                 <li><strong>${t.componentName}</strong> (${t.componentType}) - Do zwrotu: <span class="text-success">${Math.abs(t.qtyAvailable).toFixed(2)}</span></li>
+                                             `).join('')}
+                                         </ul>
+                                     </div>
+                                 ` : '<div class="text-muted">Brak wybranych transferów</div>'}
                             </div>
                         </div>
                     </div>

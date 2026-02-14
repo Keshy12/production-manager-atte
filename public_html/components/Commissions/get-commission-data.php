@@ -185,6 +185,7 @@ function getCancellationData($MsaDB) {
                 'qtyUnreturned' => $unreturned,
                 'isCancelled' => (bool)$row['is_cancelled'],
                 'state' => $row['state'],
+                'priority' => $row['priority'],
                 'createdAt' => $row['created_at']
             ];
 
