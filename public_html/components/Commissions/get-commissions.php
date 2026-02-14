@@ -139,7 +139,9 @@ foreach($allIdsQuery as $id) {
     $type = $commission->deviceType;
     $row = $commission->commissionValues;
     $bomId = $row["bom_id"];
-    $receivers = implode(',', $commission->getReceivers());
+    $receivers = $commission->getReceivers();
+    sort($receivers);
+    $receivers = implode(',', $receivers);
 
     $groupKey = $type.'_'.$bomId.'_'.$row["warehouse_from_id"].'_'.$row["warehouse_to_id"].'_'.$receivers.'_'.$row["state"];
 
@@ -157,7 +159,9 @@ if($groupTogether) {
         $type = $commission->deviceType;
         $row = $commission->commissionValues;
         $bomId = $row["bom_id"];
-        $receivers = implode(',', $commission->getReceivers());
+        $receiversList = $commission->getReceivers();
+        sort($receiversList);
+        $receivers = implode(',', $receiversList);
 
         $groupKey = $type.'_'.$bomId.'_'.$row["warehouse_from_id"].'_'.$row["warehouse_to_id"].'_'.$receivers.'_'.$row["state"];
 
@@ -289,6 +293,7 @@ foreach($commissions as $commissionData) {
     }
 
     $receivers = $commission -> getReceivers();
+    sort($receivers);
     $classes = ['list-group-item-primary', '', 'alert-secondary', 'list-group-item-dark border-secondary', 'list-group-item-danger'];
     $class = $classes[$state_numeric];
     if($isCancelled == 1 ) $class = 'list-group-item-danger';

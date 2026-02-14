@@ -15,6 +15,12 @@ try {
     $userRepository = new UserRepository($MsaDB);
     $currentUser = $userRepository->getUserById($_SESSION["userid"]);
 
+    $magazineNamesRaw = $MsaDB -> query("SELECT sub_magazine_id, sub_magazine_name FROM magazine__list", PDO::FETCH_ASSOC);
+    $magazineNames = [];
+    foreach ($magazineNamesRaw as $mag) {
+        $magazineNames[$mag['sub_magazine_id']] = $mag['sub_magazine_name'];
+    }
+
     $bomRepository = new BomRepository($MsaDB);
     $commissions = $currentUser->getActiveCommissions();
 
@@ -29,6 +35,13 @@ try {
         ];
         return $colors[$priority] ?? 'transparent';
     }
+
+    $priorityMap = [
+        'none' => 0,
+        'standard' => 1,
+        'urgent' => 2,
+        'critical' => 3
+    ];
 
     $commissionsData = [];
     $potentialGroupsMap = [];
@@ -46,6 +59,7 @@ try {
         $valuesToPrint['tableClass'] = $commissionValues['state'] != 'active' ? 'table-light' : '';
 
         $receivers = $commission->getReceivers();
+        sort($receivers);
         $valuesToPrint['hideButton'] = count($receivers) == 1 ? "visibility: hidden;" : '';
         $valuesToPrint['receivers'] = [];
         $valuesToPrint['receiversIds'] = $receivers;
@@ -54,7 +68,10 @@ try {
             $valuesToPrint['receivers'][] = $users[$receiver]['name']." ".$users[$receiver]['surname'];
         }
 
+        $valuesToPrint['magazineFrom'] = $commissionValues['warehouse_from_id'];
+        $valuesToPrint['magazineFromName'] = $magazineNames[$valuesToPrint['magazineFrom']] ?? 'Nieznany';
         $valuesToPrint['magazineTo'] = $commissionValues['warehouse_to_id'];
+        $valuesToPrint['magazineToName'] = $magazineNames[$valuesToPrint['magazineTo']] ?? 'Nieznany';
         $valuesToPrint['deviceBomId'] = $commissionValues['bom_id'];
 
         $bom = $bomRepository->getBomById($commissionDeviceType, $valuesToPrint['deviceBomId']);
@@ -71,7 +88,7 @@ try {
         $valuesToPrint['timestampCreated'] = $commissionValues['created_at'];
 
         $receiversKey = implode(',', $receivers);
-        $groupKey = $commissionDeviceType.'_'.$valuesToPrint['deviceBomId'].'_'.$valuesToPrint['magazineTo'].'_'.$receiversKey.'_'.$valuesToPrint['priority'];
+        $groupKey = $commissionDeviceType.'_'.$valuesToPrint['deviceBomId'].'_'.$valuesToPrint['magazineFrom'].'_'.$valuesToPrint['magazineTo'].'_'.$receiversKey.'_'.$valuesToPrint['state'];
 
         if(!isset($potentialGroupsMap[$groupKey])) {
             $potentialGroupsMap[$groupKey] = 1;
@@ -100,6 +117,7 @@ try {
                     'totalQty' => (int)$valuesToPrint['quantity'],
                     'totalProduced' => (int)$valuesToPrint['quantityProduced'],
                     'totalReturned' => (int)$valuesToPrint['quantityReturned'],
+                    'maxPriority' => $valuesToPrint['priority'],
                     'firstCommission' => $valuesToPrint
                 ];
             } else {
@@ -107,6 +125,13 @@ try {
                 $groupedCommissions[$groupKey]['totalQty'] += (int)$valuesToPrint['quantity'];
                 $groupedCommissions[$groupKey]['totalProduced'] += (int)$valuesToPrint['quantityProduced'];
                 $groupedCommissions[$groupKey]['totalReturned'] += (int)$valuesToPrint['quantityReturned'];
+
+                $currentMaxPriority = $groupedCommissions[$groupKey]['maxPriority'];
+                $newPriorityVal = $priorityMap[$valuesToPrint['priority']] ?? 0;
+                $maxPriorityVal = $priorityMap[$currentMaxPriority] ?? 0;
+                if ($newPriorityVal > $maxPriorityVal) {
+                    $groupedCommissions[$groupKey]['maxPriority'] = $valuesToPrint['priority'];
+                }
             }
         }
 
@@ -117,6 +142,8 @@ try {
             $valuesToPrint['quantity'] = $group['totalQty'];
             $valuesToPrint['quantityProduced'] = $group['totalProduced'];
             $valuesToPrint['quantityReturned'] = $group['totalReturned'];
+            $valuesToPrint['priority'] = $group['maxPriority'];
+            $valuesToPrint['color'] = getPriorityColor($group['maxPriority']);
             $valuesToPrint['isGrouped'] = $isGrouped;
             $valuesToPrint['groupedCount'] = count($group['ids']);
             $valuesToPrint['groupedIds'] = $group['ids'];
