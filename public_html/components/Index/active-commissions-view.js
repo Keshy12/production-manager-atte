@@ -148,6 +148,8 @@ function buildCardData(deviceType, values) {
     const laminateInfo = values.deviceLaminate ? `Laminat: <b>${values.deviceLaminate}</b>` : '';
     const versionInfo = values.deviceVersion ? `Wersja: <b>${values.deviceVersion}</b>` : '';
 
+    const warehouseInfo = `<small class="text-muted font-weight-normal ml-1">do <b>${values.magazineFromName}</b></small>`;
+
     return {
         id: values.id,
         cardClass: values.cardClass,
@@ -159,6 +161,7 @@ function buildCardData(deviceType, values) {
         deviceName: values.deviceName,
         laminateInfo: laminateInfo,
         versionInfo: versionInfo,
+        warehouseInfo: warehouseInfo,
         groupBadge: groupBadge,
         tableClass: values.tableClass,
         quantity: values.quantity,

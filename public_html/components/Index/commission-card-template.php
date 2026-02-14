@@ -38,9 +38,10 @@
             <table class="table table-active table-bordered table-sm">
                 <thead>
                 <tr class="${tableClass}">
-                    <th>Dostarczono:</th>
+                    <th>Dostarczono <br>${warehouseInfo}</th>
                 </tr>
                 </thead>
+
                 <tbody>
                 <tr class="${tableClass}">
                     <td class="quantityReturned">${quantityReturned}</td>
