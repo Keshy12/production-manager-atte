@@ -127,24 +127,32 @@ if ($noGrouping) {
 
 } else {
     // --- GROUPED VIEW MODE ---
-    // Discovery: Find relevant Transfer Group IDs
+    // Discovery: Find relevant Transfer Group IDs using a high-performance UNION pattern
     $tgConditions = ["tg.created_at <= $snapshotSql"];
     if (!empty($sanitizedUserIds)) $tgConditions[] = "tg.created_by IN (" . implode(',', $sanitizedUserIds) . ")";
     if ($dateFrom) $tgConditions[] = "tg.created_at >= " . $MsaDB->db->quote("$dateFrom 00:00:00");
     if ($dateTo) $tgConditions[] = "tg.created_at <= " . $MsaDB->db->quote("$dateTo 23:59:59");
 
-    $invFilterExists = [];
-    foreach ($deviceTypes as $type) {
-        $subConds = ["i.transfer_group_id = tg.id"];
-        if (!$showCancelled) $subConds[] = "i.is_cancelled = 0";
-        if (!empty($sanitizedInputTypesIds)) $subConds[] = "i.input_type_id IN (" . implode(',', $sanitizedInputTypesIds) . ")";
-        if (!empty($sanitizedMagazineIds)) $subConds[] = "i.sub_magazine_id IN (" . implode(',', $sanitizedMagazineIds) . ")";
-        if (!empty($sanitizedDeviceIds) && $deviceType !== 'all') $subConds[] = "i.{$type}_id IN (" . implode(',', $sanitizedDeviceIds) . ")";
-        if ($flowpinSessionId) $subConds[] = "i.flowpin_update_session_id = " . (int)$flowpinSessionId;
-        $invFilterExists[] = "EXISTS (SELECT 1 FROM `inventory__{$type}` i WHERE " . implode(" AND ", $subConds) . ")";
+    // Optimized discovery: If we have inventory-level filters, find matching TG IDs first
+    $hasInventoryFilters = !empty($sanitizedInputTypesIds) || !empty($sanitizedMagazineIds) || (!empty($sanitizedDeviceIds) && $deviceType !== 'all') || $flowpinSessionId || !$showCancelled;
+    
+    if ($hasInventoryFilters) {
+        $discoveryUnions = [];
+        foreach ($deviceTypes as $type) {
+            $subConds = ["i.timestamp <= $snapshotSql"]; // Basic bounds
+            if (!$showCancelled) $subConds[] = "i.is_cancelled = 0";
+            if (!empty($sanitizedInputTypesIds)) $subConds[] = "i.input_type_id IN (" . implode(',', $sanitizedInputTypesIds) . ")";
+            if (!empty($sanitizedMagazineIds)) $subConds[] = "i.sub_magazine_id IN (" . implode(',', $sanitizedMagazineIds) . ")";
+            if (!empty($sanitizedDeviceIds) && $deviceType !== 'all') $subConds[] = "i.{$type}_id IN (" . implode(',', $sanitizedDeviceIds) . ")";
+            if ($flowpinSessionId) $subConds[] = "i.flowpin_update_session_id = " . (int)$flowpinSessionId;
+            
+            $discoveryUnions[] = "SELECT DISTINCT i.transfer_group_id FROM `inventory__{$type}` i WHERE " . implode(" AND ", $subConds);
+        }
+        $tgConditions[] = "tg.id IN (" . implode(" UNION ", $discoveryUnions) . ")";
     }
-    $tgConditions[] = "(" . implode(" OR ", $invFilterExists) . ")";
+
     $whereClause = implode(" AND ", $tgConditions);
+
 
     if ($mode === 'count') {
         $countQuery = "SELECT COUNT(*) as total FROM inventory__transfer_groups tg WHERE $whereClause";

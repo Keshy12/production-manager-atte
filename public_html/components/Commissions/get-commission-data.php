@@ -112,13 +112,6 @@ function getCancellationData($MsaDB) {
         }
 
         $commissions = $commissionRepository->getCommissionsByIds($commissionIds);
-        $nameLists = [
-            'laminate' => $MsaDB->readIdName("list__laminate"),
-            'sku' => $MsaDB->readIdName("list__sku"),
-            'tht' => $MsaDB->readIdName("list__tht"),
-            'smd' => $MsaDB->readIdName("list__smd"),
-            'parts' => $MsaDB->readIdName("list__parts")
-        ];
         $magazines = $MsaDB->readIdName("magazine__list", "sub_magazine_id", "sub_magazine_name");
 
         $flatBom = $MsaDB->query("
@@ -132,14 +125,49 @@ function getCancellationData($MsaDB) {
         $idsStr = implode(',', $commissionIds);
         $allGroupIds = [];
         
+        // Optimize: Collect all component IDs to fetch names selectively
+        $involvedComponentIds = [
+            'parts' => [], 'sku' => [], 'tht' => [], 'smd' => [], 'laminate' => []
+        ];
+
         foreach ($componentTypes as $type) {
             $inventoryData[$type] = [];
             $rows = $MsaDB->query("SELECT * FROM inventory__{$type} WHERE commission_id IN ($idsStr) AND qty != 0 ORDER BY is_cancelled ASC, timestamp ASC");
             foreach ($rows as $row) {
-                $compId = $row[$type.'_id'];
+                $compId = (int)$row[$type.'_id'];
                 $inventoryData[$type][$row['commission_id']][$compId][] = $row;
                 if ($row['transfer_group_id']) $allGroupIds[] = (int)$row['transfer_group_id'];
+                $involvedComponentIds[$type][] = $compId;
             }
+        }
+
+        // Add BOM components to involved IDs
+        foreach ($flatBom as $comp) {
+            if ($comp['parts_id']) $involvedComponentIds['parts'][] = (int)$comp['parts_id'];
+            if ($comp['sku_id']) $involvedComponentIds['sku'][] = (int)$comp['sku_id'];
+            if ($comp['tht_id']) $involvedComponentIds['tht'][] = (int)$comp['tht_id'];
+            if ($comp['smd_id']) $involvedComponentIds['smd'][] = (int)$comp['smd_id'];
+        }
+
+        // Add device IDs from commissions to involved IDs
+        foreach ($commissions as $comm) {
+            $cRow = $comm->commissionValues;
+            $cType = $comm->deviceType;
+            $cBom = $bomRepository->getBomById($cType, (int)$cRow['bom_id']);
+            $involvedComponentIds[$cType][] = (int)$cBom->deviceId;
+        }
+
+        // Fetch names selectively
+        $nameLists = [];
+        foreach ($involvedComponentIds as $type => $ids) {
+            if (empty($ids)) {
+                $nameLists[$type] = [];
+                continue;
+            }
+            $uniqueIds = array_unique($ids);
+            $idsListStr = implode(',', $uniqueIds);
+            $tableName = "list__$type";
+            $nameLists[$type] = $MsaDB->readIdName($tableName, "id", "name", "WHERE id IN ($idsListStr)");
         }
 
         $groupNotes = [];
@@ -210,10 +238,10 @@ function getCancellationData($MsaDB) {
                 $componentType = null;
                 $componentId = null;
 
-                if ($component['parts_id']) { $componentType = 'parts'; $componentId = $component['parts_id']; }
-                elseif ($component['sku_id']) { $componentType = 'sku'; $componentId = $component['sku_id']; }
-                elseif ($component['tht_id']) { $componentType = 'tht'; $componentId = $component['tht_id']; }
-                elseif ($component['smd_id']) { $componentType = 'smd'; $componentId = $component['smd_id']; }
+                if ($component['parts_id']) { $componentType = 'parts'; $componentId = (int)$component['parts_id']; }
+                elseif ($component['sku_id']) { $componentType = 'sku'; $componentId = (int)$component['sku_id']; }
+                elseif ($component['tht_id']) { $componentType = 'tht'; $componentId = (int)$component['tht_id']; }
+                elseif ($component['smd_id']) { $componentType = 'smd'; $componentId = (int)$component['smd_id']; }
 
                 if (!$componentType) continue;
 
@@ -238,6 +266,7 @@ function getCancellationData($MsaDB) {
                         $remainingQty = $qtyAvailable;
                         $sourcesForThisGroup = [];
                         
+                        // Optimized: use pre-fetched inventoryData
                         if (isset($inventoryData[$componentType][$cId][$componentId])) {
                             foreach ($inventoryData[$componentType][$cId][$componentId] as $t) {
                                 if ($t['transfer_group_id'] == $transferGroupId && $t['qty'] < 0 && $t['is_cancelled'] == 0) {
@@ -349,16 +378,37 @@ function getDetailsData($MsaDB) {
         }
 
         $detailsByCommission = [];
-        $nameLists = [
-            'parts' => $MsaDB->readIdName("list__parts"),
-            'sku' => $MsaDB->readIdName("list__sku"),
-            'smd' => $MsaDB->readIdName("list__smd"),
-            'tht' => $MsaDB->readIdName("list__tht")
-        ];
-
+        $idsStr = implode(',', $commissionIds);
+        
+        $unionParts = [];
+        $componentTypes = ['parts', 'sku', 'smd', 'tht'];
+        
         $mainCommission = reset($commissions);
         $deviceType = $mainCommission->deviceType;
-        $deviceNameList = $MsaDB->readIdName("list__".$deviceType);
+
+        foreach ($componentTypes as $type) {
+            if ($type === $deviceType) continue;
+            $unionParts[] = "SELECT '$type' as type, commission_id, {$type}_id as component_id, sub_magazine_id, qty, timestamp, is_cancelled, comment, 0 as isProduced FROM inventory__{$type} WHERE commission_id IN ($idsStr)";
+        }
+        $unionParts[] = "SELECT 'device' as type, commission_id, {$deviceType}_id as component_id, sub_magazine_id, qty, timestamp, is_cancelled, comment, 1 as isProduced FROM inventory__{$deviceType} WHERE commission_id IN ($idsStr)";
+        
+        $query = implode(" UNION ALL ", $unionParts) . " ORDER BY timestamp ASC";
+        $allMovements = $MsaDB->query($query, PDO::FETCH_ASSOC);
+
+        // Selective name fetching for movements
+        $involvedIdsByType = [];
+        foreach ($allMovements as $m) {
+            $type = $m['type'];
+            if ($type === 'device') $type = $deviceType;
+            $involvedIdsByType[$type][] = (int)$m['component_id'];
+        }
+
+        $nameLists = [];
+        foreach ($involvedIdsByType as $type => $ids) {
+            $uniqueIds = array_unique($ids);
+            $idsListStr = implode(',', $uniqueIds);
+            $nameLists[$type] = $MsaDB->readIdName("list__$type", "id", "name", "WHERE id IN ($idsListStr)");
+        }
 
         foreach ($commissionIds as $cId) {
             if (!isset($commissions[$cId])) continue;
@@ -368,7 +418,7 @@ function getDetailsData($MsaDB) {
 
             $deviceBom = $bomRepository->getBomById($deviceType, $bomId);
             $deviceId = $deviceBom->deviceId;
-            $deviceName = $deviceNameList[$deviceId] ?? "Unknown";
+            $deviceName = $nameLists[$deviceType][$deviceId] ?? "Unknown";
 
             $detailsByCommission[$cId] = [
                 'id' => $cId,
@@ -380,20 +430,6 @@ function getDetailsData($MsaDB) {
             ];
         }
 
-        $idsStr = implode(',', $commissionIds);
-        
-        $unionParts = [];
-        $componentTypes = ['parts', 'sku', 'smd', 'tht'];
-        foreach ($componentTypes as $type) {
-            if ($type === $deviceType) continue;
-            $unionParts[] = "SELECT '$type' as type, commission_id, {$type}_id as component_id, sub_magazine_id, qty, timestamp, is_cancelled, comment, 0 as isProduced FROM inventory__{$type} WHERE commission_id IN ($idsStr)";
-        }
-        $unionParts[] = "SELECT 'device' as type, commission_id, {$deviceType}_id as component_id, sub_magazine_id, qty, timestamp, is_cancelled, comment, 1 as isProduced FROM inventory__{$deviceType} WHERE commission_id IN ($idsStr)";
-        
-        $query = implode(" UNION ALL ", $unionParts) . " ORDER BY timestamp ASC";
-        
-        $allMovements = $MsaDB->query($query, PDO::FETCH_ASSOC);
-
         foreach ($allMovements as $m) {
             $cId = (int)$m['commission_id'];
             if (!isset($detailsByCommission[$cId])) continue;
@@ -402,12 +438,7 @@ function getDetailsData($MsaDB) {
             $displayType = ($type === 'device') ? $deviceType : $type;
             $compId = (int)$m['component_id'];
             
-            $compName = "Unknown";
-            if ($type === 'device') {
-                $compName = $detailsByCommission[$cId]['deviceName'];
-            } else {
-                $compName = $nameLists[$type][$compId] ?? "Unknown";
-            }
+            $compName = $nameLists[$displayType][$compId] ?? "Unknown";
 
             $detailsByCommission[$cId]['movements'][] = [
                 'type' => $type,
