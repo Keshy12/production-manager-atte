@@ -1,3 +1,7 @@
+let isFlowpinRunning = false;
+let isGsUploadRunning = false;
+let gsUploadInterval = null;
+
 function getFlowpinDate() {
     $.ajax({
         type: "POST",
@@ -24,40 +28,85 @@ function getNotifications() {
     });
 }
 
+function updateIndicatorVisibility() {
+    if (isFlowpinRunning || isGsUploadRunning) {
+        $("#flowpinIndicator").show();
+    } else {
+        $("#flowpinIndicator").hide();
+    }
+}
+
+function updateFlowpinHeaderProgress() {
+    $.ajax({
+        type: "POST",
+        url: "/atte_ms_new/public_html/components/FlowpinUpdate/get-progress.php",
+        data: {},
+        success: function(data) {
+            isFlowpinRunning = data.success && data.status === 'running';
+            if (isFlowpinRunning) {
+                $("#flowpinHeaderProgress").show();
+                $("#flowpinHeaderProgressBar").css("width", data.percentage + "%");
+                $("#flowpinHeaderPercent").text(data.percentage.toFixed(0) + "%");
+            } else {
+                $("#flowpinHeaderProgress").hide();
+            }
+            updateIndicatorVisibility();
+        }
+    });
+}
+
+function updateGsUploadStatus() {
+    $.ajax({
+        type: "POST",
+        url: "/atte_ms_new/public_html/components/GoogleSheets/get-upload-status.php",
+        success: function(data) {
+            isGsUploadRunning = data.success && data.status === 'running';
+            $("#sendWarehousesToGS").prop("disabled", isGsUploadRunning);
+            
+            if (!isGsUploadRunning && gsUploadInterval) {
+                clearInterval(gsUploadInterval);
+                gsUploadInterval = null;
+                getFlowpinDate(); // Refresh the date since the process is finished
+            }
+            updateIndicatorVisibility();
+        }
+    });
+}
+
 $(document).ready(function(){
     getNotifications();
     getFlowpinDate();
+    updateFlowpinHeaderProgress();
+    updateGsUploadStatus(); // Check on page load
+    setInterval(updateFlowpinHeaderProgress, 60000); // Polling every minute
 });
 
 $("#toggleFlowpinUpdate").click(function(){
-    $(this).html() == "Ukryj" ? $(this).html('Pokaż') : $(this).html('Ukryj');
+    const textSpan = $(this).find(".toggle-text");
+    textSpan.text(textSpan.text() === "Ukryj" ? "Pokaż" : "Ukryj");
     $("#flowpinUpdate").toggle();
 });
 
-$("#updateDataFromFlowpin").click(function(){
-    $("#spinnerflowpin").show();
-    $.ajax({
-        type: "POST",
-        url: "/atte_ms_new/src/cron/flowpin-sku-update.php",
-        data: {},
-        success: function(data) {
-            if(data.length) alert(data);
-            $("#spinnerflowpin").hide();
-            getFlowpinDate();
-        }
-    });
-})
 
 $("#sendWarehousesToGS").click(function(){
-    $("#spinnerflowpin").show();
+    $(this).prop("disabled", true);
+    isGsUploadRunning = true;
+    updateIndicatorVisibility();
+
     $.ajax({
         type: "POST",
         url: "/atte_ms_new/src/cron/warehouse-data-gs-upload.php",
         data: {},
         success: function(data) {
-            if(data.length) alert(data);
-            $("#spinnerflowpin").hide();
-            getFlowpinDate();
+            if(data.length && !data.includes("Process is already running")) alert(data);
+            // Polling will handle UI updates
+        },
+        error: function() {
+            alert("An error occurred while trying to send data to Google Sheets.");
         }
     });
-})
+
+    if (!gsUploadInterval) {
+        gsUploadInterval = setInterval(updateGsUploadStatus, 3000); // Poll every 3s
+    }
+});

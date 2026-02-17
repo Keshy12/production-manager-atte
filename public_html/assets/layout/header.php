@@ -188,12 +188,21 @@ if(!isset($_SESSION["userid"]) && !isset($skip))
 </nav>
 <?php if(isset($_SESSION['isAdmin']) && $_SESSION['isAdmin'] == true) :?>
     <div class="text-left" style="position: absolute; top: 70px; float: left; left: 10px; z-index: 9999;">
-        <button id="toggleFlowpinUpdate" class="btn btn-primary">Pokaż</button>
+        <button id="toggleFlowpinUpdate" class="btn btn-primary">
+            <span class="toggle-text">Pokaż</span> 
+            <span id="flowpinIndicator" style="display:none;" class="spinner-border spinner-border-sm" role="status"></span>
+        </button>
         <br>
         <small>aktualizacja z flowpin</small>
         <div id="flowpinUpdate" style="display:none;">
             <div>
-                <button class="btn btn-sm btn-primary" id="updateDataFromFlowpin">Pobierz dane z Flowpin.</button>
+                <a href="http://<?=BASEURL?>/admin/flowpin/update" target="_blank" class="btn btn-sm btn-primary" id="updateDataFromFlowpin">Pobierz dane z Flowpin.</a>
+                <div id="flowpinHeaderProgress" style="display:none;" class="mt-1">
+                    <div class="progress" style="height: 10px;">
+                        <div id="flowpinHeaderProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                    </div>
+                    <small><span id="flowpinHeaderPercent">0%</span></small>
+                </div>
             </div>
             <small class="bg-light">Data ostatniej aktualizacji: <br><b><span id="flowpinDate"></span></b></small>
             <br>
