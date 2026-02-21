@@ -9,6 +9,7 @@ class Bom {
     public int $id;
     public int $deviceId;
     public ?int $laminateId = null;
+    public ?int $out_tht_quantity = null;
     public ?string $version = null; 
     public bool $isActive;
     public string $name;
@@ -31,17 +32,22 @@ class Bom {
                                                 b.tht_id, 
                                                 b.smd_id, 
                                                 b.parts_id, 
-                                                b.quantity * {$quantity} AS qty,
-                                                IF(t.isAutoProduced = 1 OR s.isAutoProduced = 1, 1, 0) AS isAutoProduced
-                                            FROM 
-                                                bom__flat AS b
-                                            LEFT JOIN 
-                                                list__tht AS t ON b.tht_id = t.id
-                                            LEFT JOIN 
-                                                list__sku AS s ON b.sku_id = s.id
-                                            WHERE 
-                                                b.bom_{$deviceType}_id = '{$id}'
-                                            ");
+                                                 b.quantity * {$quantity} AS qty,
+                                                 IF(t.isAutoProduced = 1 OR s.isAutoProduced = 1, 1, 0) AS isAutoProduced,
+                                                 COALESCE(s.price, t.price, sm.price, p.price) AS price_per_item
+                                             FROM 
+                                                 bom__flat AS b
+                                             LEFT JOIN 
+                                                 list__tht AS t ON b.tht_id = t.id
+                                             LEFT JOIN 
+                                                 list__sku AS s ON b.sku_id = s.id
+                                             LEFT JOIN 
+                                                 list__smd AS sm ON b.smd_id = sm.id
+                                             LEFT JOIN 
+                                                 list__parts AS p ON b.parts_id = p.id
+                                             WHERE 
+                                                 b.bom_{$deviceType}_id = '{$id}'
+                                             ");
         $result = array();
         foreach($components as $component){
             $rowId = $component[0];
@@ -59,7 +65,17 @@ class Bom {
                 $type = "parts";
                 $device_id = $component[4];
             }
-            $result[] = ["rowId" => $rowId, "type" => $type, "componentId" => $device_id, "quantity" => $component["qty"]+0, "autoProduce" => $component["isAutoProduced"]];
+            $pricePerItem = (float)$component["price_per_item"];
+            $totalPrice = $component["qty"] * $pricePerItem;
+            $result[] = [
+                "rowId" => $rowId, 
+                "type" => $type, 
+                "componentId" => $device_id, 
+                "quantity" => $component["qty"]+0, 
+                "autoProduce" => $component["isAutoProduced"],
+                "pricePerItem" => $pricePerItem,
+                "totalPrice" => $totalPrice
+            ];
         }
         return $result;
     }

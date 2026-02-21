@@ -67,12 +67,33 @@ try {
 $bomComponents = [];
 $bomId = null;
 $bomIsActive = false;
+$outThtQuantity = null;
+$outSmdPrice = null;
+$outSmdQty = null;
+$outSmdPricePerItem = null;
+$outThtPricePerItem = null;
 
 if($wasSuccessful) {
     $bom = $bomsFound[0];
     $bomId = $bom -> id;
     $bomIsActive = $bom -> isActive;
+    if($bomType == 'tht') {
+        $outThtQuantity = $bom -> out_tht_quantity;
+        $outThtPricePerItem = 1; // 1 PLN per unit as per user example
+        $outThtPrice = $outThtQuantity * $outThtPricePerItem;
+    } else { // Explicitly set to null if not tht to avoid "Undefined variable" warning
+        $outThtPrice = null;
+        $outThtPricePerItem = null;
+    }
     $bomComponents = $bom -> getComponents(1);
+    if($bomType == 'smd') {
+        $outSmdQty = 0;
+        foreach ($bomComponents as $component) {
+            $outSmdQty += $component['quantity'];
+        }
+        $outSmdPricePerItem = 0.06;
+        $outSmdPrice = $outSmdQty * $outSmdPricePerItem;
+    }
 
     $generateComponentInfo = function(&$row) use (
         $list__sku, $list__sku_desc,
@@ -89,6 +110,7 @@ if($wasSuccessful) {
 
         $row['componentName'] = ${'list__'.$componentType}[$componentId];
         $row['componentDescription'] = ${'list__'.$componentType.'_desc'}[$componentId];
+        $row['price'] = 'Placeholder Price'; // Placeholder for price
         return $row;
     };
 
@@ -100,5 +122,5 @@ if($wasSuccessful) {
     }
 }
 
-echo json_encode([$bomComponents, $bomId, $bomIsActive, $wasSuccessful, $errorMessage]
+echo json_encode([$bomComponents, $bomId, $bomIsActive, $wasSuccessful, $errorMessage, $outThtQuantity, $outThtPrice, $outSmdPrice, $outSmdQty, $outSmdPricePerItem, $outThtPricePerItem]
     , JSON_FORCE_OBJECT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);

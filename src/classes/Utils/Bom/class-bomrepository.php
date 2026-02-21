@@ -13,10 +13,12 @@ class BomRepository {
 
     public function getBomById($deviceType, $id) {
         $MsaDB = $this -> MsaDB;
-        $laminateCond = $deviceType == 'smd' ? 'laminate_id as laminateId,' : '';  
+        $laminateCond = $deviceType == 'smd' ? 'laminate_id as laminateId,' : '';
+        $outThtCond = $deviceType == 'tht' ? 'out_tht_quantity,' : '';
         $query = "SELECT id, 
                         {$deviceType}_id as deviceId, 
                         {$laminateCond} 
+                        {$outThtCond}
                         version, 
                         isActive 
                     FROM bom__{$deviceType} 
@@ -41,10 +43,12 @@ class BomRepository {
     public function getBomByValues($deviceType, $values)
     {
         $MsaDB = $this -> MsaDB;
-        $laminateCond = $deviceType == 'smd' ? 'laminate_id as laminateId,' : ''; 
+        $laminateCond = $deviceType == 'smd' ? 'laminate_id as laminateId,' : '';
+        $outThtCond = $deviceType == 'tht' ? 'out_tht_quantity,' : '';
         $query = "SELECT id, 
                         {$deviceType}_id as deviceId, 
                         {$laminateCond} 
+                        {$outThtCond}
                         version, 
                         isActive 
                     FROM bom__{$deviceType}";
@@ -91,6 +95,11 @@ class BomRepository {
             $columns[] = "laminate_id";
             $placeholders[] = ":laminateId";
             $params[':laminateId'] = $data['laminateId'];
+        }
+
+        if ($deviceType === 'tht') {
+            $columns[] = "out_tht_quantity";
+            $placeholders[] = "0";
         }
 
         if (!isset($data['version']) && !is_null($data['version'])) {

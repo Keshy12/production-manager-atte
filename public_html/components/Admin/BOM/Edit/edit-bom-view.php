@@ -60,6 +60,8 @@ include('modals.php');
     </span>
 </div>
 
+
+
 <div class="d-flex justify-content-center">
     <button id="createNewBomFields" class="btn btn-outline-secondary mt-4" style="display:none;">
         Dodaj nową pozycję
@@ -79,9 +81,10 @@ include('modals.php');
     <table class="table table-bordered table-sm text-center" style="max-width: 800px;">
         <thead>
             <tr>
-                <th style="width:70%" id="valuePackageCol" scope="col">Komponent</th>
+                <th style="width:50%" id="valuePackageCol" scope="col">Komponent</th>
                 <th style="width:15%" id="componentCol" scope="col">Ilość</th>
-                <th style="width:15%" id="editButtonsCol" scope="col"></th>
+                <th style="width:20%" id="priceCol" scope="col">Cena</th>
+                <th style="width:15%" id="actionCol" scope="col">Akcja</th>
             </tr>
         </thead>
         <tbody id="editBomTBody">

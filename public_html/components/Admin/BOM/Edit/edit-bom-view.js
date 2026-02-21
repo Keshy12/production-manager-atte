@@ -120,7 +120,7 @@ $("#laminateSelect").change(function(){
 function generateBomTable()
 {
     let isEditable = true;
-    $("#editButtonsCol, #createNewBomFields, #isActiveField").show();
+    $("#createNewBomFields, #isActiveField").show();
     $TBody = $("#editBomTBody");
     $TBody.empty();
     let bomType = $("#bomTypeSelect").val();
@@ -129,6 +129,12 @@ function generateBomTable()
     let laminate = $("#laminateSelect").val();
     const bomValues = [deviceId];
     let createNewBom = false;
+
+    if (!isEditable) {
+        $("#editButtonsCol").hide();
+    } else {
+        $("#editButtonsCol").show();
+    }
     switch (bomType) {
         case "sku": {
             const bomIds = $("#list__device option:selected").data("bomids");
@@ -163,26 +169,86 @@ function generateBomTable()
             let isActive = result[2];
             let wasSuccessful = result[3];
             let errorMessage = result[4];
+            let outThtQuantity = result[5];
+            let outThtPrice = result[6];
+            let outSmdPrice = result[7];
+            let outSmdQty = result[8];
+            let outSmdPricePerItem = result[9];
+            let outThtPricePerItem = result[10];
             if(!wasSuccessful) {
                 let resultAlert = `<tr>
                 <td colspan="3"><div class="alert alert-danger" role="alert">
                     `+errorMessage+`
                 </div></td>
                 </tr>`;
-                $("#editButtonsCol, #createNewBomFields, #isActiveField").hide();
+                $("#createNewBomFields, #isActiveField").hide();
+                // $("#editButtonsCol").hide(); // Remove this line
                 $("#alerts").append(resultAlert);
                 return;
             }
             $("#createNewBomFields").attr('data-bom-id', bomId);
             $("#isActive").prop('checked', isActive);
+
+            if (isEditable) {
+                $("#createNewBomFields, #isActiveField").show();
+            } else {
+                $("#createNewBomFields, #isActiveField").hide();
+            }
+            
+            
+            if(outSmdPrice !== null) {
+                let smdItem = {
+                    rowId: 'out_smd', // Special ID to identify this row
+                    type: '', // Custom type for calculated fields, set to empty to disable edit button attributes
+                    componentName: 'OUT_SMD',
+                    componentDescription: ``,
+                    quantity: `<span class="qty-value">`+outSmdQty+`</span>` + `<br><span class="text-muted small">`+ outSmdPricePerItem.toFixed(2) + `PLN/szt</span>`, // Display outSmdQty and price per item
+                    componentId: '', // Set to empty to disable edit button attributes
+                    price: `<b>`+outSmdPrice.toFixed(2)+`PLN</b>` // Only total price
+                };
+                let renderedSmdItem = bomEditTableRow_template.map(render(smdItem)).join('');
+                let $renderedSmdItem = $(renderedSmdItem);
+                $renderedSmdItem.find('.actionButtons').empty(); // Remove all action buttons for OUT_SMD
+                $TBody.append($renderedSmdItem);
+            }
+
+            if(bomType == 'tht') {
+                let thtItem = {
+                    rowId: 'out_tht', // Special ID to identify this row
+                    type: '', // Custom type for calculated fields, set to empty to disable edit button attributes
+                    componentName: 'OUT_THT',
+                    componentDescription: '',
+                    quantity: `<span class="qty-value">`+outThtQuantity+`</span>` + `<br><span class="text-muted small">`+ outThtPricePerItem.toFixed(2) + `PLN/szt</span>`,
+                    componentId: '', // Set to empty to disable edit button attributes
+                    price: `<b>`+outThtPrice.toFixed(2)+`PLN</b>`
+                };
+                let renderedThtItem = bomEditTableRow_template.map(render(thtItem)).join('');
+                $TBody.append(renderedThtItem);
+            }
+            
             for(const [key, item] of Object.entries(components))
             {
+                // Assign placeholder price for regular components
+                item.price = `<b>`+item.totalPrice.toFixed(2)+`PLN</b>`;
+                 item.quantity = `<span class="qty-value">`+item.quantity+`</span>` + `<br><span class="text-muted small">`+ item.pricePerItem.toFixed(2) + `PLN/szt</span>`;
                 let renderedItem = bomEditTableRow_template.map(render(item)).join('');
                 let $renderedItem = $(renderedItem);
+                
+                // If the entire BOM is not editable, hide edit/delete buttons for all rows
                 if(!isEditable) {
-                    $("#editButtonsCol, #createNewBomFields, #isActiveField").hide();
-                    $renderedItem.find('.editButtons').remove();
+                    $renderedItem.find('.editBomRow').remove(); // Remove edit button
+                    $renderedItem.find('.removeBomRow').remove(); // Remove delete button
                 }
+
+                // Always remove delete button for OUT_SMD and OUT_THT rows
+                if (item.rowId == 'out_smd' || item.rowId == 'out_tht') {
+                    $renderedItem.find('.removeBomRow').remove(); // Remove delete button
+                    // Additionally, if it's OUT_SMD, it's not editable so remove its edit button
+                    if (item.rowId == 'out_smd') {
+                        $renderedItem.find('.editBomRow').remove(); // Remove edit button for OUT_SMD
+                    }
+                }
+                
                 $TBody.append($renderedItem);
             }
         }
@@ -197,11 +263,15 @@ $('body').on('click', '.editBomRow', function(){
     let rowId = $(this).attr('data-id');
     let $row = $(this).closest('tr');
     
-    let quantity = $row.find('.quantity').text().trim();
+    let quantity = parseFloat($row.find('.quantity .qty-value').text().trim());
 
     generateQuantityInput($row, quantity);
     
-    generateComponentSelect($row, componentType, componentId);
+    if (rowId !== 'out_tht') {
+        generateComponentSelect($row, componentType, componentId);
+    } else {
+        $row.find('.componentInfo').empty();
+    }
 
     generateSaveCancelButtons($row, rowId);
 });
@@ -211,14 +281,17 @@ function generateQuantityInput($row, quantity)
     let $quantity = $row.find('.quantity');
     $quantity.empty();
 
-    let $quantityInput = $(`<input type="text" class="form-control text-center quantityInput" value="`+quantity+`">`);
+    let rowId = $row.find('.editBomRow').attr('data-id'); // Assuming editBomRow exists and has data-id
+    let readOnlyAttr = (rowId === 'out_smd') ? 'readonly' : '';
+
+    let $quantityInput = $(`<input type="number" class="form-control text-center quantityInput" value="`+quantity+`" min="0" step="any" `+readOnlyAttr+`>`);
     $quantity.append($quantityInput);
 }
 
 function generateSaveCancelButtons($row, rowId)
 {
-    let $editButtons = $row.find(".editButtons");
-    $editButtons.empty();
+    let $actionButtons = $row.find(".actionButtons");
+    $actionButtons.empty();
 
     const acceptClass = rowId == '' ? 'createNewRow' : 'applyChanges';
 
@@ -230,7 +303,7 @@ function generateSaveCancelButtons($row, rowId)
     </button>`);
 
     $applyChangesButton.attr("data-id", rowId);
-    $editButtons.append($applyChangesButton).append($declineChangesButton);    
+    $actionButtons.append($applyChangesButton).append($declineChangesButton);    
 }
 
 function generateComponentSelect($row, componentType, componentId)
@@ -270,12 +343,41 @@ $('body').on('click', '.declineChanges', generateBomTable);
 $('body').on('click', '.applyChanges', function(){
     let rowId = $(this).attr('data-id');
     let $row = $(this).closest('tr');
-    let componentType = $row.find('select.componentTypeSelect').val();
-    let componentId = $row.find('select.componentDeviceSelect').val();
     let quantity = $row.find('.quantityInput').val();
-    const data = {rowId: rowId, componentType: componentType, componentId: componentId, quantity: quantity};
-    editBomRow(data);
-    generateBomTable();
+
+    if (rowId === 'out_tht') {
+        let bomId = $("#createNewBomFields").attr('data-bom-id');
+        const data = {bomId: bomId, quantity: quantity};
+        $.ajax({
+            type: "POST",
+            url: COMPONENTS_PATH+"/admin/bom/edit/update-tht-quantity.php",
+            data: data,
+            success: function (data) {
+                let result = JSON.parse(data);
+                let wasSuccessful = result[0];
+                let errorMessage = result[1];
+                if(!wasSuccessful) {
+                    let resultAlert = `<div class="alert alert-danger alert-dismissible fade show" role="alert">
+                        `+errorMessage+`
+                        <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                            <span aria-hidden="true">&times;</span>
+                        </button>
+                    </div>`;
+                    $("#alerts").append(resultAlert);
+                     setTimeout(function() {
+                         $(".alert-danger").alert('close');
+                     }, 2000);
+                 }
+                generateBomTable();
+             }
+         });
+     } else {
+         let componentType = $row.find('select.componentTypeSelect').val();
+         let componentId = $row.find('select.componentDeviceSelect').val();
+         const data = {rowId: rowId, componentType: componentType, componentId: componentId, quantity: quantity};
+         editBomRow(data);
+        generateBomTable();
+     }
 });
 
 function editBomRow(data)
@@ -460,3 +562,6 @@ $("#nextBom").click(function(){
                     .prop('selected', true);
     $("#list__device").selectpicker('refresh').change();
 });
+
+
+
