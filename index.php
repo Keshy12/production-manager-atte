@@ -85,6 +85,10 @@ switch ($request) {
         includeWithVariables($headerDir, array('title' => 'Pobierz z zamówień'));
         require $componentsDir . '/admin/components/fromorders/from-orders-view.php';
         break;
+    case 'admin/components/update-prices':
+        includeWithVariables($headerDir, array('title' => 'Aktualizuj Ceny'));
+        require $componentsDir . '/admin/components/updateprices/update-prices-view.php';
+        break;
     case 'admin/magazines/edit':
         includeWithVariables($headerDir, array('title' => 'Edycja Magazynów'));
         require $componentsDir . '/admin/magazines/edit/edit-magazines-view.php';
