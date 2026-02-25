@@ -78,6 +78,12 @@ include('modals.php');
 <div class="d-flex justify-content-center mt-2" id="alerts"></div>
 
 <div class="d-flex justify-content-center mt-4">
+    <div id="bomTotalPriceContainer" style="display:none;" class="text-muted small">
+        Suma BOM: <b><span id="bomTotalPrice">0.00</span> PLN</b>
+    </div>
+</div>
+
+<div class="d-flex justify-content-center mt-4">
     <table class="table table-bordered table-sm text-center" style="max-width: 800px;">
         <thead>
             <tr>

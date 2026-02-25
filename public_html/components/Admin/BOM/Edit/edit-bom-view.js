@@ -6,6 +6,7 @@ function render(props) {
 
 $("#bomTypeSelect").change(function(){
     $("#list__device, #versionSelect, #laminateSelect, #editBomTBody, #alerts").empty();
+    $("#bomTotalPriceContainer").hide(); // Hide price on type change
     $('#list__'+this.value+'_hidden option').clone()
                                             .appendTo('#list__device');
     $('#list__device, #previousBom, #nextBom').prop("disabled", false)
@@ -30,11 +31,13 @@ function showAdditionalFields(type)
 }
 
 $("#versionSelect").change(function(){
+    $("#bomTotalPriceContainer").hide(); // Hide price on version change
     generateBomTable();
 });
 
 $("#list__device").change(function(){
     $("#editBomTBody, #alerts").empty();
+    $("#bomTotalPriceContainer").hide(); // Hide price on device change
     let bomType = $("#bomTypeSelect").val();
     $("#versionSelect, #laminateSelect").empty();
     generateAdditionalFields(bomType);
@@ -111,6 +114,7 @@ function generateVersionSelect(possibleVersions){
 
 $("#laminateSelect").change(function(){
     $("#versionSelect").empty();
+    $("#bomTotalPriceContainer").hide(); // Hide price on laminate change
     let possibleVersions = $("#laminateSelect option:selected").data("jsonversions");
     generateVersionSelect(possibleVersions);
     $("#versionSelect").prop('disabled', false);
@@ -175,19 +179,23 @@ function generateBomTable()
             let outSmdQty = result[8];
             let outSmdPricePerItem = result[9];
             let outThtPricePerItem = result[10];
+            let bomTotalPrice = result[11];
             if(!wasSuccessful) {
                 let resultAlert = `<tr>
                 <td colspan="3"><div class="alert alert-danger" role="alert">
                     `+errorMessage+`
                 </div></td>
                 </tr>`;
-                $("#createNewBomFields, #isActiveField").hide();
+                $("#createNewBomFields, #isActiveField, #bomTotalPriceContainer").hide();
                 // $("#editButtonsCol").hide(); // Remove this line
                 $("#alerts").append(resultAlert);
                 return;
             }
             $("#createNewBomFields").attr('data-bom-id', bomId);
             $("#isActive").prop('checked', isActive);
+            
+            $("#bomTotalPrice").text(bomTotalPrice.toFixed(2));
+            $("#bomTotalPriceContainer").show();
 
             if (isEditable) {
                 $("#createNewBomFields, #isActiveField").show();
@@ -195,6 +203,7 @@ function generateBomTable()
                 $("#createNewBomFields, #isActiveField").hide();
             }
             
+            let hasMissingDefault = false;
             
             if(outSmdPrice !== null) {
                 let smdItem = {
@@ -228,9 +237,17 @@ function generateBomTable()
             
             for(const [key, item] of Object.entries(components))
             {
-                // Assign placeholder price for regular components
-                item.price = `<b>`+item.totalPrice.toFixed(2)+`PLN</b>`;
-                 item.quantity = `<span class="qty-value">`+item.quantity+`</span>` + `<br><span class="text-muted small">`+ item.pricePerItem.toFixed(2) + `PLN/szt</span>`;
+                // Highlight missing defaults in red
+                if (item.missing_default == 1) {
+                    hasMissingDefault = true;
+                    item.componentName = `<span class="text-danger">` + item.componentName + `</span>`;
+                    item.componentDescription = `<span class="text-danger small font-weight-bold">Brak domyślnej wersji BOM dla tego komponentu!</span><br>` + item.componentDescription;
+                    item.price = `<b class="text-danger">` + item.totalPrice.toFixed(2) + `PLN</b>`;
+                } else {
+                    item.price = `<b>` + item.totalPrice.toFixed(2) + `PLN</b>`;
+                }
+
+                item.quantity = `<span class="qty-value">`+item.quantity+`</span>` + `<br><span class="text-muted small">`+ item.pricePerItem.toFixed(2) + `PLN/szt</span>`;
                 let renderedItem = bomEditTableRow_template.map(render(item)).join('');
                 let $renderedItem = $(renderedItem);
                 
@@ -250,6 +267,12 @@ function generateBomTable()
                 }
                 
                 $TBody.append($renderedItem);
+            }
+
+            if (hasMissingDefault) {
+                $("#bomTotalPriceContainer").addClass("text-danger").removeClass("text-muted");
+            } else {
+                $("#bomTotalPriceContainer").addClass("text-muted").removeClass("text-danger");
             }
         }
     });

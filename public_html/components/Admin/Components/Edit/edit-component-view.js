@@ -1,10 +1,11 @@
-let $formFields = $("#name, #description, #partGroup, #partType, #jm");
+let $formFields = $("#name, #description, #partGroup, #partType, #jm, #price, #defaultBomId");
 
 function clearForm()
 {
     $("#header").text("Dodaj komponent")
-    $("#name, #description, #partGroup, #partType, #jm, #file-input").val('');
+    $("#name, #description, #partGroup, #partType, #jm, #file-input, #price, #defaultBomId").val('');
     $("#partGroup, #partType, #jm").selectpicker('refresh');
+    $("#defaultLaminateSelect, #defaultVersionSelect").empty().selectpicker('refresh');
     $("#circleCheckbox, #triangleCheckbox, #squareCheckbox, #autoProduceCheckbox").prop('checked', false);
     $("#list__device").val('').selectpicker('refresh');
     $("#deviceImage").attr('src', ROOT_DIR+"/public_html/assets/img/production/default.webp");
@@ -18,10 +19,16 @@ $("#deviceType").change(function(){
     $("#list__device").prop('disabled', false).selectpicker('refresh');
     $("#previousItem, #nextItem, #deselect").prop('disabled', false)
     $("#componentFormContainer, #cloneDevice").show();
-    $("#thtAdditionalFields, #partsAdditionalFields, #saveChange, #cloneSelect, #autoProduceFields").hide();
+    $("#thtAdditionalFields, #partsAdditionalFields, #saveChange, #cloneSelect, #autoProduceFields, #priceField, #defaultBomField").hide();
     $("#"+deviceType+"AdditionalFields").show();
     if(deviceType === 'tht' || deviceType === 'sku') {
         $("#autoProduceFields").show();
+    }
+    if(deviceType === 'parts') {
+        $("#priceField").show();
+    }
+    if(deviceType === 'tht' || deviceType === 'smd') {
+        $("#defaultBomField").show();
     }
     clearForm();
     showAddFields();
@@ -47,6 +54,7 @@ function writeValuesToForm(values)
 {
     $("#name").val(values.name);
     $("#description").val(values.description);
+    $("#price").val(values.price);
     selectOptionsInForm(values);
     selectCheckboxesInForm(values);
     $("#file-input").val('');
@@ -58,6 +66,15 @@ function selectOptionsInForm(values)
     let partType = values.PartType == null ? 0 : values.PartType;
     $("#partType").val(partType).selectpicker('refresh');
     $("#jm").val(values.JM).selectpicker('refresh');
+    
+    if (values.default_bom_id) {
+        // We need to find which version/laminate corresponds to this BOM ID
+        // This is tricky because the BOM ID is not directly in the selectors yet.
+        // We'll handle this in populateDefaultBomSelectors
+        $("#defaultBomId").val(values.default_bom_id);
+    } else {
+        $("#defaultBomId").val('');
+    }
 }
 
 function selectCheckboxesInForm(values)
@@ -110,20 +127,106 @@ $("#list__device").change(function(){
     }
     let deviceType = $("#deviceType").val();
     let deviceId = this.value;
+    generateAdditionalFields(deviceType, deviceId);
     let deviceValues = getDeviceValues(deviceType, deviceId);
     writeValuesToForm(deviceValues);
     showEditFields();
-    generateAdditionalFields(deviceType);
     loadDevicePicture(deviceType, deviceId);
+    
+    // Set default BOM selectors based on values
+    if (deviceValues.default_bom_id) {
+        setDefaultBomSelectors(deviceType, deviceValues.default_bom_id);
+    }
 });
 
-function generateAdditionalFields(type)
+function generateAdditionalFields(type, deviceId)
 {
     if(type === 'sku' || type === "tht") {
         let possibleVersions = $("#list__device option:selected").data("jsonversions");
         generateVersionSelect(possibleVersions);
     }
+    
+    if(type === 'sku' || type === 'tht' || type === 'smd') {
+        populateDefaultBomSelectors(type);
+    }
 }
+
+function populateDefaultBomSelectors(type) {
+    $("#defaultLaminateField, #defaultVersionField").hide();
+    $("#defaultLaminateSelect, #defaultVersionSelect").empty().selectpicker('refresh');
+    
+    let $selectedOption = $("#list__device option:selected");
+    
+    if (type === 'sku' || type === 'tht') {
+        $("#defaultVersionField").show();
+        let possibleVersions = $selectedOption.data("jsonversions");
+        let bomIds = $selectedOption.data("bomids");
+        generateDefaultVersionSelect(possibleVersions, bomIds);
+    } else if (type === 'smd') {
+        $("#defaultLaminateField, #defaultVersionField").show();
+        let possibleLaminates = $selectedOption.data("jsonlaminates");
+        generateDefaultLaminateSelect(possibleLaminates);
+    }
+}
+
+function generateDefaultLaminateSelect(possibleLaminates) {
+    let $select = $("#defaultLaminateSelect");
+    $select.empty().append('<option value="">Wybierz laminat...</option>');
+    for (let laminate_id in possibleLaminates) {
+        let laminate_name = possibleLaminates[laminate_id][0];
+        let versions = JSON.stringify(possibleLaminates[laminate_id]['versions']);
+        let bomIds = JSON.stringify(possibleLaminates[laminate_id]['bomIds']);
+        let option = $("<option value='" + laminate_id + "' data-jsonversions='" + versions + "' data-bomids='" + bomIds + "'>" + laminate_name + "</option>");
+        $select.append(option);
+    }
+    $select.selectpicker('refresh');
+}
+
+function generateDefaultVersionSelect(possibleVersions, bomIds) {
+    let $select = $("#defaultVersionSelect");
+    $select.empty().append('<option value="">Wybierz wersję...</option>');
+    
+    for (let i in possibleVersions) {
+        let version = possibleVersions[i] === null ? 'n/d' : possibleVersions[i];
+        let bomId = bomIds[i];
+        let option = $("<option value='" + bomId + "'>" + version + "</option>");
+        $select.append(option);
+    }
+    $select.selectpicker('refresh');
+}
+
+$("#defaultLaminateSelect").change(function() {
+    let $selectedOption = $(this).find("option:selected");
+    let possibleVersions = $selectedOption.data("jsonversions");
+    let bomIds = $selectedOption.data("bomids");
+    generateDefaultVersionSelect(possibleVersions, bomIds);
+});
+
+$("#defaultVersionSelect").change(function() {
+    $("#defaultBomId").val($(this).val());
+});
+
+function setDefaultBomSelectors(type, defaultBomId) {
+    if (type === 'sku' || type === 'tht') {
+        $("#defaultVersionSelect").val(defaultBomId).selectpicker('refresh');
+    } else if (type === 'smd') {
+        // For SMD we need to find which laminate contains this BOM ID
+        let $laminateOptions = $("#defaultLaminateSelect option");
+        $laminateOptions.each(function() {
+            let bomIds = $(this).data("bomids");
+            // bomIds might be an object if PHP used JSON_FORCE_OBJECT or keys are non-sequential
+            let bomIdsArray = typeof bomIds === 'object' ? Object.values(bomIds) : bomIds;
+            
+            if (bomIdsArray && bomIdsArray.map(Number).includes(parseInt(defaultBomId))) {
+                $("#defaultLaminateSelect").val($(this).val()).selectpicker('refresh').change();
+                $("#defaultVersionSelect").val(defaultBomId).selectpicker('refresh');
+                return false;
+            }
+        });
+    }
+}
+
+
 
 $("#previousItem").click(function(){
     let $selectedOption = $("#list__device option:selected");

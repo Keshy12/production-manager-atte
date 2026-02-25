@@ -14,14 +14,15 @@ $list__laminate_desc = $MsaDB -> readIdName("list__laminate", "id", "description
 ?>
 
 <select id="list__sku_hidden" hidden>
-    <?= $selectRenderer->renderSKUBomSelect() ?>
+    <?= $selectRenderer->renderSKUBomSelect(isLeftJoin: true) ?>
 </select>
 <select id="list__tht_hidden" hidden>
-    <?= $selectRenderer->renderTHTBomSelect() ?>
+    <?= $selectRenderer->renderTHTBomSelect(isLeftJoin: true) ?>
 </select>
 <select id="list__smd_hidden" hidden>
-    <?= $selectRenderer->renderSMDSelect() ?>
+    <?= $selectRenderer->renderSMDBomSelect() ?>
 </select>
+
 <select id="list__laminate_hidden" hidden>
     <?= $selectRenderer->renderArraySelectWithSubtext($list__laminate, $list__laminate_desc) ?>
 </select>
@@ -84,6 +85,27 @@ $list__laminate_desc = $MsaDB -> readIdName("list__laminate", "id", "description
             <label>Opis</label>
             <textarea class="form-control" id="description" name="description" rows="3"></textarea>
         </div>
+        <div id="priceField" style="display: none;" class="form-group">
+            <label id="priceLabel">Cena za sztukę (PLN) - TYLKO DO ODCZYTU</label>
+            <input type="number" step="0.01" min="0" id="price" name="price" class="form-control" readonly>
+        </div>
+        <div id="defaultBomField" style="display: none;" class="form-group">
+            <label>Domyślna wersja BOM (do analizy cen)</label>
+            <div class="d-flex">
+                <span id="defaultLaminateField" style="display:none;" class="mr-2">
+                    <select id="defaultLaminateSelect" data-width="200px" 
+                            data-title="Laminat..." class="selectpicker">
+                    </select>
+                </span>
+                <span id="defaultVersionField" style="display:none;">
+                    <select id="defaultVersionSelect" data-width="200px" 
+                            data-title="Wersja..." class="selectpicker">
+                    </select>
+                </span>
+            </div>
+            <input type="hidden" id="defaultBomId" name="defaultBomId">
+        </div>
+
 
         <div id="thtAdditionalFields" style="display: none;" class="text-center">
             <div class="d-inline">
