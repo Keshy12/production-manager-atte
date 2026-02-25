@@ -1,7 +1,9 @@
 <?php
 use Atte\DB\MsaDB;
+use Atte\Utils\Bom\PriceCalculator;
 
 $MsaDB = MsaDB::getInstance();
+
 
 $deviceType = $_POST["deviceType"];
 $deviceId = $_POST["deviceId"];
@@ -14,9 +16,14 @@ $componentValues = [
     "isActive" => $isActive
 ];
 
+if (isset($_POST["defaultBomId"])) {
+    $componentValues["default_bom_id"] = $_POST["defaultBomId"] == "" ? null : $_POST["defaultBomId"];
+}
+
 switch($deviceType)
 {
     case "tht":
+
         // Only checked checkboxes are posted, so make false the default state
         // and change accordingly.
         $marking = $_POST["marking"] ?? [];
@@ -43,12 +50,25 @@ $editSuccessful = true;
 try
 {
     $MsaDB -> update("list__".$deviceType, $componentValues, "id", $deviceId);
+    
+    $PriceCalculator = new PriceCalculator($MsaDB);
+    if ($deviceType === 'parts') {
+        $PriceCalculator->propagatePriceChange($deviceId, 'parts');
+    } elseif (array_key_exists('default_bom_id', $componentValues)) {
+        if ($componentValues['default_bom_id'] !== null) {
+            $PriceCalculator->updateBomPriceAndPropagate((int)$componentValues['default_bom_id'], $deviceType);
+        } else {
+            // If default BOM was removed, propagate 0 price to parents
+            $PriceCalculator->propagatePriceChange($deviceId, $deviceType);
+        }
+    }
 }
 catch(\Throwable $e)
 {
     $editResult = "Wystąpił błąd podczas edycji. Treść błędu: ".$e->getMessage();
     $editSuccessful = false;
 }
+
 
 function convertToJpegAndSave($fileExtension, $fileTmpPath, $newFilePath)
 {

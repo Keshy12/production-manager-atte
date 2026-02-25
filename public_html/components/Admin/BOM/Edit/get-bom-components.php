@@ -67,7 +67,9 @@ try {
 $bomComponents = [];
 $bomId = null;
 $bomIsActive = false;
+$bomPrice = 0.00;
 $outThtQuantity = null;
+$outThtPrice = null; // Initialize here
 $outSmdPrice = null;
 $outSmdQty = null;
 $outSmdPricePerItem = null;
@@ -77,6 +79,7 @@ if($wasSuccessful) {
     $bom = $bomsFound[0];
     $bomId = $bom -> id;
     $bomIsActive = $bom -> isActive;
+
     if($bomType == 'tht') {
         $outThtQuantity = $bom -> out_tht_quantity;
         $outThtPricePerItem = 1; // 1 PLN per unit as per user example
@@ -86,6 +89,13 @@ if($wasSuccessful) {
         $outThtPricePerItem = null;
     }
     $bomComponents = $bom -> getComponents(1);
+    
+    // Calculate BOM price dynamically from components
+    $bomPrice = 0.00;
+    foreach ($bomComponents as $component) {
+        $bomPrice += (float)$component['totalPrice'];
+    }
+
     if($bomType == 'smd') {
         $outSmdQty = 0;
         foreach ($bomComponents as $component) {
@@ -93,6 +103,11 @@ if($wasSuccessful) {
         }
         $outSmdPricePerItem = 0.06;
         $outSmdPrice = $outSmdQty * $outSmdPricePerItem;
+        $bomPrice += $outSmdPrice;
+    }
+
+    if($bomType == 'tht') {
+        $bomPrice += (float)$outThtPrice;
     }
 
     $generateComponentInfo = function(&$row) use (
@@ -122,5 +137,5 @@ if($wasSuccessful) {
     }
 }
 
-echo json_encode([$bomComponents, $bomId, $bomIsActive, $wasSuccessful, $errorMessage, $outThtQuantity, $outThtPrice, $outSmdPrice, $outSmdQty, $outSmdPricePerItem, $outThtPricePerItem]
+echo json_encode([$bomComponents, $bomId, $bomIsActive, $wasSuccessful, $errorMessage, $outThtQuantity, $outThtPrice, $outSmdPrice, $outSmdQty, $outSmdPricePerItem, $outThtPricePerItem, $bomPrice]
     , JSON_FORCE_OBJECT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);

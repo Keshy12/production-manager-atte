@@ -11,9 +11,14 @@ $componentValues = [
     "isActive" => true
 ];
 
+if (isset($_POST["defaultBomId"])) {
+    $componentValues["default_bom_id"] = $_POST["defaultBomId"] == "" ? null : $_POST["defaultBomId"];
+}
+
 switch($deviceType)
 {
     case "tht":
+
         // Only checked checkboxes are posted, so make false the default state
         // and change accordingly.
         $defaultKeys = ['circle_checked', 'triangle_checked', 'square_checked'];

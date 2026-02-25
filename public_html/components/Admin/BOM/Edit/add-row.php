@@ -1,7 +1,9 @@
 <?php
 use Atte\DB\MsaDB;
+use Atte\Utils\Bom\PriceCalculator;
 
 $MsaDB = MsaDB::getInstance();
+
 $MsaDB -> db -> beginTransaction();
 
 $wasSuccessful = true;
@@ -35,7 +37,16 @@ catch (\Throwable $e)
 
 if($wasSuccessful) {
     $MsaDB -> db -> commit();
+    
+    // Recalculate price
+    $PriceCalculator = new PriceCalculator($MsaDB);
+    try {
+        $PriceCalculator->updateBomPriceAndPropagate((int)$bomId, $bomType);
+    } catch (\Throwable $e) {
+        // Silently fail or log
+    }
 }
+
 else {
     $MsaDB -> db -> rollBack();
 }

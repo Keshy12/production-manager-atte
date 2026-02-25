@@ -88,11 +88,12 @@ class SelectRenderer {
         $result = [];
         $list__laminate = $MsaDB -> readIdName('list__laminate', 'id', 'name', 'WHERE isActive = 1');
         $possibleLamAndVer = $MsaDB -> query("SELECT 
-                                                l.id, 
+                                                l.id as device_id, 
                                                 l.name, 
                                                 l.description, 
                                                 b.laminate_id, 
-                                                b.version 
+                                                b.version,
+                                                b.id as bom_id
                                               FROM `list__smd` l 
                                               JOIN bom__smd b 
                                               ON l.id = b.smd_id 
@@ -100,15 +101,23 @@ class SelectRenderer {
                                               AND b.isActive = 1
                                               ORDER BY l.id, version ASC;");
         foreach($possibleLamAndVer as $row){
-            list($id, $name, $description, $laminate_id, $version) = $row;
+            $id = $row['device_id'];
+            $name = $row['name'];
+            $description = $row['description'];
+            $laminate_id = $row['laminate_id'];
+            $version = $row['version'];
+            $bom_id = $row['bom_id'];
+
             if(!isset($result[$id]))
                 $result[$id] = [$name, $description, "laminate_id" => []];
             if(!isset($result[$id]["laminate_id"][$laminate_id])) 
-                $result[$id]["laminate_id"][$laminate_id] = [$list__laminate[$laminate_id], "versions" => []];
+                $result[$id]["laminate_id"][$laminate_id] = [$list__laminate[$laminate_id], "versions" => [], "bomIds" => []];
             $result[$id]["laminate_id"][$laminate_id]["versions"][] = $version;
+            $result[$id]["laminate_id"][$laminate_id]["bomIds"][] = $bom_id;
         }
         return $result;
     }
+
 
     public function renderPartsSelect($additionalClause = "ORDER BY id ASC", ?array $used__parts = null) {
         $MsaDB = $this -> MsaDB;

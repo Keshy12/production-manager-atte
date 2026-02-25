@@ -34,36 +34,57 @@ class Bom {
                                                 b.parts_id, 
                                                  b.quantity * {$quantity} AS qty,
                                                  IF(t.isAutoProduced = 1 OR s.isAutoProduced = 1, 1, 0) AS isAutoProduced,
-                                                 COALESCE(s.price, t.price, sm.price, p.price) AS price_per_item
+                                                 COALESCE(bs.price, bt.price, bt_f.price, bsm.price, bsm_f.price, p.price) AS price_per_item,
+                                                 CASE 
+                                                    WHEN b.tht_id IS NOT NULL AND bt.id IS NULL THEN 1
+                                                    WHEN b.smd_id IS NOT NULL AND bsm.id IS NULL THEN 1
+                                                    WHEN b.sku_id IS NOT NULL AND bs.id IS NULL THEN 1
+                                                    ELSE 0
+                                                 END AS missing_default
                                              FROM 
                                                  bom__flat AS b
                                              LEFT JOIN 
                                                  list__tht AS t ON b.tht_id = t.id
+                                             LEFT JOIN
+                                                 bom__tht AS bt ON t.default_bom_id = bt.id
+                                             LEFT JOIN (
+                                                 SELECT tht_id, price FROM bom__tht b1 
+                                                 WHERE isActive = 1 AND id = (SELECT MIN(id) FROM bom__tht b2 WHERE b1.tht_id = b2.tht_id AND b2.isActive = 1)
+                                             ) AS bt_f ON b.tht_id = bt_f.tht_id
                                              LEFT JOIN 
                                                  list__sku AS s ON b.sku_id = s.id
+                                             LEFT JOIN
+                                                 bom__sku AS bs ON s.id = bs.sku_id AND bs.isActive = 1
                                              LEFT JOIN 
                                                  list__smd AS sm ON b.smd_id = sm.id
+                                             LEFT JOIN
+                                                 bom__smd AS bsm ON sm.default_bom_id = bsm.id
+                                             LEFT JOIN (
+                                                 SELECT smd_id, price FROM bom__smd b1 
+                                                 WHERE isActive = 1 AND id = (SELECT MIN(id) FROM bom__smd b2 WHERE b1.smd_id = b2.smd_id AND b2.isActive = 1)
+                                             ) AS bsm_f ON b.smd_id = bsm_f.smd_id
                                              LEFT JOIN 
                                                  list__parts AS p ON b.parts_id = p.id
                                              WHERE 
                                                  b.bom_{$deviceType}_id = '{$id}'
                                              ");
+
         $result = array();
         foreach($components as $component){
-            $rowId = $component[0];
+            $rowId = $component['id'];
             $type = "sku";
-            $device_id = $component[1];
-            if(!empty($component[2])){
+            $device_id = $component['sku_id'];
+            if(!empty($component['tht_id'])){
                 $type = "tht";
-                $device_id = $component[2];
+                $device_id = $component['tht_id'];
             }
-            else if(!empty($component[3])){
+            else if(!empty($component['smd_id'])){
                 $type = "smd";
-                $device_id = $component[3];
+                $device_id = $component['smd_id'];
             }
-            else if(!empty($component[4])){
+            else if(!empty($component['parts_id'])){
                 $type = "parts";
-                $device_id = $component[4];
+                $device_id = $component['parts_id'];
             }
             $pricePerItem = (float)$component["price_per_item"];
             $totalPrice = $component["qty"] * $pricePerItem;
@@ -74,7 +95,8 @@ class Bom {
                 "quantity" => $component["qty"]+0, 
                 "autoProduce" => $component["isAutoProduced"],
                 "pricePerItem" => $pricePerItem,
-                "totalPrice" => $totalPrice
+                "totalPrice" => $totalPrice,
+                "missing_default" => $component['missing_default']
             ];
         }
         return $result;

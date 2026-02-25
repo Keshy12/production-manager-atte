@@ -1,5 +1,6 @@
 <?php
 use Atte\DB\MsaDB;
+use Atte\Utils\Bom\PriceCalculator;
 
 $MsaDB = MsaDB::getInstance();
 
@@ -11,7 +12,11 @@ $errorMessage = '';
 
 try {
     $MsaDB->update('bom__tht', ['out_tht_quantity' => $quantity], 'id', $bomId);
+    
+    $PriceCalculator = new PriceCalculator($MsaDB);
+    $PriceCalculator->updateBomPriceAndPropagate((int)$bomId, 'tht');
 } catch (Exception $e) {
+
     $wasSuccessful = false;
     $errorMessage = $e->getMessage();
 }

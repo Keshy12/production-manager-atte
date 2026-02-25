@@ -1,7 +1,9 @@
 <?php
 use Atte\DB\MsaDB;
+use Atte\Utils\Bom\PriceCalculator;
 
 $MsaDB = MsaDB::getInstance();
+
 $MsaDB -> db -> beginTransaction();
 
 $thtData = json_decode($_POST['thtData'], true);
@@ -25,7 +27,17 @@ try{
     insertBomTHT($MsaDB, $thtData);
     insertBomSMD($MsaDB, $smdData);  
     $MsaDB -> db -> commit(); 
+
+    // Recalculate prices for both BOMs
+    $PriceCalculator = new PriceCalculator($MsaDB);
+    if ($thtData['bomId']) {
+        try { $PriceCalculator->updateBomPriceAndPropagate((int)$thtData['bomId'], 'tht'); } catch (\Throwable $e) {}
+    }
+    if ($smdData['bomId']) {
+        try { $PriceCalculator->updateBomPriceAndPropagate((int)$smdData['bomId'], 'smd'); } catch (\Throwable $e) {}
+    }
 } 
+
 catch (\Throwable $e) {
     $wasSuccessful = false;
     $resultMessage = "Dodawanie BOMu nie powiodło się. Kod błędu: ".$e->getMessage();
