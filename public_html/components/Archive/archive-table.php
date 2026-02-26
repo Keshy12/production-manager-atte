@@ -97,7 +97,8 @@ if ($noGrouping) {
                     i.id, i.qty, i.timestamp, i.comment, i.is_cancelled,
                     i.{$type}_id as device_id, l.name as device_name,
                     m.sub_magazine_name, u.name as user_name, u.surname as user_surname,
-                    it.name as input_type_name, '$type' as device_type, i.transfer_group_id
+                    it.name as input_type_name, '$type' as device_type, i.transfer_group_id,
+                    u.sub_magazine_id as creator_wh_id
                 FROM `inventory__{$type}` i
                 LEFT JOIN list__{$type} l ON i.{$type}_id = l.id
                 LEFT JOIN magazine__list m ON i.sub_magazine_id = m.sub_magazine_id
@@ -176,28 +177,87 @@ if ($noGrouping) {
 
     $deviceSummaries = [];
     foreach ($deviceTypes as $type) {
-        $summaryQuery = "SELECT i.transfer_group_id, i.{$type}_id as device_id, l.name as device_name, '$type' as device_type, SUM(i.qty) as total_qty, COUNT(*) as total_entries_count, SUM(i.is_cancelled) as total_cancelled_count FROM `inventory__{$type}` i LEFT JOIN list__{$type} l ON i.{$type}_id = l.id WHERE i.transfer_group_id IN ($tgIdsStr) " . ($showCancelled ? "" : "AND i.is_cancelled = 0") . " GROUP BY i.transfer_group_id, i.{$type}_id";
-        foreach ($MsaDB->query($summaryQuery, PDO::FETCH_ASSOC) as $s) $deviceSummaries[$s['transfer_group_id']][] = $s;
+        $summaryQuery = "
+            SELECT 
+                i.transfer_group_id, 
+                i.{$type}_id as device_id, 
+                l.name as device_name, 
+                '$type' as device_type, 
+                i.sub_magazine_id,
+                m.sub_magazine_name,
+                SUM(i.qty) as qty,
+                COUNT(*) as entries_count,
+                SUM(i.is_cancelled) as cancelled_count,
+                u.sub_magazine_id as creator_wh_id
+            FROM `inventory__{$type}` i 
+            LEFT JOIN list__{$type} l ON i.{$type}_id = l.id 
+            LEFT JOIN magazine__list m ON i.sub_magazine_id = m.sub_magazine_id
+            LEFT JOIN inventory__transfer_groups tg ON i.transfer_group_id = tg.id
+            LEFT JOIN user u ON tg.created_by = u.user_id
+            WHERE i.transfer_group_id IN ($tgIdsStr) " . ($showCancelled ? "" : "AND i.is_cancelled = 0") . " 
+            GROUP BY i.transfer_group_id, i.{$type}_id, i.sub_magazine_id
+        ";
+        
+        foreach ($MsaDB->query($summaryQuery, PDO::FETCH_ASSOC) as $row) {
+            $tgId = $row['transfer_group_id'];
+            $devId = $row['device_id'];
+            $devType = $row['device_type'];
+            $key = $devType . '_' . $devId;
+            $isCreatorWh = ($row['creator_wh_id'] && $row['sub_magazine_id'] == $row['creator_wh_id']);
+            
+            if (!isset($deviceSummaries[$tgId][$key])) {
+                $deviceSummaries[$tgId][$key] = [
+                    'device_id' => $devId,
+                    'device_name' => $row['device_name'],
+                    'device_type' => $devType,
+                    'total_qty' => 0,
+                    'total_entries_count' => 0,
+                    'total_cancelled_count' => 0,
+                    'user_wh_qty' => 0,
+                    'other_wh_breakdown' => []
+                ];
+            }
+            
+            $deviceSummaries[$tgId][$key]['total_qty'] += $row['qty'];
+            $deviceSummaries[$tgId][$key]['total_entries_count'] += $row['entries_count'];
+            $deviceSummaries[$tgId][$key]['total_cancelled_count'] += $row['cancelled_count'];
+            
+            if ($isCreatorWh) {
+                $deviceSummaries[$tgId][$key]['user_wh_qty'] += $row['qty'];
+            } else {
+                $deviceSummaries[$tgId][$key]['other_wh_breakdown'][] = [
+                    'name' => $row['sub_magazine_name'],
+                    'qty' => $row['qty']
+                ];
+            }
+        }
     }
 
     $groups = [];
     foreach ($tgIds as $id) {
         $meta = $metadataMap[$id] ?? null; if (!$meta) continue;
-        $summaries = $deviceSummaries[$id] ?? [];
-        $tQty = 0; $cCount = 0; $eCount = 0; $devices = [];
-        foreach ($summaries as $s) {
-            $tQty += $s['total_qty']; $cCount += $s['total_cancelled_count']; $eCount += $s['total_entries_count'];
+        $summaries = isset($deviceSummaries[$id]) ? array_values($deviceSummaries[$id]) : [];
+        $tQty = 0; $cCount = 0; $eCount = 0;
+        foreach ($summaries as &$s) {
+            $tQty += $s['total_qty']; 
+            $cCount += $s['total_cancelled_count']; 
+            $eCount += $s['total_entries_count'];
             $s['all_cancelled'] = $s['total_cancelled_count'] == $s['total_entries_count'];
             $s['has_cancelled'] = $s['total_cancelled_count'] > 0;
-            $s['entries_loaded'] = 0;
-            $s['has_more_entries'] = true;
-            $devices[] = $s;
         }
         $groups[] = [
-            'group_id' => $id, 'group_notes' => \Atte\Utils\TransferGroupManager::formatNote($meta['group_template'] ?? '', $meta['params'] ?? '[]'),
-            'group_created_at' => $meta['created_at'], 'user_name' => $meta['user_name'], 'user_surname' => $meta['user_surname'],
-            'total_qty' => $tQty, 'devices' => $devices, 'entries_count' => $eCount, 'cancelled_count' => $cCount,
-            'has_cancelled' => $cCount > 0, 'all_cancelled' => $cCount === $eCount
+            'group_id' => $id, 
+            'group_notes' => \Atte\Utils\TransferGroupManager::formatNote($meta['group_template'] ?? '', $meta['params'] ?? '[]'),
+            'group_created_at' => $meta['created_at'], 
+            'user_name' => $meta['user_name'], 
+            'user_surname' => $meta['user_surname'],
+            'creator_wh_id' => $meta['sub_magazine_id'] ?? null,
+            'total_qty' => $tQty, 
+            'devices' => $summaries, 
+            'entries_count' => $eCount, 
+            'cancelled_count' => $cCount,
+            'has_cancelled' => $cCount > 0, 
+            'all_cancelled' => $cCount === $eCount
         ];
     }
 

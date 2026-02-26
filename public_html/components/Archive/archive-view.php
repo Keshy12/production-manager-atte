@@ -12,13 +12,13 @@ $magazine_list = $MsaDB->readIdName("magazine__list", "sub_magazine_id", "sub_ma
 <style>
     .group-row {
         font-weight: bold;
-        background-color: #f8f9fa !important;
+        background-color: #f8f9fa;
     }
     .group-row[data-toggle="collapse"] {
         cursor: pointer;
     }
     .group-row[data-toggle="collapse"]:hover {
-        background-color: #e9ecef !important;
+        background-color: #e9ecef;
     }
     .group-row .toggle-icon {
         transition: transform 0.2s;
@@ -28,6 +28,16 @@ $magazine_list = $MsaDB->readIdName("magazine__list", "sub_magazine_id", "sub_ma
     .group-row[aria-expanded="true"] .toggle-icon {
         transform: rotate(90deg);
     }
+    .expanded-active {
+        background-color: #e7f1ff !important;
+        border-left: 4px solid #007bff;
+    }
+    .d-none-simple {
+        display: none !important;
+    }
+    .selected-row {
+        background-color: #ffcccc !important;
+    }
     .indent-cell {
         padding-left: 30px !important;
     }
@@ -36,11 +46,11 @@ $magazine_list = $MsaDB->readIdName("magazine__list", "sub_magazine_id", "sub_ma
     }
     /* Device row styling (Level 2) */
     .device-row {
-        background-color: #f0f4f8 !important;
+        background-color: #f0f4f8;
         cursor: pointer;
     }
     .device-row:hover {
-        background-color: #e3e9f0 !important;
+        background-color: #e3e9f0;
     }
     .device-row .toggle-icon-device {
         transition: transform 0.2s;
@@ -53,7 +63,7 @@ $magazine_list = $MsaDB->readIdName("magazine__list", "sub_magazine_id", "sub_ma
     }
     /* Detail row Level 2 styling */
     .detail-row-level-2 {
-        background-color: #fff !important;
+        background-color: #fff;
     }
     /* Qty breakdown in group header */
     .qty-breakdown {

@@ -95,15 +95,20 @@ function handleDeviceTypeChange(type) {
         clearTable(); 
         return; 
     }
-    if (type === 'all') { 
+    
+    // Auto-toggle grouping based on type
+    if (type === 'all') {
+        $("#noGrouping, #quickNoGrouping").prop('checked', false);
         $("#list__device").prop("disabled", true).selectpicker('refresh'); 
-    } else { 
+    } else {
+        $("#noGrouping, #quickNoGrouping").prop('checked', true);
         const $source = $('#list__' + type);
         if ($source.length) {
             $source.find('option').clone().appendTo('#list__device');
         }
         $('#list__device').prop("disabled", false).selectpicker('refresh'); 
     }
+    
     resetToFirstPage();
     loadArchive();
 }
@@ -189,21 +194,52 @@ function renderArchiveTable(res) {
         if (res.groups.length === 0) { $tbody.append(`<tr><td colspan="8" class="text-center text-muted">Brak danych</td></tr>`); return; }
         res.groups.forEach((group, gIdx) => {
             const userName = `${group.user_name || ''} ${group.user_surname || ''}`.trim();
-            renderGroupHeader(group, gIdx, userName);
+            const devCount = group.devices ? group.devices.length : 0;
+            const entriesCount = parseInt(group.entries_count || 0);
+            
+            // Skip level 2 ONLY if entries_count <= 5 AND (only 1 device OR multiple devices with 1 row each)
+            let isSimpleGroup = false;
+            if (entriesCount <= 5) {
+                if (devCount === 1) {
+                    isSimpleGroup = true;
+                } else if (devCount > 1) {
+                    isSimpleGroup = group.devices.every(dev => parseInt(dev.total_entries_count) === 1);
+                }
+            }
+            
+            renderGroupHeader(group, gIdx, userName, isSimpleGroup);
+            
+            const deviceToIdx = {};
             if (group.devices) {
                 group.devices.forEach((dev, dIdx) => {
-                    renderDeviceRow(dev, gIdx, dIdx, group.group_id);
-                    $tbody.append(`<tr class="device-child-${gIdx}-${dIdx} device-child-group-${gIdx} d-none l3-placeholder" 
-                        id="l3-placeholder-${gIdx}-${dIdx}" 
-                        data-loaded="0" 
-                        data-group-id="${group.group_id}" 
-                        data-device-id="${dev.device_id}" 
-                        data-device-type="${dev.device_type}">
-                        <td colspan="8" class="text-center py-2">
-                            <div class="spinner-border spinner-border-sm text-primary"></div>
-                            <small class="ml-2">Ładowanie...</small>
-                        </td></tr>`);
+                    deviceToIdx[`${dev.device_type}:${dev.device_id}`] = dIdx;
+                    renderDeviceRow(dev, gIdx, dIdx, group.group_id, isSimpleGroup);
+                    
+                    if (!isSimpleGroup) {
+                        $tbody.append(`<tr class="device-child-${gIdx}-${dIdx} device-child-group-${gIdx} d-none l3-placeholder" 
+                            id="l3-placeholder-${gIdx}-${dIdx}" 
+                            data-loaded="0" 
+                            data-group-id="${group.group_id}" 
+                            data-device-id="${dev.device_id}" 
+                            data-device-type="${dev.device_type}">
+                            <td colspan="8" class="text-center py-2">
+                                <div class="spinner-border spinner-border-sm text-primary"></div>
+                                <small class="ml-2">Ładowanie...</small>
+                            </td></tr>`);
+                    }
                 });
+            }
+
+            if (isSimpleGroup) {
+                $tbody.append(`<tr class="device-child-group-${gIdx} d-none l3-group-placeholder" 
+                    id="group-placeholder-${gIdx}" 
+                    data-loaded="0" 
+                    data-group-id="${group.group_id}" 
+                    data-device-to-idx='${JSON.stringify(deviceToIdx)}'>
+                    <td colspan="8" class="text-center py-2">
+                        <div class="spinner-border spinner-border-sm text-primary"></div>
+                        <small class="ml-2">Ładowanie...</small>
+                    </td></tr>`);
             }
         });
     }
@@ -213,9 +249,18 @@ function renderArchiveTable(res) {
     updateCancelButtonVisibility();
 }
 
+function formatQty(val) {
+    const n = parseFloat(val);
+    if (isNaN(n)) return val;
+    return Number.isInteger(n) ? n.toString() : parseFloat(n.toFixed(2)).toString();
+}
+
 function renderSingleRow(entry) {
     const isCnl = entry.is_cancelled == 1;
     const typeBadge = getDeviceTypeBadge(entry.device_type);
+    const magName = escapeHtml(entry.sub_magazine_name);
+    const magDisplay = (entry.creator_wh_id && entry.sub_magazine_id == entry.creator_wh_id) ? `<strong>${magName}</strong>` : magName;
+    
     const row = `
         <tr class="${isCnl ? 'cancelled-row' : ''}" data-row-id="${entry.id}" data-device-type="${entry.device_type}" data-is-cancelled="${isCnl ? '1' : '0'}">
             <td class="text-center"><div class="custom-control custom-checkbox">
@@ -224,10 +269,10 @@ function renderSingleRow(entry) {
                     data-device-type="${entry.device_type}" ${isCnl ? 'disabled' : ''}>
                 <label class="custom-control-label" for="transfer-${entry.id}"></label></div></td>
             <td>${escapeHtml(`${entry.user_name || ''} ${entry.user_surname || ''}`.trim() || '-')}</td>
-            <td>${escapeHtml(entry.sub_magazine_name)}</td>
+            <td>${magDisplay}</td>
             <td>${typeBadge}${escapeHtml(entry.device_name)}</td>
             <td>${escapeHtml(entry.input_type_name || '')}</td>
-            <td>${entry.qty > 0 ? '+' : ''}${parseFloat(entry.qty).toFixed(2)}</td>
+            <td>${entry.qty > 0 ? '+' : ''}${formatQty(entry.qty)}</td>
             <td>${formatDateTime(entry.timestamp)}</td>
             <td><small>${escapeHtml(entry.comment || '')}</small></td>
         </tr>
@@ -235,7 +280,7 @@ function renderSingleRow(entry) {
     $("#archiveTableBody").append(row);
 }
 
-function renderGroupHeader(group, gIdx, user) {
+function renderGroupHeader(group, gIdx, user, autoExpand = false) {
     const isCnl = group.all_cancelled;
     const cnlBadge = group.has_cancelled && !isCnl ? `<span class="badge badge-warning ml-1">${group.cancelled_count} anulowanych</span>` : '';
     const row = `
@@ -243,6 +288,7 @@ function renderGroupHeader(group, gIdx, user) {
             data-group-index="${gIdx}" 
             data-group-id="${group.group_id}"
             data-total-count="${group.entries_count}"
+            data-auto-expand="${autoExpand}"
             aria-expanded="false">
             <td class="text-center d-flex">
                 <div class="custom-control custom-checkbox d-inline-block" onclick="event.stopPropagation();">
@@ -263,11 +309,33 @@ function renderGroupHeader(group, gIdx, user) {
     $("#archiveTableBody").append(row);
 }
 
-function renderDeviceRow(dev, gIdx, dIdx, groupId) {
+function renderDeviceRow(dev, gIdx, dIdx, groupId, isHidden = false) {
     const cnlBadge = dev.has_cancelled && !dev.all_cancelled ? `<span class="badge badge-warning ml-1">${dev.total_cancelled_count} anulowanych</span>` : '';
     const deviceKey = `${groupId}:${dev.device_id}:${dev.device_type}`;
+    
+    const userWhQty = parseFloat(dev.user_wh_qty || 0);
+    let qtyDisplay = '';
+    
+    if (userWhQty !== 0) {
+        qtyDisplay += `<strong>${userWhQty > 0 ? '+' : ''}${formatQty(userWhQty)}</strong>`;
+    }
+
+    if (dev.other_wh_breakdown && dev.other_wh_breakdown.length > 0) {
+        dev.other_wh_breakdown.forEach(other => {
+            const val = parseFloat(other.qty);
+            if (val !== 0) {
+                qtyDisplay += ` <small class="text-muted">(${val > 0 ? '+' : ''}${formatQty(val)})</small>`;
+            }
+        });
+    }
+
+    // Default if everything is 0
+    if (qtyDisplay === '') {
+        qtyDisplay = `<strong>0</strong>`;
+    }
+
     const row = `
-        <tr class="device-row group-child-${gIdx} d-none" style="cursor:pointer;" 
+        <tr class="device-row group-child-${gIdx} d-none ${isHidden ? 'd-none-simple' : ''}" style="cursor:pointer;" 
             data-group-index="${gIdx}" 
             data-device-index="${dIdx}" 
             data-device-key="${deviceKey}"
@@ -284,13 +352,36 @@ function renderDeviceRow(dev, gIdx, dIdx, groupId) {
             </td>
             <td class="indent-cell"><i class="bi bi-chevron-right toggle-icon-device"></i></td>
             <td colspan="2"><strong>${escapeHtml(dev.device_name)}</strong><span class="badge badge-light ml-1">${dev.total_entries_count} wpisów</span>${cnlBadge}</td>
-            <td></td>
-            <td>${getDeviceTypeBadge(dev.device_type)}<strong>${dev.total_qty > 0 ? '+' : ''}${parseFloat(dev.total_qty).toFixed(2)}</strong></td>
-            <td></td>
+            <td colspan="3">${getDeviceTypeBadge(dev.device_type)}${qtyDisplay}</td>
             <td></td>
         </tr>
     `;
     $("#archiveTableBody").append(row);
+}
+
+function isItemOrChildSelected($el) {
+    if ($el.hasClass('device-row')) {
+        const devKey = $el.data('device-key');
+        if (selectedDeviceKeys.has(devKey)) return true;
+        
+        // Check if any loaded Level 3 children are selected
+        const gIdx = $el.data('group-index'), dIdx = $el.data('device-index');
+        const uiKey = `${gIdx}-${dIdx}`;
+        const ids = deviceTransferMap.get(uiKey);
+        if (ids) {
+            let childSelected = false;
+            selectedTransferIds.forEach(set => {
+                ids.forEach(id => { if (set.has(parseInt(id))) childSelected = true; });
+            });
+            if (childSelected) return true;
+        }
+    } else if ($el.hasClass('detail-row-level-2')) {
+        const id = parseInt($el.data('row-id'));
+        let selected = false;
+        selectedTransferIds.forEach(set => { if (set.has(id)) selected = true; });
+        return selected;
+    }
+    return false;
 }
 
 function attachCollapseHandlers() {
@@ -298,15 +389,63 @@ function attachCollapseHandlers() {
         const $this = $(this);
         const gIdx = $this.data('group-index');
         const isExp = $this.attr('aria-expanded') === 'true';
-        $this.attr('aria-expanded', !isExp);
+
+        // Collapse all other groups
+        if (!isExp) {
+            $('.group-row[aria-expanded="true"]').each(function() {
+                const $other = $(this);
+                const otherIdx = $other.data('group-index');
+                $other.attr('aria-expanded', 'false').removeClass('expanded-active');
+                $other.find('.toggle-icon').removeClass('bi-chevron-down').addClass('bi-chevron-right');
+                
+                // Hide and deactivate children of other groups
+                $(`.group-child-${otherIdx}`).removeClass('expanded-active').each(function() {
+                    const $child = $(this);
+                    if (!isItemOrChildSelected($child)) {
+                        $child.addClass('d-none').attr('aria-expanded', 'false');
+                    }
+                });
+                $(`.device-child-group-${otherIdx}`).removeClass('expanded-active').each(function() {
+                    if (!isItemOrChildSelected($(this))) $(this).addClass('d-none');
+                });
+            });
+        }
+
+        $this.attr('aria-expanded', !isExp).toggleClass('expanded-active', !isExp);
         $this.find('.toggle-icon').toggleClass('bi-chevron-down', !isExp).toggleClass('bi-chevron-right', isExp);
         const $children = $(`.group-child-${gIdx}`);
+        
         if (isExp) {
-            $children.addClass('d-none').attr('aria-expanded', 'false');
-            $(`.device-child-group-${gIdx}`).addClass('d-none');
-            $children.find('.toggle-icon-device').removeClass('bi-chevron-down').addClass('bi-chevron-right');
+            // Collapsing: Hide only non-selected children and remove active class from all
+            $children.removeClass('expanded-active').each(function() {
+                const $child = $(this);
+                if (!isItemOrChildSelected($child)) {
+                    $child.addClass('d-none').attr('aria-expanded', 'false');
+                    $child.find('.toggle-icon-device').removeClass('bi-chevron-down').addClass('bi-chevron-right');
+                }
+            });
+            $(`.device-child-group-${gIdx}`).removeClass('expanded-active').each(function() {
+                if (!isItemOrChildSelected($(this))) $(this).addClass('d-none');
+            });
         } else {
-            $children.removeClass('d-none');
+            // Expanding: Show all children and add active class
+            $children.each(function() {
+                const $child = $(this);
+                if (!$child.hasClass('d-none-simple')) {
+                    $child.removeClass('d-none');
+                }
+            }).addClass('expanded-active');
+            
+            const isSimple = $this.data('auto-expand') === true || $this.data('auto-expand') === 'true';
+            if (isSimple) {
+                const $groupChildContainer = $(`.device-child-group-${gIdx}`);
+                $groupChildContainer.removeClass('d-none').addClass('expanded-active');
+                
+                const $p = $(`#group-placeholder-${gIdx}`);
+                if ($p.length && $p.data('loaded') == '0') {
+                    loadDeviceEntries($p.data('group-id'), gIdx, null, 'all', null, 0);
+                }
+            }
         }
     });
 
@@ -317,9 +456,15 @@ function attachCollapseHandlers() {
         $this.attr('aria-expanded', !isExp);
         $this.find('.toggle-icon-device').toggleClass('bi-chevron-down', !isExp).toggleClass('bi-chevron-right', isExp);
         const $children = $(`.device-child-${gIdx}-${dIdx}`);
-        if (isExp) { $children.addClass('d-none'); } 
+        
+        if (isExp) { 
+            // Collapsing device: Hide only non-selected children and remove active class
+            $children.removeClass('expanded-active').each(function() {
+                if (!isItemOrChildSelected($(this))) $(this).addClass('d-none');
+            });
+        } 
         else {
-            $children.removeClass('d-none');
+            $children.removeClass('d-none').addClass('expanded-active');
             const $p = $(`#l3-placeholder-${gIdx}-${dIdx}`);
             if ($p.length && $p.data('loaded') == '0') {
                 loadDeviceEntries($p.data('group-id'), gIdx, $p.data('device-id'), $p.data('device-type'), dIdx, 0);
@@ -329,23 +474,33 @@ function attachCollapseHandlers() {
 }
 
 function loadDeviceEntries(groupId, gIdx, dId, dType, dIdx, offset) {
-    const $p = $(`#l3-placeholder-${gIdx}-${dIdx}`);
+    const isGroupLoad = dId === null;
+    const $p = isGroupLoad ? $(`#group-placeholder-${gIdx}`) : $(`#l3-placeholder-${gIdx}-${dIdx}`);
+    const deviceToIdx = isGroupLoad ? $p.data('device-to-idx') : null;
+    
+    // Check if parent group is active to apply the class
+    const isParentActive = $(`.group-row[data-group-index="${gIdx}"]`).hasClass('expanded-active');
+    
     const path = (typeof COMPONENTS_PATH !== 'undefined') ? COMPONENTS_PATH : '/atte_ms_new/public_html/components';
     $.ajax({
         type: "POST",
         url: path + "/archive/archive-load-group-entries.php",
-        data: { transfer_group_id: groupId, device_type: 'all', device_id: dId, device_type_filter: dType, offset: offset, limit: 50, show_cancelled: $("#quickShowCancelled").is(':checked') ? '1' : '0' },
+        data: { transfer_group_id: groupId, device_type: dType, device_id: dId, device_type_filter: dType, offset: offset, limit: 100, show_cancelled: $("#quickShowCancelled").is(':checked') ? '1' : '0' },
         dataType: "json",
         success: function(res) {
             if (!res.success) return;
-            const uiKey = `${gIdx}-${dIdx}`;
             const groupIdInt = parseInt(groupId);
             
             res.entries.forEach(e => {
                 const isCnl = e.is_cancelled == 1;
-                const row = `<tr class="device-child-${gIdx}-${dIdx} device-child-group-${gIdx} ${isCnl ? 'cancelled-row' : ''} detail-row-level-2" data-group-index="${gIdx}" data-device-index="${dIdx}" data-row-id="${e.id}" data-device-type="${e.device_type}"><td class="text-center indent-cell-2"><div class="custom-control custom-checkbox"><input type="checkbox" class="custom-control-input transfer-checkbox" id="transfer-${e.id}" data-transfer-id="${e.id}" data-device-type="${e.device_type}" data-group-index="${gIdx}" data-device-index="${dIdx}" ${isCnl ? 'disabled' : ''}><label class="custom-control-label" for="transfer-${e.id}"></label></div></td><td class="indent-cell-2">${escapeHtml(`${e.user_name || ''} ${e.user_surname || ''}`.trim() || '-')}</td><td>${escapeHtml(e.sub_magazine_name)}</td><td>${getDeviceTypeBadge(e.device_type)}${escapeHtml(e.device_name)}</td><td>${escapeHtml(e.input_type_name || '')}</td><td>${e.qty > 0 ? '+' : ''}${parseFloat(e.qty).toFixed(2)}</td><td>${formatDateTime(e.timestamp)}</td><td><small>${escapeHtml(e.comment || '')}</small></td></tr>`;
+                const magName = escapeHtml(e.sub_magazine_name);
+                const magDisplay = (e.creator_wh_id && e.sub_magazine_id == e.creator_wh_id) ? `<strong>${magName}</strong>` : magName;
+                const currentDIdx = isGroupLoad ? deviceToIdx[`${e.device_type}:${e.device_id}`] : dIdx;
+                
+                const row = `<tr class="device-child-${gIdx}-${currentDIdx} device-child-group-${gIdx} ${isCnl ? 'cancelled-row' : ''} detail-row-level-2 ${isParentActive ? 'expanded-active' : ''}" data-group-index="${gIdx}" data-device-index="${currentDIdx}" data-row-id="${e.id}" data-device-type="${e.device_type}"><td class="text-center indent-cell-2"><div class="custom-control custom-checkbox"><input type="checkbox" class="custom-control-input transfer-checkbox" id="transfer-${e.id}" data-transfer-id="${e.id}" data-device-type="${e.device_type}" data-group-index="${gIdx}" data-device-index="${currentDIdx}" ${isCnl ? 'disabled' : ''}><label class="custom-control-label" for="transfer-${e.id}"></label></div></td><td class="indent-cell-2">${escapeHtml(`${e.user_name || ''} ${e.user_surname || ''}`.trim() || '-')}</td><td>${magDisplay}</td><td>${getDeviceTypeBadge(e.device_type)}${escapeHtml(e.device_name)}</td><td>${escapeHtml(e.input_type_name || '')}</td><td>${e.qty > 0 ? '+' : ''}${formatQty(e.qty)}</td><td>${formatDateTime(e.timestamp)}</td><td><small>${escapeHtml(e.comment || '')}</small></td></tr>`;
                 
                 // Track in-memory for UI sync
+                const uiKey = `${gIdx}-${currentDIdx}`;
                 if (!deviceTransferMap.has(uiKey)) deviceTransferMap.set(uiKey, new Set());
                 deviceTransferMap.get(uiKey).add(e.id);
                 
@@ -357,10 +512,10 @@ function loadDeviceEntries(groupId, gIdx, dId, dType, dIdx, offset) {
                 $p.before(row);
 
                 // If parent group or device is already selected, select this new row
-                if (selectedGroupIds.has(groupIdInt) || selectedDeviceKeys.has(`${groupId}:${dId}:${dType}`)) {
+                if (selectedGroupIds.has(groupIdInt) || selectedDeviceKeys.has(`${groupId}:${e.device_id}:${e.device_type}`)) {
                     if (!selectedTransferIds.has(e.device_type)) selectedTransferIds.set(e.device_type, new Set());
                     selectedTransferIds.get(e.device_type).add(e.id);
-                    $(`#transfer-${e.id}`).prop('checked', true);
+                    $(`#transfer-${e.id}`).prop('checked', true).closest('tr').addClass('selected-row');
                 }
             });
             if (res.hasMore) {
@@ -384,11 +539,15 @@ function handleGroupCheckboxChange($cb) {
 
     if (isChecked) selectedGroupIds.add(gId);
     else selectedGroupIds.delete(gId);
+    
+    // Toggle class on the group row
+    $cb.closest('tr').toggleClass('selected-row', isChecked);
 
     // Sync child devices (visually and in selection sets)
     $(`.device-checkbox[data-group-index="${gIdx}"]`).each(function() {
         const $devCb = $(this);
         $devCb.prop('checked', isChecked);
+        $devCb.closest('tr').toggleClass('selected-row', isChecked);
         const devKey = $devCb.data('device-key');
         if (isChecked) selectedDeviceKeys.add(devKey);
         else selectedDeviceKeys.delete(devKey);
@@ -402,6 +561,7 @@ function handleGroupCheckboxChange($cb) {
                 const $rowCb = $(`#transfer-${id}`);
                 if ($rowCb.length && !$rowCb.prop('disabled')) {
                     $rowCb.prop('checked', isChecked);
+                    $rowCb.closest('tr').toggleClass('selected-row', isChecked);
                     if (!selectedTransferIds.has(type)) selectedTransferIds.set(type, new Set());
                     isChecked ? selectedTransferIds.get(type).add(id) : selectedTransferIds.get(type).delete(id);
                 }
@@ -423,8 +583,11 @@ function handleDeviceCheckboxChange($cb) {
         // If device is unchecked, the group cannot be fully checked
         const gId = parseInt($(`.group-row[data-group-index="${gIdx}"]`).data('group-id'));
         selectedGroupIds.delete(gId);
-        $(`#group-${gIdx}`).prop('checked', false);
+        $(`#group-${gIdx}`).prop('checked', false).closest('tr').removeClass('selected-row');
     }
+
+    // Toggle class on the device row
+    $cb.closest('tr').toggleClass('selected-row', isChecked);
 
     // Sync loaded level 3 rows
     const uiKey = `${gIdx}-${dIdx}`;
@@ -434,6 +597,7 @@ function handleDeviceCheckboxChange($cb) {
             const $rowCb = $(`#transfer-${id}`);
             if ($rowCb.length && !$rowCb.prop('disabled')) {
                 $rowCb.prop('checked', isChecked);
+                $rowCb.closest('tr').toggleClass('selected-row', isChecked);
                 const type = $rowCb.data('device-type');
                 if (!selectedTransferIds.has(type)) selectedTransferIds.set(type, new Set());
                 isChecked ? selectedTransferIds.get(type).add(id) : selectedTransferIds.get(type).delete(id);
@@ -448,7 +612,7 @@ function handleDeviceCheckboxChange($cb) {
         if (allChecked) {
             const gId = parseInt($(`.group-row[data-group-index="${gIdx}"]`).data('group-id'));
             selectedGroupIds.add(gId);
-            $(`#group-${gIdx}`).prop('checked', true);
+            $(`#group-${gIdx}`).prop('checked', true).closest('tr').addClass('selected-row');
         }
     }
 
@@ -465,15 +629,18 @@ function handleTransferCheckboxChange($cb) {
     if (!selectedTransferIds.has(type)) selectedTransferIds.set(type, new Set());
     isChecked ? selectedTransferIds.get(type).add(id) : selectedTransferIds.get(type).delete(id);
 
+    // Toggle class on the row
+    $cb.closest('tr').toggleClass('selected-row', isChecked);
+
     if (!isChecked) {
         // Drop symbolic parents
         const devKey = $(`.device-row[data-group-index="${gIdx}"][data-device-index="${dIdx}"]`).data('device-key');
         selectedDeviceKeys.delete(devKey);
-        $(`#device-${gIdx}-${dIdx}`).prop('checked', false);
+        $(`#device-${gIdx}-${dIdx}`).prop('checked', false).closest('tr').removeClass('selected-row');
         
         const gId = parseInt($(`.group-row[data-group-index="${gIdx}"]`).data('group-id'));
         selectedGroupIds.delete(gId);
-        $(`#group-${gIdx}`).prop('checked', false);
+        $(`#group-${gIdx}`).prop('checked', false).closest('tr').removeClass('selected-row');
     } else {
         // Upgrade to symbolic parents if all loaded are checked
         const uiKey = `${gIdx}-${dIdx}`;
@@ -484,14 +651,14 @@ function handleTransferCheckboxChange($cb) {
             if (allDevChecked) {
                 const devKey = $(`.device-row[data-group-index="${gIdx}"][data-device-index="${dIdx}"]`).data('device-key');
                 selectedDeviceKeys.add(devKey);
-                $(`#device-${gIdx}-${dIdx}`).prop('checked', true);
+                $(`#device-${gIdx}-${dIdx}`).prop('checked', true).closest('tr').addClass('selected-row');
                 
                 let allGroupChecked = true;
                 $(`.device-checkbox[data-group-index="${gIdx}"]`).each(function() { if (!$(this).prop('checked')) allGroupChecked = false; });
                 if (allGroupChecked) {
                     const gId = parseInt($(`.group-row[data-group-index="${gIdx}"]`).data('group-id'));
                     selectedGroupIds.add(gId);
-                    $(`#group-${gIdx}`).prop('checked', true);
+                    $(`#group-${gIdx}`).prop('checked', true).closest('tr').addClass('selected-row');
                 }
             }
         }

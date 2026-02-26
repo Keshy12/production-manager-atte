@@ -59,17 +59,19 @@ if ($deviceType === 'all') {
                 m.sub_magazine_name,
                 u.name as user_name,
                 u.surname as user_surname,
+                u.sub_magazine_id as creator_wh_id,
                 it.name as input_type_name,
                 '$type' as device_type
             FROM `inventory__{$type}` i
             LEFT JOIN list__{$type} l ON i.{$type}_id = l.id
             LEFT JOIN magazine__list m ON i.sub_magazine_id = m.sub_magazine_id
-            LEFT JOIN user u ON u.user_id = (SELECT created_by FROM inventory__transfer_groups WHERE id = $transferGroupId)
+            LEFT JOIN inventory__transfer_groups tg ON i.transfer_group_id = tg.id
+            LEFT JOIN user u ON tg.created_by = u.user_id
             LEFT JOIN inventory__input_type it ON i.input_type_id = it.id
             WHERE i.transfer_group_id = $transferGroupId
             AND i.{$type}_id = $deviceId
             $cancelledCondition
-            ORDER BY i.id DESC
+            ORDER BY (i.sub_magazine_id = u.sub_magazine_id) DESC, m.sub_magazine_name ASC
             LIMIT $limit OFFSET $offset
         ";
 
@@ -119,12 +121,14 @@ if ($deviceType === 'all') {
                     m.sub_magazine_name,
                     u.name as user_name,
                     u.surname as user_surname,
+                    u.sub_magazine_id as creator_wh_id,
                     it.name as input_type_name,
                     '$type' as device_type
                 FROM `inventory__{$type}` i
                 LEFT JOIN list__{$type} l ON i.{$type}_id = l.id
                 LEFT JOIN magazine__list m ON i.sub_magazine_id = m.sub_magazine_id
-                LEFT JOIN user u ON u.user_id = (SELECT created_by FROM inventory__transfer_groups WHERE id = $transferGroupId)
+                LEFT JOIN inventory__transfer_groups tg ON i.transfer_group_id = tg.id
+                LEFT JOIN user u ON tg.created_by = u.user_id
                 LEFT JOIN inventory__input_type it ON i.input_type_id = it.id
                 WHERE i.transfer_group_id = $transferGroupId $cancelledCondition
             ";
@@ -137,10 +141,9 @@ if ($deviceType === 'all') {
         $countResult = $MsaDB->query($countQuery, PDO::FETCH_ASSOC);
         $totalEntries = (int)$countResult[0]['total'];
 
-        // Fetch paginated entries
         $entriesQuery = "
             SELECT * FROM ($unionQuery) as combined
-            ORDER BY id DESC
+            ORDER BY (sub_magazine_id = creator_wh_id) DESC, sub_magazine_name ASC
             LIMIT $limit OFFSET $offset
         ";
 
@@ -177,14 +180,16 @@ if ($deviceType === 'all') {
             m.sub_magazine_name,
             u.name as user_name,
             u.surname as user_surname,
+            u.sub_magazine_id as creator_wh_id,
             it.name as input_type_name
         FROM `inventory__{$deviceType}` i
         LEFT JOIN list__{$deviceType} l ON i.{$deviceType}_id = l.id
         LEFT JOIN magazine__list m ON i.sub_magazine_id = m.sub_magazine_id
-        LEFT JOIN user u ON u.user_id = (SELECT created_by FROM inventory__transfer_groups WHERE id = $transferGroupId)
+        LEFT JOIN inventory__transfer_groups tg ON i.transfer_group_id = tg.id
+        LEFT JOIN user u ON tg.created_by = u.user_id
         LEFT JOIN inventory__input_type it ON i.input_type_id = it.id
         WHERE i.transfer_group_id = $transferGroupId $deviceIdCondition $cancelledCondition
-        ORDER BY i.id DESC
+        ORDER BY (i.sub_magazine_id = u.sub_magazine_id) DESC, m.sub_magazine_name ASC
         LIMIT $limit OFFSET $offset
     ";
 
