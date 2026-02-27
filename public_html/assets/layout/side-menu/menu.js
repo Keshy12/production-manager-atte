@@ -129,6 +129,24 @@ $("#sendBomFlatToGS").click(function(){
     });
 });
 
+$("#sendWarehouseComparisonToGS").click(function(){
+    $(this).prop("disabled", true);
+    
+    $.ajax({
+        type: "POST",
+        url: "/atte_ms_new/src/cron/warehouse-comparison-gs-upload.php",
+        data: {},
+        success: function(data) {
+            alert("Porównanie Stanów: " + data);
+            $("#sendWarehouseComparisonToGS").prop("disabled", false);
+        },
+        error: function() {
+            alert("An error occurred while trying to send warehouse comparison to Google Sheets.");
+            $("#sendWarehouseComparisonToGS").prop("disabled", false);
+        }
+    });
+});
+
 $("#sendBomFlatSkuToGS").click(function(){
     $(this).prop("disabled", true);
     
