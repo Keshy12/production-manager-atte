@@ -212,6 +212,13 @@ if(!isset($_SESSION["userid"]) && !isset($skip))
                 <button class="btn btn-sm btn-primary" id="sendWarehousesToGS">Wyślij stan magazynowy<br>do Google Sheets.</button>
             </div>
             <small class="bg-light">Data ostatniej aktualizacji: <br><b><span id="GSWarehouseDate"></span></b></small><br>
+            <hr>
+            <div>
+                <button class="btn btn-sm btn-primary" id="sendBomFlatToGS">Wyślij BOM_FLAT<br>do Google Sheets.</button>
+            </div>
+            <div class="mt-2">
+                <button class="btn btn-sm btn-primary" id="sendBomFlatSkuToGS">Wyślij BOM_FLAT_SKU<br>do Google Sheets.</button>
+            </div>
             <div id="spinnerflowpin" class="spinner-border mt-1 text-center" style="display:none" role="status"></div>
         </div>
     </div>
