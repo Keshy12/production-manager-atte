@@ -112,16 +112,16 @@ try {
 
     $header = [
         "Nazwa", 
-        "Suma (ATTE+Zag) [FP]", 
-        "Suma Główne [MSA]", 
+        "Suma (ATTE+Zag)", 
+        "Suma Główne", 
         "Różnica", 
         "", // Break
-        "MJ [FP]", 
-        "MJ Mag 11 [MSA]", 
+        "MJ", 
+        "MJ", 
         "Różnica MJ", 
         "", // Break
-        "ATTE [FP]", 
-        "Zagranica [FP]", 
+        "ATTE", 
+        "Zagranica", 
         "", // Break
     ];
     // Add all individual main magazines to the end
