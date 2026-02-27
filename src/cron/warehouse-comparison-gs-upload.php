@@ -112,16 +112,16 @@ try {
 
     $header = [
         "Nazwa", 
-        "Suma (ATTE+Zag)", 
-        "Suma (Głowne magazyny)", 
-        "", // Reserved for Diff
+        "Suma (ATTE+Zag) [FP]", 
+        "Suma Główne [MSA]", 
+        "Różnica", 
         "", // Break
-        "MJ", 
-        "MJ", 
-        "", // Reserved for Diff MJ
+        "MJ [FP]", 
+        "MJ Mag 11 [MSA]", 
+        "Różnica MJ", 
         "", // Break
-        "Suma ATTE", 
-        "Suma Zagranica", 
+        "ATTE [FP]", 
+        "Zagranica [FP]", 
         "", // Break
     ];
     // Add all individual main magazines to the end
@@ -135,15 +135,18 @@ try {
         $fp = $flowpinData[$name] ?? ['atte' => 0, 'zagranica' => 0, 'suma' => 0, 'mj' => 0];
         $msa = $localData[$name] ?? ['main_sum' => 0, 'mj_mag_11' => 0, 'individual_mags' => array_fill_keys($mainMagIds, 0)];
         
+        $diff = $fp['suma'] - $msa['main_sum'];
+        $diffMj = $fp['mj'] - $msa['mj_mag_11'];
+
         $row = [
             $name,
             $fp['suma'],
             $msa['main_sum'],
-            "", // Reserved for Diff (to be calculated in sheet)
+            $diff,
             "", // Break
             $fp['mj'],
             $msa['mj_mag_11'],
-            "", // Reserved for Diff MJ (to be calculated in sheet)
+            $diffMj,
             "", // Break
             $fp['atte'],
             $fp['zagranica'],
