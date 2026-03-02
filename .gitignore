@@ -7,3 +7,6 @@ composer.phar
 /public_html/var/locks
 /.idea
 /src/cron/logs/
+
+# Documentation folder
+/docs/
