@@ -23,7 +23,7 @@ switch($deviceType)
         // and change accordingly.
         $defaultKeys = ['circle_checked', 'triangle_checked', 'square_checked'];
         $defaultValues = array_fill_keys($defaultKeys, false);
-        $newValues = array_fill_keys($_POST["marking"], true);
+        $newValues = array_fill_keys($_POST["marking"] ?? [], true);
         $markingValues = array_merge($defaultValues, $newValues);
 
         $componentValues = array_merge($componentValues, $markingValues);

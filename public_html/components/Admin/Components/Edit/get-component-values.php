@@ -6,7 +6,7 @@ $MsaDB = MsaDB::getInstance();
 $deviceType = $_POST["deviceType"];
 $deviceId = $_POST["deviceId"];
 
-if ($deviceType === 'parts') {
+if ($deviceType === 'parts' || $deviceType === 'laminate') {
     $result = $MsaDB -> query("SELECT * FROM list__{$deviceType} WHERE id = {$deviceId}", PDO::FETCH_ASSOC);
 } elseif ($deviceType === 'sku') {
     // SKUs fetch price from their only active BOM

@@ -1,11 +1,11 @@
-let $formFields = $("#name, #description, #partGroup, #partType, #jm, #price, #defaultBomId");
+let $formFields = $("#name, #description, #partGroup, #partType, #jm, #defaultBomId");
 
 function clearForm()
 {
     $("#header").text("Dodaj komponent")
-    $("#name, #description, #partGroup, #partType, #jm, #file-input, #price, #defaultBomId").val('');
+    $("#name, #description, #partGroup, #partType, #jm, #file-input, #defaultBomId").val('');
     $("#partGroup, #partType, #jm").selectpicker('refresh');
-    $("#defaultLaminateSelect, #defaultVersionSelect").empty().selectpicker('refresh');
+    $("#defaultLaminateSelect, #defaultVersionSelect, #autoProduceVersionSelect").empty().selectpicker('refresh');
     $("#circleCheckbox, #triangleCheckbox, #squareCheckbox, #autoProduceCheckbox").prop('checked', false);
     $("#list__device").val('').selectpicker('refresh');
     $("#deviceImage").attr('src', ROOT_DIR+"/public_html/assets/img/production/default.webp");
@@ -27,9 +27,7 @@ $("#deviceType").change(function(){
     if(deviceType === 'parts') {
         $("#priceField").show();
     }
-    if(deviceType === 'tht' || deviceType === 'smd') {
-        $("#defaultBomField").show();
-    }
+    // defaultBomField is only shown when editing (in showEditFields), not when creating
     clearForm();
     showAddFields();
     $("#partGroup, #partType, #jm").prop('required', (deviceType === 'parts'));
@@ -127,6 +125,9 @@ $("#list__device").change(function(){
     }
     let deviceType = $("#deviceType").val();
     let deviceId = this.value;
+    // Clear default BOM field data before generating new fields
+    $("#defaultBomId").val('');
+    $("#defaultLaminateSelect, #defaultVersionSelect").empty().selectpicker('refresh');
     generateAdditionalFields(deviceType, deviceId);
     let deviceValues = getDeviceValues(deviceType, deviceId);
     writeValuesToForm(deviceValues);
@@ -146,8 +147,19 @@ function generateAdditionalFields(type, deviceId)
         generateVersionSelect(possibleVersions);
     }
     
-    if(type === 'sku' || type === 'tht' || type === 'smd') {
+    if(type === 'smd') {
+        $("#defaultBomField").show();
         populateDefaultBomSelectors(type);
+    } else if (type === 'tht') {
+        // Only show for THT items that start with "THT."
+        // Use option text since writeValuesToForm hasn't been called yet
+        let itemName = $("#list__device option:selected").text().trim();
+        if (itemName.startsWith("THT.")) {
+            $("#defaultBomField").show();
+            populateDefaultBomSelectors(type);
+        } else {
+            $("#defaultBomField").hide();
+        }
     }
 }
 
@@ -251,6 +263,7 @@ $("#nextItem").click(function(){
 $("#deselect").click(function(){
     clearForm();
     showAddFields();
+    $("#defaultBomField").hide();
 });
 
 function getAlertString(alertType, alertMessage)
@@ -427,6 +440,10 @@ $("#list__device_to_clone").change(function(){
 function generateVersionSelect(possibleVersions){
     let $versionSelect = $("#autoProduceVersionSelect");
     $versionSelect.empty();
+    if (!possibleVersions) {
+        $versionSelect.selectpicker('refresh');
+        return;
+    }
     if(Object.keys(possibleVersions).length == 1) {
         if(possibleVersions[0] == null)
         {

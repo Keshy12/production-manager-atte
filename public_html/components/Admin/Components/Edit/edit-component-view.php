@@ -87,7 +87,7 @@ $list__laminate_desc = $MsaDB -> readIdName("list__laminate", "id", "description
         </div>
         <div id="priceField" style="display: none;" class="form-group">
             <label id="priceLabel">Cena za sztukę (PLN) - TYLKO DO ODCZYTU</label>
-            <input type="number" step="0.01" min="0" id="price" name="price" class="form-control" readonly>
+            <input type="number" step="0.01" min="0" id="price" class="form-control" readonly>
         </div>
         <div id="defaultBomField" style="display: none;" class="form-group">
             <label>Domyślna wersja BOM (do analizy cen)</label>

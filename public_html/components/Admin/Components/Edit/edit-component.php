@@ -16,7 +16,8 @@ $componentValues = [
     "isActive" => $isActive
 ];
 
-if (isset($_POST["defaultBomId"])) {
+// Only save default_bom_id for device types that support it (tht, smd)
+if (isset($_POST["defaultBomId"]) && in_array($deviceType, ['tht', 'smd'])) {
     $componentValues["default_bom_id"] = $_POST["defaultBomId"] == "" ? null : $_POST["defaultBomId"];
 }
 
