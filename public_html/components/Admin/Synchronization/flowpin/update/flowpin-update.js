@@ -30,7 +30,7 @@ $("#btnAnalyze").click(function() {
     $("#analysisResult").html("");
     $("#issuesSummary").hide();
 
-    fetch(COMPONENTS_PATH + "/FlowpinUpdate/flowpin-sku-analyze.php", {
+    fetch(COMPONENTS_PATH + "/Admin/Synchronization/flowpin/update/flowpin-sku-analyze.php", {
         method: "POST"
     })
     .then(response => response.json())
@@ -139,7 +139,7 @@ $("#btnResetSession").click(function() {
 
     $(this).prop("disabled", true).text("Resetowanie...");
 
-    postData(COMPONENTS_PATH + "/FlowpinUpdate/reset-session.php", { session_id: sessionId })
+    postData(COMPONENTS_PATH + "/Admin/Synchronization/flowpin/update/reset-session.php", { session_id: sessionId })
         .then(response => response.json())
         .then(data => {
             if (data.success) {
@@ -281,7 +281,7 @@ async function checkProgress(sessionId, isFinal = false) {
     const data = sessionId ? { session_id: sessionId } : {};
 
     try {
-        const response = await postData(COMPONENTS_PATH + "/FlowpinUpdate/get-progress.php", data);
+        const response = await postData(COMPONENTS_PATH + "/Admin/Synchronization/flowpin/update/get-progress.php", data);
         const dataJson = await response.json();
 
         if (dataJson.success) {

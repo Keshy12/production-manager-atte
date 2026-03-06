@@ -58,16 +58,15 @@ $status = $_GET['status'] ?? 'all';
 <?php include 'modals.php'; ?>
 
 <script>
-
-// Helper function for POST requests
-function postData(url, data) {
-    return fetch(url, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded'
-        },
-        body: new URLSearchParams(data)
-    });
-}
+    // Helper function for POST requests
+    function postData(url, data) {
+        return fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: new URLSearchParams(data)
+        });
+    }
 </script>
-<script src="<?= asset('public_html/components/FlowpinSessions/flowpin-sessions-view.js') ?>"></script>
+<script src="<?= asset('public_html/components/Admin/Flowpin/flowpin-sessions-view.js') ?>"></script>

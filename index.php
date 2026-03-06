@@ -94,24 +94,14 @@ switch ($request) {
         require $componentsDir . '/admin/magazines/edit/edit-magazines-view.php';
         break;
 
-    case 'admin/flowpin/update':
-        includeWithVariables($headerDir, array('title' => 'Zarządzanie aktualizacją FlowPin'));
-        require $componentsDir . '/FlowpinUpdate/flowpin-update-view.php';
-        break;
-
-    case 'admin/flowpin/status':
+    case 'admin/synchronization/flowpin':
         includeWithVariables($headerDir, array('title' => 'Flowpin - Status Aktualizacji'));
-        require $componentsDir . '/Admin/FlowpinStatus/flowpin-status-view.php';
+        require $componentsDir . '/Admin/Synchronization/flowpin/flowpin-status-view.php';
         break;
 
-    case 'admin/flowpin/sessions':
-        includeWithVariables($headerDir, array('title' => 'Zarządzanie aktualizacją FlowPin'));
-        require $componentsDir . '/FlowpinSessions/flowpin-sessions-view.php';
-        break;
-
-    case 'admin/flowpin/sheets':
+    case 'admin/synchronization/sheets':
         includeWithVariables($headerDir, array('title' => 'Flowpin - Arkusze'));
-        require $componentsDir . '/Admin/FlowpinSheets/flowpin-sheets-view.php';
+        require $componentsDir . '/Admin/Synchronization/sheets/flowpin-sheets-view.php';
         break;
 
     case 'test':

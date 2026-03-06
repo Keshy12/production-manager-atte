@@ -190,15 +190,15 @@ if(!isset($_SESSION["userid"]) && !isset($skip))
     <div class="text-left" style="position: absolute; top: 70px; float: left; left: 10px; z-index: 9999;">
         <div class="btn-group">
             <button type="button" class="btn btn-primary dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                Flowpin
+                Synchronizacja
             </button>
             <div class="dropdown-menu">
-                <a class="dropdown-item" href="http://<?=BASEURL?>/admin/flowpin/status">Status Aktualizacji</a>
-                                <a class="dropdown-item" href="http://<?=BASEURL?>/admin/flowpin/sheets">Integracja z Google Sheets</a>
+                <a class="dropdown-item" href="http://<?=BASEURL?>/admin/synchronization/flowpin">Flowpin</a>
+                <a class="dropdown-item" href="http://<?=BASEURL?>/admin/synchronization/sheets">Google Sheets</a>
             </div>
         </div>
         <br>
-        <small>Menadżer Flowpin</small>
+        <small>Synchronizacja Danych</small>
     </div>
 <?php endif; ?>
 <script src="<?= asset('public_html/assets/layout/header.js') ?>"></script>
