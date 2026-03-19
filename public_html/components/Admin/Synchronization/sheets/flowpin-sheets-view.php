@@ -9,14 +9,25 @@ if (!isset($_SESSION['isAdmin']) || !$_SESSION['isAdmin']) {
     exit;
 }
 ?>
+<style>
+    #sheetsTabs .separator .nav-link {
+        background-color: #e7f3ff;
+    }
+</style>
 <div class="container mt-4">
     <h1 class="mb-4">
         <i class="bi bi-file-earmark-spreadsheet mr-2"></i>Flowpin - Arkusze
     </h1>
 
     <ul class="nav nav-tabs mb-4" id="sheetsTabs" role="tablist">
+        <li class="nav-item separator">
+            <span class="nav-link disabled text-muted" style="letter-spacing: 0.5px; pointer-events: none;">Export</span>
+        </li>
         <li class="nav-item">
             <a class="nav-link active" id="integration-tab" data-toggle="tab" href="#integration" role="tab">Integracja z Google Sheets</a>
+        </li>
+        <li class="nav-item separator">
+            <span class="nav-link disabled text-muted" style="letter-spacing: 0.5px; pointer-events: none;">Import</span>
         </li>
         <li class="nav-item">
             <a class="nav-link" id="update-prices-tab" data-toggle="tab" href="#update-prices" role="tab">Aktualizacja Cen</a>
@@ -121,6 +132,8 @@ if (!isset($_SESSION['isAdmin']) || !$_SESSION['isAdmin']) {
             $queryResult = $MsaDB->query("SELECT * FROM `ref__timestamp` WHERE `id` = 3", PDO::FETCH_ASSOC);
             $timestamp = $queryResult[0]['last_timestamp'];
             $lastReadCell = (int)$queryResult[0]['params'] - 1;
+
+            include('table-row-template.php');
             ?>
             <div class="d-flex justify-content-center mt-4">
                 <div class="card my-2">
@@ -280,24 +293,7 @@ if (!isset($_SESSION['isAdmin']) || !$_SESSION['isAdmin']) {
     </div>
 </div>
 
-<div class="modal fade" id="importOrderModal" tabindex="-1" role="dialog" aria-labelledby="importOrderModalLabel" aria-hidden="true">
-    <div class="modal-dialog" role="document">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="importOrderModalLabel">Importuj zamówienie</h5>
-                <button type="button" class="close" data-dismiss="modal" aria-label="Zamknij">
-                    <span aria-hidden="true">&times;</span>
-                </button>
-            </div>
-            <div class="modal-body" id="importOrderModalBody">
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-dismiss="modal">Anuluj</button>
-                <button type="button" class="btn btn-primary" id="confirmImport">Importuj</button>
-            </div>
-        </div>
-    </div>
-</div>
+<?php include('modals.php'); ?>
 
 <script>
     function postData(url, data) {
@@ -310,5 +306,7 @@ if (!isset($_SESSION['isAdmin']) || !$_SESSION['isAdmin']) {
         });
     }
 </script>
-<script src="<?= asset('public_html/components/admin/components/updateprices/update-prices-view.js') ?>"></script>
-<script src="<?= asset('public_html/components/admin/components/fromorders/from-orders-view.js') ?>"></script>
+<script src="<?= asset('public_html/components/Admin/Synchronization/sheets/update-prices-view.js') ?>"></script>
+<script src="<?= asset('public_html/components/Admin/Synchronization/sheets/from-orders-renderer.js') ?>"></script>
+<script src="<?= asset('public_html/components/Admin/Synchronization/sheets/from-orders-view.js') ?>"></script>
+<script src="<?= asset('public_html/components/Admin/Synchronization/sheets/sheets-view.js') ?>"></script>
