@@ -8,7 +8,7 @@ let hasUnsavedSourceChanges = false;
 
 function getTotalTransferQty(componentKey) {
     const sources = transferSources[componentKey] || [];
-    return sources.reduce((sum, source) => sum + (parseInt(source.quantity) || 0), 0);
+    return sources.reduce((sum, source) => sum + (parseFloat(source.quantity) || 0), 0);
 }
 
 function updateQuantityDisplay(componentKey) {
@@ -51,7 +51,7 @@ $(document).ready(function() {
     $(document).on('input change', '.transferQty', function() {
         const $input = $(this);
         const key = $input.data('key');
-        const newQty = parseInt($input.val()) || 0;
+        const newQty = parseFloat($input.val()) || 0;
 
         // Update sources to match the manually entered quantity
         transferSources[key] = [{
@@ -128,7 +128,7 @@ $(document).ready(function() {
             // Update total after removal
             let total = 0;
             $row.find('.source-quantity').each(function() {
-                total += parseInt($(this).val()) || 0;
+                total += parseFloat($(this).val()) || 0;
             });
             $row.find('.total-quantity-display').text(total);
         }
@@ -152,7 +152,7 @@ $(document).ready(function() {
             const $item = $(this);
             const warehouseId = $item.find('.source-warehouse').selectpicker('val');
             const quantityText = $item.find('.source-quantity').val();
-            const quantity = parseInt(quantityText) || 0;
+            const quantity = parseFloat(quantityText) || 0;
 
             if(quantity > 0 && warehouseId) {
                 // Check if this warehouse has type_id = 2
@@ -230,7 +230,7 @@ $(document).ready(function() {
         const $row = $(this).closest('.source-details-row');
         let total = 0;
         $row.find('.source-quantity').each(function() {
-            total += parseInt($(this).val()) || 0;
+            total += parseFloat($(this).val()) || 0;
         });
         $row.find('.total-quantity-display').text(total);
 
@@ -390,9 +390,9 @@ function updateGlobalSummary() {
                     warehouseToQty: component.warehouseToQty,
                     warehouseToReserved: component.warehouseToReserved,
                     totalNeeded: typeof component.neededForCommissionQty === 'string'
-                        ? parseInt(component.neededForCommissionQty.replace(/<[^>]*>/g, '')) || 0
-                        : parseInt(component.neededForCommissionQty) || 0,
-                    totalTransferQty: parseInt(component.transferQty) || 0,
+                        ? parseFloat(component.neededForCommissionQty.replace(/<[^>]*>/g, '')) || 0
+                        : parseFloat(component.neededForCommissionQty) || 0,
+                    totalTransferQty: parseFloat(component.transferQty) || 0,
                     multiSourceIndicator: '<span class="text-muted">-</span>',
                     multiSourceDetails: ''
                 };
@@ -451,10 +451,10 @@ function createGlobalSummary(allComponentValues) {
 
         // Sum up the quantities
         const needed = typeof component.neededForCommissionQty === 'string'
-            ? parseInt(component.neededForCommissionQty.replace(/<[^>]*>/g, '')) || 0
-            : parseInt(component.neededForCommissionQty) || 0;
+            ? parseFloat(component.neededForCommissionQty.replace(/<[^>]*>/g, '')) || 0
+            : parseFloat(component.neededForCommissionQty) || 0;
         componentSummary[key].totalNeeded += needed;
-        componentSummary[key].totalTransferQty += parseInt(component.transferQty) || 0;
+        componentSummary[key].totalTransferQty += parseFloat(component.transferQty) || 0;
         componentSummary[key].componentKeys.push(componentIndex);
 
         // Track sources for this component
@@ -468,7 +468,7 @@ function createGlobalSummary(allComponentValues) {
             if (!componentSummary[key].sources[warehouseName]) {
                 componentSummary[key].sources[warehouseName] = 0;
             }
-            componentSummary[key].sources[warehouseName] += parseInt(source.quantity) || 0;
+            componentSummary[key].sources[warehouseName] += parseFloat(source.quantity) || 0;
         });
     });
 
@@ -599,7 +599,7 @@ $("#addTransferComponent").click(function() {
     // Initialize default transfer source
     transferSources[pushedKey] = [{
         warehouseId: $("#transferFrom").val(),
-        quantity: parseInt(transferQty)
+        quantity: parseFloat(transferQty)
     }];
 
     syncComponentQuantityFromSources(pushedKey);
@@ -705,7 +705,7 @@ $(document).on('click', '#addNoCommissionComponentBtn', function() {
     // Initialize default transfer source
     transferSources[pushedKey] = [{
         warehouseId: transferFrom,
-        quantity: parseInt(transferQty)
+        quantity: parseFloat(transferQty)
     }];
 
     syncComponentQuantityFromSources(pushedKey);
@@ -748,8 +748,8 @@ $('body').on('click', '.insertDifference', function() {
     const key = $qty.data('key');
     const $magazineTo = $(this).closest("tr").find(".warehouseTo");
     //availableTo is read through the DOM, because its value varies if #subtractPartsMagazineTo is checked
-    const availableTo = parseInt($magazineTo.text());
-    const neededForCommission = parseInt(components[key]['neededForCommissionQty']);
+    const availableTo = parseFloat($magazineTo.text());
+    const neededForCommission = parseFloat(components[key]['neededForCommissionQty']);
     const qty = neededForCommission - availableTo;
     if (isNaN(neededForCommission)) return;
     const result = qty > 0 ? qty : 0;
