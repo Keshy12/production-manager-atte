@@ -160,12 +160,9 @@ if(!isset($_SESSION["userid"]) && !isset($skip))
                             </div>
                         </div>
                         <div class="dropdown-divider"></div>
-                        <div class="dropdown-submenu dropdown-submenu-left">
-                            <a class="dropdown-item dropdown-arrow sub-dropdown" href="#"><i class="bi bi-cloud-download"></i> Dane z FlowPin</a>
-                            <div class="dropdown-menu bg-light" style="right: 100%" aria-labelledby="submenu">
-                                <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/flowpin/status">Aktualizacja Danych</a>
-                            </div>
-                        </div>
+                        <a class="dropdown-item" href="http://<?=BASEURL?>/admin/synchronization/flowpin">
+                            <i class="bi bi-cloud-download"></i> Dane z FlowPin
+                        </a>
                         </a>
                     </div>
                 </li>
@@ -193,7 +190,7 @@ if(!isset($_SESSION["userid"]) && !isset($skip))
                 Synchronizacja
             </button>
             <div class="dropdown-menu">
-                <a class="dropdown-item" href="http://<?=BASEURL?>/admin/synchronization/flowpin">Flowpin</a>
+                <a class="dropdown-item" id="flowpinSyncLink" href="http://<?=BASEURL?>/admin/synchronization/flowpin">Flowpin</a>
                 <a class="dropdown-item" href="http://<?=BASEURL?>/admin/synchronization/sheets">Google Sheets</a>
             </div>
         </div>

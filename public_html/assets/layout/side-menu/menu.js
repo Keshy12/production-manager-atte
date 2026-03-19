@@ -39,7 +39,7 @@ function updateIndicatorVisibility() {
 function updateFlowpinHeaderProgress() {
     $.ajax({
         type: "POST",
-        url: "/atte_ms_new/public_html/components/FlowpinUpdate/get-progress.php",
+        url: COMPONENTS_PATH + "/Admin/Synchronization/flowpin/update/get-progress.php",
         data: {},
         success: function(data) {
             isFlowpinRunning = data.success && data.status === 'running';
@@ -47,8 +47,10 @@ function updateFlowpinHeaderProgress() {
                 $("#flowpinHeaderProgress").show();
                 $("#flowpinHeaderProgressBar").css("width", data.percentage + "%");
                 $("#flowpinHeaderPercent").text(data.percentage.toFixed(0) + "%");
+                $("#flowpinSyncLink").text("Flowpin [" + data.percentage.toFixed(0) + "%]");
             } else {
                 $("#flowpinHeaderProgress").hide();
+                $("#flowpinSyncLink").text("Flowpin");
             }
             updateIndicatorVisibility();
         }
