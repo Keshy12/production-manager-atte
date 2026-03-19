@@ -82,32 +82,36 @@ switch ($request) {
         require $componentsDir . '/admin/components/detectnewparts/detect-parts-view.php';
         break;
     case 'admin/components/from-orders':
-        includeWithVariables($headerDir, array('title' => 'Pobierz z zamówień'));
-        require $componentsDir . '/admin/components/fromorders/from-orders-view.php';
+        header('Location: http://' . BASEURL . '/admin/synchronization/sheets#import-orders');
+        exit;
         break;
     case 'admin/components/update-prices':
-        includeWithVariables($headerDir, array('title' => 'Aktualizuj Ceny'));
-        require $componentsDir . '/admin/components/updateprices/update-prices-view.php';
+        header('Location: http://' . BASEURL . '/admin/synchronization/sheets#update-prices');
+        exit;
         break;
     case 'admin/magazines/edit':
         includeWithVariables($headerDir, array('title' => 'Edycja Magazynów'));
         require $componentsDir . '/admin/magazines/edit/edit-magazines-view.php';
         break;
 
-    case 'admin/flowpin/update':
-        includeWithVariables($headerDir, array('title' => 'Zarządzanie aktualizacją FlowPin'));
-        require $componentsDir . '/FlowpinUpdate/flowpin-update-view.php';
+    case 'admin/synchronization/flowpin':
+        includeWithVariables($headerDir, array('title' => 'Flowpin - Status Aktualizacji'));
+        require $componentsDir . '/Admin/Synchronization/flowpin/flowpin-status-view.php';
         break;
 
-    case 'admin/flowpin/sessions':
-        includeWithVariables($headerDir, array('title' => 'Zarządzanie aktualizacją FlowPin'));
-        require $componentsDir . '/FlowpinSessions/flowpin-sessions-view.php';
+    case 'admin/synchronization/sheets':
+        includeWithVariables($headerDir, array('title' => 'Flowpin - Arkusze'));
+        require $componentsDir . '/Admin/Synchronization/sheets/flowpin-sheets-view.php';
         break;
-
 
     case 'test':
 //        includeWithVariables($headerDir, array('title' => 'Test'));
         require $componentsDir . '/tests/test1.php';
+        break;
+
+    case 'flowpin/test':
+        includeWithVariables($headerDir, array('title' => 'Flowpin Warehouse State'));
+        require $componentsDir . '/tests/warehouse_state_view.php';
         break;
 
     case 'login':

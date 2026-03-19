@@ -33,13 +33,10 @@ $(document).ready(function() {
     const flowpinSessionParam = urlParams.get('flowpin_session');
     if (flowpinSessionParam) {
         $('#flowpinSession').val(flowpinSessionParam).selectpicker('refresh');
+        // Auto-select "All" device type and load archive
+        $('#deviceType, #quickDeviceType').val('all').selectpicker('refresh');
+        handleDeviceTypeChange('all');
     }
-
-    setTimeout(() => { 
-        if ($('#quickDeviceType').val() || $('#deviceType').val()) {
-            loadArchive(); 
-        }
-    }, 500);
 
     attachEventHandlers();
 });

@@ -148,9 +148,9 @@ if(!isset($_SESSION["userid"]) && !isset($skip))
                             <a class="dropdown-item dropdown-arrow sub-dropdown" href="#">Komponenty</a>
                             <div class="dropdown-menu bg-light" style="right: 100%" aria-labelledby="submenu">
                                 <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/components/edit">Dodaj/Edytuj Komponenty</a>
-                                <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/components/update-prices">Zaktualizuj Ceny</a>
+                                <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/synchronization/sheets#update-prices">Zaktualizuj Ceny</a>
                                 <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/components/detect-new-parts">Aktualizuj Parts</a>
-                                <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/components/from-orders">Pobierz z Zamówień</a>
+                                <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/synchronization/sheets#import-orders">Pobierz z Zamówień</a>
                             </div>
                         </div>
                         <div class="dropdown-submenu dropdown-submenu-left">
@@ -160,13 +160,9 @@ if(!isset($_SESSION["userid"]) && !isset($skip))
                             </div>
                         </div>
                         <div class="dropdown-divider"></div>
-                        <div class="dropdown-submenu dropdown-submenu-left">
-                            <a class="dropdown-item dropdown-arrow sub-dropdown" href="#"><i class="bi bi-cloud-download"></i> Dane z FlowPin</a>
-                            <div class="dropdown-menu bg-light" style="right: 100%" aria-labelledby="submenu">
-                                <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/flowpin/sessions">Przeglądaj sesje</a>
-                                <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/flowpin/update">Aktualizacja Danych</a>
-                            </div>
-                        </div>
+                        <a class="dropdown-item" href="http://<?=BASEURL?>/admin/synchronization/flowpin">
+                            <i class="bi bi-cloud-download"></i> Dane z FlowPin
+                        </a>
                         </a>
                     </div>
                 </li>
@@ -187,43 +183,19 @@ if(!isset($_SESSION["userid"]) && !isset($skip))
         </ul>
     </div>
 </nav>
-<?php if(isset($_SESSION['isAdmin']) && $_SESSION['isAdmin'] == true) :?>
+            <?php if(isset($_SESSION['isAdmin']) && $_SESSION['isAdmin'] == true) :?>
     <div class="text-left" style="position: absolute; top: 70px; float: left; left: 10px; z-index: 9999;">
-        <button id="toggleFlowpinUpdate" class="btn btn-primary">
-            <span class="toggle-text">Pokaż</span> 
-            <span id="flowpinIndicator" style="display:none;" class="spinner-border spinner-border-sm" role="status"></span>
-        </button>
-        <br>
-        <small>aktualizacja z flowpin</small>
-        <div id="flowpinUpdate" style="display:none;">
-            <div>
-                <a href="http://<?=BASEURL?>/admin/flowpin/update" target="_blank" class="btn btn-sm btn-primary" id="updateDataFromFlowpin">Pobierz dane z Flowpin.</a>
-                <div id="flowpinHeaderProgress" style="display:none;" class="mt-1">
-                    <div class="progress" style="height: 10px;">
-                        <div id="flowpinHeaderProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
-                    </div>
-                    <small><span id="flowpinHeaderPercent">0%</span></small>
-                </div>
+        <div class="btn-group">
+            <button type="button" class="btn btn-primary dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                Synchronizacja
+            </button>
+            <div class="dropdown-menu">
+                <a class="dropdown-item" id="flowpinSyncLink" href="http://<?=BASEURL?>/admin/synchronization/flowpin">Flowpin</a>
+                <a class="dropdown-item" href="http://<?=BASEURL?>/admin/synchronization/sheets">Google Sheets</a>
             </div>
-            <small class="bg-light">Data ostatniej aktualizacji: <br><b><span id="flowpinDate"></span></b></small>
-            <br>
-            <hr>
-            <div>
-                <button class="btn btn-sm btn-primary" id="sendWarehousesToGS">Wyślij stan magazynowy<br>do Google Sheets.</button>
-            </div>
-            <small class="bg-light">Data ostatniej aktualizacji: <br><b><span id="GSWarehouseDate"></span></b></small><br>
-            <hr>
-            <div>
-                <button class="btn btn-sm btn-primary" id="sendBomFlatToGS">Wyślij BOM_FLAT<br>do Google Sheets.</button>
-            </div>
-            <div class="mt-2">
-                <button class="btn btn-sm btn-info" id="sendWarehouseComparisonToGS">Wyślij porównanie stanów<br>do Google Sheets.</button>
-            </div>
-            <div class="mt-2">
-                <button class="btn btn-sm btn-primary" id="sendBomFlatSkuToGS">Wyślij BOM_FLAT_SKU<br>do Google Sheets.</button>
-            </div>
-            <div id="spinnerflowpin" class="spinner-border mt-1 text-center" style="display:none" role="status"></div>
         </div>
+        <br>
+        <small>Synchronizacja Danych</small>
     </div>
 <?php endif; ?>
 <script src="<?= asset('public_html/assets/layout/header.js') ?>"></script>
