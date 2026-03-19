@@ -239,7 +239,10 @@ function viewSessionTransfers(sessionId, page = 1) {
     // Show filters section immediately (it has its own loading state)
     $('#modalFilters').removeClass('d-none');
     updateActiveFiltersCount();
-
+    
+    // Check if filter options are already cached for this session
+    const shouldLoadFilterOptions = loadedFilterOptionsSessionId !== sessionId || filterOptionsCache.users.length === 0;
+    
     // Load session transfers with filters
     const requestData = {
         session_id: sessionId,
@@ -265,8 +268,12 @@ function viewSessionTransfers(sessionId, page = 1) {
         } else {
             renderSessionModal(data.session, data.events, data.pagination);
             
-            // Load filter options separately (don't block main content)
-            loadFilterOptions(sessionId);
+            // Load filter options only if not already cached (first time opening this session)
+            if (shouldLoadFilterOptions) {
+                loadFilterOptions(sessionId);
+            } else {
+                populateFilterOptions();
+            }
         }
     })
     .catch(err => {
