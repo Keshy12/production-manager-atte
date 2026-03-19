@@ -44,7 +44,7 @@ class FromOrdersRenderer {
             const filters = this.getFilters();
             const response = await $.ajax({
                 type: "POST",
-                url: COMPONENTS_PATH + "/admin/components/fromorders/get-orders.php",
+                url: COMPONENTS_PATH + "/Admin/Synchronization/sheets/get-orders.php",
                 data: filters
             });
 
@@ -106,7 +106,7 @@ class FromOrdersRenderer {
             const filters = this.getFilters();
             const response = await $.ajax({
                 type: "POST",
-                url: COMPONENTS_PATH + "/admin/components/fromorders/get-orders.php",
+                url: COMPONENTS_PATH + "/Admin/Synchronization/sheets/get-orders.php",
                 data: filters
             });
 
@@ -477,7 +477,7 @@ class FromOrdersRenderer {
         };
 
         $.ajax({
-            url: COMPONENTS_PATH + "/admin/components/fromorders/import-orders.php",
+            url: COMPONENTS_PATH + "/Admin/Synchronization/sheets/import-orders.php",
             type: 'POST',
             data: data,
             dataType: 'json',

@@ -82,12 +82,12 @@ switch ($request) {
         require $componentsDir . '/admin/components/detectnewparts/detect-parts-view.php';
         break;
     case 'admin/components/from-orders':
-        includeWithVariables($headerDir, array('title' => 'Pobierz z zamówień'));
-        require $componentsDir . '/admin/components/fromorders/from-orders-view.php';
+        header('Location: http://' . BASEURL . '/admin/synchronization/sheets#import-orders');
+        exit;
         break;
     case 'admin/components/update-prices':
-        includeWithVariables($headerDir, array('title' => 'Aktualizuj Ceny'));
-        require $componentsDir . '/admin/components/updateprices/update-prices-view.php';
+        header('Location: http://' . BASEURL . '/admin/synchronization/sheets#update-prices');
+        exit;
         break;
     case 'admin/magazines/edit':
         includeWithVariables($headerDir, array('title' => 'Edycja Magazynów'));
