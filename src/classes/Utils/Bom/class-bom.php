@@ -33,41 +33,44 @@ class Bom {
                                                 b.smd_id, 
                                                 b.parts_id, 
                                                  b.quantity * {$quantity} AS qty,
-                                                 IF(t.isAutoProduced = 1 OR s.isAutoProduced = 1, 1, 0) AS isAutoProduced,
-                                                 COALESCE(bs.price, bt.price, bt_f.price, bsm.price, bsm_f.price, p.price) AS price_per_item,
-                                                 CASE 
-                                                    WHEN b.tht_id IS NOT NULL AND bt.id IS NULL THEN 1
-                                                    WHEN b.smd_id IS NOT NULL AND bsm.id IS NULL THEN 1
-                                                    WHEN b.sku_id IS NOT NULL AND bs.id IS NULL THEN 1
-                                                    ELSE 0
-                                                 END AS missing_default
-                                             FROM 
-                                                 bom__flat AS b
-                                             LEFT JOIN 
-                                                 list__tht AS t ON b.tht_id = t.id
-                                             LEFT JOIN
-                                                 bom__tht AS bt ON t.default_bom_id = bt.id
-                                             LEFT JOIN (
-                                                 SELECT tht_id, price FROM bom__tht b1 
-                                                 WHERE isActive = 1 AND id = (SELECT MIN(id) FROM bom__tht b2 WHERE b1.tht_id = b2.tht_id AND b2.isActive = 1)
-                                             ) AS bt_f ON b.tht_id = bt_f.tht_id
-                                             LEFT JOIN 
-                                                 list__sku AS s ON b.sku_id = s.id
-                                             LEFT JOIN
-                                                 bom__sku AS bs ON s.id = bs.sku_id AND bs.isActive = 1
-                                             LEFT JOIN 
-                                                 list__smd AS sm ON b.smd_id = sm.id
-                                             LEFT JOIN
-                                                 bom__smd AS bsm ON sm.default_bom_id = bsm.id
-                                             LEFT JOIN (
-                                                 SELECT smd_id, price FROM bom__smd b1 
-                                                 WHERE isActive = 1 AND id = (SELECT MIN(id) FROM bom__smd b2 WHERE b1.smd_id = b2.smd_id AND b2.isActive = 1)
-                                             ) AS bsm_f ON b.smd_id = bsm_f.smd_id
-                                             LEFT JOIN 
-                                                 list__parts AS p ON b.parts_id = p.id
-                                             WHERE 
-                                                 b.bom_{$deviceType}_id = '{$id}'
-                                             ");
+                                                  IF(t.isAutoProduced = 1 OR s.isAutoProduced = 1, 1, 0) AS isAutoProduced,
+                                                  COALESCE(bs.price, bt.price, bt_f.price, bsm.price, bsm_f.price, p.price) AS price_per_item,
+                                                  u.name AS unit_name,
+                                                  CASE 
+                                                     WHEN b.tht_id IS NOT NULL AND bt.id IS NULL THEN 1
+                                                     WHEN b.smd_id IS NOT NULL AND bsm.id IS NULL THEN 1
+                                                     WHEN b.sku_id IS NOT NULL AND bs.id IS NULL THEN 1
+                                                     ELSE 0
+                                                  END AS missing_default
+                                              FROM 
+                                                  bom__flat AS b
+                                              LEFT JOIN 
+                                                  list__tht AS t ON b.tht_id = t.id
+                                              LEFT JOIN
+                                                  bom__tht AS bt ON t.default_bom_id = bt.id
+                                              LEFT JOIN (
+                                                  SELECT tht_id, price FROM bom__tht b1 
+                                                  WHERE isActive = 1 AND id = (SELECT MIN(id) FROM bom__tht b2 WHERE b1.tht_id = b2.tht_id AND b2.isActive = 1)
+                                              ) AS bt_f ON b.tht_id = bt_f.tht_id
+                                              LEFT JOIN 
+                                                  list__sku AS s ON b.sku_id = s.id
+                                              LEFT JOIN
+                                                  bom__sku AS bs ON s.id = bs.sku_id AND bs.isActive = 1
+                                              LEFT JOIN 
+                                                  list__smd AS sm ON b.smd_id = sm.id
+                                              LEFT JOIN
+                                                  bom__smd AS bsm ON sm.default_bom_id = bsm.id
+                                              LEFT JOIN (
+                                                  SELECT smd_id, price FROM bom__smd b1 
+                                                  WHERE isActive = 1 AND id = (SELECT MIN(id) FROM bom__smd b2 WHERE b1.smd_id = b2.smd_id AND b2.isActive = 1)
+                                              ) AS bsm_f ON b.smd_id = bsm_f.smd_id
+                                              LEFT JOIN 
+                                                  list__parts AS p ON b.parts_id = p.id
+                                              LEFT JOIN
+                                                  part__unit AS u ON p.JM = u.id
+                                              WHERE 
+                                                  b.bom_{$deviceType}_id = '{$id}'
+                                              ");
 
         $result = array();
         foreach($components as $component){
@@ -96,10 +99,11 @@ class Bom {
                 "autoProduce" => $component["isAutoProduced"],
                 "pricePerItem" => $pricePerItem,
                 "totalPrice" => $totalPrice,
-                "missing_default" => $component['missing_default']
+                "missing_default" => $component['missing_default'],
+                "unitName" => $component['unit_name'] ?? 'szt'
             ];
         }
-        return $result;
+        return $this->validateComponentPrices($result);
     }
 
     public function getNameAndDescription(){
@@ -121,5 +125,97 @@ class Bom {
                                             WHERE id = {$laminateId}");
             $this -> laminateName = $query[0]['name'];
         }
+    }
+
+    private function checkNestedBomForMissingPrices($type, $componentId, &$missingComponentNames = []) {
+        $MsaDB = $this->MsaDB;
+        $bomId = null;
+        
+        if ($type === 'tht') {
+            $res = $MsaDB->query("SELECT default_bom_id, name FROM list__tht WHERE id = $componentId", \PDO::FETCH_ASSOC);
+        } else if ($type === 'smd') {
+            $res = $MsaDB->query("SELECT default_bom_id, name FROM list__smd WHERE id = $componentId", \PDO::FETCH_ASSOC);
+        }
+        
+        if (empty($res) || $res[0]['default_bom_id'] === null) {
+            return false;
+        }
+        
+        $bomId = $res[0]['default_bom_id'];
+        $componentName = $res[0]['name'];
+        
+        $components = $MsaDB->query("SELECT 
+            b.sku_id, b.tht_id, b.smd_id, b.parts_id, b.quantity,
+            COALESCE(bs.price, bt.price, bt_f.price, bsm.price, bsm_f.price, p.price) AS price_per_item,
+            s.name AS sku_name, t.name AS tht_name, sm.name AS smd_name, p.name AS part_name
+            FROM bom__flat AS b
+            LEFT JOIN list__tht AS t ON b.tht_id = t.id
+            LEFT JOIN bom__tht AS bt ON t.default_bom_id = bt.id
+            LEFT JOIN (
+                SELECT tht_id, price FROM bom__tht b1 
+                WHERE isActive = 1 AND id = (SELECT MIN(id) FROM bom__tht b2 WHERE b1.tht_id = b2.tht_id AND b2.isActive = 1)
+            ) AS bt_f ON b.tht_id = bt_f.tht_id
+            LEFT JOIN list__sku AS s ON b.sku_id = s.id
+            LEFT JOIN bom__sku AS bs ON s.id = bs.sku_id AND bs.isActive = 1
+            LEFT JOIN list__smd AS sm ON b.smd_id = sm.id
+            LEFT JOIN bom__smd AS bsm ON sm.default_bom_id = bsm.id
+            LEFT JOIN (
+                SELECT smd_id, price FROM bom__smd b1 
+                WHERE isActive = 1 AND id = (SELECT MIN(id) FROM bom__smd b2 WHERE b1.smd_id = b2.smd_id AND b2.isActive = 1)
+            ) AS bsm_f ON b.smd_id = bsm_f.smd_id
+            LEFT JOIN list__parts AS p ON b.parts_id = p.id
+            WHERE bom_{$type}_id = $bomId", \PDO::FETCH_ASSOC);
+        
+        $hasMissingPrices = false;
+        
+        foreach ($components as $comp) {
+            $price = (float)$comp['price_per_item'];
+            
+            if ($price === null || $price == 0) {
+                $hasMissingPrices = true;
+                $missingName = $comp['part_name'] ?? $comp['smd_name'] ?? $comp['tht_name'] ?? $comp['sku_name'] ?? 'Unknown';
+                if (!empty($missingName) && $missingName !== 'Unknown') {
+                    $missingComponentNames[] = $missingName;
+                }
+            }
+            
+            if ($comp['tht_id']) {
+                if ($this->checkNestedBomForMissingPrices('tht', $comp['tht_id'], $missingComponentNames)) {
+                    $hasMissingPrices = true;
+                }
+            }
+            if ($comp['smd_id']) {
+                if ($this->checkNestedBomForMissingPrices('smd', $comp['smd_id'], $missingComponentNames)) {
+                    $hasMissingPrices = true;
+                }
+            }
+        }
+        
+        return $hasMissingPrices;
+    }
+
+    private function validateComponentPrices($components) {
+        $result = [];
+        foreach ($components as &$component) {
+            $hasMissingPrice = ($component['pricePerItem'] === null || $component['pricePerItem'] == 0);
+            
+            $hasNestedMissingPrices = false;
+            $nestedMissingComponents = [];
+            
+            if (!$component['missing_default'] && ($component['type'] === 'tht' || $component['type'] === 'smd')) {
+                $hasNestedMissingPrices = $this->checkNestedBomForMissingPrices(
+                    $component['type'], 
+                    $component['componentId'], 
+                    $nestedMissingComponents
+                );
+            }
+            
+            $component['hasMissingPrice'] = $hasMissingPrice;
+            $component['hasNestedMissingPrices'] = $hasNestedMissingPrices;
+            $component['nestedMissingComponents'] = array_unique($nestedMissingComponents);
+            
+            $result[] = $component;
+        }
+        return $result;
     }
 }

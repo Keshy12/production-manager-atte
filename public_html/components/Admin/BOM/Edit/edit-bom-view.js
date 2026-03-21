@@ -4,6 +4,10 @@ function render(props) {
     return function(tok, i) { return (i % 2) ? props[tok] : tok; };
 }
 
+function formatPrice(price) {
+    return parseFloat(price.toFixed(4)).toString();
+}
+
 $("#bomTypeSelect").change(function(){
     $("#list__device, #versionSelect, #laminateSelect, #editBomTBody, #alerts").empty();
     $("#bomTotalPriceContainer").hide(); // Hide price on type change
@@ -211,7 +215,7 @@ function generateBomTable()
                     type: '', // Custom type for calculated fields, set to empty to disable edit button attributes
                     componentName: 'OUT_SMD',
                     componentDescription: ``,
-                    quantity: `<span class="qty-value">`+outSmdQty+`</span>` + `<br><span class="text-muted small">`+ outSmdPricePerItem.toFixed(2) + `PLN/szt</span>`, // Display outSmdQty and price per item
+                    quantity: `<span class="qty-value">`+outSmdQty+`</span>` + `<br><span class="text-muted small">`+ formatPrice(outSmdPricePerItem) + ` PLN/szt</span>`, // Display outSmdQty and price per item
                     componentId: '', // Set to empty to disable edit button attributes
                     price: `<b>`+outSmdPrice.toFixed(2)+`PLN</b>` // Only total price
                 };
@@ -227,7 +231,7 @@ function generateBomTable()
                     type: '', // Custom type for calculated fields, set to empty to disable edit button attributes
                     componentName: 'OUT_THT',
                     componentDescription: '',
-                    quantity: `<span class="qty-value">`+outThtQuantity+`</span>` + `<br><span class="text-muted small">`+ outThtPricePerItem.toFixed(2) + `PLN/szt</span>`,
+                    quantity: `<span class="qty-value">`+outThtQuantity+`</span>` + `<br><span class="text-muted small">`+ formatPrice(outThtPricePerItem) + ` PLN/szt</span>`,
                     componentId: '', // Set to empty to disable edit button attributes
                     price: `<b>`+outThtPrice.toFixed(2)+`PLN</b>`
                 };
@@ -237,17 +241,36 @@ function generateBomTable()
             
             for(const [key, item] of Object.entries(components))
             {
-                // Highlight missing defaults in red
+                let hasError = false;
+                let errorMessage = '';
+                
                 if (item.missing_default == 1) {
-                    hasMissingDefault = true;
+                    hasError = true;
                     item.componentName = `<span class="text-danger">` + item.componentName + `</span>`;
-                    item.componentDescription = `<span class="text-danger small font-weight-bold">Brak domyślnej wersji BOM dla tego komponentu!</span><br>` + item.componentDescription;
+                    errorMessage = `Brak domyślnej wersji BOM dla tego komponentu!`;
+                }
+                else if (item.hasMissingPrice) {
+                    hasError = true;
+                    item.componentName = `<span class="text-danger">` + item.componentName + `</span>`;
+                    errorMessage = `Brak ceny dla tego komponentu!`;
+                }
+                else if (item.hasNestedMissingPrices) {
+                    hasError = true;
+                    item.componentName = `<span class="text-danger">` + item.componentName + `</span>`;
+                    const missingComponents = Array.isArray(item.nestedMissingComponents) ? item.nestedMissingComponents : [];
+                    const missingList = missingComponents.join(', ');
+                    errorMessage = `Podzespoły brakuje ceny: ` + missingList;
+                }
+                
+                if (hasError) {
+                    hasMissingDefault = true;
+                    item.componentDescription = `<span class="text-danger small font-weight-bold">` + errorMessage + `</span><br>` + item.componentDescription;
                     item.price = `<b class="text-danger">` + item.totalPrice.toFixed(2) + `PLN</b>`;
                 } else {
                     item.price = `<b>` + item.totalPrice.toFixed(2) + `PLN</b>`;
                 }
 
-                item.quantity = `<span class="qty-value">`+item.quantity+`</span>` + `<br><span class="text-muted small">`+ item.pricePerItem.toFixed(2) + `PLN/szt</span>`;
+                item.quantity = `<span class="qty-value">`+item.quantity+`</span>` + `<br><span class="text-muted small">`+ formatPrice(item.pricePerItem) + ` PLN/` + item.unitName + `</span>`;
                 let renderedItem = bomEditTableRow_template.map(render(item)).join('');
                 let $renderedItem = $(renderedItem);
                 
