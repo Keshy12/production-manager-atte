@@ -198,7 +198,7 @@ function generateBomTable()
             $("#createNewBomFields").attr('data-bom-id', bomId);
             $("#isActive").prop('checked', isActive);
             
-            $("#bomTotalPrice").text(bomTotalPrice.toFixed(2));
+            $("#bomTotalPrice").text(formatPrice(bomTotalPrice));
             $("#bomTotalPriceContainer").show();
 
             if (isEditable) {
