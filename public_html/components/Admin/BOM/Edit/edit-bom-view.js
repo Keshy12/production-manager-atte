@@ -214,7 +214,7 @@ function generateBomTable()
                     rowId: 'out_smd', // Special ID to identify this row
                     type: '', // Custom type for calculated fields, set to empty to disable edit button attributes
                     componentName: 'OUT_SMD',
-                    componentDescription: ``,
+                    componentDescription: `<small class="text-muted">Koszt produkcji elementu SMD (ilosc komponentow*cena polozenia komponentu przez maszyne)</small>`,
                     quantity: `<span class="qty-value">`+outSmdQty+`</span>` + `<br><span class="text-muted small">`+ formatPrice(outSmdPricePerItem) + ` PLN/szt</span>`, // Display outSmdQty and price per item
                     componentId: '', // Set to empty to disable edit button attributes
                     price: `<b>`+outSmdPrice.toFixed(2)+`PLN</b>` // Only total price
@@ -230,7 +230,7 @@ function generateBomTable()
                     rowId: 'out_tht', // Special ID to identify this row
                     type: '', // Custom type for calculated fields, set to empty to disable edit button attributes
                     componentName: 'OUT_THT',
-                    componentDescription: '',
+                    componentDescription: `<small class="text-muted">Koszt produkcji elementu THT (ilosc komponentow wyprodukowanych w ciagu godziny/stawka godzinowa pracownika)</small>`,
                     quantity: `<span class="qty-value">`+outThtQuantity+`</span>` + `<br><span class="text-muted small">`+ formatPrice(outThtPricePerItem) + ` PLN/szt</span>`,
                     componentId: '', // Set to empty to disable edit button attributes
                     price: `<b>`+outThtPrice.toFixed(2)+`PLN</b>`
@@ -316,7 +316,8 @@ $('body').on('click', '.editBomRow', function(){
     if (rowId !== 'out_tht') {
         generateComponentSelect($row, componentType, componentId);
     } else {
-        $row.find('.componentInfo').empty();
+        // Keep OUT_THT name and description visible while editing
+        $row.find('.componentInfo').html(`<b>OUT_THT</b><br><small class="text-muted">Koszt produkcji elementu THT (ilosc komponentow wyprodukowanych w ciagu godziny/stawka godzinowa pracownika)</small>`);
     }
 
     generateSaveCancelButtons($row, rowId);
@@ -330,8 +331,15 @@ function generateQuantityInput($row, quantity)
     let rowId = $row.find('.editBomRow').attr('data-id'); // Assuming editBomRow exists and has data-id
     let readOnlyAttr = (rowId === 'out_smd') ? 'readonly' : '';
 
-    let $quantityInput = $(`<input type="number" class="form-control text-center quantityInput" value="`+quantity+`" min="0" step="any" `+readOnlyAttr+`>`);
+    let $quantityInput = $(`<input type="text" class="form-control text-center quantityInput" value="`+quantity+`" `+readOnlyAttr+`>`);
     $quantity.append($quantityInput);
+
+    // Add real-time comma-to-dot conversion
+    $quantityInput.on('input', function() {
+        let val = $(this).val();
+        val = val.replace(',', '.');
+        $(this).val(val);
+    });
 }
 
 function generateSaveCancelButtons($row, rowId)
