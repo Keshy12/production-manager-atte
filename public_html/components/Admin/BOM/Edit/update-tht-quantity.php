@@ -5,7 +5,7 @@ use Atte\Utils\Bom\PriceCalculator;
 $MsaDB = MsaDB::getInstance();
 
 $bomId = $_POST['bomId'];
-$quantity = $_POST['quantity'];
+$quantity = str_replace(',', '.', $_POST['quantity']);
 
 $wasSuccessful = true;
 $errorMessage = '';

@@ -9,7 +9,7 @@ class Bom {
     public int $id;
     public int $deviceId;
     public ?int $laminateId = null;
-    public ?int $out_tht_quantity = null;
+    public ?float $out_tht_quantity = null;
     public ?string $version = null; 
     public bool $isActive;
     public string $name;

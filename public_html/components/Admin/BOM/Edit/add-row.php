@@ -12,7 +12,7 @@ $bomType = $_POST["bomType"];
 $bomId = $_POST["bomId"];
 $componentType = $_POST["componentType"];
 $componentId = $_POST["componentId"];
-$quantity = $_POST["quantity"];
+$quantity = str_replace(',', '.', $_POST["quantity"]);
 
 if(empty($componentType) || empty($componentId) || empty($quantity) || $quantity < 0) {
     $wasSuccessful = false;

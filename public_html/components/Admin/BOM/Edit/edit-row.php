@@ -10,7 +10,7 @@ $wasSuccessful = true;
 
 $rowId = $_POST['rowId'];
 
-$quantity = $_POST["quantity"];
+$quantity = str_replace(',', '.', $_POST["quantity"]);
 
 $valuesToInsert = [
     "sku_id" => null,
