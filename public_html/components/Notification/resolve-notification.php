@@ -2,6 +2,7 @@
 
 use Atte\Utils\Locker;
 use Atte\DB\MsaDB;
+use Atte\DB\FlowpinDB;
 use Atte\Utils\NotificationRepository;
 
 set_time_limit(0);
@@ -28,6 +29,22 @@ if($isLocked) {
         $valueForAction = $unresolvedNotification -> notificationValues["value_for_action"];
         switch($actionNeededId) {
             case 1:
+                // First ensure SKU exists - fetch from FlowPin if missing
+                $skuExists = $MsaDB -> query("SELECT id FROM list__sku WHERE id = " . (int)$valueForAction, PDO::FETCH_COLUMN);
+                if (empty($skuExists)) {
+                    try {
+                        $FlowpinDB = FlowpinDB::getInstance();
+                        $flowpinSku = $FlowpinDB->query("SELECT Symbol, Description FROM ProductTypes WHERE Id = " . (int)$valueForAction);
+                        if (!empty($flowpinSku)) {
+                            $skuName = $flowpinSku[0]["Symbol"];
+                            $skuDescription = $flowpinSku[0]["Description"];
+                            $MsaDB->insert("list__sku", ["id", "name", "description", "isActive"], [(int)$valueForAction, $skuName, $skuDescription, 1]);
+                        }
+                    } catch (\Throwable $e) {
+                        // Continue with BOM check even if FlowPin fetch fails
+                        error_log("Failed to fetch SKU {$valueForAction} from FlowPin during resolve: " . $e->getMessage());
+                    }
+                }
                 $checkIfResolvable = $MsaDB -> query("SELECT isActive FROM `bom__sku` where sku_id = $valueForAction");
                 if(!isset($checkIfResolvable[0][0]) || $checkIfResolvable[0][0] == 0) $isResolvable = false;
                 $result = 'BOM nie został zweryfikowany przez administratora. 

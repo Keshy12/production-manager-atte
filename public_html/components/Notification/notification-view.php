@@ -1,6 +1,7 @@
 <?php
 
 use Atte\DB\MsaDB;
+use Atte\DB\FlowpinDB;
 use Atte\Utils\NotificationRepository;
 
 $MsaDB = MsaDB::getInstance();
@@ -13,6 +14,26 @@ $queriesAffectedCount = $MsaDB -> query("SELECT COUNT(*) FROM `notification__que
 
 
 $list__sku = $MsaDB -> readIdName("list__sku");
+
+// Fallback: If this is a BOM notification (actionNeededId == 1) and SKU is not found locally,
+// fetch from FlowPin and display/insert it
+if ($actionNeededId == 1 && !isset($list__sku[$valueForAction])) {
+    try {
+        $FlowpinDB = FlowpinDB::getInstance();
+        $flowpinSku = $FlowpinDB->query("SELECT Symbol, Description FROM ProductTypes WHERE Id = " . (int)$valueForAction);
+        if (!empty($flowpinSku)) {
+            $skuName = $flowpinSku[0]["Symbol"];
+            $skuDescription = $flowpinSku[0]["Description"];
+            // Insert into list__sku so it's available next time
+            $MsaDB->insert("list__sku", ["id", "name", "description", "isActive"], [(int)$valueForAction, $skuName, $skuDescription, 1]);
+            // Add to the local array for display
+            $list__sku[$valueForAction] = $skuName;
+        }
+    } catch (\Throwable $e) {
+        // Log error but don't break the page - will display "not found" message
+        error_log("Failed to fetch SKU {$valueForAction} from FlowPin: " . $e->getMessage());
+    }
+}
 
 $message = $MsaDB -> query("SELECT description FROM notification__action_needed
                                 WHERE id = $actionNeededId", \PDO::FETCH_COLUMN)[0];

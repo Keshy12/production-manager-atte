@@ -101,7 +101,8 @@ function writeInventoryChanges() {
 }
 
 /**
- * Ensures SKU exists in MSA database, creates it from FlowPin if missing
+ * Ensures SKU exists in MSA database, creates it from FlowPin if missing.
+ * Commits immediately to ensure SKU persists even if main transaction rolls back.
  * @param int $deviceId SKU ID to check/create
  * @param MsaDB $MsaDB MSA database instance
  * @param FlowpinDB $FlowpinDB FlowPin database instance
@@ -121,8 +122,22 @@ function ensureSkuExists($deviceId, $MsaDB, $FlowpinDB) {
         }
 
         $newSKU = $newSKU[0];
+
+        // Check if we're in a transaction - if so, commit it first
+        $wasInTransaction = $MsaDB->db->inTransaction();
+        if ($wasInTransaction) {
+            $MsaDB->db->commit();
+        }
+
+        // Insert SKU outside of any transaction to persist it
         $MsaDB->insert("list__sku", ["id", "name", "description", "isActive"], [$deviceId, $newSKU["Symbol"], $newSKU["Description"], 1]);
         writeLog("Created missing SKU: ID=$deviceId, Name={$newSKU["Symbol"]}", 'INFO');
+
+        // If we were in a transaction, start a new one
+        if ($wasInTransaction) {
+            $MsaDB->db->beginTransaction();
+        }
+
         return true;
 
     } catch (\Throwable $exception) {
