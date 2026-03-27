@@ -44,8 +44,9 @@ class Notification {
         }
 
         $transferGroupManager = new TransferGroupManager($this->MsaDB);
+        $notificationId = $this->notificationValues["id"];
 
-        if($this -> retryQueries($transferGroupManager)){
+        if($this -> retryQueries($transferGroupManager, $notificationId)){
             $remainingQueries = $this->getValuesToResolve();
             if(empty($remainingQueries)) {
                 $this -> resolveNotification();
@@ -66,7 +67,7 @@ class Notification {
         return $result;
     }
 
-    private function retryQueries($transferGroupManager) {
+    private function retryQueries($transferGroupManager, $notificationId) {
         $MsaDB = $this -> MsaDB;
         $valuesToResolve = $this -> getValuesToResolve();
         $valuesToResolveGroupedByFlowpinTypeId = $this -> groupValuesToResolveByFlowpinTypeId($valuesToResolve);
@@ -75,16 +76,16 @@ class Notification {
         foreach($valuesToResolveGroupedByFlowpinTypeId as $flowpinQueryTypeId => $valuesToResolve) {
             switch($flowpinQueryTypeId) {
                 case 1:
-                    if(!$this -> resolveSKUProduction($MsaDB, $valuesToResolve, $transferGroupManager)) $wasSuccessful = false;
+                    if(!$this -> resolveSKUProduction($MsaDB, $valuesToResolve, $transferGroupManager, $notificationId)) $wasSuccessful = false;
                     break;
                 case 2:
-                    if(!$this -> resolveSKUSold($MsaDB, $valuesToResolve, $transferGroupManager)) $wasSuccessful = false;
+                    if(!$this -> resolveSKUSold($MsaDB, $valuesToResolve, $transferGroupManager, $notificationId)) $wasSuccessful = false;
                     break;
                 case 3:
-                    if(!$this -> resolveSKUReturnal($MsaDB, $valuesToResolve, $transferGroupManager)) $wasSuccessful = false;
+                    if(!$this -> resolveSKUReturnal($MsaDB, $valuesToResolve, $transferGroupManager, $notificationId)) $wasSuccessful = false;
                     break;
                 case 4:
-                    if(!$this -> resolveSKUTransfer($MsaDB, $valuesToResolve, $transferGroupManager)) $wasSuccessful = false;
+                    if(!$this -> resolveSKUTransfer($MsaDB, $valuesToResolve, $transferGroupManager, $notificationId)) $wasSuccessful = false;
                     break;
 
                 default:
@@ -95,11 +96,12 @@ class Notification {
         return $wasSuccessful;
     }
 
-    private function resolveSKUProduction($MsaDB, $valuesToResolve, $transferGroupManager) {
+    private function resolveSKUProduction($MsaDB, $valuesToResolve, $transferGroupManager, $notificationId) {
         $FlowpinDB = FlowpinDB::getInstance();
         $productionProcessor = new SkuProductionProcessor($MsaDB, $FlowpinDB);
         $notificationRepository = new NotificationRepository($MsaDB);
         $userRepository = new UserRepository($MsaDB);
+        $transferGroupCache = [];
 
         foreach($valuesToResolve as $row) {
             $idToDel = $row[0];
@@ -117,14 +119,13 @@ class Notification {
                 $user = $userRepository->getUserByEmail($userEmail);
                 $userId = $user->userId;
 
-                $deviceNameResult = $MsaDB->query("SELECT name FROM list__sku WHERE id = " . (int)$deviceId, \PDO::FETCH_COLUMN);
-                $deviceName = $deviceNameResult[0] ?? "SKU_ID_{$deviceId}";
-
-                $transferGroupId = $transferGroupManager->createTransferGroup($userId, 'notification_resolve', [
-                    'operation' => 'Production',
-                    'date' => $productionDate,
-                    'device_name' => $deviceName
-                ]);
+                $cacheKey = "{$notificationId}_{$userId}_{$deviceId}";
+                if (!isset($transferGroupCache[$cacheKey])) {
+                    $transferGroupCache[$cacheKey] = $transferGroupManager->createTransferGroup($userId, 'notification_resolve', [
+                        'notification_id' => $notificationId
+                    ]);
+                }
+                $transferGroupId = $transferGroupCache[$cacheKey];
 
                 $queries = $productionProcessor->processProduction($data, $productionDate, $transferGroupId, null, $eventId);
 
@@ -150,11 +151,12 @@ class Notification {
         return true;
     }
 
-    private function resolveSKUSold($MsaDB, $valuesToResolve, $transferGroupManager) {
+    private function resolveSKUSold($MsaDB, $valuesToResolve, $transferGroupManager, $notificationId) {
         $userRepository = new UserRepository($MsaDB);
         $bomRepository = new BomRepository($MsaDB);
         $wasSuccessful = true;
         $notificationRepository = new NotificationRepository($MsaDB);
+        $transferGroupCache = [];
 
         foreach ($valuesToResolve as $row) {
             $rowId = $row[0];
@@ -170,14 +172,13 @@ class Notification {
 
                 $productionDate = date('Y-m-d', strtotime($executionDate));
 
-                $deviceNameResult = $MsaDB->query("SELECT name FROM list__sku WHERE id = " . (int)$deviceId, \PDO::FETCH_COLUMN);
-                $deviceName = $deviceNameResult[0] ?? "SKU_ID_{$deviceId}";
-
-                $transferGroupId = $transferGroupManager->createTransferGroup($userId, 'notification_resolve', [
-                    'operation' => 'Sold',
-                    'date' => $productionDate,
-                    'device_name' => $deviceName
-                ]);
+                $cacheKey = "{$notificationId}_{$userId}_{$deviceId}";
+                if (!isset($transferGroupCache[$cacheKey])) {
+                    $transferGroupCache[$cacheKey] = $transferGroupManager->createTransferGroup($userId, 'notification_resolve', [
+                        'notification_id' => $notificationId
+                    ]);
+                }
+                $transferGroupId = $transferGroupCache[$cacheKey];
 
                 $bomId = null;
                 $bomsFound = $bomRepository->getBomByValues('sku', ['sku_id' => (int)$deviceId, 'version' => null]);
@@ -202,11 +203,12 @@ class Notification {
         return $wasSuccessful;
     }
 
-    private function resolveSKUReturnal($MsaDB, $valuesToResolve, $transferGroupManager) {
+    private function resolveSKUReturnal($MsaDB, $valuesToResolve, $transferGroupManager, $notificationId) {
         $userRepository = new UserRepository($MsaDB);
         $bomRepository = new BomRepository($MsaDB);
         $wasSuccessful = true;
         $notificationRepository = new NotificationRepository($MsaDB);
+        $transferGroupCache = [];
 
         foreach ($valuesToResolve as $row) {
             try {
@@ -229,14 +231,13 @@ class Notification {
 
                 $productionDate = date('Y-m-d', strtotime($executionDate));
 
-                $deviceNameResult = $MsaDB->query("SELECT name FROM list__sku WHERE id = " . (int)$deviceId, \PDO::FETCH_COLUMN);
-                $deviceName = $deviceNameResult[0] ?? "SKU_ID_{$deviceId}";
-
-                $transferGroupId = $transferGroupManager->createTransferGroup($userId, 'notification_resolve', [
-                    'operation' => 'Returned',
-                    'date' => $productionDate,
-                    'device_name' => $deviceName
-                ]);
+                $cacheKey = "{$notificationId}_{$userId}_{$deviceId}";
+                if (!isset($transferGroupCache[$cacheKey])) {
+                    $transferGroupCache[$cacheKey] = $transferGroupManager->createTransferGroup($userId, 'notification_resolve', [
+                        'notification_id' => $notificationId
+                    ]);
+                }
+                $transferGroupId = $transferGroupCache[$cacheKey];
 
                 $bomId = null;
                 $bomsFound = $bomRepository->getBomByValues('sku', ['sku_id' => (int)$deviceId, 'version' => null]);
@@ -261,11 +262,12 @@ class Notification {
         return $wasSuccessful;
     }
 
-    private function resolveSKUTransfer($MsaDB, $valuesToResolve, $transferGroupManager) {
+    private function resolveSKUTransfer($MsaDB, $valuesToResolve, $transferGroupManager, $notificationId) {
         $userRepository = new UserRepository($MsaDB);
         $bomRepository = new BomRepository($MsaDB);
         $wasSuccessful = true;
         $notificationRepository = new NotificationRepository($MsaDB);
+        $transferGroupCache = [];
 
         foreach ($valuesToResolve as $row) {
             try {
@@ -282,14 +284,13 @@ class Notification {
 
                 $productionDate = date('Y-m-d', strtotime($executionDate));
 
-                $deviceNameResult = $MsaDB->query("SELECT name FROM list__sku WHERE id = " . (int)$deviceId, \PDO::FETCH_COLUMN);
-                $deviceName = $deviceNameResult[0] ?? "SKU_ID_{$deviceId}";
-
-                $transferGroupId = $transferGroupManager->createTransferGroup($userId, 'notification_resolve', [
-                    'operation' => 'Moved',
-                    'date' => $productionDate,
-                    'device_name' => $deviceName
-                ]);
+                $cacheKey = "{$notificationId}_{$userId}_{$deviceId}";
+                if (!isset($transferGroupCache[$cacheKey])) {
+                    $transferGroupCache[$cacheKey] = $transferGroupManager->createTransferGroup($userId, 'notification_resolve', [
+                        'notification_id' => $notificationId
+                    ]);
+                }
+                $transferGroupId = $transferGroupCache[$cacheKey];
 
                 $bomId = null;
                 $bomsFound = $bomRepository->getBomByValues('sku', ['sku_id' => (int)$deviceId, 'version' => null]);
