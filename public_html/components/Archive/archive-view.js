@@ -440,7 +440,8 @@ function attachCollapseHandlers() {
                 
                 const $p = $(`#group-placeholder-${gIdx}`);
                 if ($p.length && $p.data('loaded') == '0') {
-                    loadDeviceEntries($p.data('group-id'), gIdx, null, 'all', null, 0);
+                    const activeFilter = $("#quickDeviceType").val() || $("#deviceType").val() || 'all';
+                    loadDeviceEntries($p.data('group-id'), gIdx, null, activeFilter, null, 0);
                 }
             }
         }

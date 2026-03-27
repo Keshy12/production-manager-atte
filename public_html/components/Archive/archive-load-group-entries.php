@@ -101,7 +101,7 @@ if ($deviceType === 'all') {
         }
     } else {
         // Original behavior - load all entries across all device types
-        $deviceTypes = ['sku', 'tht', 'smd', 'parts'];
+        $deviceTypes = ($deviceTypeFilter && $deviceTypeFilter !== 'all') ? [$deviceTypeFilter] : ['sku', 'tht', 'smd', 'parts'];
 
         $unionParts = [];
         foreach ($deviceTypes as $type) {
