@@ -435,6 +435,7 @@ $("#list__device_to_clone").change(function(){
     let deviceId = this.value;
     let deviceValues = getDeviceValues(deviceType, deviceId); 
     writeValuesToForm(deviceValues);
+    $("#defaultBomId").val('');
 });
 
 function generateVersionSelect(possibleVersions){

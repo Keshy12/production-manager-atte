@@ -169,7 +169,7 @@ function generateBomTable()
         type: "POST",
         url: COMPONENTS_PATH+"/admin/bom/edit/get-bom-components.php",
         async: false,
-        data: {bomType: bomType, bomValues: bomValues},
+        data: {bomType: bomType, bomValues: bomValues, createNewBom: createNewBom},
         success: function (data) {
             let result = JSON.parse(data);
             let components = result[0];

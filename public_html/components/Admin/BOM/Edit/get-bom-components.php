@@ -7,6 +7,7 @@ $bomRepository = new BomRepository($MsaDB);
 
 $wasSuccessful = true;
 $errorMessage = '';
+$createNewBom = isset($_POST['createNewBom']) && $_POST['createNewBom'] === 'true';
 
 $list__sku = $MsaDB -> readIdName('list__sku');
 $list__sku_desc = $MsaDB -> readIdName('list__sku', 'id', 'description');
@@ -51,6 +52,18 @@ try {
 
             if(count($bomsFound) != 1) {
                 throw new \Exception("Błąd podczas tworzenia nowego BOM dla SKU");
+            }
+        } elseif($bomType == 'tht' && $createNewBom) {
+            $columns = ['tht_id', 'version', 'isActive', 'out_tht_quantity'];
+            $values = [$bomValues['tht_id'], $bomValues['version'], 0, 0];
+            $newBomId = $MsaDB->insert('bom__tht', $columns, $values);
+
+            $MsaDB->update('list__tht', ['default_bom_id' => $newBomId], 'id', $bomValues['tht_id']);
+
+            $bomsFound = $bomRepository->getBomByValues($bomType, $bomValues);
+
+            if(count($bomsFound) != 1) {
+                throw new \Exception("Błąd podczas tworzenia nowego BOM dla THT");
             }
         } else {
             throw new \Exception("Nie znaleziono BOM");
