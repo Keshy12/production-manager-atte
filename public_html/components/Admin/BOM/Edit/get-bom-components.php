@@ -130,8 +130,8 @@ if($wasSuccessful) {
         $list__parts, $list__parts_desc) {
         $componentType = $row['type'];
         $componentId = $row['componentId'];
-        if(!isset(${'list__'.$componentType}[$componentId])
-            || !isset(${'list__'.$componentType.'_desc'}[$componentId]))
+        if(!array_key_exists($componentId, ${'list__'.$componentType})
+            || !array_key_exists($componentId, ${'list__'.$componentType.'_desc'}))
         {
             throw new \Exception("ERROR Component not found, type: $componentType, id: $componentId");
         }
