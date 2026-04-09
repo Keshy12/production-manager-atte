@@ -27,18 +27,27 @@ $errorMessage = "";
 
 try {
     $rowsToInsert = array_map(function($row) use ($part__group_flipped, $part__type_flipped, $part__unit_flipped){
-        if (!isset($part__group_flipped[$row[3]]) 
-            || ($row[4] !== '' && !isset($part__type_flipped[$row[4]])) 
-            || !isset($part__unit_flipped[$row[5]])) {
-            throw new \Exception("One or more values are not set in the flipped array.");
+        $partGroup =     trim($row[3]);
+        $partType = trim($row[4]);
+        $partUnit = trim($row[5]);
+
+        if (!isset($part__group_flipped[$partGroup])) {
+            throw new \Exception("PartGroup '{$partGroup}' not found in row id={$row[0]}");
         }
+        if ($partType !== '' && !isset($part__type_flipped[$partType])) {
+            throw new \Exception("PartType '{$partType}' not found in row id={$row[0]}");
+        }
+        if (!isset($part__unit_flipped[$partUnit])) {
+            throw new \Exception("JM '{$partUnit}' not found in row id={$row[0]}");
+        }
+
         return [
             $row[0],
             $row[1],
             $row[2],
-            $part__group_flipped[$row[3]],
-            $row[4] == '' ? null : $part__type_flipped[$row[4]],
-            $part__unit_flipped[$row[5]]
+            $part__group_flipped[$partGroup],
+            $partType == '' ? null : $part__type_flipped[$partType],
+            $part__unit_flipped[$partUnit]
         ];
     }, $newParts);
 
