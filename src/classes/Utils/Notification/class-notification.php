@@ -213,13 +213,7 @@ class Notification {
         foreach ($valuesToResolve as $row) {
             try {
                 $rowId = $row[0];
-                $nestedData = $row[1];
-
-                if (!is_array($nestedData) || !isset($nestedData[1]) || !is_array($nestedData[1])) {
-                    throw new \InvalidArgumentException("Invalid nested data structure for SKU Returnal: " . print_r($nestedData, true));
-                }
-
-                $data = $nestedData[1];
+                $data = $row[1];
 
                 if (count($data) < 5) {
                     throw new \InvalidArgumentException("Insufficient data elements for SKU Returnal - expected at least 5, got " . count($data) . ": " . print_r($data, true));
@@ -251,7 +245,7 @@ class Notification {
                 $MsaDB->insert("inventory__sku", $columns, $values);
                 $MsaDB->deleteById("notification__queries_affected", $rowId);
             } catch (\Throwable $exception) {
-                $createdNotification = $notificationRepository->createNotificationFromException($exception, $data ?? $nestedData ?? [], 3);
+                $createdNotification = $notificationRepository->createNotificationFromException($exception, $data ?? [], 3);
                 if($createdNotification->notificationValues['action_needed_id'] !== 0) {
                     $MsaDB->deleteById("notification__queries_affected", $rowId);
                     continue;
