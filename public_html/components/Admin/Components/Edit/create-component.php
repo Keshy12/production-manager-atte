@@ -11,7 +11,7 @@ $componentValues = [
     "isActive" => true
 ];
 
-if (isset($_POST["defaultBomId"])) {
+if (isset($_POST["defaultBomId"]) && in_array($deviceType, ['tht', 'smd'])) {
     $componentValues["default_bom_id"] = $_POST["defaultBomId"] == "" ? null : $_POST["defaultBomId"];
 }
 
