@@ -5,8 +5,10 @@ function render(props) {
 }
 
 $(document).ready(async function() {
-    const newParts = await getNewParts();
-    const newPartsObj = parseNewPartsJSON(newParts);
+    const response = await getNewParts();
+    const result = JSON.parse(response);
+    const newPartsObj = result['newParts'];
+    const missingRefs = result['missingRefs'];
     $("#loadingMessage").hide();
     if(newPartsObj === null) return;
     if(Object.keys(newPartsObj).length === 0) {
@@ -14,6 +16,23 @@ $(document).ready(async function() {
             Nie wykryto żadnych nowych części.
         </div>`);
         return;
+    }
+    const hasMissing = Object.values(missingRefs).some(arr => arr.length > 0);
+    if (hasMissing) {
+        let missingLines = [];
+        if (missingRefs['part__group'].length > 0) {
+            missingLines.push('<b>PartGroup:</b> ' + missingRefs['part__group'].join(', '));
+        }
+        if (missingRefs['part__type'].length > 0) {
+            missingLines.push('<b>PartType:</b> ' + missingRefs['part__type'].join(', '));
+        }
+        if (missingRefs['part__unit'].length > 0) {
+            missingLines.push('<b>JM:</b> ' + missingRefs['part__unit'].join(', '));
+        }
+        $("#tableContainer").append(`<div class="alert alert-warning" role="alert">
+            Następujące wartości referencyjne nie istnieją w bazie i zostaną automatycznie utworzone:<br>
+            ${missingLines.join('<br>')}
+        </div>`);
     }
     $("#detectPartsTable, #uploadNewParts").show();
     const $TBody = $('#detectPartsTBody');
@@ -196,18 +215,6 @@ function showConfirmDeleteModal($row) {
     $("#confirmDeleteModal").modal('show');
     $("#confirmDelete").attr('data-id', rowId);
 }
-
-function parseNewPartsJSON(newParts) {
-    try {
-        const newPartsJson = JSON.parse(newParts);
-        return newPartsJson;
-    } catch (e) {
-        console.log(newParts);
-        console.error("Error parsing JSON: ", e);
-        return null;
-    }
-}
-
 
 function renderTableRows($TBody, newPartsJson) {
     for(const [key, item] of Object.entries(newPartsJson))

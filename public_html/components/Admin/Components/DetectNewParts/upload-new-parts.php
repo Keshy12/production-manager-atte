@@ -26,8 +26,41 @@ $wasSuccessful = true;
 $errorMessage = "";
 
 try {
+    $missingGroups = [];
+    $missingTypes = [];
+    $missingUnits = [];
+
+    foreach ($newParts as $row) {
+        $group = trim($row[3]);
+        $type = trim($row[4]);
+        $unit = trim($row[5]);
+
+        if (!isset($part__group_flipped[$group]) && !in_array($group, $missingGroups)) {
+            $missingGroups[] = $group;
+        }
+        if ($type !== '' && !isset($part__type_flipped[$type]) && !in_array($type, $missingTypes)) {
+            $missingTypes[] = $type;
+        }
+        if (!isset($part__unit_flipped[$unit]) && !in_array($unit, $missingUnits)) {
+            $missingUnits[] = $unit;
+        }
+    }
+
+    if (!empty($missingGroups)) {
+        $MsaDB->insertBulk('part__group', ['name'], array_map(fn($g) => [$g], $missingGroups));
+        $part__group_flipped = array_flip($MsaDB->readIdName('part__group'));
+    }
+    if (!empty($missingTypes)) {
+        $MsaDB->insertBulk('part__type', ['name'], array_map(fn($t) => [$t], $missingTypes));
+        $part__type_flipped = array_flip($MsaDB->readIdName('part__type'));
+    }
+    if (!empty($missingUnits)) {
+        $MsaDB->insertBulk('part__unit', ['name'], array_map(fn($u) => [$u], $missingUnits));
+        $part__unit_flipped = array_flip($MsaDB->readIdName('part__unit'));
+    }
+
     $rowsToInsert = array_map(function($row) use ($part__group_flipped, $part__type_flipped, $part__unit_flipped){
-        $partGroup =     trim($row[3]);
+        $partGroup = trim($row[3]);
         $partType = trim($row[4]);
         $partUnit = trim($row[5]);
 
