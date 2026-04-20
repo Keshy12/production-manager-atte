@@ -59,7 +59,7 @@ include('modals.php');
         <div id="legendContent" class="collapse show mt-2">
             <span class="d-inline-block px-2 py-1 me-2 border border-dark rounded" style="background-color: #d4edda;">&nbsp;</span> Nowy komponent (nie istnieje w bazie)<br>
             <span class="d-inline-block px-2 py-1 me-2 border border-dark rounded" style="background-color: #fff3cd;">&nbsp;</span> Zmieniony komponent (istnieje w bazie, różnice w danych)<br>
-            <span class="d-inline-block px-2 py-1 me-2 border border-dark rounded" style="background-color: #ffd966;">&nbsp;</span> Zmienione pole (konkretne pole które się różni)
+            <span class="d-inline-block px-2 py-1 me-2 border border-dark rounded" style="background-color: #ffd966;">&nbsp;</span> Zmienione pole (kliknij, aby zobaczyć różnicę)
         </div>
     </div>
 </div>
