@@ -24,12 +24,13 @@ include('modals.php');
     }
     td.cell-edited {
         background-color: #ffd966 !important;
-    }
-    tr.new-part-row td.cell-edited {
-        background-color: #b8e6c4 !important;
+        cursor: pointer;
     }
     tr.edited-part-row td.cell-edited {
         background-color: #ffd966 !important;
+    }
+    .change-content {
+        font-size: 0.75rem;
     }
 </style>
 
@@ -56,9 +57,9 @@ include('modals.php');
             <strong>Legenda kolorów:</strong> <i class="bi bi-chevron-down"></i>
         </a>
         <div id="legendContent" class="collapse show mt-2">
-            <span class="d-inline-block px-2 py-1 me-2" style="background-color: #d4edda;">&nbsp;</span> Nowy komponent (nie istnieje w bazie)<br>
-            <span class="d-inline-block px-2 py-1 me-2" style="background-color: #fff3cd;">&nbsp;</span> Zmieniony komponent (istnieje w bazie, różnice w danych)<br>
-            <span class="d-inline-block px-2 py-1 me-2" style="background-color: #ffd966;">&nbsp;</span> Zmienione pole (konkretne pole które się różni)
+            <span class="d-inline-block px-2 py-1 me-2 border border-dark rounded" style="background-color: #d4edda;">&nbsp;</span> Nowy komponent (nie istnieje w bazie)<br>
+            <span class="d-inline-block px-2 py-1 me-2 border border-dark rounded" style="background-color: #fff3cd;">&nbsp;</span> Zmieniony komponent (istnieje w bazie, różnice w danych)<br>
+            <span class="d-inline-block px-2 py-1 me-2 border border-dark rounded" style="background-color: #ffd966;">&nbsp;</span> Zmienione pole (konkretne pole które się różni)
         </div>
     </div>
 </div>

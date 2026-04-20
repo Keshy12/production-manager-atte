@@ -2,12 +2,12 @@
     <tr data-id="${0}" data-type="${type}">
         <td class="align-middle id">${0}</td>
         <td class="componentInfo${componentInfoClass}">
-            <b class="componentName">${1}</b><br>
-            <small class="componentDescription">${2}</small>
+            <span class="${componentNameClass}"><b class="componentName">${1}</b>${nameToggle}</span><br>
+            <span class="${componentDescClass}"><small class="componentDescription">${2}</small>${descriptionToggle}</span>
         </td>
-        <td class="PartGroup${PartGroupClass}">${3}</td>
-        <td class="PartType${PartTypeClass}">${4}</td>
-        <td class="JM${JMClass}">${5}</td>
+        <td class="PartGroup${PartGroupClass}">${3}${PartGroupToggle}</td>
+        <td class="PartType${PartTypeClass}">${4}${PartTypeToggle}</td>
+        <td class="JM${JMClass}">${5}${JMToggle}</td>
         <td class="align-middle editButtons">
             <button class="editRow btn btn-light">
                 <i class="bi bi-pencil-square"></i>

@@ -78,6 +78,9 @@ $(document).ready(async function() {
         const allTransformed = { ...transformedNewParts, ...transformedEditedParts };
         renderTableRows($TBody, allTransformed);
     });
+    $('body').on('click', 'td.cell-edited', function() {
+        $(this).find('.change-content').collapse('toggle');
+    });
     $("#uploadNewParts").click(function() {
         const newPartsJson = JSON.stringify(transformedNewParts);
         const editedPartsJson = JSON.stringify(transformedEditedParts);
@@ -85,9 +88,36 @@ $(document).ready(async function() {
     });
 });
 
+function getLongestCommonPrefix(str1, str2) {
+    if (!str1 || !str2) return '';
+    let common = '';
+    for (let i = 0; i < Math.min(str1.length, str2.length); i++) {
+        if (str1[i] === str2[i]) {
+            common += str1[i];
+        } else {
+            break;
+        }
+    }
+    return common;
+}
+
+function renderDiffValue(oldVal, newVal) {
+    const lcp = getLongestCommonPrefix(oldVal, newVal);
+    if (!lcp) {
+        return { oldHtml: oldVal, newHtml: newVal };
+    }
+    const oldDiff = oldVal.substring(lcp.length);
+    const newDiff = newVal.substring(lcp.length);
+    return {
+        oldHtml: `<span class="text-muted">${lcp}</span><strong>${oldDiff}</strong>`,
+        newHtml: `<span class="text-muted">${lcp}</span><strong>${newDiff}</strong>`
+    };
+}
+
 function transformNewParts(newParts) {
     const transformed = {};
-    for (const [key, item] of Object.entries(newParts)) {
+    for (const item of newParts) {
+        const key = item[0];
         transformed[key] = {
             type: 'new',
             0: item[0],
@@ -97,9 +127,21 @@ function transformNewParts(newParts) {
             4: item[4],
             5: item[5],
             componentInfoClass: '',
+            componentNameClass: '',
+            componentDescClass: '',
             PartGroupClass: '',
             PartTypeClass: '',
-            JMClass: ''
+            JMClass: '',
+            nameToggle: '',
+            descriptionToggle: '',
+            PartGroupToggle: '',
+            PartTypeToggle: '',
+            JMToggle: '',
+            changes_name_from: item[1],
+            changes_description_from: item[2],
+            changes_PartGroup_from: item[3],
+            changes_PartType_from: item[4],
+            changes_JM_from: item[5]
         };
     }
     return transformed;
@@ -107,10 +149,50 @@ function transformNewParts(newParts) {
 
 function transformEditedParts(editedParts) {
     const transformed = {};
-    for (const [key, item] of Object.entries(editedParts)) {
+    for (const item of editedParts) {
+        const key = item.data[0];
         const changes = item.changes || {};
         const nameChanged = !!changes['name'];
         const descChanged = !!changes['description'];
+        const id = item.data[0];
+
+        let nameToggle = '';
+        if (nameChanged) {
+            const nameFrom = changes['name']?.from || '';
+            const nameTo = changes['name']?.to || '';
+            const nameDiff = renderDiffValue(nameFrom, nameTo);
+            nameToggle = `<div class="collapse change-content text-left mt-1 border border-dark rounded bg-white p-1"><strong>Było:</strong> ${nameDiff.oldHtml}<br><strong>Jest:</strong> ${nameDiff.newHtml}</div>`;
+        }
+
+        let descriptionToggle = '';
+        if (descChanged) {
+            const descFrom = changes['description']?.from || '';
+            const descTo = changes['description']?.to || '';
+            const descDiff = renderDiffValue(descFrom, descTo);
+            descriptionToggle = `<div class="collapse change-content text-left mt-1 border border-dark rounded bg-white p-1"><strong>Było:</strong> ${descDiff.oldHtml}<br><strong>Jest:</strong> ${descDiff.newHtml}</div>`;
+        }
+
+        let PartGroupToggle = '';
+        if (changes['PartGroup']) {
+            const from = changes['PartGroup'].from || '';
+            const to = changes['PartGroup'].to || '';
+            PartGroupToggle = `<div class="collapse change-content text-left mt-1 border border-dark rounded bg-white p-1"><strong>Było:</strong> ${from}<br><strong>Jest:</strong> ${to}</div>`;
+        }
+
+        let PartTypeToggle = '';
+        if (changes['PartType']) {
+            const from = changes['PartType'].from || '';
+            const to = changes['PartType'].to || '';
+            PartTypeToggle = `<div class="collapse change-content text-left mt-1 border border-dark rounded bg-white p-1"><strong>Było:</strong> ${from}<br><strong>Jest:</strong> ${to}</div>`;
+        }
+
+        let JMToggle = '';
+        if (changes['JM']) {
+            const from = changes['JM'].from || '';
+            const to = changes['JM'].to || '';
+            JMToggle = `<div class="collapse change-content text-left mt-1 border border-dark rounded bg-white p-1"><strong>Było:</strong> ${from}<br><strong>Jest:</strong> ${to}</div>`;
+        }
+
         transformed[key] = {
             type: 'edited',
             0: item.data[0],
@@ -120,9 +202,21 @@ function transformEditedParts(editedParts) {
             4: item.data[4],
             5: item.data[5],
             componentInfoClass: (nameChanged || descChanged) ? ' cell-edited' : '',
+            componentNameClass: nameChanged ? ' cell-edited' : '',
+            componentDescClass: descChanged ? ' cell-edited' : '',
             PartGroupClass: !!changes['PartGroup'] ? ' cell-edited' : '',
             PartTypeClass: !!changes['PartType'] ? ' cell-edited' : '',
-            JMClass: !!changes['JM'] ? ' cell-edited' : ''
+            JMClass: !!changes['JM'] ? ' cell-edited' : '',
+            nameToggle: nameToggle,
+            descriptionToggle: descriptionToggle,
+            PartGroupToggle: PartGroupToggle,
+            PartTypeToggle: PartTypeToggle,
+            JMToggle: JMToggle,
+            changes_name_from: changes['name']?.from || '',
+            changes_description_from: changes['description']?.from || '',
+            changes_PartGroup_from: changes['PartGroup']?.from || '',
+            changes_PartType_from: changes['PartType']?.from || '',
+            changes_JM_from: changes['JM']?.from || ''
         };
     }
     return transformed;
@@ -164,10 +258,62 @@ function editRowApply($row, rowId, rowType, transformedNewParts, transformedEdit
     const partUnit = $row.find('.JMSelect option:selected').text();
 
     const targetObj = rowType === 'new' ? transformedNewParts : transformedEditedParts;
-    targetObj[rowId] = {
-        ...targetObj[rowId],
-        type: rowType,
-        0: rowId,
+    const numericRowId = parseInt(rowId);
+    const original = targetObj[numericRowId];
+
+    if (!original) {
+        console.error(`Row ${rowId} (type: ${rowType}) not found`);
+        return;
+    }
+
+    const sourceName = original.changes_name_from || original[1] || '';
+    const sourceDesc = original.changes_description_from || original[2] || '';
+    const sourcePg = original.changes_PartGroup_from || original[3] || '';
+    const sourcePt = original.changes_PartType_from || original[4] || '';
+    const sourceJm = original.changes_JM_from || original[5] || '';
+
+    const nameChanged = componentName !== sourceName;
+    const descChanged = componentDescription !== sourceDesc;
+    const pgChanged = partGroup !== sourcePg;
+    const ptChanged = (partType === "Brak" ? "" : partType) !== sourcePt;
+    const jmChanged = partUnit !== sourceJm;
+
+    const nameDiff = renderDiffValue(sourceName, componentName);
+    const nameToggle = nameChanged ?
+        `<div class="collapse change-content text-left mt-1 border border-dark rounded bg-white p-1"><strong>Było:</strong> ${nameDiff.oldHtml}<br><strong>Jest:</strong> ${nameDiff.newHtml}</div>` : '';
+
+    const descDiff = renderDiffValue(sourceDesc, componentDescription);
+    const descriptionToggle = descChanged ?
+        `<div class="collapse change-content text-left mt-1 border border-dark rounded bg-white p-1"><strong>Było:</strong> ${descDiff.oldHtml}<br><strong>Jest:</strong> ${descDiff.newHtml}</div>` : '';
+
+    const PartGroupToggle = pgChanged ?
+        `<div class="collapse change-content text-left mt-1 border border-dark rounded bg-white p-1"><strong>Było:</strong> ${sourcePg}<br><strong>Jest:</strong> ${partGroup}</div>` : '';
+
+    const PartTypeToggle = ptChanged ?
+        `<div class="collapse change-content text-left mt-1 border border-dark rounded bg-white p-1"><strong>Było:</strong> ${sourcePt}<br><strong>Jest:</strong> ${partType === "Brak" ? "" : partType}</div>` : '';
+
+    const JMToggle = jmChanged ?
+        `<div class="collapse change-content text-left mt-1 border border-dark rounded bg-white p-1"><strong>Było:</strong> ${sourceJm}<br><strong>Jest:</strong> ${partUnit}</div>` : '';
+
+    targetObj[numericRowId] = {
+        type: original.type,
+        componentInfoClass: (nameChanged || descChanged) ? ' cell-edited' : '',
+        componentNameClass: nameChanged ? ' cell-edited' : '',
+        componentDescClass: descChanged ? ' cell-edited' : '',
+        PartGroupClass: pgChanged ? ' cell-edited' : '',
+        PartTypeClass: ptChanged ? ' cell-edited' : '',
+        JMClass: jmChanged ? ' cell-edited' : '',
+        nameToggle: nameToggle,
+        descriptionToggle: descriptionToggle,
+        PartGroupToggle: PartGroupToggle,
+        PartTypeToggle: PartTypeToggle,
+        JMToggle: JMToggle,
+        changes_name_from: sourceName,
+        changes_description_from: sourceDesc,
+        changes_PartGroup_from: sourcePg,
+        changes_PartType_from: sourcePt,
+        changes_JM_from: sourceJm,
+        0: numericRowId,
         1: componentName,
         2: componentDescription,
         3: partGroup,
