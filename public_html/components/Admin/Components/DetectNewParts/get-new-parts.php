@@ -29,28 +29,28 @@ foreach ($ref_mag_parts_sheet as $ref_mag_part) {
         $newParts[] = $ref_mag_part;
     } else {
         $dbPart = $list__parts_db[$id];
-        $dbName = $dbPart['name'];
-        $dbDescription = $dbPart['description'];
-        $dbPartGroup = $dbPart['PartGroup'];
-        $dbPartType = $dbPart['PartType'];
-        $dbJM = $dbPart['JM'];
+        $dbName = trim($dbPart['name']);
+        $dbDescription = trim($dbPart['description']);
+        $dbPartGroup = trim($dbPart['PartGroup']);
+        $dbPartType = trim($dbPart['PartType'] ?? '');
+        $dbJM = trim($dbPart['JM']);
 
         $changes = [];
 
         if ($refName !== $dbName) {
-            $changes['name'] = ['from' => $dbName, 'to' => $refName];
+            $changes['name'] = ['from' => $dbPart['name'], 'to' => $refName];
         }
         if ($refDescription !== $dbDescription) {
-            $changes['description'] = ['from' => $dbDescription, 'to' => $refDescription];
+            $changes['description'] = ['from' => $dbPart['description'], 'to' => $refDescription];
         }
         if ($refPartGroup !== $dbPartGroup) {
-            $changes['PartGroup'] = ['from' => $dbPartGroup, 'to' => $refPartGroup];
+            $changes['PartGroup'] = ['from' => $dbPart['PartGroup'], 'to' => $refPartGroup];
         }
         if ($refPartType !== $dbPartType) {
-            $changes['PartType'] = ['from' => $dbPartType, 'to' => $refPartType];
+            $changes['PartType'] = ['from' => $dbPart['PartType'] ?? '', 'to' => $refPartType];
         }
         if ($refJM !== $dbJM) {
-            $changes['JM'] = ['from' => $dbJM, 'to' => $refJM];
+            $changes['JM'] = ['from' => $dbPart['JM'], 'to' => $refJM];
         }
 
         if (!empty($changes)) {
