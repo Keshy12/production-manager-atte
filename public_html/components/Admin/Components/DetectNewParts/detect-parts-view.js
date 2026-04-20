@@ -8,15 +8,20 @@ $(document).ready(async function() {
     const response = await getNewParts();
     const result = JSON.parse(response);
     const newPartsObj = result['newParts'];
+    const editedPartsObj = result['editedParts'];
     const missingRefs = result['missingRefs'];
     $("#loadingMessage").hide();
-    if(newPartsObj === null) return;
-    if(Object.keys(newPartsObj).length === 0) {
+
+    const allItems = { ...newPartsObj, ...editedPartsObj };
+    const hasAnyItems = Object.keys(allItems).length > 0;
+
+    if (!hasAnyItems) {
         $("#tableContainer").append(`<div class="alert alert-info" role="alert">
-            Nie wykryto żadnych nowych części.
+            Nie wykryto żadnych nowych części/zmian.
         </div>`);
         return;
     }
+
     const hasMissing = Object.values(missingRefs).some(arr => arr.length > 0);
     if (hasMissing) {
         let missingLines = [];
@@ -36,14 +41,23 @@ $(document).ready(async function() {
     }
     $("#detectPartsTable, #uploadNewParts").show();
     const $TBody = $('#detectPartsTBody');
-    renderTableRows($TBody, newPartsObj);
+
+    const transformedNewParts = transformNewParts(newPartsObj);
+    const transformedEditedParts = transformEditedParts(editedPartsObj);
+    const allTransformed = { ...transformedNewParts, ...transformedEditedParts };
+
+    renderTableRows($TBody, allTransformed);
+
     $('body').on('click', '.deleteRow', function() {
         const $row = $(this).closest('tr');
-        showConfirmDeleteModal($row);
+        const rowId = parseInt($row.attr('data-id'));
+        const rowType = $row.attr('data-type');
+        showConfirmDeleteModal($row, rowId, rowType);
     });
     $('body').on('click', '#confirmDelete', function() {
-        const rowId = $(this).attr('data-id');
-        deleteRow(rowId, newPartsObj);
+        const rowId = parseInt($(this).attr('data-id'));
+        const rowType = $(this).attr('data-type');
+        deleteRow(rowId, rowType, transformedNewParts, transformedEditedParts);
     });
     $('body').on('click', '.editRow', function() {
         const $row = $(this).closest('tr');
@@ -51,35 +65,86 @@ $(document).ready(async function() {
     });
     $('body').on('click', '.applyChanges', function() {
         const $row = $(this).closest('tr');
-        editRowApply($row, newPartsObj);
+        const rowId = parseInt($row.attr('data-id'));
+        const rowType = $row.attr('data-type');
+        editRowApply($row, rowId, rowType, transformedNewParts, transformedEditedParts);
         $TBody.empty();
-        renderTableRows($TBody, newPartsObj);
+        const allTransformed = { ...transformedNewParts, ...transformedEditedParts };
+        renderTableRows($TBody, allTransformed);
     });
     $('body').on('click', '.declineChanges', function() {
-        const $row = $(this).closest('tr');
+        const $TBody = $('#detectPartsTBody');
         $TBody.empty();
-        renderTableRows($TBody, newPartsObj);
+        const allTransformed = { ...transformedNewParts, ...transformedEditedParts };
+        renderTableRows($TBody, allTransformed);
     });
     $("#uploadNewParts").click(function() {
-        const newPartsJson = JSON.stringify(newPartsObj);
-        uploadNewParts(newPartsJson);
+        const newPartsJson = JSON.stringify(transformedNewParts);
+        const editedPartsJson = JSON.stringify(transformedEditedParts);
+        uploadNewParts(newPartsJson, editedPartsJson);
     });
 });
 
-function uploadNewParts(newPartsJson) {
+function transformNewParts(newParts) {
+    const transformed = {};
+    for (const [key, item] of Object.entries(newParts)) {
+        transformed[key] = {
+            type: 'new',
+            0: item[0],
+            1: item[1],
+            2: item[2],
+            3: item[3],
+            4: item[4],
+            5: item[5],
+            componentInfoClass: '',
+            PartGroupClass: '',
+            PartTypeClass: '',
+            JMClass: ''
+        };
+    }
+    return transformed;
+}
+
+function transformEditedParts(editedParts) {
+    const transformed = {};
+    for (const [key, item] of Object.entries(editedParts)) {
+        const changes = item.changes || {};
+        const nameChanged = !!changes['name'];
+        const descChanged = !!changes['description'];
+        transformed[key] = {
+            type: 'edited',
+            0: item.data[0],
+            1: item.data[1],
+            2: item.data[2],
+            3: item.data[3],
+            4: item.data[4],
+            5: item.data[5],
+            componentInfoClass: (nameChanged || descChanged) ? ' cell-edited' : '',
+            PartGroupClass: !!changes['PartGroup'] ? ' cell-edited' : '',
+            PartTypeClass: !!changes['PartType'] ? ' cell-edited' : '',
+            JMClass: !!changes['JM'] ? ' cell-edited' : ''
+        };
+    }
+    return transformed;
+}
+
+function uploadNewParts(newPartsJson, editedPartsJson) {
     $.ajax({
         url: COMPONENTS_PATH + "/admin/components/detectnewparts/upload-new-parts.php",
         type: 'POST',
-        data: {newParts: newPartsJson},
+        data: {
+            newParts: newPartsJson,
+            editedParts: editedPartsJson
+        },
         success: function(response) {
             const result = JSON.parse(response);
             const wasSuccessful = result['wasSuccessful'];
             const errorMessage = result['errorMessage'];
 
-            const resultMessage = wasSuccessful ? 
-                        "Edytowanie danych powiodło się." : 
+            const resultMessage = wasSuccessful ?
+                        "Edytowanie danych powiodło się." :
                         "Coś poszło nie tak.<br> Error: "+errorMessage;
-            const resultAlertType = wasSuccessful ? 
+            const resultAlertType = wasSuccessful ?
                         "alert-success" :
                         "alert-danger";
 
@@ -91,22 +156,24 @@ function uploadNewParts(newPartsJson) {
     });
 }
 
-function editRowApply($row, newPartsObj) {
-    const rowId = parseInt($row.attr('data-id'));
-    const componentName = $row.find('.componentNameInput').val();
-    const componentDescription = $row.find('.componentDescriptionInput').val();
+function editRowApply($row, rowId, rowType, transformedNewParts, transformedEditedParts) {
+    const componentName = $row.find('.componentNameInput').val().trim();
+    const componentDescription = $row.find('.componentDescriptionInput').val().trim();
     const partGroup = $row.find('.PartGroupSelect option:selected').text();
     const partType = $row.find('.PartTypeSelect option:selected').text();
     const partUnit = $row.find('.JMSelect option:selected').text();
-    const newData = {
+
+    const targetObj = rowType === 'new' ? transformedNewParts : transformedEditedParts;
+    targetObj[rowId] = {
+        ...targetObj[rowId],
+        type: rowType,
         0: rowId,
         1: componentName,
         2: componentDescription,
         3: partGroup,
-        4: partType == "Brak" ? "" : partType,
+        4: partType === "Brak" ? "" : partType,
         5: partUnit
-    }
-    newPartsObj[rowId] = newData;
+    };
 }
 
 function generateEditRowFields($row) {
@@ -129,12 +196,12 @@ function generateSaveCancelButtons($row)
         <i class="bi bi-x"></i>
     </button>`);
 
-    $editButtons.append($applyChangesButton).append($declineChangesButton);    
+    $editButtons.append($applyChangesButton).append($declineChangesButton);
 }
 
 function generatePartUnitSelect($row) {
-    const $partUnit = $row.find('.JM'); 
-    const partUnitText = $partUnit.text().trim();
+    const $partUnit = $row.find('.JM');
+    const partUnitText = $partUnit.clone().children().remove().end().text().trim();
     $partUnit.empty();
     const $partUnitSelect = $("#part__unit_hidden")
                                 .clone()
@@ -150,8 +217,9 @@ function generatePartUnitSelect($row) {
 }
 
 function generatePartTypeSelect($row) {
-    const $partType = $row.find('.PartType'); 
-    const partTypeText = $partType.text().trim() === '' ? 'Brak' : $partType.text().trim();
+    const $partType = $row.find('.PartType');
+    const partTypeText = $partType.clone().children().remove().end().text().trim();
+    const partTypeDisplay = partTypeText === '' ? 'Brak' : partTypeText;
     $partType.empty();
     const $partTypeSelect = $("#part__type_hidden")
                                 .clone()
@@ -161,7 +229,7 @@ function generatePartTypeSelect($row) {
                                 .removeAttr('id')
                                 .prepend('<option value="0">Brak</option>');
     $partTypeSelect.find('option').filter(function() {
-        return $(this).text().trim() === partTypeText;
+        return $(this).text().trim() === partTypeDisplay;
     }).prop('selected', true);
     $partType.append($partTypeSelect);
     $('.PartTypeSelect').selectpicker('refresh');
@@ -169,8 +237,8 @@ function generatePartTypeSelect($row) {
 
 
 function generatePartGroupSelect($row) {
-    const $partGroup = $row.find('.PartGroup'); 
-    const partGroupText = $partGroup.text().trim();
+    const $partGroup = $row.find('.PartGroup');
+    const partGroupText = $partGroup.clone().children().remove().end().text().trim();
     $partGroup.empty();
     const $partGroupSelect = $("#part__group_hidden")
                                 .clone()
@@ -203,24 +271,32 @@ function generateComponentInfoEditFields($row) {
     $componentInfo.append($formGroup);
 }
 
-function deleteRow(rowId, newPartsObj) {
-    delete newPartsObj[rowId];
+function deleteRow(rowId, rowType, transformedNewParts, transformedEditedParts) {
+    if (rowType === 'new') {
+        delete transformedNewParts[rowId];
+    } else {
+        delete transformedEditedParts[rowId];
+    }
     $("#confirmDeleteModal").modal('hide');
     let $row = $(`tr[data-id="${rowId}"]`);
     $row.remove();
 }
 
-function showConfirmDeleteModal($row) {
-    let rowId = $row.attr('data-id');
+function showConfirmDeleteModal($row, rowId, rowType) {
     $("#confirmDeleteModal").modal('show');
-    $("#confirmDelete").attr('data-id', rowId);
+    $("#confirmDelete").attr('data-id', rowId).attr('data-type', rowType);
 }
 
-function renderTableRows($TBody, newPartsJson) {
-    for(const [key, item] of Object.entries(newPartsJson))
+function renderTableRows($TBody, allTransformed) {
+    for(const [key, item] of Object.entries(allTransformed))
     {
         let renderedItem = detectNewParts_template.map(render(item)).join('');
         let $renderedItem = $(renderedItem);
+        if (item.type === 'new') {
+            $renderedItem.addClass('new-part-row');
+        } else if (item.type === 'edited') {
+            $renderedItem.addClass('edited-part-row');
+        }
         $TBody.append($renderedItem);
     }
 }

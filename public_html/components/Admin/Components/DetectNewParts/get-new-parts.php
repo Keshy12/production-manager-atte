@@ -7,16 +7,61 @@ $MsaDB = MsaDB::getInstance();
 $googleSheets = new GoogleSheets();
 
 $ref_mag_parts_sheet = getRefMagParts($googleSheets);
-$list__parts = $MsaDB -> readIdName('list__parts');
 
-$newParts = array_filter($ref_mag_parts_sheet, function($ref_mag_part) use ($list__parts) {
-    $id = (int)$ref_mag_part[0];
-    return !array_key_exists($id, $list__parts);
-});
+$list__parts_db = getListPartsWithRefs($MsaDB);
 
 $part__group = $MsaDB->readIdName('part__group');
 $part__type = $MsaDB->readIdName('part__type');
 $part__unit = $MsaDB->readIdName('part__unit');
+
+$newParts = [];
+$editedParts = [];
+
+foreach ($ref_mag_parts_sheet as $ref_mag_part) {
+    $id = (int)$ref_mag_part[0];
+    $refName = trim($ref_mag_part[1]);
+    $refDescription = trim($ref_mag_part[2]);
+    $refPartGroup = trim($ref_mag_part[3]);
+    $refPartType = trim($ref_mag_part[4]);
+    $refJM = trim($ref_mag_part[5]);
+
+    if (!array_key_exists($id, $list__parts_db)) {
+        $newParts[] = $ref_mag_part;
+    } else {
+        $dbPart = $list__parts_db[$id];
+        $dbName = $dbPart['name'];
+        $dbDescription = $dbPart['description'];
+        $dbPartGroup = $dbPart['PartGroup'];
+        $dbPartType = $dbPart['PartType'];
+        $dbJM = $dbPart['JM'];
+
+        $changes = [];
+
+        if ($refName !== $dbName) {
+            $changes['name'] = ['from' => $dbName, 'to' => $refName];
+        }
+        if ($refDescription !== $dbDescription) {
+            $changes['description'] = ['from' => $dbDescription, 'to' => $refDescription];
+        }
+        if ($refPartGroup !== $dbPartGroup) {
+            $changes['PartGroup'] = ['from' => $dbPartGroup, 'to' => $refPartGroup];
+        }
+        if ($refPartType !== $dbPartType) {
+            $changes['PartType'] = ['from' => $dbPartType, 'to' => $refPartType];
+        }
+        if ($refJM !== $dbJM) {
+            $changes['JM'] = ['from' => $dbJM, 'to' => $refJM];
+        }
+
+        if (!empty($changes)) {
+            $editedParts[] = [
+                'id' => $id,
+                'data' => $ref_mag_part,
+                'changes' => $changes
+            ];
+        }
+    }
+}
 
 $missingRefs = [
     'part__group' => [],
@@ -24,7 +69,9 @@ $missingRefs = [
     'part__unit' => [],
 ];
 
-foreach ($newParts as $row) {
+$allPartsToCheck = array_merge($newParts, array_column($editedParts, 'data'));
+
+foreach ($allPartsToCheck as $row) {
     $group = trim($row[3]);
     $type = trim($row[4]);
     $unit = trim($row[5]);
@@ -42,15 +89,36 @@ foreach ($newParts as $row) {
 
 echo json_encode([
     'newParts' => $newParts,
+    'editedParts' => $editedParts,
     'missingRefs' => $missingRefs,
 ], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
 
 function getRefMagParts($googleSheets){
     $result = $googleSheets -> readSheet('1OowYceg8hWtuCmnqPiqCyg5N3rVaAngEvmnGRhjeOew', 'ref_mag_parts', 'H:M');
-    // Remove header row
     unset($result[0]);
     array_walk($result, function(&$row){
         $row[0] = (int)$row[0];
     });
+    return $result;
+}
+
+function getListPartsWithRefs($MsaDB) {
+    $sql = "SELECT lp.id, lp.name, lp.description, pg.name as PartGroup, pt.name as PartType, pu.name as JM
+            FROM list__parts lp
+            LEFT JOIN part__group pg ON lp.PartGroup = pg.id
+            LEFT JOIN part__type pt ON lp.PartType = pt.id
+            LEFT JOIN part__unit pu ON lp.JM = pu.id";
+    $rows = $MsaDB->query($sql, \PDO::FETCH_ASSOC);
+
+    $result = [];
+    foreach ($rows as $row) {
+        $result[$row['id']] = [
+            'name' => $row['name'],
+            'description' => $row['description'],
+            'PartGroup' => $row['PartGroup'],
+            'PartType' => $row['PartType'] ?? '',
+            'JM' => $row['JM']
+        ];
+    }
     return $result;
 }

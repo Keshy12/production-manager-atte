@@ -5,13 +5,12 @@ $MsaDB = MsaDB::getInstance();
 
 $MsaDB -> db -> beginTransaction();
 
-// We flip the arrays, to make searching for values faster.
 $part__group_flipped = array_flip($MsaDB->readIdName('part__group'));
 $part__type_flipped = array_flip($MsaDB->readIdName('part__type'));
 $part__unit_flipped = array_flip($MsaDB->readIdName('part__unit'));
 
-$newParts = json_decode(json: $_POST['newParts'], associative: true);
-
+$newParts = json_decode($_POST['newParts'] ?? '[]', true);
+$editedParts = json_decode($_POST['editedParts'] ?? '[]', true);
 
 $columnsToInsert = [
     "id",
@@ -26,11 +25,13 @@ $wasSuccessful = true;
 $errorMessage = "";
 
 try {
+    $allParts = array_merge($newParts, $editedParts);
+
     $missingGroups = [];
     $missingTypes = [];
     $missingUnits = [];
 
-    foreach ($newParts as $row) {
+    foreach ($allParts as $row) {
         $group = trim($row[3]);
         $type = trim($row[4]);
         $unit = trim($row[5]);
@@ -59,32 +60,43 @@ try {
         $part__unit_flipped = array_flip($MsaDB->readIdName('part__unit'));
     }
 
-    $rowsToInsert = array_map(function($row) use ($part__group_flipped, $part__type_flipped, $part__unit_flipped){
-        $partGroup = trim($row[3]);
-        $partType = trim($row[4]);
-        $partUnit = trim($row[5]);
+    if (!empty($newParts)) {
+        $rowsToInsert = array_map(function($row) use ($part__group_flipped, $part__type_flipped, $part__unit_flipped){
+            $partGroup = trim($row[3]);
+            $partType = trim($row[4]);
+            $partUnit = trim($row[5]);
 
-        if (!isset($part__group_flipped[$partGroup])) {
-            throw new \Exception("PartGroup '{$partGroup}' not found in row id={$row[0]}");
-        }
-        if ($partType !== '' && !isset($part__type_flipped[$partType])) {
-            throw new \Exception("PartType '{$partType}' not found in row id={$row[0]}");
-        }
-        if (!isset($part__unit_flipped[$partUnit])) {
-            throw new \Exception("JM '{$partUnit}' not found in row id={$row[0]}");
-        }
+            return [
+                $row[0],
+                trim($row[1]),
+                trim($row[2]),
+                $part__group_flipped[$partGroup],
+                $partType == '' ? null : $part__type_flipped[$partType],
+                $part__unit_flipped[$partUnit]
+            ];
+        }, $newParts);
 
-        return [
-            $row[0],
-            $row[1],
-            $row[2],
-            $part__group_flipped[$partGroup],
-            $partType == '' ? null : $part__type_flipped[$partType],
-            $part__unit_flipped[$partUnit]
-        ];
-    }, $newParts);
+        $MsaDB -> insertBulk('list__parts', $columnsToInsert, $rowsToInsert);
+    }
 
-    $insertedIds = $MsaDB -> insertBulk('list__parts', $columnsToInsert, $rowsToInsert);
+    if (!empty($editedParts)) {
+        foreach ($editedParts as $row) {
+            $partGroup = trim($row[3]);
+            $partType = trim($row[4]);
+            $partUnit = trim($row[5]);
+
+            $updateValues = [
+                'name' => trim($row[1]),
+                'description' => trim($row[2]),
+                'PartGroup' => $part__group_flipped[$partGroup],
+                'PartType' => $partType == '' ? null : $part__type_flipped[$partType],
+                'JM' => $part__unit_flipped[$partUnit]
+            ];
+
+            $MsaDB->update('list__parts', $updateValues, 'id', $row[0]);
+        }
+    }
+
     $MsaDB -> db -> commit();
 } catch (\Throwable $e) {
     $wasSuccessful = false;
@@ -96,5 +108,3 @@ echo json_encode([
     "wasSuccessful" => $wasSuccessful,
     "errorMessage" => $errorMessage
 ]);
-
-
