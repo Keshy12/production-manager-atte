@@ -7,11 +7,14 @@
         <td class="quantity">
             ${quantity}
         </td>
+        <td class="stock">
+            ${stockQty}
+        </td>
         <td class="price">
             ${price}
         </td>
         <td class="align-middle actionButtons">
-            <button data-component-type="${type}" data-id="${rowId}" 
+            <button data-component-type="${type}" data-id="${rowId}"
                     data-component-id="${componentId}" class="editBomRow btn btn-light">
                 <i class="bi bi-pencil-square"></i>
             </button>

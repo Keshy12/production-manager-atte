@@ -1,10 +1,19 @@
 <?php
 use Atte\DB\MsaDB;
 use Atte\Utils\ComponentRenderer\SelectRenderer;
+use Atte\Utils\UserRepository;
 
 $MsaDB = MsaDB::getInstance();
-
 $selectRenderer = new SelectRenderer($MsaDB);
+
+$userRepo = new UserRepository($MsaDB);
+$user = $userRepo->getUserById($_SESSION["userid"]);
+$userWarehouseId = $user->getUserInfo()['sub_magazine_id'] ?? null;
+
+$warehouses = $MsaDB->readIdName("magazine__list", "sub_magazine_id", "sub_magazine_name", "WHERE isActive = 1 ORDER BY type_id ASC");
+
+$selectedWarehouseId = $userWarehouseId ?? array_key_first($warehouses);
+$selectedWarehouseName = $warehouses[$selectedWarehouseId] ?? '';
 
 include('table-row-template.php');
 include('modals.php');  
@@ -49,18 +58,16 @@ include('modals.php');
 
 <div class="d-flex justify-content-center">
     <span id="laminateField" class="mt-4" style="display:none;">
-        <select id="laminateSelect" data-width="100px" 
+        <select id="laminateSelect" data-width="100px"
                 data-title="Laminat..." class="selectpicker" disabled>
         </select>
     </span>
     <span id="versionField" class="mt-4" style="display:none;">
-        <select id="versionSelect" data-width="100px" 
+        <select id="versionSelect" data-width="100px"
                 data-title="Wersja..." class="selectpicker" disabled>
         </select>
     </span>
 </div>
-
-
 
 <div class="d-flex justify-content-center">
     <button id="createNewBomFields" class="btn btn-outline-secondary mt-4" style="display:none;">
@@ -83,14 +90,27 @@ include('modals.php');
     </div>
 </div>
 
-<div class="d-flex justify-content-center mt-4">
+<div class="d-flex justify-content-center flex-column align-items-center" style="width: 100%">
+    <div id="warehouseReadMode" class="d-flex align-items-center w-100" style="max-width: 800px;">
+        <span id="warehouseLabel" class="mr-2 col-form-label">Magazyn: <?= htmlspecialchars($selectedWarehouseName) ?></span>
+        <button id="editWarehouseBtn" class="btn btn-light btn-sm">
+            <i class="bi bi-pencil"></i>
+        </button>
+    </div>
+    <div id="warehouseEditMode" class="d-none align-items-center w-100" style="max-width: 800px;">
+        <span class="mr-2 col-form-label">Magazyn:</span>
+        <select id="warehouseSelect" class="selectpicker form-control form-control-sm" data-width="100%" data-default="<?= $selectedWarehouseId ?>">
+            <?= $selectRenderer->renderArraySelect($warehouses) ?>
+        </select>
+    </div>
     <table class="table table-bordered table-sm text-center" style="max-width: 800px;">
         <thead>
             <tr>
-                <th style="width:50%" id="valuePackageCol" scope="col">Komponent</th>
-                <th style="width:15%" id="componentCol" scope="col">Ilość</th>
+                <th style="width:40%" id="valuePackageCol" scope="col">Komponent</th>
+                <th style="width:10%" id="componentCol" scope="col">Ilość</th>
+                <th style="width:10%" id="stockCol" scope="col">Stan mag.</th>
                 <th style="width:20%" id="priceCol" scope="col">Cena</th>
-                <th style="width:15%" id="actionCol" scope="col">Akcja</th>
+                <th style="width:20%" id="actionCol" scope="col">Akcja</th>
             </tr>
         </thead>
         <tbody id="editBomTBody">

@@ -82,11 +82,13 @@ $bomId = null;
 $bomIsActive = false;
 $bomPrice = 0.00;
 $outThtQuantity = null;
-$outThtPrice = null; // Initialize here
+$outThtPrice = null;
 $outSmdPrice = null;
 $outSmdQty = null;
 $outSmdPricePerItem = null;
 $outThtPricePerItem = null;
+
+$warehouseId = isset($_POST['warehouseId']) && $_POST['warehouseId'] !== '' ? (int)$_POST['warehouseId'] : null;
 
 if($wasSuccessful) {
     $bom = $bomsFound[0];
@@ -95,15 +97,14 @@ if($wasSuccessful) {
 
     if($bomType == 'tht') {
         $outThtQuantity = $bom -> out_tht_quantity;
-        $outThtPricePerItem = 1; // 1 PLN per unit as per user example
+        $outThtPricePerItem = 1;
         $outThtPrice = $outThtQuantity * $outThtPricePerItem;
-    } else { // Explicitly set to null if not tht to avoid "Undefined variable" warning
+    } else {
         $outThtPrice = null;
         $outThtPricePerItem = null;
     }
     $bomComponents = $bom -> getComponents(1);
-    
-    // Calculate BOM price dynamically from components
+
     $bomPrice = 0.00;
     foreach ($bomComponents as $component) {
         $bomPrice += (float)$component['totalPrice'];
@@ -123,6 +124,91 @@ if($wasSuccessful) {
         $bomPrice += (float)$outThtPrice;
     }
 
+    if ($warehouseId !== null) {
+        $skuIds = [];
+        $smdIds = [];
+        $thtIds = [];
+        $partsIds = [];
+
+        foreach ($bomComponents as $c) {
+            $type = $c['type'];
+            $id = (int)$c['componentId'];
+            switch ($type) {
+                case 'sku': $skuIds[] = $id; break;
+                case 'smd': $smdIds[] = $id; break;
+                case 'tht': $thtIds[] = $id; break;
+                case 'parts': $partsIds[] = $id; break;
+            }
+        }
+
+        $stockMap = [];
+
+        if (!empty($skuIds)) {
+            $in = implode(',', $skuIds);
+            $result = $MsaDB->query("
+                SELECT sku_id, SUM(qty) as qty
+                FROM inventory__sku
+                WHERE sku_id IN ($in) AND sub_magazine_id = $warehouseId
+                GROUP BY sku_id
+            ");
+            foreach ($result as $row) {
+                $stockMap['sku_' . $row['sku_id']] = (int)$row['qty'];
+            }
+        }
+
+        if (!empty($smdIds)) {
+            $in = implode(',', $smdIds);
+            $result = $MsaDB->query("
+                SELECT smd_id, SUM(qty) as qty
+                FROM inventory__smd
+                WHERE smd_id IN ($in) AND sub_magazine_id = $warehouseId
+                GROUP BY smd_id
+            ");
+            foreach ($result as $row) {
+                $stockMap['smd_' . $row['smd_id']] = (int)$row['qty'];
+            }
+        }
+
+        if (!empty($thtIds)) {
+            $in = implode(',', $thtIds);
+            $result = $MsaDB->query("
+                SELECT tht_id, SUM(qty) as qty
+                FROM inventory__tht
+                WHERE tht_id IN ($in) AND sub_magazine_id = $warehouseId
+                GROUP BY tht_id
+            ");
+            foreach ($result as $row) {
+                $stockMap['tht_' . $row['tht_id']] = (int)$row['qty'];
+            }
+        }
+
+        if (!empty($partsIds)) {
+            $in = implode(',', $partsIds);
+            $result = $MsaDB->query("
+                SELECT parts_id, SUM(qty) as qty
+                FROM inventory__parts
+                WHERE parts_id IN ($in) AND sub_magazine_id = $warehouseId
+                GROUP BY parts_id
+            ");
+            foreach ($result as $row) {
+                $stockMap['parts_' . $row['parts_id']] = (int)$row['qty'];
+            }
+        }
+
+        foreach ($bomComponents as &$component) {
+            $type = $component['type'];
+            $id = $component['componentId'];
+            $key = $type . '_' . $id;
+            $component['stockQty'] = $stockMap[$key] ?? 0;
+        }
+        unset($component);
+    } else {
+        foreach ($bomComponents as &$component) {
+            $component['stockQty'] = null;
+        }
+        unset($component);
+    }
+
     $generateComponentInfo = function(&$row) use (
         $list__sku, $list__sku_desc,
         $list__tht, $list__tht_desc,
@@ -138,7 +224,6 @@ if($wasSuccessful) {
 
         $row['componentName'] = ${'list__'.$componentType}[$componentId];
         $row['componentDescription'] = ${'list__'.$componentType.'_desc'}[$componentId];
-        $row['price'] = 'Placeholder Price'; // Placeholder for price
         return $row;
     };
 

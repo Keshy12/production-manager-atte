@@ -8,6 +8,30 @@ function formatPrice(price) {
     return parseFloat(price.toFixed(4)).toString();
 }
 
+$(document).ready(function() {
+    let defaultWarehouse = $('#warehouseSelect').data('default');
+    if (defaultWarehouse) {
+        $('#warehouseSelect').val(defaultWarehouse);
+    }
+    $('#warehouseSelect').selectpicker('refresh');
+
+    $('#editWarehouseBtn').click(function() {
+        $('#warehouseReadMode').addClass('d-none').removeClass('d-flex');
+        $('#warehouseEditMode').removeClass('d-none').addClass('d-flex');
+        $('#warehouseSelect').selectpicker('refresh');
+    });
+
+    $('#warehouseSelect').change(function() {
+        let selectedName = $('#warehouseSelect option:selected').text();
+        $('#warehouseLabel').text('Magazyn: ' + selectedName);
+        $('#warehouseEditMode').addClass('d-none').removeClass('d-flex');
+        $('#warehouseReadMode').removeClass('d-none').addClass('d-flex');
+        if ($('#list__device').val()) {
+            generateBomTable();
+        }
+    });
+});
+
 $("#bomTypeSelect").change(function(){
     $("#list__device, #versionSelect, #laminateSelect, #editBomTBody, #alerts").empty();
     $("#bomTotalPriceContainer").hide(); // Hide price on type change
@@ -118,7 +142,7 @@ function generateVersionSelect(possibleVersions){
 
 $("#laminateSelect").change(function(){
     $("#versionSelect").empty();
-    $("#bomTotalPriceContainer").hide(); // Hide price on laminate change
+    $("#bomTotalPriceContainer").hide();
     let possibleVersions = $("#laminateSelect option:selected").data("jsonversions");
     generateVersionSelect(possibleVersions);
     $("#versionSelect").prop('disabled', false);
@@ -135,6 +159,7 @@ function generateBomTable()
     let deviceId = $("#list__device").val();
     let version = $("#versionSelect").val();
     let laminate = $("#laminateSelect").val();
+    let warehouseId = $("#warehouseSelect").val();
     const bomValues = [deviceId];
     let createNewBom = false;
 
@@ -169,7 +194,7 @@ function generateBomTable()
         type: "POST",
         url: COMPONENTS_PATH+"/admin/bom/edit/get-bom-components.php",
         async: false,
-        data: {bomType: bomType, bomValues: bomValues, createNewBom: createNewBom},
+        data: {bomType: bomType, bomValues: bomValues, createNewBom: createNewBom, warehouseId: warehouseId},
         success: function (data) {
             let result = JSON.parse(data);
             let components = result[0];
@@ -211,28 +236,30 @@ function generateBomTable()
             
             if(outSmdPrice !== null) {
                 let smdItem = {
-                    rowId: 'out_smd', // Special ID to identify this row
-                    type: '', // Custom type for calculated fields, set to empty to disable edit button attributes
+                    rowId: 'out_smd',
+                    type: '',
                     componentName: 'OUT_SMD',
                     componentDescription: `<small class="text-muted">Koszt produkcji elementu SMD (ilosc komponentow*cena polozenia komponentu przez maszyne)</small>`,
-                    quantity: `<span class="qty-value">`+outSmdQty+`</span>` + `<br><span class="text-muted small">`+ formatPrice(outSmdPricePerItem) + ` PLN/szt</span>`, // Display outSmdQty and price per item
-                    componentId: '', // Set to empty to disable edit button attributes
-                    price: `<b>`+outSmdPrice.toFixed(2)+`PLN</b>` // Only total price
+                    quantity: `<span class="qty-value">`+outSmdQty+`</span>` + `<br><span class="text-muted small">`+ formatPrice(outSmdPricePerItem) + ` PLN/szt</span>`,
+                    componentId: '',
+                    stockQty: '-',
+                    price: `<b>`+outSmdPrice.toFixed(2)+`PLN</b>`
                 };
                 let renderedSmdItem = bomEditTableRow_template.map(render(smdItem)).join('');
                 let $renderedSmdItem = $(renderedSmdItem);
-                $renderedSmdItem.find('.actionButtons').empty(); // Remove all action buttons for OUT_SMD
+                $renderedSmdItem.find('.actionButtons').empty();
                 $TBody.append($renderedSmdItem);
             }
 
             if(bomType == 'tht') {
                 let thtItem = {
-                    rowId: 'out_tht', // Special ID to identify this row
-                    type: '', // Custom type for calculated fields, set to empty to disable edit button attributes
+                    rowId: 'out_tht',
+                    type: '',
                     componentName: 'OUT_THT',
                     componentDescription: `<small class="text-muted">Koszt produkcji elementu THT (ilosc komponentow wyprodukowanych w ciagu godziny/stawka godzinowa pracownika)</small>`,
                     quantity: `<span class="qty-value">`+outThtQuantity+`</span>` + `<br><span class="text-muted small">`+ formatPrice(outThtPricePerItem) + ` PLN/szt</span>`,
-                    componentId: '', // Set to empty to disable edit button attributes
+                    componentId: '',
+                    stockQty: '-',
                     price: `<b>`+outThtPrice.toFixed(2)+`PLN</b>`
                 };
                 let renderedThtItem = bomEditTableRow_template.map(render(thtItem)).join('');
