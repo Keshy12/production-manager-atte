@@ -63,7 +63,7 @@ class User
                                            WHERE cl.is_cancelled = 0 
                                            AND cr.user_id = $id 
                                            AND cl.state != 'returned'
-                                           ORDER BY priority DESC",
+                                           ORDER BY priority DESC, created_at ASC, id ASC",
             PDO::FETCH_COLUMN);
         if(empty($queryResult)) return $result;
         $commissionRepository = new \Atte\Utils\CommissionRepository($MsaDB);

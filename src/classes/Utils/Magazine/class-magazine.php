@@ -39,7 +39,7 @@ class Magazine {
                                            WHERE warehouse_to_id = $id
                                            AND is_cancelled = 0
                                            AND state != 'returned'
-                                           ORDER BY priority DESC", 
+                                           ORDER BY priority DESC, created_at ASC, id ASC", 
                                            PDO::FETCH_COLUMN);
         if(empty($queryResult)) return $result;
         $commissionRepository = new CommissionRepository($MsaDB);
