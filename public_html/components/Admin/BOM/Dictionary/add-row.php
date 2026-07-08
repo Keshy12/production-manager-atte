@@ -1,6 +1,7 @@
 <?php
 use Atte\DB\MsaDB;
 
+header('Content-Type: application/json');
 $MsaDB = MsaDB::getInstance();
 
 $dictionaryType = $_POST['dictionaryType'];
@@ -43,7 +44,9 @@ catch (\Throwable $e)
     $wasSuccessful = false;
 }
 
+exit;
 echo json_encode($wasSuccessful);
+exit;
 
 
         
