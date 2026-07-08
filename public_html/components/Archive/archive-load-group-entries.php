@@ -1,6 +1,7 @@
 <?php
 use Atte\DB\MsaDB;
 
+header('Content-Type: application/json');
 $MsaDB = MsaDB::getInstance();
 
 // Get parameters
@@ -233,6 +234,7 @@ if (!isset($loadedCount)) {
     $remainingCancelledCount = 0;
 }
 
+exit;
 echo json_encode([
     'success' => true,
     'entries' => $entries,
@@ -244,3 +246,4 @@ echo json_encode([
     'remaining_active' => $remainingActiveCount,
     'remaining_cancelled' => $remainingCancelledCount
 ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+exit;

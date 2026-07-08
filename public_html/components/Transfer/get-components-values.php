@@ -2,6 +2,7 @@
 use Atte\DB\MsaDB;
 use Atte\Utils\MagazineRepository;
 
+header('Content-Type: application/json');
 $MsaDB = MsaDB::getInstance();
 
 $magazineRepository = new MagazineRepository($MsaDB);
@@ -43,5 +44,7 @@ $result = array_map(function($item) use ($reservedFrom, $reservedTo,
     return $item;
 }, $components);
 
+exit;
 echo json_encode($result
                 ,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
+exit;

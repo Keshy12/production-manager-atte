@@ -2,6 +2,7 @@
 use Atte\DB\MsaDB;
 use Atte\Utils\Bom\PriceCalculator;
 
+header('Content-Type: application/json');
 $MsaDB = MsaDB::getInstance();
 
 $bomId = $_POST['bomId'];
@@ -21,4 +22,6 @@ try {
     $errorMessage = $e->getMessage();
 }
 
+exit;
 echo json_encode([$wasSuccessful, $errorMessage], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+exit;

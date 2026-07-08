@@ -2,6 +2,7 @@
 use Atte\DB\MsaDB;
 use Atte\Utils\Bom\PriceCalculator;
 
+header('Content-Type: application/json');
 $MsaDB = MsaDB::getInstance();
 
 $MsaDB -> db -> beginTransaction();
@@ -43,8 +44,10 @@ catch (\Throwable $e) {
     $resultMessage = "Dodawanie BOMu nie powiodło się. Kod błędu: ".$e->getMessage();
 }
 
+exit;
 echo json_encode([$resultMessage, $wasSuccessful]
                         , JSON_FORCE_OBJECT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
+exit;
 
 function insertBomSMD($MsaDB, $smdData) 
 {

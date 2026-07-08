@@ -1,4 +1,5 @@
 <?php
+header('Content-Type: application/json');
 $MsaDB = Atte\DB\MsaDB::getInstance();
 
 $deviceTypes = empty($_POST["deviceType"]) ? ["sku", "tht", "smd", "parts"] : [$_POST["deviceType"]];
@@ -60,6 +61,8 @@ foreach($deviceTypes as $deviceType) {
         $result[$deviceType][] = $push;
     }
 }
+exit;
 echo json_encode($result);
+exit;
 
 

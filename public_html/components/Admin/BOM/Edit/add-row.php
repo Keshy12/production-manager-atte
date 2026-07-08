@@ -2,6 +2,7 @@
 use Atte\DB\MsaDB;
 use Atte\Utils\Bom\PriceCalculator;
 
+header('Content-Type: application/json');
 $MsaDB = MsaDB::getInstance();
 
 $MsaDB -> db -> beginTransaction();
@@ -51,7 +52,9 @@ else {
     $MsaDB -> db -> rollBack();
 }
 
+exit;
 echo json_encode($wasSuccessful);
+exit;
 
 
         

@@ -2,6 +2,7 @@
 use Atte\DB\MsaDB;
 use Atte\Utils\BomRepository;
 
+header('Content-Type: application/json');
 $MsaDB = MsaDB::getInstance();
 $bomRepository = new BomRepository($MsaDB);
 
@@ -117,8 +118,10 @@ if($csvHasSMD)
     
 }
 
+exit;
 echo json_encode([$fatalErrors, $nonFatalErrors, $THTFlatBoms, $SMDFlatBoms]
                         , JSON_FORCE_OBJECT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
+exit;
 
 
 

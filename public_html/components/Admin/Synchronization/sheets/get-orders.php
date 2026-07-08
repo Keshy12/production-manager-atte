@@ -2,6 +2,7 @@
 use Atte\Api\GoogleSheets;
 use Atte\DB\MsaDB;
 
+header('Content-Type: application/json');
 $MsaDB = MsaDB::getInstance();
 $queryResult = $MsaDB -> query("SELECT * FROM `ref__timestamp` WHERE `id` = 3", PDO::FETCH_ASSOC);
 $startCell = (int)$queryResult[0]['params'];

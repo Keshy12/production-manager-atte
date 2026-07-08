@@ -1,6 +1,7 @@
 <?php
 use Atte\DB\MsaDB;
 
+header('Content-Type: application/json');
 $MsaDB = MsaDB::getInstance();
 
 $MsaDB -> db -> beginTransaction();
@@ -104,7 +105,9 @@ try {
     $MsaDB -> db -> rollBack();
 }
 
+exit;
 echo json_encode([
     "wasSuccessful" => $wasSuccessful,
     "errorMessage" => $errorMessage
 ]);
+exit;

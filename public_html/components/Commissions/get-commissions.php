@@ -3,6 +3,7 @@ use Atte\DB\MsaDB;
 use Atte\Utils\BomRepository;
 use Atte\Utils\CommissionRepository;
 
+header('Content-Type: application/json');
 $MsaDB = MsaDB::getInstance();
 $usersName = $MsaDB -> readIdName("user", "user_id", "name");
 $usersSurname = $MsaDB -> readIdName("user", "user_id", "surname");
@@ -349,4 +350,6 @@ foreach($commissions as $commissionData) {
     ];
 }
 
+exit;
 echo json_encode([$result, $nextPageAvailable, $totalCount, $stats]);
+exit;

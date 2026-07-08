@@ -1,6 +1,7 @@
 <?php
 require_once '../config/config-google-sheets.php';
 
+header('Content-Type: application/json');
 try {
     $adapter->authenticate();
     $token = $adapter->getAccessToken();

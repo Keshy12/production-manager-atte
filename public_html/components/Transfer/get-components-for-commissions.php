@@ -3,6 +3,7 @@ use Atte\DB\MsaDB;
 use Atte\Utils\BomRepository;
 use Atte\Utils\MagazineRepository;
 
+header('Content-Type: application/json');
 $MsaDB = MsaDB::getInstance();
 
 $magazineRepository = new MagazineRepository($MsaDB);
@@ -114,5 +115,7 @@ foreach($commissions as $key => $commission)
     }
 }
 
+exit;
 echo json_encode([$componentsByCommission, $existingCommissions]
     ,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
+exit;

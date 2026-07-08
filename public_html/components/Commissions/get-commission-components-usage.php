@@ -3,6 +3,7 @@ use Atte\DB\MsaDB;
 use Atte\Utils\CommissionRepository;
 use Atte\Utils\BomRepository;
 
+header('Content-Type: application/json');
 $MsaDB = MsaDB::getInstance();
 
 try {
@@ -72,10 +73,12 @@ try {
         ];
     }
 
+exit;
     echo json_encode([
         'success' => true,
         'data' => $result
     ]);
+exit;
 
 } catch (\Throwable $e) {
     echo json_encode([

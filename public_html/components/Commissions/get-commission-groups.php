@@ -1,6 +1,7 @@
 <?php
 use Atte\DB\MsaDB;
 
+header('Content-Type: application/json');
 $MsaDB = MsaDB::getInstance();
 $commissionId = $_POST['commissionId'];
 
@@ -270,7 +271,9 @@ try {
     $response['message'] = $e->getMessage();
 }
 
+exit;
 echo json_encode($response);
+exit;
 
 /**
  * Get commission transfers for a specific commission in a transfer group

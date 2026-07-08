@@ -2,6 +2,7 @@
 use Atte\DB\MsaDB;
 use Atte\Api\GoogleSheets;
 
+header('Content-Type: application/json');
 $MsaDB = MsaDB::getInstance();
 
 $googleSheets = new GoogleSheets();
@@ -87,11 +88,13 @@ foreach ($allPartsToCheck as $row) {
     }
 }
 
+exit;
 echo json_encode([
     'newParts' => $newParts,
     'editedParts' => $editedParts,
     'missingRefs' => $missingRefs,
 ], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
+exit;
 
 function getRefMagParts($googleSheets){
     $result = $googleSheets -> readSheet('1OowYceg8hWtuCmnqPiqCyg5N3rVaAngEvmnGRhjeOew', 'ref_mag_parts', 'H:M');

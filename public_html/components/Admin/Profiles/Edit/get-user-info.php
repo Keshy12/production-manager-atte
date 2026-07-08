@@ -2,6 +2,7 @@
 use Atte\DB\MsaDB;
 use Atte\Utils\UserRepository;
 
+header('Content-Type: application/json');
 $MsaDB = MsaDB::getInstance();
 $userRepository = new UserRepository($MsaDB);
 
@@ -33,4 +34,6 @@ foreach($SMDUsed as $SMDId)
     $userSMDUsed[] = [$SMDId, $list__smd[$SMDId], $list__smd_desc[$SMDId]];
 }
 
+exit;
 echo json_encode([$userInfo, $userTHTUsed, $userSMDUsed], JSON_FORCE_OBJECT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
+exit;

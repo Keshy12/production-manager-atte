@@ -1,6 +1,7 @@
 <?php
 use Atte\DB\MsaDB;
 
+header('Content-Type: application/json');
 $MsaDB = MsaDB::getInstance();
 
 $deviceType = $_POST["deviceType"];
@@ -29,4 +30,6 @@ if ($deviceType === 'parts' || $deviceType === 'laminate') {
 
 if(!isset($result[0])) throw new \Exception("There is no device with this ID.");
 
+exit;
 echo json_encode($result[0], JSON_FORCE_OBJECT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
+exit;

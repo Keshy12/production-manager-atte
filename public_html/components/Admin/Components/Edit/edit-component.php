@@ -2,6 +2,7 @@
 use Atte\DB\MsaDB;
 use Atte\Utils\Bom\PriceCalculator;
 
+header('Content-Type: application/json');
 $MsaDB = MsaDB::getInstance();
 
 
@@ -138,5 +139,7 @@ if($fileUploaded)
 }
 
 
+exit;
 echo json_encode([$editResult, $editSuccessful, $imageUploadResult, $imageUploadSuccessful]
                         , JSON_FORCE_OBJECT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
+exit;

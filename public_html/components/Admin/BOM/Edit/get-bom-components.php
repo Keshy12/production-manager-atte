@@ -2,6 +2,7 @@
 use Atte\DB\MsaDB;
 use Atte\Utils\BomRepository;
 
+header('Content-Type: application/json');
 $MsaDB = MsaDB::getInstance();
 $bomRepository = new BomRepository($MsaDB);
 
@@ -235,5 +236,7 @@ if($wasSuccessful) {
     }
 }
 
+exit;
 echo json_encode([$bomComponents, $bomId, $bomIsActive, $wasSuccessful, $errorMessage, $outThtQuantity, $outThtPrice, $outSmdPrice, $outSmdQty, $outSmdPricePerItem, $outThtPricePerItem, $bomPrice],
     JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
+exit;

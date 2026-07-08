@@ -2,6 +2,7 @@
 use Atte\DB\MsaDB;
 use Atte\Utils\CommissionRepository;
 
+header('Content-Type: application/json');
 $MsaDB = MsaDB::getInstance();
 $MsaDB -> db -> beginTransaction();
 $wasSuccessful = true;
@@ -23,5 +24,7 @@ catch (\Throwable $e) {
     $errorMessage = "ERROR! Error message:".$e -> getMessage();
 }
 
+exit;
 echo json_encode([$wasSuccessful, $errorMessage]
                 , JSON_FORCE_OBJECT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
+exit;
