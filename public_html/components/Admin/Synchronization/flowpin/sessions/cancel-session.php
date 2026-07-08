@@ -68,7 +68,6 @@ try {
         'cancelled_count' => $totalCancelled,
         'message' => "Successfully cancelled {$totalCancelled} transfers"
     ]);
-
 } catch (Exception $e) {
     if ($MsaDB->db->inTransaction()) {
         $MsaDB->db->rollBack();
