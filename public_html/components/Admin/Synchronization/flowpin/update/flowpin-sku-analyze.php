@@ -304,6 +304,7 @@ try {
     ];
 
     echo json_encode($response, JSON_PRETTY_PRINT);
+exit;
 
 } catch (\Exception $e) {
     http_response_code(500);

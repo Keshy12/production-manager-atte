@@ -50,6 +50,7 @@ try {
         'success' => true,
         'message' => 'Session marked as error'
     ]);
+exit;
     
 } catch (\Exception $e) {
     http_response_code(500);

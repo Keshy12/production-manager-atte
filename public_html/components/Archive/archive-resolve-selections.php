@@ -90,6 +90,7 @@ try {
         'has_hidden_types' => $hasHiddenTypes,
         'filter_used' => $forceAll ? 'all' : $deviceTypeFilter
     ]);
+exit;
 
 } catch (Exception $e) {
     echo json_encode([

@@ -11,3 +11,4 @@ echo json_encode([
     'success' => true,
     'status' => $isRunning ? 'running' : 'idle'
 ]);
+exit;

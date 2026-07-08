@@ -105,6 +105,7 @@ try {
             'devices' => $filterDevices
         ]
     ]);
+exit;
 
 } catch (Exception $e) {
     echo json_encode([

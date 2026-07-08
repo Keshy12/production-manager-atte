@@ -20,6 +20,7 @@ switch ( $action ) {
         break;
     default:
         echo json_encode(['success' => false, 'message' => 'Nieprawidłowa akcja.']);
+exit;
         break;
 }
 

@@ -50,6 +50,7 @@ try {
     ");
 
     echo json_encode($sessions);
+exit;
 
 } catch (Exception $e) {
     echo json_encode([
