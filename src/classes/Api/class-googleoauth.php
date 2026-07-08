@@ -49,7 +49,7 @@ class GoogleOAuth
 
     public function update_access_token($token) {
         if($this->is_table_empty()) {
-            $this->MsaDB->insert("google_oauth", ["provider, provider_values"], ['google', $token]);
+            $this->MsaDB->insert("google_oauth", ["provider", "provider_values"], ['google', $token]);
             return;
         }
         $this->MsaDB->update("google_oauth", ["provider_value" => $token], "provider", "google");
