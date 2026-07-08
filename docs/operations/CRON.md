@@ -1,8 +1,5 @@
 # ATTE Production Manager — Cron Jobs Reference
 
-> **Docs version:** 1.0 – Wed Jul 08 2026
-> **Codebase:** `C:\xampp\htdocs\atte_ms_NEW`
-
 ---
 
 ## Lock Pattern

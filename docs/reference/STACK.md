@@ -145,9 +145,9 @@ RewriteRule !^(index.php) [F]
 ### Bootstrap Flow
 
 1. **Every PHP request** is prepended with `config/config.php` (via `.htaccess` `auto_prepend_file`)
-2. **`config/config.php`** (lines 1â€“9):
+2. **`config/config.php`** (lines 1–9):
    ```php
-   define('ROOT_DIRECTORY', ...);             // lines 1â€“4: ROOT_DIRECTORY via ternary/DOCUMENT_ROOT or realpath
+   define('ROOT_DIRECTORY', ...);             // lines 1–4: ROOT_DIRECTORY via ternary/DOCUMENT_ROOT or realpath
    require_once ROOT_DIRECTORY.'/vendor/autoload.php';  // line 5: loads Composer deps
    $dotenv = Dotenv\Dotenv::createImmutable(ROOT_DIRECTORY);  // line 7
    $dotenv->load();                          // line 8: loads .env into $_ENV, $_SERVER, getenv()
@@ -202,20 +202,20 @@ External scheduler (e.g., system crontab, Windows Task Scheduler) invokes script
 atte_ms_NEW/
 ├── config/                     # Application configuration
 │   ├── config.php             # Main bootstrap (loads vendor/autoload.php + Dotenv)
-│   â””â”€â”€ config-google-sheets.php # Google Sheets integration config
+│   └── config-google-sheets.php # Google Sheets integration config
 ├── public_html/               # Web root (point document root here)
 │   ├── assets/                # CSS, JS, images
 │   ├── components/            # Application UI modules
-│   â””â”€â”€ index.php              # Main entry point
+│   └── index.php              # Main entry point
 ├── src/
 │   ├── classes/               # PHP classes (autoloaded via classmap)
-│   â””â”€â”€ cron/                   # Scheduled task scripts
+│   └── cron/                   # Scheduled task scripts
 ├── vendor/                    # Composer dependencies
 ├── docs/                      # Documentation
 ├── composer.json             # Dependency manifest
 ├── composer.lock             # Locked dependency versions
 ├── .htaccess                  # Apache routing + auto-prepend config
-â””â”€â”€ .env.example               # Environment variable template
+└── .env.example               # Environment variable template
 ```
 
 ---
