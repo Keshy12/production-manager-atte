@@ -18,6 +18,10 @@ function fillForm(userInfo)
     $("#email").val(userInfo['email']);
     $("#list__submag").val(userInfo['sub_magazine_id']).selectpicker('refresh');
     $("#isActive").prop('checked', userInfo['user_isActive'] === 1);
+    let originalIsAdmin = userInfo['isAdmin'] == 1 ? 1 : 0;
+    $("#isAdmin").prop('checked', originalIsAdmin === 1);
+    $("#userForm").attr('data-original-isAdmin', originalIsAdmin);
+    $("#verifyAdminPassword").val('');
 
     // Save the loaded sub_magazine_id as previous value
     $("#cancelNewMagazine").attr('data-previous-value', userInfo['sub_magazine_id'] || '');
@@ -89,8 +93,9 @@ function addProfile()
                 $("#isActive").prop('disabled', false);
                 let option = '<option value="'+insertedId+'">'+fullName+'</option>';
                 $("#list__user").append(option).selectpicker("refresh").val(insertedId).selectpicker("refresh");
-                $("#passwordField, #isAdminField, #addProfileSubmit").hide();
+                $("#passwordField, #addProfileSubmit").hide();
                 $("#editProfileSubmit").prop('disabled', false).show();
+                $("#userForm").attr('data-original-isAdmin', $("#isAdmin").is(":checked") ? 1 : 0);
                 $('#list__tht_hidden option').clone().appendTo('#list__tht');
                 $('#list__smd_hidden option').clone().appendTo('#list__smd');
                 $("#list__tht, #list__smd").prop('disabled', false).selectpicker('refresh');
@@ -146,7 +151,7 @@ $("#cancelNewMagazine").click(function(){
 
 $("#list__user").change(function(){
     let userid = this.value;
-    $("#passwordField, #isAdminField, #addProfileSubmit").hide();
+    $("#passwordField, #addProfileSubmit").hide();
     $("#password").attr('required', false);
     $("#thtUsed, #smdUsed").empty();
     hideNewMagazineInput(); // Reset magazine input when changing user
@@ -172,51 +177,7 @@ $("#editProfileSubmit").click(function(e){
         return;
     }
     e.preventDefault();
-    $formFields.attr('readonly', true);
-    var $form = $("#userForm");
-    var actionUrl = $form.attr('action');
-    $.ajax({
-        type: "POST",
-        url: actionUrl,
-        data: $form.serialize(), // serializes the form's elements.
-        success: function(data)
-        {
-            let userId = $("#user_id").val();
-            $formFields.attr('readonly', false);
-            $("#isActive").prop('disabled', false);
-            let result = JSON.parse(data);
-            let resultMessage = result[0];
-            let alertType = result[1] ? "alert-success" : "alert-danger";
-            let alert = `
-            <div class="alert `+alertType+` alert-dismissible fade show" role="alert">
-                `+resultMessage+`
-                <button type="button" class="close" data-dismiss="alert" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
-            </div>`;
-            $("#ajaxResult").html(alert);
-            setTimeout(function() {
-                $(".alert-success").alert('close');
-            }, 2000);
-            let fullName = $("#name").val()+" "+$("#surname").val();
-            $('#list__user option[value="'+userId+'"]').html(fullName);
-            $('#list__user').selectpicker('refresh');
-
-            // Handle new sub magazine creation in edit mode
-            let newSubMagId = result[2];
-            if(newSubMagId) {
-                let newMagName = $("#new_magazine_name").val();
-                let nextNumber = $("#next_submag_number").val().toString().padStart(2, '0');
-                let fullMagName = "SUB MAG " + nextNumber + ": " + newMagName;
-                let magOption = '<option value="'+newSubMagId+'">'+fullMagName+'</option>';
-                $("#list__submag option[value='create_new']").before(magOption);
-                $("#list__submag").val(newSubMagId).selectpicker('refresh');
-                // Update the previous value to the newly created magazine
-                $("#cancelNewMagazine").attr('data-previous-value', newSubMagId);
-                hideNewMagazineInput();
-            }
-        }
-    });
+    promptAdminPasswordIfNeeded(submitEditProfile);
 });
 
 $("#createNewProfile").click(function(){
@@ -224,12 +185,15 @@ $("#createNewProfile").click(function(){
     $formFields.val('');
     $("#list__submag").val('').selectpicker('refresh'); // Explicitly clear and refresh submag
     $("#isActive").prop('checked', false);
+    $("#isAdmin").prop('checked', false);
+    $("#userForm").attr('data-original-isAdmin', 0);
+    $("#verifyAdminPassword").val('');
     $("#list__tht, #list__smd").prop('disabled', true).selectpicker('refresh');
     $("#addSMD, #addTHT, .deleteAllDevices").prop('disabled', true);
     $("#thtUsed, #smdUsed").empty();
     $("#list__user").val('');
     $("#editProfileSubmit").hide();
-    $("#passwordField, #isAdminField, #addProfileSubmit").show();
+    $("#passwordField, #addProfileSubmit").show();
     $("#password").prop('required', true);
     $("#list__user").selectpicker('refresh');
     hideNewMagazineInput(); // Reset magazine input
@@ -253,12 +217,12 @@ $("#addProfileSubmit").click(function(e){
         return;
     }
 
-    addProfile();
+    promptAdminPasswordIfNeeded(addProfile);
 });
 
 $("#addInactiveUserSubmit").click(function(){
     $("#addInactiveUserModal").modal('hide');
-    addProfile();
+    promptAdminPasswordIfNeeded(addProfile);
 });
 
 $("#addAdminProfileSubmit").click(function(){
@@ -267,8 +231,112 @@ $("#addAdminProfileSubmit").click(function(){
         $("#addInactiveUserModal").modal('show');
         return;
     }
-    addProfile();
+    promptAdminPasswordIfNeeded(addProfile);
 });
+
+function isAdminToggleRequired() {
+    let originalIsAdmin = parseInt($("#userForm").attr('data-original-isAdmin') || '0', 10);
+    let currentIsAdmin = $("#isAdmin").is(":checked") ? 1 : 0;
+    return originalIsAdmin !== currentIsAdmin;
+}
+
+function resetChangeAdminPasswordModal() {
+    $("#changeAdminPasswordInput").val('');
+    $("#changeAdminPasswordError").hide().text('');
+}
+
+function openChangeAdminPasswordModal(onConfirm) {
+    resetChangeAdminPasswordModal();
+    $("#changeAdminPasswordModal").data('onConfirm', onConfirm);
+    $("#changeAdminPasswordModal").modal('show');
+}
+
+function promptAdminPasswordIfNeeded(saveCallback) {
+    let needsPassword = false;
+    if($("#user_id").val() === '') {
+        needsPassword = $("#isAdmin").is(":checked");
+    } else {
+        needsPassword = isAdminToggleRequired();
+    }
+    if(needsPassword) {
+        openChangeAdminPasswordModal(saveCallback);
+    } else {
+        $("#verifyAdminPassword").val('');
+        saveCallback();
+    }
+}
+
+$("#changeAdminPasswordModal").on("hidden.bs.modal", function() {
+    resetChangeAdminPasswordModal();
+});
+
+$("#changeAdminPasswordSubmit").click(function() {
+    let rawPassword = $("#changeAdminPasswordInput").val();
+    if(!rawPassword) {
+        $("#changeAdminPasswordError").text("Wprowadź hasło.").show();
+        return;
+    }
+    $("#verifyAdminPassword").val(rawPassword);
+    let onConfirm = $("#changeAdminPasswordModal").data('onConfirm');
+    $("#changeAdminPasswordModal").modal('hide');
+    if(typeof onConfirm === 'function') {
+        onConfirm();
+    }
+});
+
+function submitEditProfile() {
+    $formFields.attr('readonly', true);
+    var $form = $("#userForm");
+    var actionUrl = $form.attr('action');
+    $.ajax({
+        type: "POST",
+        url: actionUrl,
+        data: $form.serialize(),
+        success: function(data) {
+            let userId = $("#user_id").val();
+            $formFields.attr('readonly', false);
+            $("#isActive").prop('disabled', false);
+            let result = JSON.parse(data);
+            let resultMessage = result[0];
+            let alertType = result[1] ? "alert-success" : "alert-danger";
+            let alert = `
+            <div class="alert `+alertType+` alert-dismissible fade show" role="alert">
+                `+resultMessage+`
+                <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>`;
+            $("#ajaxResult").html(alert);
+            setTimeout(function() {
+                $(".alert-success").alert('close');
+            }, 2000);
+
+            if(!result[1]) {
+                $("#verifyAdminPassword").val('');
+                return;
+            }
+
+            let fullName = $("#name").val()+" "+$("#surname").val();
+            $('#list__user option[value="'+userId+'"]').html(fullName);
+            $('#list__user').selectpicker('refresh');
+            $("#userForm").attr('data-original-isAdmin', $("#isAdmin").is(":checked") ? 1 : 0);
+            $("#verifyAdminPassword").val('');
+
+            // Handle new sub magazine creation in edit mode
+            let newSubMagId = result[2];
+            if(newSubMagId) {
+                let newMagName = $("#new_magazine_name").val();
+                let nextNumber = $("#next_submag_number").val().toString().padStart(2, '0');
+                let fullMagName = "SUB MAG " + nextNumber + ": " + newMagName;
+                let magOption = '<option value="'+newSubMagId+'">'+fullMagName+'</option>';
+                $("#list__submag option[value='create_new']").before(magOption);
+                $("#list__submag").val(newSubMagId).selectpicker('refresh');
+                $("#cancelNewMagazine").attr('data-previous-value', newSubMagId);
+                hideNewMagazineInput();
+            }
+        }
+    });
+}
 
 function addDevices(userid, devices, type)
 {

@@ -59,6 +59,7 @@ $nextSubMagNumber = $maxNumber + 1;
     <h1 class="text-center">Profil: <span id="userFullName"></span></h1>
     <input type="hidden" name="user_id" id="user_id">
     <input type="hidden" name="next_submag_number" id="next_submag_number" value="<?= $nextSubMagNumber ?>">
+    <input type="hidden" name="verifyAdminPassword" id="verifyAdminPassword" value="">
     Login: <input id="login" name="login" class="form-control rounded mx-2" disabled required>
     <span id="passwordField" style="display: none;">
             Hasło: <input id="password" name="password" class="form-control rounded mx-2">
@@ -97,7 +98,7 @@ $nextSubMagNumber = $maxNumber + 1;
         <button type="button" class="btn btn-sm btn-secondary mx-2 mt-1" id="cancelNewMagazine">Anuluj</button>
     </div>
 
-    <span id="isAdminField" style="display: none;">
+    <span id="isAdminField">
             Uprawnienia:
             <div class="form-check mx-2">
                 <input class="form-check-input" type="checkbox" name="isAdmin" id="isAdmin">

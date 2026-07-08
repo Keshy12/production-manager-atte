@@ -14,7 +14,7 @@ $list__smd = $MsaDB -> readIdName("list__smd", "id", "name", "WHERE isActive = 1
 $list__smd_desc = $MsaDB -> readIdName("list__smd", "id", "description", "WHERE isActive = 1");
 
 $userInfo = $user -> getUserInfo();
-unset($userInfo["password"], $userInfo["isAdmin"], $userInfo["parent_sub_magazine_id"], 
+unset($userInfo["password"], $userInfo["parent_sub_magazine_id"],
         $userInfo["type_id"], $userInfo["sub_magazine_name"]);
 
 $THTUsed = $user -> getDevicesUsed("tht");
