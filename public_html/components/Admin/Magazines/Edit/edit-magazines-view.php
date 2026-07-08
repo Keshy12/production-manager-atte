@@ -4,7 +4,7 @@ use Atte\Utils\MagazineRepository;
 use Atte\Utils\UserRepository;
 
 // Check if user is admin
-if(!isset($_SESSION['isAdmin']) || $_SESSION['isAdmin'] != true) {
+if(!isset($_SESSION['isAdmin']) || $_SESSION['isAdmin'] !== true) {
     header("Location: http://".BASEURL."/");
     exit();
 }

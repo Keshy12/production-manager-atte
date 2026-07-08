@@ -13,7 +13,7 @@ try {
     $users = array_combine($usersId, $usersName);
 
     $userRepository = new UserRepository($MsaDB);
-    $currentUser = $userRepository->getUserById($_SESSION["userid"]);
+    $currentUser = $userRepository->getUserById($_SESSION['user_id']);
 
     $magazineNamesRaw = $MsaDB -> query("SELECT sub_magazine_id, sub_magazine_name FROM magazine__list", PDO::FETCH_ASSOC);
     $magazineNames = [];
@@ -155,6 +155,7 @@ try {
         }
 
         echo json_encode(['success' => true, 'data' => $result]);
+exit;
     } else {
         foreach($commissionsData as &$data) {
             $data['valuesToPrint']['isGrouped'] = false;

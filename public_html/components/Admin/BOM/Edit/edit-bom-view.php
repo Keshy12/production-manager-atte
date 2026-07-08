@@ -7,7 +7,7 @@ $MsaDB = MsaDB::getInstance();
 $selectRenderer = new SelectRenderer($MsaDB);
 
 $userRepo = new UserRepository($MsaDB);
-$user = $userRepo->getUserById($_SESSION["userid"]);
+$user = $userRepo->getUserById($_SESSION['user_id']);
 $userWarehouseId = $user->getUserInfo()['sub_magazine_id'] ?? null;
 
 $warehouses = $MsaDB->readIdName("magazine__list", "sub_magazine_id", "sub_magazine_name", "WHERE isActive = 1 ORDER BY type_id ASC");

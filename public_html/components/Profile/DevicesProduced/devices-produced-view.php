@@ -7,7 +7,7 @@ include('modals.php');
 $MsaDB = MsaDB::getInstance();
 $selectRenderer = new SelectRenderer($MsaDB);
 $userRepository = new UserRepository($MsaDB);
-$user = $userRepository ->getUserById($_SESSION["userid"]);
+$user = $userRepository ->getUserById($_SESSION['user_id']);
 
 $thtUsed = $user -> getDevicesUsed("tht");
 $smdUsed = $user -> getDevicesUsed("smd");

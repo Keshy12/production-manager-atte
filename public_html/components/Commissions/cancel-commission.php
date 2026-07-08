@@ -17,6 +17,7 @@ if ($action === 'submit_cancellation') {
     submitCancellation($MsaDB);
 } else {
     echo json_encode(['success' => false, 'message' => 'Nieprawidłowa akcja.']);
+exit;
 }
 
 /**
@@ -56,7 +57,7 @@ function submitCancellation($MsaDB) {
         $selectedCommissions = json_decode($_POST['selectedCommissions'], true);
         $selectedTransfers = json_decode($_POST['selectedTransfers'], true);
         $returnCompletedAsReturned = json_decode($_POST['returnCompletedAsReturned'], true) ?? [];
-        $userId = $_SESSION['userid'] ?? 1;
+        $userId = $_SESSION['user_id'] ?? 1;
         $now = date('Y-m-d H:i:s');
 
         $commissionRepository = new CommissionRepository($MsaDB);

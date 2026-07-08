@@ -1,8 +1,9 @@
 <?php
+header('Content-Type: application/json');
 $MsaDB = Atte\DB\MsaDB::getInstance();
 
 $userRepository = new Atte\Utils\UserRepository($MsaDB);
-$user = $userRepository -> getUserById($_SESSION["userid"]);
+$user = $userRepository -> getUserById($_SESSION['user_id']);
 $userInfo = $user -> getUserInfo();
 
 $subMagazineId = $userInfo["sub_magazine_id"];
@@ -77,4 +78,6 @@ if (!empty($selected)) {
     }
 }
 
+exit;
 echo json_encode([$result, $nextPageAvailable], JSON_FORCE_OBJECT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
+exit;

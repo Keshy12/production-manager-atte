@@ -27,7 +27,7 @@ $selectRenderer = new SelectRenderer($MsaDB);
 $users_name = $MsaDB -> readIdName('user', 'user_id', 'name');
 $users_surname = $MsaDB -> readIdName('user', 'user_id', 'surname');
 $users_submag = $MsaDB -> readIdName('user', 'user_id', 'sub_magazine_id');
-$currentUser = isset($_SESSION["userid"]) ? $_SESSION["userid"] : "";
+$currentUser = isset($_SESSION['user_id']) ? $_SESSION['user_id'] : "";
 
 $submagazine_list = $MsaDB -> readIdName("magazine__list", "sub_magazine_id", "sub_magazine_name", "ORDER BY type_id ASC");
 

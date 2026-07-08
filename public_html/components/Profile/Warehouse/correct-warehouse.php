@@ -1,7 +1,7 @@
 <?php
 $MsaDB = Atte\DB\MsaDB::getInstance();
 
-$userId = $_SESSION["userid"];
+$userId = $_SESSION['user_id'];
 $userRepository = new Atte\Utils\UserRepository($MsaDB);
 $user = $userRepository -> getUserById($userId);
 $userInfo = $user -> getUserInfo();

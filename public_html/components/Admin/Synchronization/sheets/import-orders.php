@@ -3,6 +3,7 @@ use Atte\DB\MsaDB;
 use Atte\Utils\Locker;
 use Atte\Utils\TransferGroupManager;
 
+header('Content-Type: application/json');
 $locker = new Locker("import-orders.lock");
 $isLocked = !($locker -> lock(FALSE));
 $oldLastCell = (int)$_POST['oldLastCellFound'];
@@ -13,7 +14,9 @@ if(!$isLocked) {
     try {
         $importSummary = importOrders($orders, $oldLastCell, $newLastCell);
         // Return success with summary data
+exit;
         echo json_encode(['success' => true, 'summary' => $importSummary]);
+exit;
     } catch (\Exception $e) {
         echo json_encode(['success' => false, 'error' => $e->getMessage()]);
     }
@@ -41,7 +44,7 @@ function importOrders($orders, $oldLastCell, $newLastCell) {
 
         // Initialize TransferGroupManager
         $transferGroupManager = new TransferGroupManager($MsaDB);
-        $userId = $_SESSION['userid'] ?? 8;
+        $userId = $_SESSION['user_id'] ?? 1;
 
         // Group orders by PO_ID
         $ordersByPO = [];

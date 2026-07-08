@@ -1,13 +1,14 @@
 <?php 
 use Atte\DB\MsaDB;
 
+header('Content-Type: application/json');
 $MsaDB = MsaDB::getInstance();
 
 $MsaDB -> db -> beginTransaction();
 
 $deviceType = $_POST["type"];
 $deviceIds = $_POST["device_id"] ?? "";
-$userId = $_POST["userid"] ?? $_SESSION["userid"];
+$userId = $_POST["userid"] ?? $_SESSION['user_id'];
 
 $deviceIds = is_array($deviceIds) ? $deviceIds : [$deviceIds];
 $result = [];
@@ -45,4 +46,6 @@ if($wasSuccessful) $MsaDB -> db -> commit();
 else $MsaDB -> db -> rollBack();
 
 $result = [$queryResult, $wasSuccessful];
+exit;
 echo json_encode($result, JSON_FORCE_OBJECT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
+exit;

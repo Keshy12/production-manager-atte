@@ -2,13 +2,14 @@
 
 use Atte\Utils\{CommissionRepository, MagazineRepository};
 
+header('Content-Type: application/json');
 $MsaDB = Atte\DB\MsaDB::getInstance();
 $MsaDB -> db -> beginTransaction();
 
 $commissionRepository = new CommissionRepository($MsaDB);
 $magazineRepository = new MagazineRepository($MsaDB);
 
-$userId = $_SESSION['userid'];
+$userId = $_SESSION['user_id'];
 $commissionId = $_POST["commission_id"];
 $currentCommission = $commissionRepository -> getCommissionById($commissionId);
 $deviceType = $_POST["type"];
@@ -112,4 +113,6 @@ if($quantityBeingReturned != 0) {
 $MsaDB -> db -> commit();
 $currentCommission -> updateStateAuto();
 
+exit;
 echo json_encode($quantityReturned);
+exit;

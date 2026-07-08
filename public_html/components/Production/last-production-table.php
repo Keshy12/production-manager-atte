@@ -1,7 +1,7 @@
 <?php
 $MsaDB = Atte\DB\MsaDB::getInstance();
 $userRepository = new Atte\Utils\UserRepository($MsaDB);
-$user = $userRepository->getUserById($_SESSION["userid"]);
+$user = $userRepository->getUserById($_SESSION['user_id']);
 $userInfo = $user->getUserInfo();
 
 $deviceType = $_POST["deviceType"] ?? "";

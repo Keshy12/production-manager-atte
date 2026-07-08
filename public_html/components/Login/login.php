@@ -16,7 +16,7 @@ if(!empty($user)){
     unset($_SESSION['info']);
     list($id, $isAdmin) = $user[0];
 
-    $_SESSION["userid"] = $id;
+    $_SESSION['user_id'] = $id;
     $_SESSION['isAdmin'] = (bool)$isAdmin;
 
     $location = "http://".BASEURL;

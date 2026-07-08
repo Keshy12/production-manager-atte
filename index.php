@@ -8,7 +8,7 @@ switch ($request) {
     case '':
     case '/':
         includeWithVariables($headerDir, array('title' => 'Strona Główna', 'skip' => true));
-        if(isset($_SESSION["userid"])) require $componentsDir . '/index/active-commissions-view.php';
+        if(isset($_SESSION['user_id'])) require $componentsDir . '/index/active-commissions-view.php';
         break;
 
     case 'production/tht':
@@ -96,16 +96,15 @@ switch ($request) {
 
     case 'admin/synchronization/flowpin':
         includeWithVariables($headerDir, array('title' => 'Flowpin - Status Aktualizacji'));
-        require $componentsDir . '/Admin/Synchronization/flowpin/flowpin-status-view.php';
+        require $componentsDir . '/admin/Synchronization/flowpin/flowpin-status-view.php';
         break;
 
     case 'admin/synchronization/sheets':
         includeWithVariables($headerDir, array('title' => 'Flowpin - Arkusze'));
-        require $componentsDir . '/Admin/Synchronization/sheets/flowpin-sheets-view.php';
+        require $componentsDir . '/admin/Synchronization/sheets/flowpin-sheets-view.php';
         break;
 
     case 'test':
-//        includeWithVariables($headerDir, array('title' => 'Test'));
         require $componentsDir . '/tests/test1.php';
         break;
 
@@ -116,7 +115,7 @@ switch ($request) {
 
     case 'login':
         includeWithVariables($headerDir, array('title' => 'Logowanie', 'skip' => true));
-        if(!isset($_SESSION["userid"])) require $componentsDir . '/login/login-view.php';
+        if(!isset($_SESSION['user_id'])) require $componentsDir . '/login/login-view.php';
         else echo '<h1 class="text-center"> Jesteś już zalogowany </h1>';
         break;
     case 'logout':

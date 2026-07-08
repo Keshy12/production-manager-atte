@@ -4,8 +4,9 @@ use Atte\Utils\MagazineRepository;
 use Atte\Utils\UserRepository;
 use Atte\Utils\MagazineActionHandler;
 
+header('Content-Type: application/json');
 // Check if user is admin
-if(!isset($_SESSION['isAdmin']) || $_SESSION['isAdmin'] != true) {
+if(!isset($_SESSION['isAdmin']) || $_SESSION['isAdmin'] !== true) {
     http_response_code(403);
     echo json_encode(['success' => false, 'message' => 'Brak uprawnień']);
     exit();
@@ -267,7 +268,9 @@ try {
     };
 
     $result = $handler($input);
+exit;
     echo json_encode($result);
+exit;
 
 } catch (Exception $e) {
     echo json_encode(['success' => false, 'message' => 'Błąd: ' . $e->getMessage()]);

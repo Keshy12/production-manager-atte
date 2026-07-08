@@ -1,11 +1,12 @@
 <?php 
 use Atte\DB\MsaDB;
 
+header('Content-Type: application/json');
 $MsaDB = MsaDB::getInstance();
 
 $deviceType = $_POST["type"];
 $deviceIds = $_POST["device_id"] ?? [];
-$userId = $_POST["userid"] ?? $_SESSION["userid"];
+$userId = $_POST["userid"] ?? $_SESSION['user_id'];
 
 $list__device = $MsaDB -> readIdName("list__{$deviceType}");
 $list__device_desc = $MsaDB -> readIdName("list__{$deviceType}", "id", "description");
@@ -58,4 +59,6 @@ if(!$caught) {
     ';
     $result = [$queryResult, $insertedDevices];
 }
+exit;
 echo json_encode($result, JSON_FORCE_OBJECT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
+exit;

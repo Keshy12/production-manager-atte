@@ -2,16 +2,17 @@
 use Atte\Utils\TransferGroupManager;
 use Atte\Utils\CommissionRepository;
 
+header('Content-Type: application/json');
 $MsaDB = Atte\DB\MsaDB::getInstance();
 $userRepository = new Atte\Utils\UserRepository($MsaDB);
-$user = $userRepository->getUserById($_SESSION["userid"]);
+$user = $userRepository->getUserById($_SESSION['user_id']);
 $userInfo = $user->getUserInfo();
 
 $deviceType = $_POST["deviceType"] ?? "";
 $deviceId = $_POST["deviceId"] ?? "";
 $transferGroupIds = $_POST["transferGroupIds"] ?? "";
 $entryIds = $_POST["entryIds"] ?? "";
-$userId = $_SESSION["userid"];
+$userId = $_SESSION['user_id'];
 
 $MsaDB->db->beginTransaction();
 try {

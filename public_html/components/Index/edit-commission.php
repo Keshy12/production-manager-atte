@@ -1,5 +1,6 @@
 <?php
 
+header('Content-Type: application/json');
 $id = $_POST["id"];
 $priority = $_POST["priority"];
 $receivers = $_POST["subcontractors"] ?? "";
@@ -32,9 +33,11 @@ $result = [
     'receivers' => implode(',', $receivers)
 
 ];
-if(array_search($_SESSION['userid'], $receivers) === false) {
+if(array_search($_SESSION['user_id'], $receivers) === false) {
     $result['visibility'] = 'hidethis';
 }
  
 
+exit;
 echo json_encode($result);
+exit;

@@ -3,7 +3,7 @@ use Atte\Utils\TransferGroupManager;
 
 $MsaDB = Atte\DB\MsaDB::getInstance();
 
-$userId = $_SESSION["userid"];
+$userId = $_SESSION['user_id'];
 $result = $_POST["result"] ?? [];
 $type = $_POST["type"];
 $deviceId = $_POST["device_id"];

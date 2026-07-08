@@ -1,10 +1,10 @@
 <?php
-if (!isset($_SESSION['userid'])) {
+if (!isset($_SESSION['user_id'])) {
     header('Location: http://' . BASEURL . '/login');
     exit;
 }
 
-if (!isset($_SESSION['isAdmin']) || !$_SESSION['isAdmin']) {
+if (!isset($_SESSION['isAdmin']) || $_SESSION['isAdmin'] !== true) {
     header('Location: http://' . BASEURL . '/unauthorized');
     exit;
 }

@@ -14,6 +14,7 @@ if ($action === 'cancel_transfers') {
         'success' => false,
         'message' => 'Invalid action'
     ]);
+exit;
 }
 
 function cancelTransfers($MsaDB) {
@@ -35,7 +36,7 @@ function cancelTransfers($MsaDB) {
         $cancelGroups = json_decode($cancelGroupsJson, true) ?: [];
 
         // Get user ID from session
-        $userId = $_SESSION['userid'] ?? 1;
+        $userId = $_SESSION['user_id'] ?? 1;
         $now = $MsaDB->query("SELECT NOW() as now", \PDO::FETCH_ASSOC)[0]['now'];
 
 

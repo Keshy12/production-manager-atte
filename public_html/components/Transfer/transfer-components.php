@@ -3,6 +3,7 @@ use Atte\DB\MsaDB;
 use Atte\Utils\BomRepository;
 use Atte\Utils\CommissionRepository;
 
+header('Content-Type: application/json');
 $MsaDB = MsaDB::getInstance();
 $MsaDB->db->beginTransaction();
 
@@ -19,7 +20,7 @@ try {
         $magazineNamesCache[$magazine['sub_magazine_id']] = $magazine['sub_magazine_name'];
     }
 
-    $userid = $_SESSION["userid"];
+    $userid = $_SESSION['user_id'];
     $now = date("Y-m-d H:i:s", time());
     $transferFrom = $_POST["transferFrom"];
     $transferTo = $_POST["transferTo"];
@@ -243,6 +244,7 @@ try {
         'success' => true,
         'data' => [$commissionResult, $componentsResult]
     ], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
+exit;
 
 } catch (\Exception $e) {
     $MsaDB->db->rollBack();

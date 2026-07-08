@@ -1,5 +1,5 @@
 <?php
-if(!isset($_SESSION["userid"]) && !isset($skip))
+if(!isset($_SESSION['user_id']) && !isset($skip))
 {
     setcookie("redirect", "http://$_SERVER[HTTP_HOST]$_SERVER[REQUEST_URI]", time()+3600, '/');
     header("Location: http://".BASEURL."/login");
@@ -84,7 +84,7 @@ if(!isset($_SESSION["userid"]) && !isset($skip))
             <li class="nav-item">
                 <a class="nav-link btn btn-light skip" href="http://<?=BASEURL?>">Strona Główna</a>
             </li>
-            <?php if(isset($_SESSION['userid'])) :?>
+            <?php if(isset($_SESSION['user_id'])) :?>
                 <li class="nav-item dropdown dropdown-button">
                     <a class="nav-link dropdown-toggle btn btn-light skip" href="#" id="navbarDropdown" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
                         Formularze
@@ -103,7 +103,7 @@ if(!isset($_SESSION["userid"]) && !isset($skip))
             <li class="nav-item">
                 <a class="nav-link btn btn-light skip" href="http://<?=BASEURL?>/transfer">Transfer</a>
             </li>
-            <?php if(isset($_SESSION['isAdmin']) && $_SESSION['isAdmin'] == true) :?>
+            <?php if(isset($_SESSION['isAdmin']) && $_SESSION['isAdmin'] === true) :?>
                 <li class="nav-item">
                     <a class="nav-link btn btn-light skip" href="http://<?=BASEURL?>/verification">Weryfikuj</a>
                 </li>
@@ -119,7 +119,7 @@ if(!isset($_SESSION["userid"]) && !isset($skip))
             </li>
         </ul>
         <ul class="navbar-nav ml-auto">
-            <?php if(isset($_SESSION['isAdmin']) && $_SESSION['isAdmin'] == true) :?>
+            <?php if(isset($_SESSION['isAdmin']) && $_SESSION['isAdmin'] === true) :?>
                 <li class="nav-item dropdown dropleft">
                     <a id="showNotifications" data-toggle="dropdown" class="nav-link btn btn-light skip">
                         <span class="badge badge-danger" id="notificationCounter"></span><i class="bi bi-bell-fill"></i></a>
@@ -167,7 +167,7 @@ if(!isset($_SESSION["userid"]) && !isset($skip))
                     </div>
                 </li>
             <?php endif; ?>
-            <?php if(isset($_SESSION['userid'])) :?>
+            <?php if(isset($_SESSION['user_id'])) :?>
                 <li class="nav-item dropdown">
                     <a class="nav-link dropdown-toggle btn btn-light skip dropdown-button" data-toggle="dropdown">Profil</a>
                     <div class="dropdown-menu dropdown-menu-right" aria-labelledby="navbarDropdown">
@@ -183,7 +183,7 @@ if(!isset($_SESSION["userid"]) && !isset($skip))
         </ul>
     </div>
 </nav>
-            <?php if(isset($_SESSION['isAdmin']) && $_SESSION['isAdmin'] == true) :?>
+            <?php if(isset($_SESSION['isAdmin']) && $_SESSION['isAdmin'] === true) :?>
     <div class="text-left" style="position: absolute; top: 70px; float: left; left: 10px; z-index: 9999;">
         <div class="btn-group">
             <button type="button" class="btn btn-primary dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">

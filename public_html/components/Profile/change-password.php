@@ -1,6 +1,7 @@
 <?php 
 use Atte\DB\MsaDB;
 
+header('Content-Type: application/json');
 $MsaDB = MsaDB::getInstance();
 
 $userId = $_POST["user_selected"];
@@ -21,7 +22,9 @@ if(empty($result))
     $changeSuccessfull = true;
 }
 
+exit;
 echo json_encode([$changeSuccessfull, $result]);
+exit;
 
 
 

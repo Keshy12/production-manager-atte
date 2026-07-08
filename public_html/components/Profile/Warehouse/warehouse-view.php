@@ -11,7 +11,7 @@ $selectRenderer = new SelectRenderer($MsaDB);
 $available = [];
 $userRepository = new UserRepository($MsaDB);
 
-$user = $userRepository -> getUserById($_SESSION["userid"]);
+$user = $userRepository -> getUserById($_SESSION['user_id']);
 $userInfo = $user -> getUserInfo();
 
 // Check if magazine is active

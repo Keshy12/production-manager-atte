@@ -1,6 +1,7 @@
 <?php
 use Atte\DB\MsaDB;
 
+header('Content-Type: application/json');
 $MsaDB = MsaDB::getInstance();
 
 $newSubMagId = null;
@@ -22,7 +23,9 @@ if (isset($_POST["new_magazine_name"]) && !empty(trim($_POST["new_magazine_name"
     } catch (\Throwable $e) {
         $resultMessage = "Wystąpił błąd przy tworzeniu magazynu: ".$e->getMessage();
         $wasSuccessful = false;
+exit;
         echo json_encode([$resultMessage, $wasSuccessful], JSON_FORCE_OBJECT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
+exit;
         return;
     }
 } else {
@@ -35,14 +38,14 @@ if ($subMagazineId !== null) {
 
     if ($newIsAdmin === 1) {
         $verifyAdminPassword = $_POST["verifyAdminPassword"] ?? '';
-        if (empty($verifyAdminPassword) || !isset($_SESSION["userid"])) {
+        if (empty($verifyAdminPassword) || !isset($_SESSION['user_id'])) {
             $resultMessage = "Tworzenie użytkownika z uprawnieniami administratora wymaga potwierdzenia hasłem.";
             $wasSuccessful = false;
             $insertedId = "";
             echo json_encode([$resultMessage, $wasSuccessful, $insertedId, $newSubMagId], JSON_FORCE_OBJECT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
             return;
         }
-        $actingAdminId = (int)$_SESSION["userid"];
+        $actingAdminId = (int)$_SESSION['user_id'];
         $actingAdminRow = $MsaDB->query(
             "SELECT password FROM user WHERE user_id = $actingAdminId",
             \PDO::FETCH_ASSOC
