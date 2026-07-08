@@ -28,7 +28,7 @@ if (isset($_GET['redirect']) && $_GET['redirect'] === 'true' && isset($_POST['de
     echo("<script>history.replaceState({},'','/atte_ms_new/production/{$deviceType}');</script>");
 }
 
-$userId = $_SESSION["userid"];
+$userId = $_SESSION['user_id'];
 $user = $userRepository->getUserById($userId);
 $userInfo = $user->getUserInfo();
 

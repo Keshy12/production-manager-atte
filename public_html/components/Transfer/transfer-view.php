@@ -8,7 +8,7 @@ $MsaDB = MsaDB::getInstance();
 $selectRenderer = new SelectRenderer($MsaDB);
 $userRepository = new UserRepository($MsaDB);
 
-$currentUser = $userRepository -> getUserById($_SESSION['userid']);
+$currentUser = $userRepository -> getUserById($_SESSION['user_id']);
 $isCurrUserAdmin = $currentUser -> isAdmin();
 $currentMagazine = $isCurrUserAdmin ? '' : $currentUser -> subMagazineId;
 

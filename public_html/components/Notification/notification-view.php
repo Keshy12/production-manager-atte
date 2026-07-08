@@ -44,7 +44,7 @@ if($isResolved) {
     $alert = "alert-success";
 }
 
-$userId = $_SESSION["userid"] ?? null;
+$userId = $_SESSION['user_id'] ?? null;
 
 ?>
 <script>
