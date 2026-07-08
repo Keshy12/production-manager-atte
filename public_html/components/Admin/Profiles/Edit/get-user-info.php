@@ -24,10 +24,12 @@ $userTHTUsed = [];
 $userSMDUsed = [];
 foreach($THTUsed as $THTId)
 {
+    if(!isset($list__tht[$THTId])) continue;
     $userTHTUsed[] = [$THTId, $list__tht[$THTId], $list__tht_desc[$THTId]];
 }
 foreach($SMDUsed as $SMDId)
 {
+    if(!isset($list__smd[$SMDId])) continue;
     $userSMDUsed[] = [$SMDId, $list__smd[$SMDId], $list__smd_desc[$SMDId]];
 }
 
