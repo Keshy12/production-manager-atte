@@ -8,6 +8,12 @@ $(document).ready(function() {
     $("#list__priority").val(0).selectpicker('refresh');
 
     $("#addCommission").click(function() {
+        clearValidationStates();
+        const invalidSelectors = validateCommissionForm();
+        if (invalidSelectors.length > 0) {
+            invalidSelectors.forEach(sel => markInvalid($(sel)));
+            return;
+        }
         const commissionValues = getCommissionRowValues();
         const $TBody = $('#commissionTBody');
         commissions.push(commissionValues);
@@ -493,3 +499,53 @@ function clearAddCommissionFields() {
     $("#deviceType, #list__device").prop('disabled', true);
     $("#userSelect, #list__priority, #list__device, #version, #list__laminate, #deviceType").selectpicker('refresh');
 }
+
+function validateCommissionForm() {
+    const userSelect = $('#userSelect').val();
+    const deviceType = $('#deviceType').val();
+    const device = $('#list__device').val();
+    const version = $('#version').val();
+    const laminate = $('#list__laminate').val();
+    const quantity = $('#quantity').val();
+
+    const invalid = [];
+    if (!userSelect || userSelect.length === 0) invalid.push('#userSelect');
+    if (!deviceType) invalid.push('#deviceType');
+    if (!device) invalid.push('#list__device');
+    if ((deviceType === 'tht' || deviceType === 'smd') && (!version || version === '')) invalid.push('#version');
+    if (deviceType === 'smd' && (!laminate || laminate === '')) invalid.push('#list__laminate');
+    if (!quantity || parseInt(quantity) <= 0 || isNaN(parseInt(quantity))) invalid.push('#quantity');
+
+    return invalid;
+}
+
+function markInvalid($field) {
+    $field.addClass('is-invalid');
+    if ($field.is('select')) {
+        $field.parent('.bootstrap-select').addClass('is-invalid');
+        $field.selectpicker('refresh');
+    }
+}
+
+function clearFieldValidation($field) {
+    $field.removeClass('is-invalid');
+    if ($field.is('select')) {
+        $field.parent('.bootstrap-select').removeClass('is-invalid');
+        $field.selectpicker('refresh');
+    }
+}
+
+function clearValidationStates() {
+    $('#userSelect, #deviceType, #list__device, #version, #list__laminate, #quantity').each(function() {
+        clearFieldValidation($(this));
+    });
+}
+
+// Clear invalid mark as soon as the user changes a field.
+// bootstrap-select v1 does NOT trigger native 'change' on the underlying
+// <select> - it triggers the namespaced 'changed.bs.select'. Bind to both
+// so this works regardless of bootstrap-select version and across both
+// <select> and <input type="number"> (#quantity fires 'input' on typing).
+$('#userSelect, #deviceType, #list__device, #version, #list__laminate, #quantity').on('change input changed.bs.select', function() {
+    clearFieldValidation($(this));
+});
