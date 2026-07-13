@@ -4,6 +4,19 @@ $headerDir = 'public_html/assets/layout/header.php';
 $request = strtok(str_replace('/atte_ms_new/', '', $_SERVER['REQUEST_URI']), '?');
 $componentsDir = ROOT_DIRECTORY .'/public_html/components';
 
+// Auth gate for /admin/* routes. Must be called BEFORE includeWithVariables()
+// so header() can redirect without 'headers already sent' warnings.
+function requireAdmin() {
+    if (empty($_SESSION['user_id'])) {
+        header('Location: http://' . BASEURL . '/login');
+        exit;
+    }
+    if (empty($_SESSION['isAdmin']) || $_SESSION['isAdmin'] !== true) {
+        header('Location: http://' . BASEURL . '/unauthorized');
+        exit;
+    }
+}
+
 switch ($request) {
     case '':
     case '/':
@@ -58,48 +71,59 @@ switch ($request) {
         require $componentsDir . '/profile/devicesproduced/devices-produced-view.php';
         break;
     case 'admin/bom/upload':
+        requireAdmin();
         includeWithVariables($headerDir, array('title' => 'Wczytywanie BOM'));
         require $componentsDir . '/admin/bom/upload/upload-bom-view.php';
         break;
     case 'admin/bom/edit':
+        requireAdmin();
         includeWithVariables($headerDir, array('title' => 'Edycja BOM'));
         require $componentsDir . '/admin/bom/edit/edit-bom-view.php';
         break;
     case 'admin/bom/dictionary':
+        requireAdmin();
         includeWithVariables($headerDir, array('title' => 'Edycja słownika ValuePackage'));
         require $componentsDir . '/admin/bom/dictionary/edit-dictionary-view.php';
         break;
     case 'admin/profiles/edit':
+        requireAdmin();
         includeWithVariables($headerDir, array('title' => 'Edycja Profili'));
         require $componentsDir . '/admin/profiles/edit/edit-profile-view.php';
         break;
     case 'admin/components/edit':
+        requireAdmin();
         includeWithVariables($headerDir, array('title' => 'Edycja Komponentów'));
         require $componentsDir . '/admin/components/edit/edit-component-view.php';
         break;
     case 'admin/components/detect-new-parts':
+        requireAdmin();
         includeWithVariables($headerDir, array('title' => 'Aktualizuj Parts'));
         require $componentsDir . '/admin/components/detectnewparts/detect-parts-view.php';
         break;
     case 'admin/components/from-orders':
+        requireAdmin();
         header('Location: http://' . BASEURL . '/admin/synchronization/sheets#import-orders');
         exit;
         break;
     case 'admin/components/update-prices':
+        requireAdmin();
         header('Location: http://' . BASEURL . '/admin/synchronization/sheets#update-prices');
         exit;
         break;
     case 'admin/magazines/edit':
+        requireAdmin();
         includeWithVariables($headerDir, array('title' => 'Edycja Magazynów'));
         require $componentsDir . '/admin/magazines/edit/edit-magazines-view.php';
         break;
 
     case 'admin/synchronization/flowpin':
+        requireAdmin();
         includeWithVariables($headerDir, array('title' => 'Flowpin - Status Aktualizacji'));
         require $componentsDir . '/admin/Synchronization/flowpin/flowpin-status-view.php';
         break;
 
     case 'admin/synchronization/sheets':
+        requireAdmin();
         includeWithVariables($headerDir, array('title' => 'Flowpin - Arkusze'));
         require $componentsDir . '/admin/Synchronization/sheets/flowpin-sheets-view.php';
         break;
