@@ -9,7 +9,6 @@ $rowId = $_POST['rowId'];
 
 $wasSuccessful = $MsaDB -> deleteById($dictionaryType, $rowId);
 
-exit;
 echo json_encode($wasSuccessful);
 exit;
 

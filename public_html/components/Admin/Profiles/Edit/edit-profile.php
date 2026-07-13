@@ -23,7 +23,6 @@ if (isset($_POST["new_magazine_name"]) && !empty(trim($_POST["new_magazine_name"
     } catch (\Throwable $e) {
         $result = "Wystąpił błąd przy tworzeniu magazynu: ".$e->getMessage();
         $wasSuccessful = false;
-exit;
         echo json_encode([$result, $wasSuccessful], JSON_FORCE_OBJECT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
 exit;
         return;

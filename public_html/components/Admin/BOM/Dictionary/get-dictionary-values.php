@@ -59,7 +59,6 @@ $generateComponentInfo = function(&$row) use ($list__tht, $list__tht_desc, $list
 
 if($dictionaryType == 'ref__valuepackage') array_walk($result, $generateComponentInfo);
 
-exit;
 echo json_encode([$result, $nextPageAvailable]
                 , JSON_FORCE_OBJECT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
 exit;

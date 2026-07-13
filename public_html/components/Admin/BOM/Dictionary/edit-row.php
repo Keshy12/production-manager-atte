@@ -34,7 +34,6 @@ switch($dictionaryType)
 $wasSuccessful = $MsaDB -> update($dictionaryType, $valuesToInsert, 'id', $rowId);
 
 
-exit;
 echo json_encode($wasSuccessful);
 exit;
 

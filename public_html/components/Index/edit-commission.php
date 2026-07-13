@@ -38,6 +38,5 @@ if(array_search($_SESSION['user_id'], $receivers) === false) {
 }
  
 
-exit;
 echo json_encode($result);
 exit;

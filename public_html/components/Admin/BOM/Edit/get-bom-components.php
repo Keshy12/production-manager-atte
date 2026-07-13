@@ -236,7 +236,6 @@ if($wasSuccessful) {
     }
 }
 
-exit;
 echo json_encode([$bomComponents, $bomId, $bomIsActive, $wasSuccessful, $errorMessage, $outThtQuantity, $outThtPrice, $outSmdPrice, $outSmdQty, $outSmdPricePerItem, $outThtPricePerItem, $bomPrice],
     JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
 exit;

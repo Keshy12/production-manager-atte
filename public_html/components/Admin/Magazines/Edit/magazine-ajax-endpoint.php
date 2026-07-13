@@ -268,7 +268,6 @@ try {
     };
 
     $result = $handler($input);
-exit;
     echo json_encode($result);
 exit;
 

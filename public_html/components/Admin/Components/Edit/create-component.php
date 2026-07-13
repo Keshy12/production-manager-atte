@@ -118,7 +118,6 @@ if($fileUploaded && $addSuccessful)
     }
 }
 
-exit;
 echo json_encode([$addResult, $addSuccessful, $imageUploadResult, $imageUploadSuccessful, $insertedId]
                         , JSON_FORCE_OBJECT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
 exit;

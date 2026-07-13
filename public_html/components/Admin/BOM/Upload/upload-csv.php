@@ -118,7 +118,6 @@ if($csvHasSMD)
     
 }
 
-exit;
 echo json_encode([$fatalErrors, $nonFatalErrors, $THTFlatBoms, $SMDFlatBoms]
                         , JSON_FORCE_OBJECT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
 exit;

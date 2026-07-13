@@ -234,7 +234,6 @@ if (!isset($loadedCount)) {
     $remainingCancelledCount = 0;
 }
 
-exit;
 echo json_encode([
     'success' => true,
     'entries' => $entries,

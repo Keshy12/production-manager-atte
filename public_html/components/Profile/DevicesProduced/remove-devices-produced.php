@@ -46,6 +46,5 @@ if($wasSuccessful) $MsaDB -> db -> commit();
 else $MsaDB -> db -> rollBack();
 
 $result = [$queryResult, $wasSuccessful];
-exit;
 echo json_encode($result, JSON_FORCE_OBJECT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
 exit;

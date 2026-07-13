@@ -55,6 +55,5 @@ else {
 }
 
 
-exit;
 echo json_encode($wasSuccessful);
 exit;

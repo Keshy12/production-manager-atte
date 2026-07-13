@@ -61,7 +61,6 @@ foreach($deviceTypes as $deviceType) {
         $result[$deviceType][] = $push;
     }
 }
-exit;
 echo json_encode($result);
 exit;
 

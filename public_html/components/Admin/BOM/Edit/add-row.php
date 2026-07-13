@@ -52,7 +52,6 @@ else {
     $MsaDB -> db -> rollBack();
 }
 
-exit;
 echo json_encode($wasSuccessful);
 exit;
 

@@ -350,6 +350,5 @@ foreach($commissions as $commissionData) {
     ];
 }
 
-exit;
 echo json_encode([$result, $nextPageAvailable, $totalCount, $stats]);
 exit;

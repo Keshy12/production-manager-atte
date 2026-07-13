@@ -271,7 +271,6 @@ try {
     $response['message'] = $e->getMessage();
 }
 
-exit;
 echo json_encode($response);
 exit;
 

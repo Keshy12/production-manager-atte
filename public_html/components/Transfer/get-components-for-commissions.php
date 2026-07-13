@@ -115,7 +115,6 @@ foreach($commissions as $key => $commission)
     }
 }
 
-exit;
 echo json_encode([$componentsByCommission, $existingCommissions]
     ,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
 exit;

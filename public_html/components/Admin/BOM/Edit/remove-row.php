@@ -27,7 +27,6 @@ if ($wasSuccessful && !empty($bomInfo)) {
     }
 }
 
-exit;
 echo json_encode($wasSuccessful);
 exit;
 

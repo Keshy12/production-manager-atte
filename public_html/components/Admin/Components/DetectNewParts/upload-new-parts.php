@@ -105,7 +105,6 @@ try {
     $MsaDB -> db -> rollBack();
 }
 
-exit;
 echo json_encode([
     "wasSuccessful" => $wasSuccessful,
     "errorMessage" => $errorMessage

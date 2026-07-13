@@ -14,7 +14,6 @@ if(!$isLocked) {
     try {
         $importSummary = importOrders($orders, $oldLastCell, $newLastCell);
         // Return success with summary data
-exit;
         echo json_encode(['success' => true, 'summary' => $importSummary]);
 exit;
     } catch (\Exception $e) {

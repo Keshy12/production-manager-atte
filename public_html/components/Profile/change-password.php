@@ -22,7 +22,6 @@ if(empty($result))
     $changeSuccessfull = true;
 }
 
-exit;
 echo json_encode([$changeSuccessfull, $result]);
 exit;
 

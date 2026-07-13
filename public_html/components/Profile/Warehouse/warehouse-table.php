@@ -78,6 +78,5 @@ if (!empty($selected)) {
     }
 }
 
-exit;
 echo json_encode([$result, $nextPageAvailable], JSON_FORCE_OBJECT|JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
 exit;

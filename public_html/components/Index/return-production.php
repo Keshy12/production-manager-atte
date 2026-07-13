@@ -113,6 +113,5 @@ if($quantityBeingReturned != 0) {
 $MsaDB -> db -> commit();
 $currentCommission -> updateStateAuto();
 
-exit;
 echo json_encode($quantityReturned);
 exit;

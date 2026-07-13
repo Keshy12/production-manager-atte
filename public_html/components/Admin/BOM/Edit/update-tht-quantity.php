@@ -22,6 +22,5 @@ try {
     $errorMessage = $e->getMessage();
 }
 
-exit;
 echo json_encode([$wasSuccessful, $errorMessage], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 exit;

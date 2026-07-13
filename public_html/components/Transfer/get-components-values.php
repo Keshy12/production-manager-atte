@@ -44,7 +44,6 @@ $result = array_map(function($item) use ($reservedFrom, $reservedTo,
     return $item;
 }, $components);
 
-exit;
 echo json_encode($result
                 ,JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE);
 exit;

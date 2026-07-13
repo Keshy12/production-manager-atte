@@ -88,7 +88,6 @@ foreach ($allPartsToCheck as $row) {
     }
 }
 
-exit;
 echo json_encode([
     'newParts' => $newParts,
     'editedParts' => $editedParts,

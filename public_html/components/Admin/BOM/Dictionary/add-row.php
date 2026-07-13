@@ -44,7 +44,6 @@ catch (\Throwable $e)
     $wasSuccessful = false;
 }
 
-exit;
 echo json_encode($wasSuccessful);
 exit;
 
