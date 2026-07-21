@@ -47,7 +47,7 @@ try {
                 return false;
             }
 
-            if (empty($user->subMagazineId)) {
+            if ($user->subMagazineId === null) {
                 if (!isset($issues['users'][$userEmail])) {
                     $issues['users'][$userEmail] = [
                         'email' => $userEmail,
