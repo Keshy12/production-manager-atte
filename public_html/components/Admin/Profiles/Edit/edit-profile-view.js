@@ -68,7 +68,7 @@ function addProfile()
         data: $form.serialize(), // serializes the form's elements.
         success: function(data)
         {
-            let result = JSON.parse(data);
+            let result = data;
             let resultMessage = result[0];
             let wasSuccessful = result[1];
             let alertType = wasSuccessful ? "alert-success" : "alert-danger";
@@ -160,7 +160,7 @@ $("#list__user").change(function(){
         url: COMPONENTS_PATH+"/admin/profiles/edit/get-user-info.php",
         data: { userid: userid},
         success: function (data) {
-            let result = JSON.parse(data);
+            let result = data;
             let userInfo = result[0];
             let THTUsed = result[1];
             let SMDUsed = result[2];
@@ -296,7 +296,7 @@ function submitEditProfile() {
             let userId = $("#user_id").val();
             $formFields.attr('readonly', false);
             $("#isActive").prop('disabled', false);
-            let result = JSON.parse(data);
+            let result = data;
             let resultMessage = result[0];
             let alertType = result[1] ? "alert-success" : "alert-danger";
             let alert = `
@@ -345,7 +345,7 @@ function addDevices(userid, devices, type)
         url: COMPONENTS_PATH+"/profile/devicesproduced/add-devices-produced.php",
         data: {userid: userid, type: type, device_id: devices},
         success: function (data) {
-            let result = JSON.parse(data);
+            let result = data;
             let ajaxResult = result[0];
             let addedDevices = (1 in result) ? result[1] : false;
 
@@ -401,7 +401,7 @@ $("#removeDeviceProduced").click(function() {
         url: COMPONENTS_PATH+"/profile/devicesproduced/remove-devices-produced.php",
         data: {userid: userid, type: type, device_id: device_id},
         success: function (data) {
-            let result = JSON.parse(data);
+            let result = data;
             let ajaxResult = result[0];
 
             $("#ajaxResult").append(ajaxResult);
@@ -466,7 +466,7 @@ $("#removeAllDevicesProduced").click(function(){
         url: COMPONENTS_PATH+"/profile/devicesproduced/remove-devices-produced.php",
         data: {userid: userid, type: type, device_id: idsToDelete},
         success: function (data) {
-            let result = JSON.parse(data);
+            let result = data;
             let ajaxResult = result[0];
 
             $("#ajaxResult").append(ajaxResult);

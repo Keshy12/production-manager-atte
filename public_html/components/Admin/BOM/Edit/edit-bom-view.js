@@ -196,7 +196,7 @@ function generateBomTable()
         async: false,
         data: {bomType: bomType, bomValues: bomValues, createNewBom: createNewBom, warehouseId: warehouseId},
         success: function (data) {
-            let result = JSON.parse(data);
+            let result = data;
             let components = result[0];
             let bomId = result[1];
             let isActive = result[2];
@@ -434,7 +434,7 @@ $('body').on('click', '.applyChanges', function(){
             url: COMPONENTS_PATH+"/admin/bom/edit/update-tht-quantity.php",
             data: data,
             success: function (data) {
-                let result = JSON.parse(data);
+                let result = data;
                 let wasSuccessful = result[0];
                 let errorMessage = result[1];
                 if(!wasSuccessful) {
@@ -469,7 +469,7 @@ function editBomRow(data)
         async: false,
         data: data,
         success: function (data) {
-            let wasSuccessful = JSON.parse(data);
+            let wasSuccessful = data;
             let resultMessage = wasSuccessful ? 
                         "Edytowanie danych powiodło się." : 
                         "Coś poszło nie tak, dane nie zostały edytowane";
@@ -513,7 +513,7 @@ function removeBomRow(data)
         async: false,
         data: data,
         success: function (data) {
-            let wasSuccessful = JSON.parse(data);
+            let wasSuccessful = data;
             let resultMessage = wasSuccessful ? 
                         "Usunięcie danych powiodło się." : 
                         "Coś poszło nie tak, dane nie zostały usunięte";
@@ -568,7 +568,7 @@ function createNewBomRow(data)
         async: false,
         data: data,
         success: function (data) {
-            let wasSuccessful = JSON.parse(data);
+            let wasSuccessful = data;
             let resultMessage = wasSuccessful ? 
                         "Dodawanie danych powiodło się." : 
                         "Coś poszło nie tak, dane nie zostały edytowane";
@@ -607,7 +607,7 @@ function setIsActiveBom(data)
         async: false,
         data: data,
         success: function (data) {
-            let wasSuccessful = JSON.parse(data);
+            let wasSuccessful = data;
             let resultMessage = wasSuccessful ? 
                         "Dodawanie danych powiodło się." : 
                         "Coś poszło nie tak, dane nie zostały edytowane";

@@ -524,7 +524,7 @@ function getComponentValues(components, transferFrom, transferTo) {
         async: false,
         data: data,
         success: function (data) {
-            result = JSON.parse(data);
+            result = data;
         }
     });
     return result;

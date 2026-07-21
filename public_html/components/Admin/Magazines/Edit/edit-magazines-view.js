@@ -26,7 +26,7 @@ $(document).ready(function() {
             contentType: 'application/json',
             data: JSON.stringify(data),
             success: function(result) {
-                const response = JSON.parse(result);
+                const response = result;
                 if (response.success) {
                     showAlert(response.message, 'success');
                     if (successCallback) successCallback(response);
@@ -181,7 +181,7 @@ $(document).ready(function() {
                 magazine_id: parseInt(magazineId)
             }),
             success: function(result) {
-                const response = JSON.parse(result);
+                const response = result;
                 if (response.success) {
                     let usersHtml = '';
                     if (response.users && response.users.length > 0) {
@@ -247,7 +247,7 @@ $(document).ready(function() {
                 exclude_magazine_id: parseInt(id)
             }),
             success: function(result) {
-                const response = JSON.parse(result);
+                const response = result;
                 if (response.success && response.magazines) {
                     let optionsHtml = '<option value="">Wybierz magazyn...</option>';
                     response.magazines.forEach(magazine => {
@@ -272,7 +272,7 @@ $(document).ready(function() {
                 magazine_id: parseInt(id)
             }),
             success: function(result) {
-                const response = JSON.parse(result);
+                const response = result;
                 if (response.success) {
                     const hasUsers = response.users && response.users.length > 0;
                     let usersHtml = '';
@@ -326,7 +326,7 @@ $(document).ready(function() {
                 magazine_id: parseInt(id)
             }),
             success: function(result) {
-                const response = JSON.parse(result);
+                const response = result;
                 if (response.success) {
                     let inventoryHtml = '';
 
@@ -796,7 +796,7 @@ $(document).ready(function() {
                     action: 'get_next_submag_number'
                 }),
                 success: function(result) {
-                    const response = JSON.parse(result);
+                    const response = result;
                     if (response.success) {
                         const prefix = `SUB MAG ${response.next_number}:`;
 
@@ -859,7 +859,7 @@ $(document).ready(function() {
                         magazine_id: parseInt(magazineId)
                     }),
                     success: function(result) {
-                        const response = JSON.parse(result);
+                        const response = result;
                         if (response.success) {
                             updateTableRow(magazineId, response.users || []);
                         }
@@ -892,7 +892,7 @@ $(document).ready(function() {
                 magazine_id: parseInt(magazineId)
             }),
             success: function(result) {
-                const response = JSON.parse(result);
+                const response = result;
                 if (response.success) {
                     updateTableRow(magazineId, response.users || []);
                 }

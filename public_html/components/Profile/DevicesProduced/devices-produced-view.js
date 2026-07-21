@@ -5,7 +5,7 @@ function addDevices(devices, type)
         url: COMPONENTS_PATH+"/profile/devicesproduced/add-devices-produced.php",
         data: { type: type, device_id: devices},
         success: function (data) {
-            let result = JSON.parse(data);
+            let result = data;
             let ajaxResult = result[0];
             let addedDevices = (1 in result) ? result[1] : false;
 
@@ -58,7 +58,7 @@ $("#removeDeviceProduced").click(function() {
         url: COMPONENTS_PATH+"/profile/devicesproduced/remove-devices-produced.php",
         data: { type: type, device_id: device_id},
         success: function (data) {
-            let result = JSON.parse(data);
+            let result = data;
             let ajaxResult = result[0];
 
             $("#ajaxResult").append(ajaxResult);
@@ -122,7 +122,7 @@ $("#removeAllDevicesProduced").click(function(){
         url: COMPONENTS_PATH+"/profile/devicesproduced/remove-devices-produced.php",
         data: { type: type, device_id: idsToDelete},
         success: function (data) {
-            let result = JSON.parse(data);
+            let result = data;
             let ajaxResult = result[0];
 
             $("#ajaxResult").append(ajaxResult);

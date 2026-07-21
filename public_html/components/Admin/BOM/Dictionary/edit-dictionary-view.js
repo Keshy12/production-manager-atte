@@ -54,7 +54,7 @@ function createNewDictionaryRow(data)
         async: false,
         data: data,
         success: function (data) {
-            let wasSuccessful = JSON.parse(data);
+            let wasSuccessful = data;
             let resultMessage = wasSuccessful ? 
                         "Dodawanie danych powiodło się." : 
                         "Coś poszło nie tak, dane nie zostały edytowane";
@@ -119,7 +119,7 @@ function removeDictionaryRow(data)
         async: false,
         data: data,
         success: function (data) {
-            let wasSuccessful = JSON.parse(data);
+            let wasSuccessful = data;
             let resultMessage = wasSuccessful ? 
                         "Usunięcie danych powiodło się." : 
                         "Coś poszło nie tak, dane nie zostały usunięte";
@@ -190,7 +190,7 @@ function editDictionaryRow(data)
         async: false,
         data: data,
         success: function (data) {
-            let wasSuccessful = JSON.parse(data);
+            let wasSuccessful = data;
             let resultMessage = wasSuccessful ? 
                         "Edytowanie danych powiodło się." : 
                         "Coś poszło nie tak, dane nie zostały edytowane";
@@ -331,7 +331,7 @@ function getDictionaryInfo(dictionaryType, page, searchValue)
         async: false,
         data: { dictionaryType: dictionaryType, page: page, searchValue: searchValue},
         success: function (data) {
-            result = JSON.parse(data);
+            result = data;
         }
     });
     return result;

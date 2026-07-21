@@ -48,7 +48,7 @@ class FromOrdersRenderer {
                 data: filters
             });
 
-            const result = JSON.parse(response);
+            const result = response;
             const paginatedOrders = result[0];
             const missingParts = result[1];
             const lastFoundCell = result[2];
@@ -110,7 +110,7 @@ class FromOrdersRenderer {
                 data: filters
             });
 
-            const result = JSON.parse(response);
+            const result = response;
             const paginatedOrders = result[0];
             const missingParts = result[1];
             const lastFoundCell = result[2];

@@ -19,7 +19,7 @@ $("#verifyType").change(function(){
         url: COMPONENTS_PATH+"/verification/get-verification-values.php",
         data: {deviceType: this.value},
         success: function(data) {
-            let result = JSON.parse(data);
+            let result = data;
             $("#container").empty();
             renderCards(result);
         }

@@ -38,7 +38,7 @@ class CommissionsRenderer {
             url: COMPONENTS_PATH + "/commissions/get-commissions.php",
             data: filters,
             success: (data) => {
-                const result = JSON.parse(data);
+                const result = data;
                 const commissions = result[0];
                 const nextPageAvailable = result[1];
                 const totalCount = result[2] || null;

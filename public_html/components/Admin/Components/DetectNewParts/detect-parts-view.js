@@ -231,7 +231,7 @@ function uploadNewParts(newPartsJson, editedPartsJson) {
             editedParts: editedPartsJson
         },
         success: function(response) {
-            const result = JSON.parse(response);
+            const result = response;
             const wasSuccessful = result['wasSuccessful'];
             const errorMessage = result['errorMessage'];
 

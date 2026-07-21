@@ -730,7 +730,7 @@ $('#confirmRollback').click(function() {
             entryIds: selectedEntries.join(',')
         },
         success: function(data) {
-            const result = JSON.parse(data);
+            const result = data;
             $("#rollbackBtn").html("Cofnij zaznaczone").prop("disabled", true);
 
             if (result.success) {

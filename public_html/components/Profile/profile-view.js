@@ -9,7 +9,7 @@ $("#passwordForm").submit(function(e) {
         data: form.serialize(), // serializes the form's elements.
         success: function(data)
         {
-            let result = JSON.parse(data);
+            let result = data;
             let changeSuccessful = result[0];
             let resultMessage = result[1];
             $("#resultMessage").empty();

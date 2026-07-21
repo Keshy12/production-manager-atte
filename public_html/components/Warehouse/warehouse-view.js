@@ -15,7 +15,7 @@ function loadMagazine() {
         url: COMPONENTS_PATH+"/warehouse/warehouse-table.php",
         data: { type: type, components: items, page: page },
         success: function (data) {
-            let result = JSON.parse(data);
+            let result = data;
             let items = result[0];
             let nextPageAvailable = result[1];
             $("#previouspage").prop('disabled', page == 1);

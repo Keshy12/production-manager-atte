@@ -42,7 +42,7 @@ function getDeviceValues(deviceType, deviceId)
         url: COMPONENTS_PATH+"/admin/components/edit/get-component-values.php",
         data: { deviceType: deviceType, deviceId: deviceId},
         success: function (data) {
-            result = JSON.parse(data);
+            result = data;
         }
     });
     return result;
@@ -302,7 +302,7 @@ $("#saveChange").click(function(e){
         {
             $("#ajaxResult").empty();
             $formFields.attr('readonly', false);
-            let result = JSON.parse(data);
+            let result = data;
             let editResultMessage = result[0];
             let editAlertType = result[1] ? "alert-success" : "alert-danger";
             let editAlert = getAlertString(editAlertType, editResultMessage);
@@ -374,7 +374,7 @@ $("#addDevice").click(function(e){
         {
             $("#ajaxResult").empty();
             $formFields.attr('readonly', false);
-            let result = JSON.parse(data);
+            let result = data;
             let editResultMessage = result[0];
             let editAlertType = result[1] ? "alert-success" : "alert-danger";
             let editAlert = getAlertString(editAlertType, editResultMessage);

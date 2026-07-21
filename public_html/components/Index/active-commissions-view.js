@@ -219,7 +219,7 @@ $("#editCommissionSubmit").click(function() {
             subcontractors: commissionsubcontractors
         },
         success: function(data) {
-            let values = JSON.parse(data);
+            let values = data;
             $("#editCommissionModal").modal("hide");
             if(values['visibility'] == 'hidethis') {
                 $card.remove();
@@ -280,7 +280,7 @@ $('body').on('click', '.submitToCommission', function() {
             quantity: quantityReturn
         },
         success: function(data) {
-            let returned = JSON.parse(data);
+            let returned = data;
             $this.prop('disabled', false);
             $card.find('.quantityReturned').text(returned);
             $card.find('.return').val('');

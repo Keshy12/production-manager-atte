@@ -20,7 +20,7 @@ $("#uploadBomInput").change(function(){
         {
             const $thtTBody = $('#thtTBody');
             const $smdTBody = $('#smdTBody');
-            let result = JSON.parse(data);
+            let result = data;
             let fatalErrors = result[0];
             let nonFatalErrors = result[1];
             let THTBomFlat = result[2];
@@ -84,7 +84,7 @@ $("#sendBom").click(function(){
         data: {thtData: thtData, smdData: smdData}, // serializes the form's elements.
         success: function(data)
         {
-            let result = JSON.parse(data);
+            let result = data;
             let resultMessage = result[0];
             let wasSuccessful = result[1];
             let resultAlertType = wasSuccessful ? "alert-success" : "alert-danger";
