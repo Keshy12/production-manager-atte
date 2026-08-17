@@ -189,7 +189,7 @@ try {
             $productQuery = "
                 SELECT Id, Symbol
                 FROM ProductTypes
-                WHERE Id IN ($productTypeIdList)
+                WHERE Id IN ($productTypeIdList) AND CompanyId = 1
             ";
             $productResults = $FlowpinDB->query($productQuery);
             

@@ -79,7 +79,7 @@ try {
         $devicesQuery = "
             SELECT pt.Symbol as device_name, COUNT(*) as count
             FROM [report].[ProductQuantityHistoryView] ph
-            JOIN ProductTypes pt ON ph.ProductTypeId = pt.Id
+            JOIN ProductTypes pt ON ph.ProductTypeId = pt.Id AND pt.CompanyId = 1
             WHERE ph.EventId BETWEEN $startEventId AND $finishEventId
             AND pt.Symbol IS NOT NULL
             GROUP BY pt.Symbol

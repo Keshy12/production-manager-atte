@@ -5,6 +5,7 @@ RewriteEngine On
 php_value auto_prepend_file C:/xampp/htdocs/atte_ms_new/config/config.php
 
 RewriteCond %{REQUEST_METHOD} ^POST$
+RewriteCond %{REQUEST_URI} !/test$
 RewriteRule ^ - [L]
 
 # Redirect all requests to index.php if the requested file does not exist

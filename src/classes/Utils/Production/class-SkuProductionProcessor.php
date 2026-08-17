@@ -70,7 +70,7 @@ class SkuProductionProcessor {
             $MsaId = $this->MsaDB->query("SELECT id FROM list__sku WHERE id = " . (int)$deviceId, PDO::FETCH_COLUMN);
             if (empty($MsaId)) {
                 try {
-                    $newSKU = $this->FlowpinDB->query("SELECT Symbol, Description FROM ProductTypes WHERE Id = " . (int)$deviceId);
+                    $newSKU = $this->FlowpinDB->query("SELECT Symbol, Description FROM ProductTypes WHERE Id = " . (int)$deviceId . " AND CompanyId = 1");
                     if (empty($newSKU)) {
                         throw new Exception("SKU with ID $deviceId not found in FlowPin database", 0);
                     }
@@ -384,7 +384,7 @@ class SkuProductionProcessor {
             if (empty($MsaId)) {
                 // Try to get from FlowPin to see if it exists there
                 try {
-                    $newSKU = $this->FlowpinDB->query("SELECT Symbol, Description FROM ProductTypes WHERE Id = " . (int)$deviceId);
+                    $newSKU = $this->FlowpinDB->query("SELECT Symbol, Description FROM ProductTypes WHERE Id = " . (int)$deviceId . " AND CompanyId = 1");
                     if (empty($newSKU)) {
                         return [
                             'errorType' => 'BOM_ERROR',

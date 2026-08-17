@@ -34,7 +34,7 @@ if($isLocked) {
                 if (empty($skuExists)) {
                     try {
                         $FlowpinDB = FlowpinDB::getInstance();
-                        $flowpinSku = $FlowpinDB->query("SELECT Symbol, Description FROM ProductTypes WHERE Id = " . (int)$valueForAction);
+                        $flowpinSku = $FlowpinDB->query("SELECT Symbol, Description FROM ProductTypes WHERE Id = " . (int)$valueForAction . " AND CompanyId = 1");
                         if (!empty($flowpinSku)) {
                             $skuName = $flowpinSku[0]["Symbol"];
                             $skuDescription = $flowpinSku[0]["Description"];

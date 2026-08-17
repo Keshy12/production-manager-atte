@@ -115,7 +115,7 @@ function ensureSkuExists($deviceId, $MsaDB, $FlowpinDB) {
     }
 
     try {
-        $newSKU = $FlowpinDB->query("SELECT Symbol, Description FROM ProductTypes WHERE Id = " . (int)$deviceId);
+        $newSKU = $FlowpinDB->query("SELECT Symbol, Description FROM ProductTypes WHERE Id = " . (int)$deviceId . " AND CompanyId = 1");
         if (empty($newSKU)) {
             writeLog("SKU with ID $deviceId not found in FlowPin database", 'ERROR');
             return false;

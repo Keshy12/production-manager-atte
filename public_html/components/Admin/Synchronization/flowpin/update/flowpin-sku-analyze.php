@@ -110,7 +110,7 @@ try {
 
         if (empty($MsaId)) {
             // Check if exists in FlowPin
-            $flowpinSku = $FlowpinDB->query("SELECT Symbol FROM ProductTypes WHERE Id = " . (int)$deviceId);
+            $flowpinSku = $FlowpinDB->query("SELECT Symbol FROM ProductTypes WHERE Id = " . (int)$deviceId . " AND CompanyId = 1");
 
             if (!empty($flowpinSku)) {
                 // SKU exists in FlowPin but not in MSA
