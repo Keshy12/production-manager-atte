@@ -192,6 +192,16 @@ class SelectRenderer {
         } 
     }
 
+    public function renderLaminateSelect() {
+        $MsaDB = $this -> MsaDB;
+        $list__laminate = $MsaDB -> readIdName('list__laminate', 'id', 'name', 'WHERE isActive = 1');
+        $list__laminate_desc = $MsaDB -> readIdName('list__laminate', 'id', 'description', 'WHERE isActive = 1');
+        foreach($list__laminate as $id => $name) {
+            $description = htmlspecialchars($list__laminate_desc[$id] ?? '', ENT_QUOTES, 'UTF-8');
+            echo "<option value='$id' data-description='$description' data-jsonversions='[]'>$name</option>";
+        }
+    }
+
     public function renderTHTBOMSelect(?array $used__tht = null, $isLeftJoin = false) {
         $values = $this -> getTHTBOMValuesForSelect($isLeftJoin);
         $used__tht = is_null($used__tht) ? array_keys($values) : $used__tht;

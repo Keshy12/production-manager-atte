@@ -29,6 +29,9 @@ include('modals.php');
 <select id="list__smd_hidden" hidden>
     <?= $selectRenderer->renderSMDBomSelect() ?>
 </select>
+<select id="list__laminate_hidden" hidden>
+    <?= $selectRenderer->renderLaminateSelect() ?>
+</select>
 <select id="list__parts_hidden" hidden>
     <?= $selectRenderer->renderPartsSelect() ?>
 </select>
@@ -58,7 +61,7 @@ include('modals.php');
 
 <div class="d-flex justify-content-center">
     <span id="laminateField" class="mt-4" style="display:none;">
-        <select id="laminateSelect" data-width="100px"
+        <select id="laminateSelect" data-live-search="true" data-width="100px"
                 data-title="Laminat..." class="selectpicker" disabled>
         </select>
     </span>
@@ -66,6 +69,7 @@ include('modals.php');
         <select id="versionSelect" data-width="100px"
                 data-title="Wersja..." class="selectpicker" disabled>
         </select>
+        <button id="clearCascadeBtn" class="btn btn-outline-secondary btn-sm mx-2" type="button">Wyczyść</button>
     </span>
 </div>
 

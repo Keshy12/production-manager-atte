@@ -43,6 +43,10 @@ $("#bomTypeSelect").change(function(){
                                         .prop('disabled', true)
                                         .selectpicker('refresh');
     showAdditionalFields(this.value);
+    if(this.value == 'smd') {
+        $("#laminateSelect").empty().append($('#list__laminate_hidden option').clone());
+        $("#laminateSelect").prop('disabled', false).selectpicker('refresh');
+    }
 });
 
 function showAdditionalFields(type)
@@ -67,25 +71,57 @@ $("#list__device").change(function(){
     $("#editBomTBody, #alerts").empty();
     $("#bomTotalPriceContainer").hide(); // Hide price on device change
     let bomType = $("#bomTypeSelect").val();
-    $("#versionSelect, #laminateSelect").empty();
-    generateAdditionalFields(bomType);
+    let deviceId = $("#list__device").val();
+    let jsonLaminates = $("#list__device option[value='"+deviceId+"']").data("jsonlaminates");
+    if(bomType == 'smd') {
+        // 3d logic goes here
+        let selectedLaminateId = $("#laminateSelect").val();
+        // Filter laminates to only those compatible with selected device
+        $("#laminateSelect option").each(function(){
+            if($(this).val() === selectedLaminateId) return;  // keep selected laminate
+            let optVal = $(this).val();
+            if(!jsonLaminates[optVal]) {
+                $(this).remove();
+            }
+        });
+        // If previously-selected laminate was removed, reset and re-clone from hidden
+        if(selectedLaminateId && !jsonLaminates[selectedLaminateId]) {
+            $("#laminateSelect").empty().append($('#list__laminate_hidden option').clone());
+            let preservedLaminateId = selectedLaminateId;
+            $("#laminateSelect option").each(function(){
+                if($(this).val() === preservedLaminateId) return;  // keep selected laminate
+                let optVal = $(this).val();
+                if(!jsonLaminates[optVal]) {
+                    $(this).remove();
+                }
+            });
+            // Don't reset selectedLaminateId to null — keep the user's selection so visual+payload stay correct
+            $("#laminateSelect").prop('disabled', false);
+        }
+        // Patch data-jsonversions for selected laminate
+        if(selectedLaminateId && jsonLaminates[selectedLaminateId]) {
+            let versions = jsonLaminates[selectedLaminateId].versions;
+            $("#laminateSelect option[value='"+selectedLaminateId+"']").attr('data-jsonversions', JSON.stringify(versions));
+            generateVersionSelect(versions, true, true);
+            $("#versionSelect").prop('disabled', false).selectpicker('refresh');
+        } else {
+            $("#versionSelect").empty().prop('disabled', true).selectpicker('refresh');
+        }
+        $("#laminateSelect").selectpicker('refresh');
+        // Re-apply laminate selection after refresh
+        if(selectedLaminateId && jsonLaminates[selectedLaminateId]) {
+            $("#laminateSelect").val(selectedLaminateId);
+            $("#laminateSelect").selectpicker('render');
+        }
+    } else if(bomType == 'tht') {
+        // existing version cascade — keep as-is
+        $("#versionSelect").empty();
+        let possibleVersions = $("#list__device option[value='"+deviceId+"']").data("jsonversions");
+        generateVersionSelect(possibleVersions, true, true);
+        $("#versionSelect").prop('disabled', false).selectpicker('refresh');
+    }
     if(bomType == 'sku') generateBomTable();
 });
-
-function generateAdditionalFields(type)
-{
-    if(type == 'smd') {
-        $("#laminateSelect").prop('disabled', false);
-        $("#versionSelect").prop('disabled', true);
-        let possibleLaminates = $("#list__device option:selected").data("jsonlaminates");
-        generateLaminateSelect(possibleLaminates);
-    } else if(type == 'tht') {
-        $("#versionSelect").prop('disabled', false);
-        let possibleVersions = $("#list__device option:selected").data("jsonversions");
-        generateVersionSelect(possibleVersions);
-    } 
-    $("#versionSelect, #laminateSelect").selectpicker('refresh');
-}
 
 function generateLaminateSelect(possibleLaminates){
     if(Object.keys(possibleLaminates).length == 1) {
@@ -109,27 +145,27 @@ function generateLaminateSelect(possibleLaminates){
     $("#laminateSelect").selectpicker('refresh');
 }
 
-function generateVersionSelect(possibleVersions){
+function generateVersionSelect(possibleVersions, autoSelect = false, autoLoadBom = false){
+    $("#versionSelect").empty();
     if(Object.keys(possibleVersions).length == 1) {
         if(possibleVersions[0] == null)
         {
             let version = 'n/d';
-            $("#versionSelect").selectpicker('destroy');
-            $("#versionSelect").html('<option value="'+version+'" selected>n/d</option>');
+            let option = "<option value='"+version+"'"+(autoSelect ? ' selected' : '')+">n/d</option>";
+            $("#versionSelect").append(option);
             $("#versionSelect").prop('disabled', false);
             $("#versionField").hide();
             $("#versionSelect").selectpicker('refresh');
-            generateBomTable();
+            if (autoSelect) $("#versionSelect").selectpicker('val', version);
+            if (autoLoadBom) generateBomTable();
             return;
         }
         let version_id = Object.keys(possibleVersions)[0];
         let version = possibleVersions[version_id][0];
-        let option = "<option value='"+version+"' selected>"+version+"</option>";
+        let option = "<option value='"+version+"'"+(autoSelect ? ' selected' : '')+">"+version+"</option>";
         $("#versionSelect").append(option);
-        $("#versionSelect").selectpicker('destroy');
-        generateBomTable();
     } else {
-        for (let version_id in possibleVersions) 
+        for (let version_id in possibleVersions)
         {
             let version = possibleVersions[version_id][0];
             let option = "<option value='"+version+"'>"+version+"</option>";
@@ -138,16 +174,60 @@ function generateVersionSelect(possibleVersions){
     }
     $("#versionField").show();
     $("#versionSelect").selectpicker('refresh');
+    if (autoSelect && Object.keys(possibleVersions).length == 1) {
+        let version_id = Object.keys(possibleVersions)[0];
+        let version = possibleVersions[version_id][0];
+        $("#versionSelect").selectpicker('val', version);
+    }
+    if (autoLoadBom && Object.keys(possibleVersions).length == 1) generateBomTable();
 }
 
 $("#laminateSelect").change(function(){
-    $("#versionSelect").empty();
+    let selectedLaminateId = $(this).val();
+    let deviceId = $("#list__device").val();
+    $("#editBomTBody, #alerts").empty();
     $("#bomTotalPriceContainer").hide();
-    let possibleVersions = $("#laminateSelect option:selected").data("jsonversions");
-    generateVersionSelect(possibleVersions);
-    $("#versionSelect").prop('disabled', false);
-    $("#versionSelect").selectpicker('refresh');
-})
+    // Filter devices: keep only those whose data-jsonLaminates contains the selected laminate id
+    $("#list__device option").each(function(){
+        if($(this).val() === deviceId) return;  // keep selected device
+        let laminates = $(this).data("jsonlaminates") || {};
+        if(!laminates[selectedLaminateId]) {
+            $(this).remove();
+        }
+    });
+    // Preserve previously selected device
+    if(deviceId && $("#list__device option[value='"+deviceId+"']").length) {
+        $("#list__device").val(deviceId);
+        $("#list__device").selectpicker('render');
+    }
+    // If a device is selected, re-patch its selected laminate's data-jsonversions and populate version
+    let selectedDevice = $("#list__device option[value='"+deviceId+"']");
+    // Check if both device and laminate are selected
+    if (deviceId && selectedLaminateId && selectedDevice.length) {
+        // Defensive: ensure device value is set right before generateBomTable() reads it
+        if($("#list__device option[value='"+deviceId+"']").length) {
+            $("#list__device").val(deviceId);
+            $("#list__device").selectpicker('render');
+        }
+        let laminates = selectedDevice.data("jsonlaminates") || {};
+        if (laminates[selectedLaminateId]) {
+            let versions = laminates[selectedLaminateId].versions;
+            $("#laminateSelect option[value='"+selectedLaminateId+"']").attr('data-jsonversions', JSON.stringify(versions));
+            generateVersionSelect(versions, true, true);
+            $("#versionSelect").prop('disabled', false).selectpicker('refresh');
+        } else {
+            $("#versionSelect").empty().prop('disabled', true).selectpicker('refresh');
+        }
+    } else {
+        $("#versionSelect").empty().prop('disabled', true).selectpicker('refresh');
+    }
+    $("#list__device").selectpicker('refresh');
+    // Re-apply device selection after refresh
+    if(deviceId && $("#list__device option[value='"+deviceId+"']").length) {
+        $("#list__device").val(deviceId);
+        $("#list__device").selectpicker('render');
+    }
+});
 
 function generateBomTable()
 {
@@ -642,6 +722,24 @@ $("#nextBom").click(function(){
                     .next()
                     .prop('selected', true);
     $("#list__device").selectpicker('refresh').change();
+});
+
+$("#clearCascadeBtn").click(function(){
+    let bomType = $("#bomTypeSelect").val();
+    if(bomType !== 'smd' && bomType !== 'tht') return;
+
+    $("#editBomTBody, #alerts").empty();
+    $("#bomTotalPriceContainer").hide();
+
+    $("#list__device").empty().append($('#list__'+bomType+'_hidden option').clone());
+    $("#list__device, #previousBom, #nextBom").prop("disabled", false).selectpicker('refresh');
+
+    $("#versionSelect").empty().prop('disabled', true).selectpicker('refresh');
+
+    if(bomType == 'smd') {
+        $("#laminateSelect").empty().append($('#list__laminate_hidden option').clone());
+        $("#laminateSelect").prop('disabled', false).selectpicker('refresh');
+    }
 });
 
 
