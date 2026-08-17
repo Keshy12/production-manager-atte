@@ -185,8 +185,15 @@ function generateVersionSelect(possibleVersions, autoSelect = false, autoLoadBom
 $("#laminateSelect").change(function(){
     let selectedLaminateId = $(this).val();
     let deviceId = $("#list__device").val();
+    let bomType = $("#bomTypeSelect").val();
     $("#editBomTBody, #alerts").empty();
     $("#bomTotalPriceContainer").hide();
+    // Re-populate device list from hidden source before applying filter
+    // (this ensures the filter starts from the full list, not a previously-filtered one)
+    if(bomType == 'smd') {
+        $("#list__device").empty().append($('#list__smd_hidden option').clone());
+        $("#list__device").selectpicker('refresh');
+    }
     // Filter devices: keep only those whose data-jsonLaminates contains the selected laminate id
     $("#list__device option").each(function(){
         if($(this).val() === deviceId) return;  // keep selected device
