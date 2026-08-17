@@ -63,6 +63,7 @@ function showAdditionalFields(type)
 }
 
 $("#versionSelect").change(function(){
+    $("#editBomTBody, #alerts").empty(); // Wipe BOM so user sees the new BOM load
     $("#bomTotalPriceContainer").hide(); // Hide price on version change
     generateBomTable();
 });
@@ -236,10 +237,11 @@ $("#laminateSelect").change(function(){
     }
 });
 
+let bomTableXhr = null;
+
 function generateBomTable()
 {
     let isEditable = true;
-    $("#createNewBomFields, #isActiveField").show();
     $TBody = $("#editBomTBody");
     $TBody.empty();
     let bomType = $("#bomTypeSelect").val();
@@ -277,10 +279,13 @@ function generateBomTable()
             break;
         }
     }
-    $.ajax({
+    // Cancel any in-flight BOM request so stale responses don't overwrite the latest
+    if(bomTableXhr && bomTableXhr.readyState !== 4) {
+        bomTableXhr.abort();
+    }
+    bomTableXhr = $.ajax({
         type: "POST",
         url: COMPONENTS_PATH+"/admin/bom/edit/get-bom-components.php",
-        async: false,
         data: {bomType: bomType, bomValues: bomValues, createNewBom: createNewBom, warehouseId: warehouseId},
         success: function (data) {
             let result = data;
@@ -411,8 +416,13 @@ function generateBomTable()
             } else {
                 $("#bomTotalPriceContainer").addClass("text-muted").removeClass("text-danger");
             }
+        },
+    error: function(jqXHR, textStatus, errorThrown) {
+        if(textStatus !== 'abort') {
+            console.error('BOM load failed:', textStatus, errorThrown);
         }
-    });
+    }
+});
 }
 
 $('body').on('click', '.editBomRow', function(){
