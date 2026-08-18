@@ -30,7 +30,10 @@
                        data-id="${id}"
                        data-submag-id="${warehouseToId}"
                        data-receivers="${receivers}"
-                       data-priority="${priority}">
+                       data-priority="${priority}"
+                       data-quantity="${quantity}"
+                       data-qty-produced="${quantityProduced}"
+                       data-potential-count="${potentialGroupCount}">
                         <i class="bi bi-pencil"></i> Edytuj zlecenie
                     </a>
                     <div class="dropdown-divider ${showCancelAction}"></div>

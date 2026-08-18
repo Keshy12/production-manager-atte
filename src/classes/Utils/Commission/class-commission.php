@@ -79,4 +79,11 @@ class Commission
         $this->commissionValues[$fieldName] = $newQty;
         $this->updateStateAuto();
     }
+
+    public function updateQuantity(int $newQuantity): void {
+        $MsaDB = $this->MsaDB;
+        $id = $this->commissionValues["id"];
+        $MsaDB->update('commission__list', ['qty' => $newQuantity], "id", $id);
+        $this->commissionValues["qty"] = $newQuantity;
+    }
 }

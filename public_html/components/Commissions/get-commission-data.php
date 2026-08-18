@@ -18,6 +18,9 @@ switch ( $action ) {
     case "get_details_data":
         getDetailsData($MsaDB);
         break;
+    case "get_edit_data":
+        getEditData($MsaDB);
+        break;
     default:
         echo json_encode(['success' => false, 'message' => 'Nieprawidłowa akcja.']);
 exit;
@@ -462,5 +465,115 @@ function getDetailsData($MsaDB) {
 
     } catch (Exception $e) {
         echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    }
+}
+
+function getEditData($MsaDB) {
+    try {
+        $groupedIds = $_POST['groupedIds'] ?? $_GET['groupedIds'] ?? '';
+
+        if (empty($groupedIds)) {
+            echo json_encode(['success' => false, 'error' => 'Brak identyfikatorów grupowania.']);
+            return;
+        }
+
+        $rawIds = explode(',', $groupedIds);
+        $commissionIds = [];
+        foreach ($rawIds as $id) {
+            $id = trim($id);
+            if (!is_numeric($id)) {
+                echo json_encode(['success' => false, 'error' => 'Nieprawidłowy identyfikator: ' . $id]);
+                return;
+            }
+            $commissionIds[] = (int)$id;
+        }
+
+        $commissionRepository = new CommissionRepository($MsaDB);
+        $bomRepository = new BomRepository($MsaDB);
+
+        $commissions = [];
+        $warnings = [];
+        foreach ($commissionIds as $id) {
+            $commission = $commissionRepository->getCommissionById($id);
+            if ($commission === null) {
+                $warnings[] = "Komisja o ID $id nie została znaleziona.";
+                continue;
+            }
+            $commissions[$id] = $commission;
+        }
+
+        if (empty($commissions)) {
+            echo json_encode([
+                'success' => false,
+                'error' => 'Żadna z podanych komisji nie została znaleziona.',
+                'warnings' => $warnings
+            ]);
+            return;
+        }
+
+        // Pre-fetch device names for all commissions
+        $deviceNames = [];
+        foreach ($commissions as $commission) {
+            $row = $commission->commissionValues;
+            $deviceType = $commission->deviceType;
+            $bomId = (int)$row['bom_id'];
+            $deviceBom = $bomRepository->getBomById($deviceType, $bomId);
+            $deviceId = $deviceBom->deviceId;
+            $deviceNames[$deviceId] = $deviceType;
+        }
+
+        // Fetch device names selectively
+        $nameLists = [];
+        $involvedIdsByType = [];
+        foreach ($deviceNames as $deviceId => $deviceType) {
+            $involvedIdsByType[$deviceType][] = $deviceId;
+        }
+        foreach ($involvedIdsByType as $type => $ids) {
+            $uniqueIds = array_unique($ids);
+            $idsListStr = implode(',', $uniqueIds);
+            $nameLists[$type] = $MsaDB->readIdName("list__$type", "id", "name", "WHERE id IN ($idsListStr)");
+        }
+
+        $result = [];
+        foreach ($commissions as $commission) {
+            $row = $commission->commissionValues;
+            $deviceType = $commission->deviceType;
+            $bomId = (int)$row['bom_id'];
+            $deviceBom = $bomRepository->getBomById($deviceType, $bomId);
+            $deviceId = $deviceBom->deviceId;
+            $deviceName = $nameLists[$deviceType][$deviceId] ?? "Unknown";
+
+            $receiversList = $commission->getReceivers();
+            $receiversStr = implode(',', $receiversList);
+
+            $result[] = [
+                'id' => (int)$row['id'],
+                'qty' => (int)$row['qty'],
+                'qtyProduced' => (int)$row['qty_produced'],
+                'qtyReturned' => (int)$row['qty_returned'],
+                'state' => $row['state'],
+                'priority' => $row['priority'],
+                'isCancelled' => (bool)$row['is_cancelled'],
+                'receivers' => $receiversStr,
+                'submagId' => (int)$row['warehouse_to_id'],
+                'deviceType' => $deviceType,
+                'deviceName' => $deviceName,
+                'createdAt' => $row['created_at'] ?? null
+            ];
+        }
+
+        $response = [
+            'success' => true,
+            'commissions' => $result
+        ];
+
+        if (!empty($warnings)) {
+            $response['warnings'] = $warnings;
+        }
+
+        echo json_encode($response);
+
+    } catch (Exception $e) {
+        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
     }
 }

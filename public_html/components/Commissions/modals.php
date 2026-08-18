@@ -18,10 +18,40 @@ $selectRenderer = new SelectRenderer($MsaDB);
                     <span aria-hidden="true">&times;</span>
                 </button>
             </div>
-            <div class="modal-body">
+            <!-- Selection View: shown when editing a grouped commission -->
+            <div class="modal-body" id="editSelectionView" style="display: none;">
+                <h6>Wybierz zlecenie do edycji</h6>
+                <p class="text-muted small">To zlecenie jest częścią grupy. Wybierz konkretne, które chcesz edytować.</p>
+                <div id="editSelectionList"></div>
+            </div>
+
+            <!-- Form View: the actual edit form -->
+            <div class="modal-body" id="editFormView">
+                <div class="form-group">
+                    <label for="editQuantity" class="font-weight-bold">
+                        Ilość:
+                    </label>
+                    <input type="number"
+                           id="editQuantity"
+                           class="form-control"
+                           min="1"
+                           step="1"
+                           placeholder="Np. 100">
+                    <small class="form-text text-muted">
+                        Nie może być mniejsza niż aktualnie wyprodukowana ilość
+                    </small>
+                    <div class="invalid-feedback">
+                        Ilość musi być liczbą całkowitą nie mniejszą niż wyprodukowana
+                    </div>
+                    <div class="alert alert-warning py-1 px-2 mb-0 mt-2 small" role="alert">
+                        <i class="bi bi-info-circle" style="font-size: 0.85em;"></i>
+                        Uwaga: zmiana ilości nie wpływa na transfery komponentów utworzone przy zakładaniu zlecenia.
+                    </div>
+                </div>
+
                 <div class="form-group">
                     <label for="editPriority" class="font-weight-bold">
-                        <i class="bi bi-flag"></i> Priorytet:
+                        Priorytet:
                     </label>
                     <select class="selectpicker form-control" id="editPriority" data-width="100%">
                         <?= $selectRenderer->renderArraySelect($list__priority) ?>
@@ -30,7 +60,7 @@ $selectRenderer = new SelectRenderer($MsaDB);
 
                 <div class="form-group">
                     <label for="editSubcontractors" class="font-weight-bold">
-                        <i class="bi bi-people"></i> Zleceniobiorcy:
+                        Zleceniobiorcy:
                     </label>
                     <select class="selectpicker form-control"
                             id="editSubcontractors"
@@ -43,7 +73,7 @@ $selectRenderer = new SelectRenderer($MsaDB);
 
                 <div class="form-group">
                     <label for="input-groups" class="font-weight-bold">
-                        <i class="bi bi-collection"></i> Grupy:
+                        Grupy:
                     </label>
                     <select class="selectpicker form-control" id="input-groups" data-width="100%">
                         <option value="0" style="display: none;">Wybierz grupę</option>
