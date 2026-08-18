@@ -120,6 +120,12 @@ include('modals.php');
         <tbody id="editBomTBody">
         </tbody>
     </table>
+    <div id="bomLoadingRow" style="display:none; max-width: 800px; width: 100%;" class="text-center py-4">
+        <div class="spinner-border text-primary" role="status" style="width: 2rem; height: 2rem;">
+            <span class="sr-only">Ładowanie...</span>
+        </div>
+        <div class="text-muted small mt-2">Ładowanie komponentów BOM...</div>
+    </div>
 </div>
 <script src="<?= asset('public_html/components/admin/bom/edit/edit-bom-view.js') ?>"></script>
 

@@ -70,6 +70,7 @@ $("#versionSelect").change(function(){
 
 $("#list__device").change(function(){
     $("#editBomTBody, #alerts").empty();
+    $("#bomLoadingRow").show();
     $("#bomTotalPriceContainer").hide(); // Hide price on device change
     let bomType = $("#bomTypeSelect").val();
     let deviceId = $("#list__device").val();
@@ -244,6 +245,7 @@ function generateBomTable()
     let isEditable = true;
     $TBody = $("#editBomTBody");
     $TBody.empty();
+    $("#bomLoadingRow").show();
     let bomType = $("#bomTypeSelect").val();
     let deviceId = $("#list__device").val();
     let version = $("#versionSelect").val();
@@ -287,6 +289,9 @@ function generateBomTable()
         type: "POST",
         url: COMPONENTS_PATH+"/admin/bom/edit/get-bom-components.php",
         data: {bomType: bomType, bomValues: bomValues, createNewBom: createNewBom, warehouseId: warehouseId},
+        beforeSend: function() {
+            $("#bomLoadingRow").show();
+        },
         success: function (data) {
             let result = data;
             let components = result[0];
@@ -417,12 +422,15 @@ function generateBomTable()
                 $("#bomTotalPriceContainer").addClass("text-muted").removeClass("text-danger");
             }
         },
-    error: function(jqXHR, textStatus, errorThrown) {
-        if(textStatus !== 'abort') {
-            console.error('BOM load failed:', textStatus, errorThrown);
+        error: function(jqXHR, textStatus, errorThrown) {
+            if(textStatus !== 'abort') {
+                console.error('BOM load failed:', textStatus, errorThrown);
+            }
+        },
+        complete: function() {
+            $("#bomLoadingRow").hide();
         }
-    }
-});
+    });
 }
 
 $('body').on('click', '.editBomRow', function(){
