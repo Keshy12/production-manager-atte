@@ -65,10 +65,15 @@ $selectRenderer = new SelectRenderer($MsaDB);
                     <select class="selectpicker form-control"
                             id="editSubcontractors"
                             multiple
+                            title="Wybierz zleceniobiorców..."
                             data-selected-text-format="count > 2"
                             data-actions-box="true"
                             data-width="100%">
                     </select>
+                    <div id="editSubcontractorsError" class="alert alert-danger py-1 px-2 mb-0 mt-2 small" style="display: none;" role="alert">
+                        <i class="bi bi-exclamation-circle" style="font-size: 0.85em;"></i>
+                        Wybierz co najmniej jednego zleceniobiorcę.
+                    </div>
                 </div>
 
                 <div class="form-group">

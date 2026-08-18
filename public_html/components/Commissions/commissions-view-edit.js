@@ -34,9 +34,9 @@ $(document).ready(function() {
         $("#editPriority").selectpicker('val', priority);
         $("#editPriority").selectpicker('refresh');
 
-        // Populate subcontractors (receivers) dropdown
+        // Populate subcontractors (receivers) dropdown — no empty placeholder option;
+        // bootstrap-select uses the select's title attribute as placeholder.
         $("#editSubcontractors").empty();
-        $("#editSubcontractors").append('<option value="">Wybierz...</option>');
         $("#user option").each(function() {
             if ($(this).attr("data-submag-id") == submagId) {
                 $(this).clone().appendTo('#editSubcontractors');
@@ -294,12 +294,14 @@ $(document).ready(function() {
             return;
         }
 
-        // Validate at least one receiver
+        // Validate at least one receiver — show inline error inside modal
+        const $subcontractorsError = $("#editSubcontractorsError");
         if (!Array.isArray(subcontractors) || subcontractors.length === 0) {
-            showErrorMessage('Wybierz co najmniej jednego zleceniobiorcę.');
+            $subcontractorsError.show();
             $("#editSubcontractors").closest('.form-group').addClass('has-error');
             return;
         }
+        $subcontractorsError.hide();
         $("#editSubcontractors").closest('.form-group').removeClass('has-error');
 
         // Build request data
