@@ -36,6 +36,9 @@ $(document).ready(function() {
     $('[data-toggle="popover"]').popover();
     $(".selectpicker").selectpicker('refresh');
 
+    // Auto-select the user if only one is available on initial load
+    tryAutoSelectUser();
+
     // Initialize tooltips
     $('[data-toggle="tooltip"]').tooltip();
 
@@ -795,6 +798,9 @@ $("#transferTo").change(function() {
     const warehouseId = this.value;
     disableUserSelectOptions(warehouseId);
     $("#userSelect").selectpicker('refresh');
+
+    // Re-evaluate auto-select now that the enabled user set may have changed
+    tryAutoSelectUser();
 });
 
 // Function that disables users from select, if they are not in the same warehouse as the target warehouse

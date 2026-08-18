@@ -382,7 +382,30 @@ $('select#deviceType').change(function(){
     } else if(deviceType === 'sku') {
         $("#versionSelect").hide();
     }
+
+    // Auto-select device if only one is available
+    if (autoSelectIfSingle($deviceList)) {
+        $deviceList.selectpicker('refresh').trigger('change');
+    }
 });
+
+// Selects the only enabled non-empty option in $select. Returns true if applied.
+function autoSelectIfSingle($select) {
+    const $enabled = $select.find('option').filter(function() {
+        return !this.disabled && $(this).val() !== '';
+    });
+    if ($enabled.length === 1) {
+        $select.val($enabled.val());
+        return true;
+    }
+    return false;
+}
+
+function tryAutoSelectUser() {
+    if (autoSelectIfSingle($('#userSelect'))) {
+        $('#userSelect').selectpicker('refresh').trigger('change');
+    }
+}
 
 function getUsedDevices(usersSelected, deviceType) {
     let usedDevices = [];
@@ -489,6 +512,11 @@ $("#userSelect").change(function(){
     });
 
     $("#deviceType, #list__device").selectpicker('refresh');
+
+    // Auto-select device type if only one is available
+    if (autoSelectIfSingle($('#deviceType'))) {
+        $('#deviceType').prop('disabled', false).selectpicker('refresh').trigger('change');
+    }
 });
 
 function clearAddCommissionFields() {
