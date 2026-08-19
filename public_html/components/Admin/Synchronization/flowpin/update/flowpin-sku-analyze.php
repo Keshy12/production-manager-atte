@@ -19,7 +19,15 @@ try {
         'users' => [],      // User-related issues
         'devices' => [],    // Device/SKU-related issues
         'warehouses' => [], // Warehouse-related issues
+        'sku_discrepancies' => [], // SKU data mismatches between MSA and FlowPin
     ];
+
+    // Cache to minimize duplicate DB queries for SKU data
+    // Keyed by deviceId, stores ['msa_name', 'msa_description', 'flowpin_symbol', 'flowpin_description']
+    $skuDataCache = [];
+
+    // Track which deviceIds have been checked for discrepancies (once per run)
+    $checkedDiscrepancies = [];
 
     $totalRecords = 0;
     $issueCount = 0;
@@ -104,13 +112,15 @@ try {
     }
 
     // Validate SKU exists and has valid BOM
-    function validateSku($deviceId, $MsaDB, $FlowpinDB, $bomRepository, &$issues) {
+    function validateSku($deviceId, $MsaDB, $FlowpinDB, $bomRepository, &$issues, &$skuDataCache) {
+        global $skuDataCache;
+
         // Check if SKU exists in MSA
         $MsaId = $MsaDB->query("SELECT id FROM list__sku WHERE id = " . (int)$deviceId, PDO::FETCH_COLUMN);
 
         if (empty($MsaId)) {
             // Check if exists in FlowPin
-            $flowpinSku = $FlowpinDB->query("SELECT Symbol FROM ProductTypes WHERE Id = " . (int)$deviceId . " AND CompanyId = 1");
+            $flowpinSku = $FlowpinDB->query("SELECT Symbol, Description FROM ProductTypes WHERE Id = " . (int)$deviceId . " AND CompanyId = 1");
 
             if (!empty($flowpinSku)) {
                 // SKU exists in FlowPin but not in MSA
@@ -123,6 +133,13 @@ try {
                     ];
                 }
                 $issues['devices'][$deviceId]['count']++;
+                // Populate cache for this deviceId (MSA side is missing)
+                $skuDataCache[$deviceId] = [
+                    'msa_name' => null,
+                    'msa_description' => null,
+                    'flowpin_symbol' => $flowpinSku[0]['Symbol'],
+                    'flowpin_description' => $flowpinSku[0]['Description'] ?? null
+                ];
                 return true; // Can be auto-created
             } else {
                 // SKU doesn't exist in either database
@@ -137,6 +154,27 @@ try {
                 $issues['devices'][$deviceId]['count']++;
                 return false;
             }
+        }
+
+        // SKU exists in MSA - fetch MSA name/description and FlowPin Symbol/Description for cache
+        $msaSku = $MsaDB->query("SELECT name, description FROM list__sku WHERE id = " . (int)$deviceId);
+        $flowpinSku = $FlowpinDB->query("SELECT Symbol, Description FROM ProductTypes WHERE Id = " . (int)$deviceId . " AND CompanyId = 1");
+
+        if (!empty($msaSku) && !empty($flowpinSku)) {
+            $skuDataCache[$deviceId] = [
+                'msa_name' => $msaSku[0]['name'] ?? null,
+                'msa_description' => $msaSku[0]['description'] ?? null,
+                'flowpin_symbol' => $flowpinSku[0]['Symbol'] ?? null,
+                'flowpin_description' => $flowpinSku[0]['Description'] ?? null
+            ];
+        } elseif (!empty($msaSku)) {
+            // MSA exists but no FlowPin record yet (will be created)
+            $skuDataCache[$deviceId] = [
+                'msa_name' => $msaSku[0]['name'] ?? null,
+                'msa_description' => $msaSku[0]['description'] ?? null,
+                'flowpin_symbol' => null,
+                'flowpin_description' => null
+            ];
         }
 
         // Check if SKU has valid BOM (for production operations)
@@ -279,10 +317,66 @@ try {
             }
 
             // Validate SKU
-            $skuValid = validateSku($deviceId, $MsaDB, $FlowpinDB, $bomRepository, $issues);
+            $skuValid = validateSku($deviceId, $MsaDB, $FlowpinDB, $bomRepository, $issues, $skuDataCache);
             if (!$skuValid) {
                 $issueCount++;
             }
+        }
+    }
+
+    // Check for SKU discrepancies (SKUs that exist in both MSA and FlowPin but have mismatched data)
+    foreach ($skuDataCache as $deviceId => $data) {
+        // Skip if already checked or if either side is missing
+        if (isset($checkedDiscrepancies[$deviceId])) {
+            continue;
+        }
+        $checkedDiscrepancies[$deviceId] = true;
+
+        // Skip if SKU is missing in MSA or FlowPin (those are handled by validateSku)
+        if ($data['msa_name'] === null || $data['flowpin_symbol'] === null) {
+            continue;
+        }
+
+        // Compare name vs Symbol
+        $differences = [];
+        $msaNameTrimmed = trim((string)($data['msa_name'] ?? ''));
+        $flowpinSymbolTrimmed = trim((string)($data['flowpin_symbol'] ?? ''));
+
+        // For name field: null vs empty IS a mismatch
+        $msaNameRaw = $data['msa_name'];
+        $flowpinSymbolRaw = $data['flowpin_symbol'];
+
+        // Check if name differs (MSA.name vs FlowPin.Symbol)
+        if ($msaNameRaw !== $flowpinSymbolRaw && $msaNameTrimmed !== $flowpinSymbolTrimmed) {
+            $differences[] = 'name';
+        }
+
+        // Check if description differs (MSA.description vs FlowPin.Description)
+        // For description: null/empty on both sides = no mismatch
+        $msaDescRaw = $data['msa_description'];
+        $flowpinDescRaw = $data['flowpin_description'];
+
+        $msaDescTrimmed = trim((string)($msaDescRaw ?? ''));
+        $flowpinDescTrimmed = trim((string)($flowpinDescRaw ?? ''));
+
+        // Both null/empty = no mismatch; otherwise compare
+        $bothEmpty = (($msaDescRaw === null || $msaDescRaw === '' || $msaDescTrimmed === '') &&
+                      ($flowpinDescRaw === null || $flowpinDescRaw === '' || $flowpinDescTrimmed === ''));
+
+        if (!$bothEmpty && $msaDescTrimmed !== $flowpinDescTrimmed) {
+            $differences[] = 'description';
+        }
+
+        // Only add if there are actual differences
+        if (count($differences) > 0) {
+            $issues['sku_discrepancies'][$deviceId] = [
+                'sku_id' => (int)$deviceId,
+                'msa_name' => $data['msa_name'],
+                'msa_description' => $data['msa_description'],
+                'flowpin_symbol' => $data['flowpin_symbol'],
+                'flowpin_description' => $data['flowpin_description'],
+                'differences' => $differences
+            ];
         }
     }
 
@@ -290,16 +384,19 @@ try {
     $response = [
         'success' => true,
         'total_records' => $totalRecords,
-        'total_issues' => $issueCount,
+        'total_issues' => $issueCount + count($issues['sku_discrepancies']),
+        'skus_checked' => count($skuDataCache),
         'issues' => [
             'users' => array_values($issues['users']),
             'devices' => array_values($issues['devices']),
-            'warehouses' => array_values($issues['warehouses'])
+            'warehouses' => array_values($issues['warehouses']),
+            'sku_discrepancies' => array_values($issues['sku_discrepancies'])
         ],
         'summary' => [
             'user_issues' => count($issues['users']),
             'device_issues' => count($issues['devices']),
-            'warehouse_issues' => count($issues['warehouses'])
+            'warehouse_issues' => count($issues['warehouses']),
+            'sku_discrepancies' => count($issues['sku_discrepancies'])
         ]
     ];
 
