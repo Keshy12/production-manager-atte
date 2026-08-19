@@ -91,12 +91,50 @@ if (!empty($latestProgress) && $latestProgress[0]['status'] === 'running') {
         </div>
     </div>
 
+    <!-- SKU Discrepancies Section — shown only when discrepancies exist -->
+    <div id="skuDiscrepanciesSection" class="row mt-4" style="display: none;">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header bg-info text-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Rozbieżności SKU <small class="text-white-50">(nazwa / opis vs FlowPin)</small></h5>
+                    <span id="skuDiscrepancyCount" class="badge badge-light">0</span>
+                    <small id="skuDiscrepancyBreakdown" class="text-white-50 ml-2" style="display: none;"></small>
+                        </div>
+                        <div class="card-body bg-light py-2 border-bottom small text-muted">
+                            <div class="d-flex flex-wrap align-items-center">
+                                <span class="badge badge-danger mr-2"><i class="bi bi-exclamation-triangle-fill mr-1"></i>Nazwa</span>
+                                <span class="mr-3">Wymaga ręcznej weryfikacji. Powiadomienie zostanie utworzone podczas aktualizacji.</span>
+                                <span class="badge badge-warning text-dark mr-2"><i class="bi bi-pencil-square mr-1"></i>Opis</span>
+                                <span>Zostanie automatycznie zaktualizowany podczas aktualizacji.</span>
+                            </div>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive" style="max-height: 480px; overflow-y: auto;">
+                                <table class="table table-sm table-striped table-hover mb-0">
+                                    <thead class="thead-light" style="position: sticky; top: 0; z-index: 1;">
+                                        <tr>
+                                            <th scope="col" style="width: 100px;">SKU</th>
+                                            <th scope="col" style="width: 100px;">Pole</th>
+                                            <th scope="col">Wartość w MSA</th>
+                                            <th scope="col">Wartość w FlowPin</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="skuDiscrepanciesTbody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Issues Summary Section -->
     <div id="issuesSummary" class="row mt-4" style="display: none;">
         <div class="col-12">
             <h3>Znalezione problemy:</h3>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
             <div class="card">
                 <div class="card-header bg-warning">
                     <h5>Problemy z użytkownikami <span id="userIssueCount" class="badge badge-light">0</span></h5>
@@ -106,7 +144,7 @@ if (!empty($latestProgress) && $latestProgress[0]['status'] === 'running') {
                 </div>
             </div>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
             <div class="card">
                 <div class="card-header bg-warning">
                     <h5>Problemy z urządzeniami/SKU <span id="deviceIssueCount" class="badge badge-light">0</span></h5>
@@ -116,7 +154,7 @@ if (!empty($latestProgress) && $latestProgress[0]['status'] === 'running') {
                 </div>
             </div>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
             <div class="card">
                 <div class="card-header bg-warning">
                     <h5>Problemy z magazynami <span id="warehouseIssueCount" class="badge badge-light">0</span></h5>
@@ -217,5 +255,5 @@ if (!empty($latestProgress) && $latestProgress[0]['status'] === 'running') {
 
 <input type="hidden" id="latestSessionId" value="<?= $latestSessionId ?? '' ?>">
 
-<script src="<?= asset('public_html/components/FlowpinUpdate/flowpin-update.js') ?>"></script>
+<script src="<?= asset('public_html/components/Admin/synchronization/flowpin/update/flowpin-update.js') ?>"></script>
 

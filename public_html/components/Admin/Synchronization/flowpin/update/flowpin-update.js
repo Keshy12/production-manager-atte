@@ -58,7 +58,7 @@ $("#btnAnalyze").click(function() {
 
 // Display analysis results
 function displayAnalysisResults(data) {
-    const totalIssues = data.summary.user_issues + data.summary.device_issues + data.summary.warehouse_issues;
+    const totalIssues = data.summary.user_issues + data.summary.device_issues + data.summary.warehouse_issues + (data.summary.sku_discrepancies || 0);
 
     let html = '<div class="alert alert-info">';
     html += '<h4>Wyniki analizy:</h4>';
@@ -70,6 +70,9 @@ function displayAnalysisResults(data) {
         html += '<li>Problemy z użytkownikami: <strong>' + data.summary.user_issues + '</strong></li>';
         html += '<li>Problemy z urządzeniami/SKU: <strong>' + data.summary.device_issues + '</strong></li>';
         html += '<li>Problemy z magazynami: <strong>' + data.summary.warehouse_issues + '</strong></li>';
+        if (data.summary.sku_discrepancies > 0) {
+            html += '<li>Rozbieżności SKU: <strong>' + data.summary.sku_discrepancies + '</strong></li>';
+        }
         html += '</ul>';
         html += '<p class="text-warning"><strong>Uwaga:</strong> Te problemy nie blokują aktualizacji. Dla rekordów z problemami zostaną utworzone powiadomienia.</p>';
     } else {
@@ -82,13 +85,15 @@ function displayAnalysisResults(data) {
 
     if (totalIssues > 0) {
         // Display issues in detail
-        displayIssues(data.issues);
+        displayIssues(data);
         $("#issuesSummary").show();
     }
 }
 
 // Display detailed issues
-function displayIssues(issues) {
+function displayIssues(data) {
+    const issues = data.issues;
+
     // User issues
     $("#userIssueCount").text(issues.users.length);
     $("#userIssuesList").empty();
@@ -127,6 +132,117 @@ function displayIssues(issues) {
             '</li>'
         );
     });
+
+    // SKU discrepancies
+    displaySkuDiscrepancies(data);
+}
+
+// Display SKU discrepancies
+function displaySkuDiscrepancies(data) {
+    const discrepancies = data.issues.sku_discrepancies || [];
+
+    if (discrepancies.length === 0) {
+        $("#skuDiscrepanciesSection").hide();
+        $("#skuDiscrepancyCount").text(0);
+        $("#skuDiscrepanciesTbody").empty();
+        $("#skuDiscrepancyBreakdown").hide();
+        return;
+    }
+
+    // Sort: name discrepancies first, then description-only; stable secondary by sku_id
+    const sorted = discrepancies.slice().sort((a, b) => {
+        const aName = a.differences.includes('name') ? 1 : 0;
+        const bName = b.differences.includes('name') ? 1 : 0;
+        if (aName !== bName) return bName - aName;
+        return (a.sku_id || 0) - (b.sku_id || 0);
+    });
+
+    const nameCount = sorted.filter(d => d.differences.includes('name')).length;
+    const descOnlyCount = sorted.length - nameCount;
+
+    $("#skuDiscrepanciesSection").show();
+    $("#skuDiscrepancyCount").text(sorted.length);
+
+    if (descOnlyCount > 0 && nameCount > 0) {
+        $("#skuDiscrepancyBreakdown").text(nameCount + ' nazwa / ' + descOnlyCount + ' tylko opis').show();
+    } else if (nameCount > 0) {
+        $("#skuDiscrepancyBreakdown").text(nameCount + ' nazwa').show();
+    } else {
+        $("#skuDiscrepancyBreakdown").text(descOnlyCount + ' opis').show();
+    }
+
+    const tbody = $("#skuDiscrepanciesTbody").empty();
+
+    sorted.forEach(disc => {
+        const skuId = disc.sku_id || '?';
+        const msaName = disc.msa_name ?? null;
+        const fpName = disc.flowpin_symbol ?? null;
+        const msaDesc = disc.msa_description ?? null;
+        const fpDesc = disc.flowpin_description ?? null;
+
+        const hasName = disc.differences.includes('name');
+        const hasDesc = disc.differences.includes('description');
+
+        if (hasName) {
+            const skuCell = hasDesc
+                ? '<td rowspan="2"><strong>SKU #' + skuId + '</strong></td>'
+                : '<td><strong>SKU #' + skuId + '</strong></td>';
+
+            const msaDisplay = renderValue(msaName);
+            const fpDisplay = renderValue(fpName);
+            const msaTitle = msaName ? ' title="' + escapeHtml(msaName) + '"' : '';
+            const fpTitle = fpName ? ' title="' + escapeHtml(fpName) + '"' : '';
+            const msaClass = msaName && msaName.length > 80 ? 'text-truncate' : '';
+            const fpClass = fpName && fpName.length > 80 ? 'text-truncate' : '';
+
+            tbody.append(
+                '<tr class="table-danger">' + skuCell +
+                '<td><span class="badge badge-danger"><i class="bi bi-exclamation-triangle-fill mr-1"></i>Nazwa</span></td>' +
+                '<td class="text-danger ' + msaClass + '" style="max-width: 320px;"' + msaTitle + '>' + msaDisplay + '</td>' +
+                '<td class="text-success ' + fpClass + '" style="max-width: 320px;"' + fpTitle + '>' + fpDisplay + '</td>' +
+                '</tr>'
+            );
+        }
+
+        if (hasDesc) {
+            const skuCell = !hasName
+                ? '<td><strong>SKU #' + skuId + '</strong></td>'
+                : '';
+
+            const msaDisplay = renderValue(msaDesc);
+            const fpDisplay = renderValue(fpDesc);
+            const msaTitle = msaDesc ? ' title="' + escapeHtml(msaDesc) + '"' : '';
+            const fpTitle = fpDesc ? ' title="' + escapeHtml(fpDesc) + '"' : '';
+            const msaClass = msaDesc && msaDesc.length > 80 ? 'text-truncate' : '';
+            const fpClass = fpDesc && fpDesc.length > 80 ? 'text-truncate' : '';
+
+            tbody.append(
+                '<tr class="table-warning">' + skuCell +
+                '<td><span class="badge badge-warning text-dark"><i class="bi bi-pencil-square mr-1"></i>Opis</span></td>' +
+                '<td class="text-danger ' + msaClass + '" style="max-width: 320px;"' + msaTitle + '>' + msaDisplay + '</td>' +
+                '<td class="text-success ' + fpClass + '" style="max-width: 320px;"' + fpTitle + '>' + fpDisplay + '</td>' +
+                '</tr>'
+            );
+        }
+    });
+}
+
+// Render a cell value: null/empty → muted placeholder, otherwise escaped
+function renderValue(val) {
+    if (val === null || val === undefined || val === '') {
+        return '<em class="text-muted">(brak)</em>';
+    }
+    return escapeHtml(val);
+}
+
+// Escape HTML to prevent XSS inside discrepancy values
+function escapeHtml(str) {
+    if (typeof str !== 'string') return str;
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
 }
 
 // Reset session button click handler
