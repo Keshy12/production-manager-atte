@@ -26,6 +26,9 @@ $inventoryChangesFile = $logDir . '/flowpin-inventory-changes-' . $currentDate .
 // Track inventory changes by SKU ID for summing
 $inventoryChanges = [];
 
+// Session-scoped dedup of SKU name discrepancy checks (deviceId => true)
+$checkedSkuNameDiscrepancies = [];
+
 function writeLog($message, $level = 'INFO') {
     global $logFile, $errorLogFile;
     $timestamp = date('Y-m-d H:i:s');
@@ -213,6 +216,78 @@ function getSkuBomId($skuId, $bomRepository) {
         writeLog("Could not find BOM for SKU {$skuId}: " . $e->getMessage(), 'WARNING');
     }
     return null;
+}
+
+/**
+ * Compare MSA.list__sku.name with FlowPin.ProductTypes.Symbol for the given device.
+ * If they differ, create a notification (action_needed_id=6). Idempotent per session:
+ * each deviceId is checked at most once even if it appears in many events.
+ *
+ * @param mixed       $deviceId              SKU / ProductType ID
+ * @param MsaDB       $MsaDB
+ * @param FlowpinDB   $FlowpinDB
+ * @param NotificationRepository $notificationRepository
+ * @param array       $row                   The current FlowPin event row (numeric-indexed)
+ * @param int         $flowpinQueryTypeId    1=Production, 2=Sold, 3=Returned, 4=Moved
+ */
+function checkAndNotifySkuNameDiscrepancy(
+    $deviceId, $MsaDB, $FlowpinDB, $notificationRepository, $row, $flowpinQueryTypeId
+) {
+    global $checkedSkuNameDiscrepancies;
+
+    if (empty($deviceId)) {
+        return;
+    }
+    $deviceId = (int)$deviceId;
+
+    // Session-scoped dedup so we don't re-query for the same SKU on every event
+    if (isset($checkedSkuNameDiscrepancies[$deviceId])) {
+        return;
+    }
+    $checkedSkuNameDiscrepancies[$deviceId] = true;
+
+    // Fetch MSA side (must exist for a comparison to make sense)
+    $msaSku = $MsaDB->query("SELECT name FROM list__sku WHERE id = $deviceId", PDO::FETCH_COLUMN);
+    if (empty($msaSku)) {
+        return;
+    }
+
+    // Fetch FlowPin side
+    $flowpinSku = $FlowpinDB->query("SELECT Symbol FROM ProductTypes WHERE Id = $deviceId AND CompanyId = 1");
+    if (empty($flowpinSku)) {
+        return;
+    }
+
+    $msaName       = trim((string)$msaSku[0]);
+    $flowpinSymbol = trim((string)$flowpinSku[0]['Symbol']);
+
+    // Compare after trim — equal means no discrepancy
+    if ($msaName === $flowpinSymbol) {
+        return;
+    }
+
+    writeLog("SKU name discrepancy (ID=$deviceId): MSA='$msaName' vs FlowPin='$flowpinSymbol' — creating notification (action_needed_id=6)", 'WARNING');
+
+    $context = json_encode([
+        'reason'          => 'SKU name discrepancy between MSA and FlowPin',
+        'device_id'       => $deviceId,
+        'msa_name'        => $msaSku[0],
+        'flowpin_symbol'  => $flowpinSku[0]['Symbol'],
+    ]);
+
+    try {
+        $notificationRepository->createNotification(
+            6,                 // action_needed_id (user-added entry)
+            $row,              // current FlowPin event row
+            $deviceId,         // valueForAction — groups all events for the same SKU under 1 notification
+            $context,
+            $flowpinQueryTypeId
+        );
+        writeLog("Notification created/updated for SKU name discrepancy, deviceId=$deviceId", 'INFO');
+    } catch (\Throwable $e) {
+        writeLog("Failed to create notification for SKU name discrepancy (deviceId=$deviceId): " . $e->getMessage(), 'ERROR');
+        // Do NOT rethrow — notification failure must not abort the row processing
+    }
 }
 
 writeLog("=== Starting FlowPin SKU Update Process ===");
@@ -607,6 +682,11 @@ try {
             list($eventId, $executionDate, $userEmail, $deviceId, $qty) = $row;
             $flowpinQueryTypeId = 2;
 
+            // First: detect SKU name discrepancy and notify (idempotent per session)
+            checkAndNotifySkuNameDiscrepancy(
+                $deviceId, $MsaDB, $FlowpinDB, $notificationRepository, $row, $flowpinQueryTypeId
+            );
+
             writeLog("Processing Sold SKU - EventId: {$eventId}, DeviceId: {$deviceId}, UserEmail: {$userEmail}, Qty: {$qty}");
 
             // 1. Validate Record
@@ -676,6 +756,11 @@ try {
             list($eventId, $executionDate, $userEmail, $deviceId, $qty) = $row;
             $flowpinQueryTypeId = 3;
 
+            // First: detect SKU name discrepancy and notify (idempotent per session)
+            checkAndNotifySkuNameDiscrepancy(
+                $deviceId, $MsaDB, $FlowpinDB, $notificationRepository, $row, $flowpinQueryTypeId
+            );
+
             writeLog("Processing Returned SKU - EventId: {$eventId}, DeviceId: {$deviceId}, UserEmail: {$userEmail}, Qty: {$qty}");
 
             // 1. Validate Record
@@ -744,6 +829,11 @@ try {
         try {
             list($eventId, $executionDate, $userEmail, $deviceId, $warehouseOut, $qtyOut, $warehouseIn, $qtyIn) = $row;
             $flowpinQueryTypeId = 4;
+
+            // First: detect SKU name discrepancy and notify (idempotent per session)
+            checkAndNotifySkuNameDiscrepancy(
+                $deviceId, $MsaDB, $FlowpinDB, $notificationRepository, $row, $flowpinQueryTypeId
+            );
 
             writeLog("Processing Moved SKU - EventId: {$eventId}, DeviceId: {$deviceId}, UserEmail: {$userEmail}, " .
                 "WarehouseOut: {$warehouseOut}, QtyOut: {$qtyOut}, WarehouseIn: {$warehouseIn}, QtyIn: {$qtyIn}");
@@ -839,6 +929,12 @@ try {
             $MsaDB->db->beginTransaction();
             try {
                 list($eventId, $executionDate, $userEmail, $deviceId, $productionQty) = $row;
+                $flowpinQueryTypeId = 1;
+
+                // First: detect SKU name discrepancy and notify (idempotent per session)
+                checkAndNotifySkuNameDiscrepancy(
+                    $deviceId, $MsaDB, $FlowpinDB, $notificationRepository, $row, $flowpinQueryTypeId
+                );
 
                 writeLog("Processing production record {$i} - EventId: {$eventId}, DeviceId: {$deviceId}, UserEmail: {$userEmail}, Qty: {$productionQty}");
 
