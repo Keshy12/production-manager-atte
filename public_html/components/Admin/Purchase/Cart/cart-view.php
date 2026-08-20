@@ -167,11 +167,14 @@ $vendors = $vendorRepository->getAll(true);   // active only
 </div>
 
 <script>
-    // Expose an absolute base URL for the AJAX endpoints in this directory.
-    // The browser resolves relative URLs from the *parent* of the current
-    // page (because /admin/purchase/cart has no trailing slash, so the
-    // browser treats 'cart' as a file segment, not a directory). Forcing
-    // the AJAX calls to use this absolute prefix sidesteps that entirely.
-    var PURCHASE_CART_BASE = '<?= htmlspecialchars(BASEURL, ENT_QUOTES) ?>/admin/purchase/cart';
+    // Expose an absolute base URL (with protocol) for the AJAX endpoints
+    // in this directory. jQuery treats 'foo/bar.php' as a relative URL
+    // and concatenates it to the page URL — producing a malformed path
+    // like /admin/purchase/localhost/atte_ms_new/... — so we MUST pass a
+    // full http(s)://host/path to make jQuery treat it as absolute.
+    var PURCHASE_CART_BASE = <?php echo json_encode(
+        (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http')
+        . '://' . BASEURL . '/admin/purchase/cart'
+    ); ?>;
 </script>
 <script src="<?= asset('public_html/components/Admin/Purchase/Cart/cart-view.js') ?>"></script>
