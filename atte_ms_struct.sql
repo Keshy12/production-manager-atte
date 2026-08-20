@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Jul 08, 2026 at 11:12 AM
+-- Generation Time: Aug 20, 2026 at 01:21 PM
 -- Server version: 10.4.28-MariaDB
 -- PHP Version: 8.2.4
 
@@ -493,6 +493,19 @@ CREATE TABLE `list__parts` (
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `list__producer`
+--
+
+CREATE TABLE `list__producer` (
+  `id` int(11) NOT NULL,
+  `name` varchar(255) NOT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT 1,
+  `comment` text DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `list__sku`
 --
 
@@ -541,31 +554,22 @@ CREATE TABLE `list__tht` (
 -- --------------------------------------------------------
 
 --
--- Table structure for table `list__producer`
---
-
-CREATE TABLE `list__producer` (
-  `id` int(11) NOT NULL,
-  `name` varchar(255) NOT NULL,
-  `is_active` tinyint(1) NOT NULL DEFAULT 1,
-  `comment` text
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
-
---
 -- Table structure for table `list__vendor`
 --
 
 CREATE TABLE `list__vendor` (
   `id` int(11) NOT NULL,
   `name` varchar(255) NOT NULL,
-  `address` text,
-  `additional_data` text,
+  `address` text DEFAULT NULL,
+  `additional_data` text DEFAULT NULL,
   `lead_time_days` int(11) DEFAULT NULL,
   `is_active` tinyint(1) NOT NULL DEFAULT 1,
-  `comment` text,
+  `comment` text DEFAULT NULL,
   `created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
 
 --
 -- Table structure for table `list__vendor_part`
@@ -580,10 +584,12 @@ CREATE TABLE `list__vendor_part` (
   `vendor_jm_id` int(11) NOT NULL,
   `full_pack_quantity` decimal(30,10) NOT NULL DEFAULT 1.0000000000,
   `is_active` tinyint(1) NOT NULL DEFAULT 1,
-  `comment` text,
+  `comment` text DEFAULT NULL,
   `created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
 
 --
 -- Table structure for table `list__vendor_supplier`
@@ -597,7 +603,7 @@ CREATE TABLE `list__vendor_supplier` (
   `phone` varchar(64) DEFAULT NULL,
   `email` varchar(255) DEFAULT NULL,
   `is_active` tinyint(1) NOT NULL DEFAULT 1,
-  `comment` text
+  `comment` text DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
@@ -770,6 +776,61 @@ CREATE TABLE `part__unit` (
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `purchase__number_counter`
+--
+
+CREATE TABLE `purchase__number_counter` (
+  `year` smallint(6) NOT NULL,
+  `type` enum('rfq','po') NOT NULL,
+  `last_value` int(11) NOT NULL DEFAULT 0,
+  PRIMARY KEY (`year`,`type`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Table structure for table `purchase__rfq`
+--
+
+CREATE TABLE `purchase__rfq` (
+  `id` int(11) NOT NULL,
+  `vendor_id` int(11) NOT NULL,
+  `state` enum('draft','sent','responded','cancelled','converted') NOT NULL DEFAULT 'draft',
+  `rfq_number` varchar(64) DEFAULT NULL,
+  `expected_reply_date` date DEFAULT NULL,
+  `sent_at` datetime DEFAULT NULL,
+  `created_by` int(11) NOT NULL,
+  `comment` text,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_rfq_vendor` (`vendor_id`),
+  KEY `idx_rfq_state` (`state`),
+  CONSTRAINT `fk_rfq_vendor` FOREIGN KEY (`vendor_id`) REFERENCES `list__vendor` (`id`),
+  CONSTRAINT `fk_rfq_user` FOREIGN KEY (`created_by`) REFERENCES `user` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Table structure for table `purchase__rfq_item`
+--
+
+CREATE TABLE `purchase__rfq_item` (
+  `id` int(11) NOT NULL,
+  `rfq_id` int(11) NOT NULL,
+  `vendor_part_id` int(11) NOT NULL,
+  `quantity` decimal(30,10) NOT NULL,
+  `quantity_unit_id` int(11) NOT NULL,
+  `unit_price` decimal(30,10) DEFAULT NULL,
+  `currency` varchar(8) NOT NULL DEFAULT 'PLN',
+  `comment` text,
+  PRIMARY KEY (`id`),
+  KEY `idx_rfq_item_rfq` (`rfq_id`),
+  CONSTRAINT `fk_rfq_item_rfq` FOREIGN KEY (`rfq_id`) REFERENCES `purchase__rfq` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_rfq_item_vp` FOREIGN KEY (`vendor_part_id`) REFERENCES `list__vendor_part` (`id`),
+  CONSTRAINT `fk_rfq_item_unit` FOREIGN KEY (`quantity_unit_id`) REFERENCES `part__unit` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `ref__flowpin_checkpoints`
 --
 
@@ -925,6 +986,7 @@ ALTER TABLE `bom__flat`
 --
 ALTER TABLE `bom__sku`
   ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `uq_bom_sku_identity` (`sku_id`,`version`(16)),
   ADD KEY `tht_id` (`sku_id`);
 
 --
@@ -932,6 +994,7 @@ ALTER TABLE `bom__sku`
 --
 ALTER TABLE `bom__smd`
   ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `uq_bom_smd_identity` (`smd_id`,`laminate_id`,`version`(16)),
   ADD KEY `smd_id` (`smd_id`),
   ADD KEY `laminate_id` (`laminate_id`);
 
@@ -940,6 +1003,7 @@ ALTER TABLE `bom__smd`
 --
 ALTER TABLE `bom__tht`
   ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `uq_bom_tht_identity` (`tht_id`,`version`(16)),
   ADD KEY `tht_id` (`tht_id`);
 
 --
@@ -1114,6 +1178,13 @@ ALTER TABLE `list__parts`
   ADD KEY `idx_is_active` (`isActive`);
 
 --
+-- Indexes for table `list__producer`
+--
+ALTER TABLE `list__producer`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_active` (`is_active`);
+
+--
 -- Indexes for table `list__sku`
 --
 ALTER TABLE `list__sku`
@@ -1133,6 +1204,31 @@ ALTER TABLE `list__smd`
 ALTER TABLE `list__tht`
   ADD PRIMARY KEY (`id`),
   ADD KEY `idx_is_active` (`isActive`);
+
+--
+-- Indexes for table `list__vendor`
+--
+ALTER TABLE `list__vendor`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_active` (`is_active`);
+
+--
+-- Indexes for table `list__vendor_part`
+--
+ALTER TABLE `list__vendor_part`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `uq_vendor_part_no` (`vendor_id`,`vendor_part_no`),
+  ADD KEY `idx_vp_vendor` (`vendor_id`),
+  ADD KEY `idx_vp_producer` (`producer_id`),
+  ADD KEY `idx_vp_parts` (`parts_id`),
+  ADD KEY `fk_vp_unit` (`vendor_jm_id`);
+
+--
+-- Indexes for table `list__vendor_supplier`
+--
+ALTER TABLE `list__vendor_supplier`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `vendor_id` (`vendor_id`);
 
 --
 -- Indexes for table `lowstock__parts`
@@ -1394,6 +1490,12 @@ ALTER TABLE `list__parts`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
+-- AUTO_INCREMENT for table `list__producer`
+--
+ALTER TABLE `list__producer`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
 -- AUTO_INCREMENT for table `list__sku`
 --
 ALTER TABLE `list__sku`
@@ -1409,12 +1511,6 @@ ALTER TABLE `list__smd`
 -- AUTO_INCREMENT for table `list__tht`
 --
 ALTER TABLE `list__tht`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
-
---
--- AUTO_INCREMENT for table `list__producer`
---
-ALTER TABLE `list__producer`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
@@ -1487,6 +1583,18 @@ ALTER TABLE `part__type`
 -- AUTO_INCREMENT for table `part__unit`
 --
 ALTER TABLE `part__unit`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `purchase__rfq`
+--
+ALTER TABLE `purchase__rfq`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `purchase__rfq_item`
+--
+ALTER TABLE `purchase__rfq_item`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
@@ -1677,6 +1785,21 @@ ALTER TABLE `list__parts`
   ADD CONSTRAINT `restrict_part_unit` FOREIGN KEY (`JM`) REFERENCES `part__unit` (`id`);
 
 --
+-- Constraints for table `list__vendor_part`
+--
+ALTER TABLE `list__vendor_part`
+  ADD CONSTRAINT `fk_vp_parts` FOREIGN KEY (`parts_id`) REFERENCES `list__parts` (`id`) ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_vp_producer` FOREIGN KEY (`producer_id`) REFERENCES `list__producer` (`id`) ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_vp_unit` FOREIGN KEY (`vendor_jm_id`) REFERENCES `part__unit` (`id`) ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_vp_vendor` FOREIGN KEY (`vendor_id`) REFERENCES `list__vendor` (`id`) ON UPDATE CASCADE;
+
+--
+-- Constraints for table `list__vendor_supplier`
+--
+ALTER TABLE `list__vendor_supplier`
+  ADD CONSTRAINT `fk_vs_vendor` FOREIGN KEY (`vendor_id`) REFERENCES `list__vendor` (`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+
+--
 -- Constraints for table `magazine__list`
 --
 ALTER TABLE `magazine__list`
@@ -1694,6 +1817,21 @@ ALTER TABLE `notification__list`
 ALTER TABLE `notification__queries_affected`
   ADD CONSTRAINT `notification__queries_affected_ibfk_1` FOREIGN KEY (`flowpin_query_type_id`) REFERENCES `notification__flowpin_query_type` (`id`),
   ADD CONSTRAINT `notification__queries_affected_ibfk_2` FOREIGN KEY (`notification_id`) REFERENCES `notification__list` (`id`);
+
+--
+-- Constraints for table `purchase__rfq`
+--
+ALTER TABLE `purchase__rfq`
+  ADD CONSTRAINT `fk_rfq_user` FOREIGN KEY (`created_by`) REFERENCES `user` (`user_id`),
+  ADD CONSTRAINT `fk_rfq_vendor` FOREIGN KEY (`vendor_id`) REFERENCES `list__vendor` (`id`);
+
+--
+-- Constraints for table `purchase__rfq_item`
+--
+ALTER TABLE `purchase__rfq_item`
+  ADD CONSTRAINT `fk_rfq_item_rfq` FOREIGN KEY (`rfq_id`) REFERENCES `purchase__rfq` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `fk_rfq_item_unit` FOREIGN KEY (`quantity_unit_id`) REFERENCES `part__unit` (`id`),
+  ADD CONSTRAINT `fk_rfq_item_vp` FOREIGN KEY (`vendor_part_id`) REFERENCES `list__vendor_part` (`id`);
 
 --
 -- Constraints for table `ref__valuepackage`
@@ -1728,21 +1866,6 @@ ALTER TABLE `used__tht`
 --
 ALTER TABLE `user`
   ADD CONSTRAINT `restrict` FOREIGN KEY (`sub_magazine_id`) REFERENCES `magazine__list` (`sub_magazine_id`) ON DELETE NO ACTION ON UPDATE CASCADE;
-
---
--- Constraints for table `list__vendor_supplier`
---
-ALTER TABLE `list__vendor_supplier`
-  ADD CONSTRAINT `fk_vs_vendor` FOREIGN KEY (`vendor_id`) REFERENCES `list__vendor` (`id`) ON DELETE CASCADE ON UPDATE CASCADE;
-
---
--- Constraints for table `list__vendor_part`
---
-ALTER TABLE `list__vendor_part`
-  ADD CONSTRAINT `fk_vp_vendor` FOREIGN KEY (`vendor_id`) REFERENCES `list__vendor` (`id`),
-  ADD CONSTRAINT `fk_vp_producer` FOREIGN KEY (`producer_id`) REFERENCES `list__producer` (`id`),
-  ADD CONSTRAINT `fk_vp_parts` FOREIGN KEY (`parts_id`) REFERENCES `list__parts` (`id`),
-  ADD CONSTRAINT `fk_vp_unit` FOREIGN KEY (`vendor_jm_id`) REFERENCES `part__unit` (`id`);
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;

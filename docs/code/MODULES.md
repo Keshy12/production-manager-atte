@@ -211,6 +211,40 @@
 - VendorJM is auto-created in `part__unit` on first sight (auto-create flow lives in the import script, not the UI yet — that's P2)
 - `Admin/` directory is capitalized; case-sensitive on Linux
 
+#### Admin/Purchase/Rfqs/ — Procurement Module — RFQ Lifecycle (P2) (17 files)
+
+**Purpose:** Create, edit, and send Requests For Quote (zapytania ofertowe) to vendors. State machine: `draft → sent → responded | cancelled | converted`. Conversion to PO ships in P3.
+
+**Key files (List page):**
+- `rfqs-view.php` — list of RFQs with state-coloured badges, "Nowe zapytanie" form (vendor selectpicker + date + comment), client-side row filter
+- `modals.php` — send/cancel confirm modals
+- `rfq-{add,get,send,cancel}.php` — AJAX endpoints; `rfq-add` calls `PurchaseActionHandler::createDocument('rfq', …)` which allocates a `RFQ/YYYY/NNNN` number via `SELECT … FOR UPDATE`
+- `table-row-template.php`, `rfqs-view.js`
+
+**Key files (Edit page, `Edit/`):**
+- `edit-rfq-view.php` — header card with vendor + number + state + expected_reply_date + sent_at, "Dodaj pozycję" form (hidden when not draft), line-items table with inline edit/delete
+- `modals.php` — edit/delete-item modals + reused cancel/send modals
+- `rfq-item-{add,update,delete,get}.php` — AJAX endpoints; `quantity_unit_id` is auto-derived from the chosen VendorPart's `vendor_jm_id`
+- `search-vendor-parts.php` — LIKE-search over `list__vendor_part` filtered to the current RFQ's vendor
+- `edit-rfq-view.js`
+
+**Key Utils classes (foundation, `Atte\Utils\Purchase\Order`):**
+- `RFQ` + `RFQRepository` — header CRUD; `getById` / `getAll` join `list__vendor.name`; `setState`, `setSentAt`, `setRfqNumber`, `delete`
+- `RFQItem` + `RFQItemRepository` — line items; joined queries pull vendor / producer / part / unit names for the edit-page table
+- `PurchaseActionHandler` — orchestrator with `createDocument()`, `allocateDocumentNumber()` (`SELECT … FOR UPDATE` against `purchase__number_counter`), `computeLastKnownPrice()` (returns null gracefully until `purchase__order_item` ships in P3), `sendRfq()` (state guard + zero-items guard), `cancelRfq()`. `createPoFromRfq()` is a stub throwing "Implemented in P3".
+
+**Database tables:**
+- `purchase__number_counter` — per-year, per-type auto-number generator (PK `(year, type)`, ENUM 'rfq'/'po')
+- `purchase__rfq` — RFQ header with state machine
+- `purchase__rfq_item` — line items; cascades on RFQ delete
+
+**Notable behaviors:**
+- Document-number allocation uses `INSERT … ON DUPLICATE KEY UPDATE … + SELECT … FOR UPDATE` to avoid race conditions between two admins creating RFQs at the same time
+- `allocateDocumentNumber` is a "best-effort" transaction participant — joins an outer transaction if one is already open, otherwise opens its own
+- `computeLastKnownPrice()` returns null until P3 ships (the `purchase__order_item` table doesn't exist yet); gracefully swallowed via try/catch
+- Send-guard refuses to send a draft RFQ with zero line items
+- Cancel-guard refuses to cancel an RFQ in `converted` state (terminal)
+
 ---
 
 ## 2. Archive/ — Historical Transfer Records (9 files)

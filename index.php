@@ -127,6 +127,16 @@ switch ($request) {
         includeWithVariables($headerDir, array('title' => 'Artykuły u dostawców'));
         require $componentsDir . '/Admin/Purchase/VendorParts/vendor-parts-view.php';
         break;
+    case 'admin/purchase/rfqs':
+        requireAdmin();
+        includeWithVariables($headerDir, array('title' => 'Zapytania ofertowe'));
+        require $componentsDir . '/Admin/Purchase/Rfqs/rfqs-view.php';
+        break;
+    case 'admin/purchase/rfqs/edit':
+        requireAdmin();
+        includeWithVariables($headerDir, array('title' => 'Edycja zapytania'));
+        require $componentsDir . '/Admin/Purchase/Rfqs/Edit/edit-rfq-view.php';
+        break;
 
     case 'admin/synchronization/flowpin':
         requireAdmin();

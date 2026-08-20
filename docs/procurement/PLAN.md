@@ -1,6 +1,6 @@
 # Plan — Procurement Module (Zakupy / Dostawcy)
 
-**Status:** Draft v1.1 — **Phase 1 complete and merged into `feature/component-procurement`**. Schema in place, data imported from Google Sheets, admin UI for vendors/producers/vendor-parts is live under `Admin → Zakupy`.
+**Status:** Draft v1.2 — **Phase 2 complete and merged into `feature/component-procurement`**. RFQ lifecycle (draft → sent → responded | cancelled) is live under `Admin → Zakupy → Zapytania ofertowe`. `PurchaseActionHandler` orchestrator skeleton in place (PO conversion ships in P3).
 **Branch:** `feature/component-procurement`
 **Owner:** TBD
 

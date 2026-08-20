@@ -305,6 +305,16 @@ All four have composite PK `(device_id, sub_magazine_id)` (device_id = `parts_id
 | `ref__package_exclude` | `id`, `name` | Package exclusion rules for BOM/value-package logic. |
 | `ref__timestamp` | `id`, `last_timestamp`, `name`, `params` | Generic timestamp bookmark table for external system sync state. |
 
+### 4j. `purchase__*` — Procurement (RFQ / PO / Receipts)
+
+Phase 2 introduces RFQ (Request For Quote) lifecycle tables. PO + receipt tables come in later phases.
+
+| Table | Key Columns | Purpose |
+|---|---|---|
+| `purchase__number_counter` | `year` (SMALLINT), `type` ENUM('rfq','po'), `last_value` (INT) | Per-year, per-type document-number generator. Composite PK `(year, type)`. Used by `PurchaseActionHandler::allocateDocumentNumber()`. |
+| `purchase__rfq` | `id`, `vendor_id` (FK→`list__vendor`), `state` ENUM('draft','sent','responded','cancelled','converted'), `rfq_number` VARCHAR(64), `expected_reply_date` DATE, `sent_at` DATETIME, `created_by` (FK→`user.user_id`), `comment` TEXT, `created_at`, `updated_at` | RFQ header. State machine: `draft → sent → responded \| cancelled \| converted`. |
+| `purchase__rfq_item` | `id`, `rfq_id` (FK→`purchase__rfq` ON DELETE CASCADE), `vendor_part_id` (FK→`list__vendor_part`), `quantity` DECIMAL(30,10), `quantity_unit_id` (FK→`part__unit`), `unit_price` DECIMAL(30,10) NULL, `currency` VARCHAR(8) DEFAULT 'PLN', `comment` TEXT | RFQ line items. `unit_price` is the admin's target/expected price; nullable. |
+
 ---
 
 ## 5. Foreign Keys

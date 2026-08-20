@@ -103,6 +103,8 @@ default:
 | `admin/purchase/vendors` | Dostawcy | `public_html/components/Admin/Purchase/Vendors/vendors-view.php` | Admin route. Procurement module (P1). `Admin/` capitalized. |
 | `admin/purchase/producers` | Producenci | `public_html/components/Admin/Purchase/Producers/producers-view.php` | Admin route. Procurement module (P1). |
 | `admin/purchase/vendor-parts` | Artykuły u dostawców | `public_html/components/Admin/Purchase/VendorParts/vendor-parts-view.php` | Admin route. Procurement module (P1). |
+| `admin/purchase/rfqs` | Zapytania ofertowe | `public_html/components/Admin/Purchase/Rfqs/rfqs-view.php` | Admin route. Procurement module (P2). |
+| `admin/purchase/rfqs/edit` | Edycja zapytania | `public_html/components/Admin/Purchase/Rfqs/Edit/edit-rfq-view.php` | Admin route. Procurement module (P2). |
 | `admin/synchronization/flowpin` | Flowpin - Status Aktualizacji | `public_html/components/Admin/Synchronization/flowpin/flowpin-status-view.php` | **Note:** `Admin/` directory is capitalized. |
 | `admin/synchronization/sheets` | Flowpin - Arkusze | `public_html/components/Admin/Synchronization/sheets/flowpin-sheets-view.php` | **Note:** `Admin/` directory is capitalized. |
 | `test` | — | `public_html/components/tests/test1.php` | Dev/test only. **No header included** (`index.php:108–110`). |
