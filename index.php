@@ -17,6 +17,18 @@ function requireAdmin() {
     }
 }
 
+// Serve Admin AJAX endpoints (URL pattern: /admin/<module>/<feature>/.../file.php)
+// directly from their actual filesystem location. The .htaccess catch-all rewrite
+// would otherwise send these to index.php, where the switch has no matching case.
+// The switch below still handles extensionless URLs like /admin/purchase/vendors.
+if (preg_match('#^admin/(.+\.php)$#', $request, $m)) {
+    $componentFile = ROOT_DIRECTORY . '/public_html/components/Admin/' . str_replace('/', DIRECTORY_SEPARATOR, $m[1]);
+    if (is_file($componentFile)) {
+        require $componentFile;
+        exit;
+    }
+}
+
 switch ($request) {
     case '':
     case '/':
