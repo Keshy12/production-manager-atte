@@ -166,4 +166,12 @@ $vendors = $vendorRepository->getAll(true);   // active only
     </div>
 </div>
 
+<script>
+    // Expose an absolute base URL for the AJAX endpoints in this directory.
+    // The browser resolves relative URLs from the *parent* of the current
+    // page (because /admin/purchase/cart has no trailing slash, so the
+    // browser treats 'cart' as a file segment, not a directory). Forcing
+    // the AJAX calls to use this absolute prefix sidesteps that entirely.
+    var PURCHASE_CART_BASE = '<?= htmlspecialchars(BASEURL, ENT_QUOTES) ?>/admin/purchase/cart';
+</script>
 <script src="<?= asset('public_html/components/Admin/Purchase/Cart/cart-view.js') ?>"></script>

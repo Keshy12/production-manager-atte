@@ -64,7 +64,7 @@
             return;
         }
         $.ajax({
-            url: 'search-vendor-parts.php',
+            url: PURCHASE_CART_BASE + '/search-vendor-parts.php',
             method: 'GET',
             data: { vendor_id: cart.vendorId, q: query || '' },
             dataType: 'json'
@@ -257,7 +257,7 @@
         var $btn = $(btn);
         $btn.prop('disabled', true).text('Tworzę...');
         $.ajax({
-            url: 'cart-action.php',
+            url: PURCHASE_CART_BASE + '/cart-action.php',
             method: 'POST',
             data: buildPayload(forcedType),
             dataType: 'json'
