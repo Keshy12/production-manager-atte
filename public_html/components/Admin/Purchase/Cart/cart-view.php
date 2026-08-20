@@ -30,7 +30,7 @@ $vendors = $vendorRepository->getAll(true);   // active only
                 <div class="card-header"><h5>Parametry dokumentu</h5></div>
                 <div class="card-body">
                     <div class="row">
-                        <div class="col-md-6">
+                        <div class="col-md-8">
                             <div class="form-group">
                                 <label for="cartVendor">Dostawca:</label>
                                 <select id="cartVendor" class="selectpicker form-control" data-live-search="true" data-width="100%">
@@ -41,18 +41,9 @@ $vendors = $vendorRepository->getAll(true);   // active only
                                 </select>
                             </div>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-4">
                             <div class="form-group">
-                                <label for="cartDocType">Typ dokumentu:</label>
-                                <select id="cartDocType" class="form-control">
-                                    <option value="rfq">Zapytanie ofertowe</option>
-                                    <option value="po">Zamówienie</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="col-md-3">
-                            <div class="form-group">
-                                <label id="cartDateLabel" for="cartDate">Oczekiwana data odpowiedzi:</label>
+                                <label for="cartDate">Termin (data odpowiedzi / dostawy):</label>
                                 <input type="date" id="cartDate" class="form-control">
                             </div>
                         </div>

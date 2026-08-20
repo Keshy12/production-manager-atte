@@ -8,15 +8,12 @@
     var cart = {
         vendorId : null,
         vendorName: '',
-        docType  : 'rfq',
         date     : '',
         comment  : '',
         items    : []   // {vendor_part_id, vendor_part_no, part_name, producer_name, unit_name, quantity, unit_price, currency}
     };
 
     var $vendor    = $('#cartVendor');
-    var $docType   = $('#cartDocType');
-    var $dateLabel = $('#cartDateLabel');
     var $date      = $('#cartDate');
     var $comment   = $('#cartComment');
     var $addRow    = $('#addItemRow');
@@ -175,15 +172,6 @@
         }
     });
 
-    $docType.on('change', function () {
-        cart.docType = $(this).val();
-        if (cart.docType === 'rfq') {
-            $dateLabel.text('Oczekiwana data odpowiedzi:');
-        } else {
-            $dateLabel.text('Oczekiwana data dostawy:');
-        }
-    });
-
     $date.on('change', function () { cart.date = $(this).val(); });
     $comment.on('change', function () { cart.comment = $(this).val(); });
 
@@ -236,7 +224,7 @@
     function buildPayload(forcedType) {
         return {
             vendor_id : cart.vendorId,
-            doc_type  : forcedType || cart.docType,
+            doc_type  : forcedType,
             date      : cart.date || '',
             comment   : cart.comment || '',
             items     : JSON.stringify(cart.items.map(function (i) {
