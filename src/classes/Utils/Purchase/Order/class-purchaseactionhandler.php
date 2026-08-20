@@ -63,9 +63,6 @@ class PurchaseActionHandler {
         if (!in_array($type, $valid, true)) {
             throw new \InvalidArgumentException("type must be one of: " . implode(', ', $valid));
         }
-        if ($type === 'po') {
-            throw new \LogicException("PO creation is implemented in P3");
-        }
         if ($vendorId <= 0) throw new \InvalidArgumentException("vendorId must be positive.");
         if ($userId   <= 0) throw new \InvalidArgumentException("userId must be positive.");
 
@@ -74,12 +71,19 @@ class PurchaseActionHandler {
 
         $MsaDB->db->beginTransaction();
         try {
-            $number = $this->allocateDocumentNumber('rfq', $year);
-
-            $repo = new RFQRepository($MsaDB);
-            $id   = $repo->create($vendorId, $userId, null, null);
-            $repo->setRfqNumber($id, $number);
-
+            if ($type === 'rfq') {
+                $number = $this->allocateDocumentNumber('rfq', $year);
+                $repo   = new RFQRepository($MsaDB);
+                $id     = $repo->create($vendorId, $userId, null, null);
+                $repo->setRfqNumber($id, $number);
+                $MsaDB->db->commit();
+                return $id;
+            }
+            // type === 'po'
+            $number = $this->allocateDocumentNumber('po', $year);
+            $repo   = new PurchaseOrderRepository($MsaDB);
+            $id     = $repo->create($vendorId, $userId);
+            $repo->setPoNumber($id, $number);
             $MsaDB->db->commit();
             return $id;
         } catch (\Throwable $e) {
@@ -95,7 +99,8 @@ class PurchaseActionHandler {
         try {
             $sql = "SELECT `unit_price` FROM `purchase__order_item`
                     WHERE `vendor_part_id` = ?
-                      AND `unit_price` IS NOT NULL"
+                      AND `unit_price` IS NOT NULL
+                      AND `unit_price` > 0"
                   . ($currency !== null && $currency !== '' ? " AND `currency` = ?" : "")
                   . " ORDER BY `id` DESC LIMIT 1";
             $stmt = $MsaDB->db->prepare($sql);
@@ -107,7 +112,7 @@ class PurchaseActionHandler {
             $row = $stmt->fetch(\PDO::FETCH_ASSOC);
             return $row === false ? null : (float)$row['unit_price'];
         } catch (\PDOException $e) {
-            // purchase__order_item doesn't exist yet (P3) — treat as no prior data.
+            // purchase__order_item doesn't exist (e.g. P3 not yet applied) — treat as no prior data.
             return null;
         }
     }
@@ -168,6 +173,54 @@ class PurchaseActionHandler {
     }
 
     public function createPoFromRfq(int $rfqId, int $userId): int {
-        throw new \LogicException("Implemented in P3");
+        $MsaDB    = $this->MsaDB;
+        $rfqRepo  = new RFQRepository($MsaDB);
+        $itemRepo = new RFQItemRepository($MsaDB);
+        $poRepo   = new PurchaseOrderRepository($MsaDB);
+        $poItemRepo = new PurchaseOrderItemRepository($MsaDB);
+
+        $rfq = $rfqRepo->getById($rfqId);
+        if ($rfq === null) {
+            throw new \LogicException("RFQ not found");
+        }
+        if (in_array($rfq->state, ['converted','cancelled'], true)) {
+            throw new \LogicException("RFQ is already converted or cancelled");
+        }
+        $items = $itemRepo->getByRfq($rfqId);
+        if (count($items) === 0) {
+            throw new \LogicException("Cannot convert an RFQ with no line items");
+        }
+
+        $year = (int)date('Y');
+
+        $MsaDB->db->beginTransaction();
+        try {
+            $number = $this->allocateDocumentNumber('po', $year);
+
+            $poId = $poRepo->create($rfq->vendorId, $userId, $rfqId);
+            $poRepo->setPoNumber($poId, $number);
+
+            foreach ($items as $item) {
+                $poItemRepo->create(
+                    $poId,
+                    $item->vendorPartId,
+                    $item->quantity,
+                    $item->quantityUnitId,
+                    $item->unitPrice === null ? 0.0 : $item->unitPrice,
+                    $item->currency,
+                    $item->comment
+                );
+            }
+
+            $rfqRepo->setState($rfqId, 'converted');
+
+            $MsaDB->db->commit();
+            return $poId;
+        } catch (\Throwable $e) {
+            if ($MsaDB->db->inTransaction()) {
+                $MsaDB->db->rollBack();
+            }
+            throw $e;
+        }
     }
 }

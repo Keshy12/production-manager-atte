@@ -1,10 +1,10 @@
 $(document).ready(function() {
-    const ajaxBase      = COMPONENTS_PATH + "/Admin/Purchase/Rfqs/Edit/";
-    const parentAjax    = COMPONENTS_PATH + "/Admin/Purchase/Rfqs/";
-    const ctx           = document.getElementById('rfqPageContext');
-    const rfqId         = parseInt(ctx.dataset.rfqId, 10);
-    const vendorId      = parseInt(ctx.dataset.vendorId, 10);
-    const canEdit       = ctx.dataset.canEdit === '1';
+    const ajaxBase   = COMPONENTS_PATH + "/Admin/Purchase/Orders/Edit/";
+    const parentAjax = COMPONENTS_PATH + "/Admin/Purchase/Orders/";
+    const ctx        = document.getElementById('poPageContext');
+    const poId       = parseInt(ctx.dataset.poId, 10);
+    const vendorId   = parseInt(ctx.dataset.vendorId, 10);
+    const canEdit    = ctx.dataset.canEdit === '1';
 
     function esc(str) {
         return $('<div>').text(str == null ? '' : String(str)).html();
@@ -30,30 +30,30 @@ $(document).ready(function() {
     }
 
     // ---------------------------------------------------------------
-    // VendorPart picker on the "add" form (already server-rendered).
+    // Vendor-part picker on the "add" form (already server-rendered).
     // ---------------------------------------------------------------
-    $('#rfq_item_vendor_part_select').on('changed.bs.select', function() {
+    $('#po_item_vendor_part_select').on('changed.bs.select', function() {
         const $sel = $(this).find('option:selected');
-        $('#rfq_item_vendor_part_id').val($(this).val());
-        $('#rfq_item_quantity_unit_id').val($sel.data('vendor-jm-id') || '');
+        $('#po_item_vendor_part_id').val($(this).val());
+        $('#po_item_quantity_unit_id').val($sel.data('vendor-jm-id') || '');
     });
 
-    $('#addRfqItemForm').on('submit', function(e) {
+    $('#addOrderItemForm').on('submit', function(e) {
         e.preventDefault();
-        if (!canEdit) { showAlert('Zapytanie nie jest w stanie szkicu', 'warning'); return; }
+        if (!canEdit) { showAlert('Zamówienie nie jest w stanie szkicu', 'warning'); return; }
         const data = {
-            rfq_id:         rfqId,
-            vendor_part_id: $('#rfq_item_vendor_part_id').val(),
-            quantity:       $('#rfq_item_quantity').val(),
-            unit_price:     $('#rfq_item_unit_price').val() || '',
-            currency:       $('#rfq_item_currency').val(),
-            comment:        $('#rfq_item_comment').val().trim(),
+            po_id:          poId,
+            vendor_part_id: $('#po_item_vendor_part_id').val(),
+            quantity:       $('#po_item_quantity').val(),
+            unit_price:     $('#po_item_unit_price').val() || '0',
+            currency:       $('#po_item_currency').val(),
+            comment:        $('#po_item_comment').val().trim(),
         };
         if (!data.vendor_part_id) { showAlert('Wybierz artykuł', 'warning'); return; }
         if (!data.quantity || parseFloat(data.quantity) <= 0) {
             showAlert('Podaj ilość większą od zera', 'warning'); return;
         }
-        postAjax('rfq-item-add.php', data)
+        postAjax('order-item-add.php', data)
             .done(function(r) {
                 if (r.success) {
                     showAlert('Pozycja dodana', 'success');
@@ -87,58 +87,58 @@ $(document).ready(function() {
 
     $(document).on('click', '.edit-item-btn', function() {
         const itemId = parseInt($(this).data('id'), 10);
-        getAjax('rfq-item-get.php', { id: itemId })
+        getAjax('order-item-get.php', { id: itemId })
             .done(function(r) {
                 if (!r.success) { showAlert(r.error || 'Błąd ładowania', 'danger'); return; }
                 const it = r.item;
-                $('#edit_rfq_item_id').val(it.id);
-                $('#edit_rfq_item_rfq_id').val(it.rfqId);
-                $('#edit_rfq_item_quantity').val(it.quantity);
-                $('#edit_rfq_item_unit_price').val(it.unitPrice == null ? '' : it.unitPrice);
-                $('#edit_rfq_item_currency').val(it.currency || 'PLN');
-                $('#edit_rfq_item_comment').val(it.comment || '');
+                $('#edit_po_item_id').val(it.id);
+                $('#edit_po_item_po_id').val(it.poId);
+                $('#edit_po_item_quantity').val(it.quantity);
+                $('#edit_po_item_unit_price').val(it.unitPrice);
+                $('#edit_po_item_currency').val(it.currency || 'PLN');
+                $('#edit_po_item_comment').val(it.comment || '');
 
-                fillVendorPartSelect('#edit_rfq_item_vendor_part_select', it.vendorPartId)
+                fillVendorPartSelect('#edit_po_item_vendor_part_select', it.vendorPartId)
                     .done(function() {
-                        const $opt = $('#edit_rfq_item_vendor_part_select option[value="' + it.vendorPartId + '"]');
+                        const $opt = $('#edit_po_item_vendor_part_select option[value="' + it.vendorPartId + '"]');
                         if ($opt.length) {
-                            $('#edit_rfq_item_quantity_unit_id').val($opt.data('quantity-unit-id') || it.quantityUnitId);
+                            $('#edit_po_item_quantity_unit_id').val($opt.data('quantity-unit-id') || it.quantityUnitId);
                         } else {
-                            $('#edit_rfq_item_quantity_unit_id').val(it.quantityUnitId);
+                            $('#edit_po_item_quantity_unit_id').val(it.quantityUnitId);
                         }
-                        $('#edit_rfq_item_vendor_part_id').val(it.vendorPartId);
-                        $('#editRfqItemModal').modal('show');
+                        $('#edit_po_item_vendor_part_id').val(it.vendorPartId);
+                        $('#editOrderItemModal').modal('show');
                     });
             })
             .fail(function() { showAlert('Błąd komunikacji z serwerem', 'danger'); });
     });
 
-    $('#edit_rfq_item_vendor_part_select').on('changed.bs.select', function() {
+    $('#edit_po_item_vendor_part_select').on('changed.bs.select', function() {
         const $sel = $(this).find('option:selected');
-        $('#edit_rfq_item_vendor_part_id').val($(this).val());
-        $('#edit_rfq_item_quantity_unit_id').val($sel.data('quantity-unit-id') || '');
+        $('#edit_po_item_vendor_part_id').val($(this).val());
+        $('#edit_po_item_quantity_unit_id').val($sel.data('quantity-unit-id') || '');
     });
 
-    $('#editRfqItemForm').on('submit', function(e) {
+    $('#editOrderItemForm').on('submit', function(e) {
         e.preventDefault();
         const data = {
-            id:              $('#edit_rfq_item_id').val(),
-            rfq_id:          rfqId,
-            vendor_part_id:  $('#edit_rfq_item_vendor_part_id').val(),
-            quantity_unit_id:$('#edit_rfq_item_quantity_unit_id').val(),
-            quantity:        $('#edit_rfq_item_quantity').val(),
-            unit_price:      $('#edit_rfq_item_unit_price').val() || '',
-            currency:        $('#edit_rfq_item_currency').val(),
-            comment:         $('#edit_rfq_item_comment').val().trim(),
+            id:               $('#edit_po_item_id').val(),
+            po_id:            poId,
+            vendor_part_id:   $('#edit_po_item_vendor_part_id').val(),
+            quantity_unit_id: $('#edit_po_item_quantity_unit_id').val(),
+            quantity:         $('#edit_po_item_quantity').val(),
+            unit_price:       $('#edit_po_item_unit_price').val() || '0',
+            currency:         $('#edit_po_item_currency').val(),
+            comment:          $('#edit_po_item_comment').val().trim(),
         };
         if (!data.vendor_part_id) { showAlert('Wybierz artykuł', 'warning'); return; }
         if (!data.quantity || parseFloat(data.quantity) <= 0) {
             showAlert('Podaj ilość większą od zera', 'warning'); return;
         }
-        postAjax('rfq-item-update.php', data)
+        postAjax('order-item-update.php', data)
             .done(function(r) {
                 if (r.success) {
-                    $('#editRfqItemModal').modal('hide');
+                    $('#editOrderItemModal').modal('hide');
                     showAlert('Pozycja zaktualizowana', 'success');
                     location.reload();
                 } else { showAlert(r.error || 'Błąd zapisu', 'danger'); }
@@ -152,16 +152,16 @@ $(document).ready(function() {
     $(document).on('click', '.delete-item-btn', function() {
         const id = parseInt($(this).data('id'), 10);
         const vpNo = $(this).data('vendor-part-no');
-        $('#delete_rfq_item_id').val(id);
-        $('#delete_rfq_item_body').html('Czy na pewno usunąć pozycję <b>' + esc(vpNo || ('#' + id)) + '</b>?');
-        $('#deleteRfqItemModal').modal('show');
+        $('#delete_po_item_id').val(id);
+        $('#delete_po_item_body').html('Czy na pewno usunąć pozycję <b>' + esc(vpNo || ('#' + id)) + '</b>?');
+        $('#deleteOrderItemModal').modal('show');
     });
-    $('#confirmDeleteRfqItem').on('click', function() {
-        const id = parseInt($('#delete_rfq_item_id').val(), 10);
-        postAjax('rfq-item-delete.php', { id: id, rfq_id: rfqId })
+    $('#confirmDeleteOrderItem').on('click', function() {
+        const id = parseInt($('#delete_po_item_id').val(), 10);
+        postAjax('order-item-delete.php', { id: id, po_id: poId })
             .done(function(r) {
                 if (r.success) {
-                    $('#deleteRfqItemModal').modal('hide');
+                    $('#deleteOrderItemModal').modal('hide');
                     showAlert('Pozycja usunięta', 'success');
                     location.reload();
                 } else { showAlert(r.error || 'Błąd', 'danger'); }
@@ -170,68 +170,75 @@ $(document).ready(function() {
     });
 
     // ---------------------------------------------------------------
-    // Cancel / Send RFQ (reuse parent AJAX endpoints).
+    // Send / Confirm / Cancel (reuse parent endpoints).
     // ---------------------------------------------------------------
-    $(document).on('click', '.cancel-rfq-btn', function() {
-        const id  = parseInt($(this).data('id'), 10);
-        const num = $(this).data('number');
-        $('#cancel_rfq_id').val(id);
-        $('#cancel_rfq_body').html(
-            'Czy na pewno anulować zapytanie <b>' + esc(num || ('#' + id)) + '</b>?'
-        );
-        $('#cancelRfqModal').modal('show');
-    });
-    $('#confirmCancelRfq').on('click', function() {
-        const id = parseInt($('#cancel_rfq_id').val(), 10);
-        postAjax('rfq-cancel.php', { id: id }, parentAjax)
-            .done(function(r) {
-                if (r.success) {
-                    $('#cancelRfqModal').modal('hide');
-                    showAlert(r.message || 'Zapytanie anulowane', 'success');
-                    location.reload();
-                } else { showAlert(r.error || 'Błąd', 'danger'); }
-            })
-            .fail(function() { showAlert('Błąd komunikacji z serwerem', 'danger'); });
-    });
-
-    $(document).on('click', '.send-rfq-btn', function() {
+    $(document).on('click', '.send-po-btn', function() {
         const id     = parseInt($(this).data('id'), 10);
         const num    = $(this).data('number');
         const vendor = $(this).data('vendor');
-        $('#send_rfq_id').val(id);
-        $('#send_rfq_body').html(
-            'Czy na pewno wysłać zapytanie <b>' + esc(num || ('#' + id)) + '</b> do <b>' + esc(vendor) + '</b>?'
+        $('#send_po_id').val(id);
+        $('#send_po_body').html(
+            'Czy na pewno wysłać zamówienie <b>' + esc(num || ('#' + id)) + '</b> do <b>' + esc(vendor) + '</b>?'
         );
-        $('#sendRfqModal').modal('show');
+        $('#sendPoModal').modal('show');
     });
-    $('#confirmSendRfq').on('click', function() {
-        const id = parseInt($('#send_rfq_id').val(), 10);
-        postAjax('rfq-send.php', { id: id }, parentAjax)
+    $('#confirmSendPo').on('click', function() {
+        const id = parseInt($('#send_po_id').val(), 10);
+        postAjax('order-send.php', { id: id }, parentAjax)
             .done(function(r) {
                 if (r.success) {
-                    $('#sendRfqModal').modal('hide');
-                    showAlert(r.message || 'Zapytanie wysłane', 'success');
+                    $('#sendPoModal').modal('hide');
+                    showAlert(r.message || 'Zamówienie wysłane', 'success');
                     location.reload();
                 } else { showAlert(r.error || 'Błąd', 'danger'); }
             })
             .fail(function() { showAlert('Błąd komunikacji z serwerem', 'danger'); });
     });
 
-    // ---------------------------------------------------------------
-    // Convert RFQ → PO.
-    // ---------------------------------------------------------------
-    $(document).on('click', '.convert-rfq-btn', function() {
-        const id  = parseInt($(this).data('id'), 10);
-        const num = $(this).data('number');
-        if (!confirm('Skonwertować zapytanie ' + (num || ('#' + id)) + ' na zamówienie?\n\nOperacja jest nieodwracalna — utworzy nowe zamówienie (PO/YYYY/NNNN) i oznaczy zapytanie jako "Skonwertowane".')) {
-            return;
-        }
-        postAjax('rfq-convert-to-po.php', { id: id }, parentAjax)
+    $(document).on('click', '.confirm-po-btn', function() {
+        const id     = parseInt($(this).data('id'), 10);
+        const num    = $(this).data('number');
+        const vendor = $(this).data('vendor');
+        $('#confirm_po_id').val(id);
+        $('#confirm_po_body').html(
+            'Czy na pewno oznaczyć zamówienie <b>' + esc(num || ('#' + id)) + '</b> jako potwierdzone przez <b>' + esc(vendor) + '</b>?'
+        );
+        $('#confirm_vendor_po_number').val('');
+        $('#confirmPoModal').modal('show');
+    });
+    $('#confirmConfirmPo').on('click', function() {
+        const id             = parseInt($('#confirm_po_id').val(), 10);
+        const vendorPoNumber = $('#confirm_vendor_po_number').val().trim();
+        if (!vendorPoNumber) { showAlert('Numer potwierdzenia u dostawcy jest wymagany', 'warning'); return; }
+        postAjax('order-confirm.php', { id: id, vendor_po_number: vendorPoNumber }, parentAjax)
             .done(function(r) {
                 if (r.success) {
-                    showAlert(r.message || 'Skonwertowano', 'success');
-                    // Jump straight to the new PO's edit page.
-                    window.location.href = 'http://' + ROOT_DIR + '/admin/purchase/orders/edit?id=' + r.po_id;
+                    $('#confirmPoModal').modal('hide');
+                    showAlert(r.message || 'Zamówienie potwierdzone', 'success');
+                    location.reload();
+                } else { showAlert(r.error || 'Błąd', 'danger'); }
+            })
+            .fail(function() { showAlert('Błąd komunikacji z serwerem', 'danger'); });
+    });
+
+    $(document).on('click', '.cancel-po-btn', function() {
+        const id  = parseInt($(this).data('id'), 10);
+        const num = $(this).data('number');
+        $('#cancel_po_id').val(id);
+        $('#cancel_po_body').html(
+            'Czy na pewno anulować zamówienie <b>' + esc(num || ('#' + id)) + '</b>?'
+            + '<div class="text-warning mt-2"><i class="bi bi-info-circle"></i> Jeśli są powiązane faktury lub dostawy, mogą wymagać ręcznego rozliczenia.</div>'
+        );
+        $('#cancelPoModal').modal('show');
+    });
+    $('#confirmCancelPo').on('click', function() {
+        const id = parseInt($('#cancel_po_id').val(), 10);
+        postAjax('order-cancel.php', { id: id }, parentAjax)
+            .done(function(r) {
+                if (r.success) {
+                    $('#cancelPoModal').modal('hide');
+                    showAlert(r.message || 'Zamówienie anulowane', 'success');
+                    location.reload();
                 } else { showAlert(r.error || 'Błąd', 'danger'); }
             })
             .fail(function() { showAlert('Błąd komunikacji z serwerem', 'danger'); });

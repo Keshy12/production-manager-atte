@@ -245,6 +245,44 @@
 - Send-guard refuses to send a draft RFQ with zero line items
 - Cancel-guard refuses to cancel an RFQ in `converted` state (terminal)
 
+#### Admin/Purchase/Orders/ — Procurement Module — PO Lifecycle (P3) (18 files)
+
+**Purpose:** Create, edit, and manage Purchase Orders (zamówienia). Two creation paths: **direct** ("Nowe zamówienie" form on the orders list page) or **via RFQ** ("Konwertuj na zamówienie" button on the RFQ edit page). State machine: `draft → sent → confirmed → partially_received → received`, plus terminal `cancelled`.
+
+**Key files (List page):**
+- `orders-view.php` — list of POs with state-coloured badges, "Nowe zamówienie" form (vendor selectpicker + date + comment), table columns: ID / Numer / Vendor / #Pozycji / Wartość (sum from `PurchaseOrderItemRepository::sumByPo`) / Stan / Data utworzenia / Akcje
+- `modals.php` — send / confirm / cancel modals; confirm modal has a `vendor_po_number` input
+- `order-{add,get,update,send,confirm,cancel}.php` — AJAX endpoints
+- `table-row-template.php`, `orders-view.js`
+
+**Key files (Edit page, `Edit/`):**
+- `edit-order-view.php` — header card (vendor, PO number, state badge, vendor PO number, expected_delivery_date, sent_at, confirmed_at, comment) + breadcrumb "← Powiązane zapytanie: {rfq_number}" linking back to the RFQ when `converted_from_rfq_id` is set; Send / Confirm / Cancel buttons per state; line-items table with vendor_part_no, part, producer, JM, qty, unit_price, **Wartość** (qty × unit_price), currency
+- `modals.php` — edit/delete-item modals + reused send/confirm/cancel
+- `order-item-{add,update,delete,get}.php` — AJAX; item operations only allowed in `draft` state
+- `search-vendor-parts.php` — LIKE-search over `list__vendor_part` filtered to the current PO's vendor (mirrors the RFQ edit version)
+- `edit-order-view.js`
+
+**Key Utils classes (added in P3, `Atte\Utils\Purchase\Order`):**
+- `PurchaseOrder` + `PurchaseOrderRepository` — header CRUD with joined `list__vendor.name` and `purchase__rfq.rfq_number`; `getByRfq()` for the reverse-of-conversion lookup; date normalisation helper
+- `PurchaseOrderItem` + `PurchaseOrderItemRepository` — line items with 5-table join; `sumByPo()` (COALESCE for the list page's Wartość column) and `sumQuantityReceivedByPo()` (P4-ready)
+- `PurchaseActionHandler` activations:
+  - `createDocument('po', $vendorId, $userId)` — allocates `PO/YYYY/NNNN`, creates an empty PO draft, commits
+  - `createPoFromRfq($rfqId, $userId)` — loads RFQ, copies items to PO items (carrying `unit_price`), transitions RFQ to `'converted'`, returns the new PO id
+  - `computeLastKnownPrice($vendorPartId, ?$currency)` — now queries `purchase__order_item` history (filtering out zero prices); PDOException wrapper remains for resilience
+
+**Database tables (added in P3):**
+- `purchase__order` — PO header with state machine and `converted_from_rfq_id` FK
+- `purchase__order_item` — PO line items; `quantity_received` stays 0 in P3, written by P4
+
+**Notable behaviors:**
+- `createDocument('po')` and `order-add.php` follow the same strict-signature / follow-up-update pattern as P2's RFQ path — date/comment are applied via a separate `update(...)` call rather than atomic inside `createDocument`
+- `order-send.php` enforces a non-empty PO before transitioning to `'sent'` (mirrors `sendRfq`)
+- `order-confirm.php` requires `vendor_po_number` (non-empty, trimmed) as part of the confirm step
+- RFQ→PO conversion requires `window.confirm()` in JS (not a styled modal — keeps the destructive irreversible action explicit)
+- `computeLastKnownPrice` filters out zero prices so "free" items don't pollute the price hint
+
+**Cross-cutting change in P3:** the existing RFQ edit page header (`Rfqs/Edit/edit-rfq-view.php`) gained a "Konwertuj na zamówienie" button visible when `state ∈ {draft, sent, responded}`. When the RFQ is already converted, a breadcrumb link to the linked PO edit page appears in the header instead. Wired up by `Rfqs/Edit/edit-rfq-view.js` via the new `Rfqs/rfq-convert-to-po.php` endpoint.
+
 ---
 
 ## 2. Archive/ — Historical Transfer Records (9 files)

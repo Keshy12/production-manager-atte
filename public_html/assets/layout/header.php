@@ -162,6 +162,7 @@ if(!isset($_SESSION['user_id']) && !isset($skip))
                                 <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/purchase/producers">Producenci</a>
                                 <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/purchase/vendor-parts">Artykuły u dostawców</a>
                                 <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/purchase/rfqs">Zapytania ofertowe</a>
+                                <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/purchase/orders">Zamówienia</a>
                             </div>
                         </div>
                         <div class="dropdown-divider"></div>

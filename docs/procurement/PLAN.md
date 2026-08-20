@@ -1,6 +1,6 @@
 # Plan — Procurement Module (Zakupy / Dostawcy)
 
-**Status:** Draft v1.2 — **Phase 2 complete and merged into `feature/component-procurement`**. RFQ lifecycle (draft → sent → responded | cancelled) is live under `Admin → Zakupy → Zapytania ofertowe`. `PurchaseActionHandler` orchestrator skeleton in place (PO conversion ships in P3).
+**Status:** Draft v1.3 — **Phase 3 complete and merged into `feature/component-procurement`**. PO lifecycle (draft → sent → confirmed | cancelled) is live under `Admin → Zakupy → Zamówienia`. `PurchaseActionHandler::createDocument('po')`, `createPoFromRfq()`, and `computeLastKnownPrice()` are all active. `quantity_received` writes ship in P4.
 **Branch:** `feature/component-procurement`
 **Owner:** TBD
 

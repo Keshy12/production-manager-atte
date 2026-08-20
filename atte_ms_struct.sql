@@ -831,6 +831,57 @@ CREATE TABLE `purchase__rfq_item` (
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `purchase__order`
+--
+
+CREATE TABLE `purchase__order` (
+  `id` int(11) NOT NULL,
+  `vendor_id` int(11) NOT NULL,
+  `state` enum('draft','sent','confirmed','partially_received','received','cancelled') NOT NULL DEFAULT 'draft',
+  `po_number` varchar(64) DEFAULT NULL,
+  `vendor_po_number` varchar(64) DEFAULT NULL,
+  `converted_from_rfq_id` int(11) DEFAULT NULL,
+  `expected_delivery_date` date DEFAULT NULL,
+  `sent_at` datetime DEFAULT NULL,
+  `confirmed_at` datetime DEFAULT NULL,
+  `created_by` int(11) NOT NULL,
+  `comment` text,
+  `created_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_po_vendor` (`vendor_id`),
+  KEY `idx_po_state` (`state`),
+  CONSTRAINT `fk_po_vendor` FOREIGN KEY (`vendor_id`) REFERENCES `list__vendor` (`id`),
+  CONSTRAINT `fk_po_user` FOREIGN KEY (`created_by`) REFERENCES `user` (`user_id`),
+  CONSTRAINT `fk_po_rfq` FOREIGN KEY (`converted_from_rfq_id`) REFERENCES `purchase__rfq` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Table structure for table `purchase__order_item`
+--
+-- NB: quantity_received stays 0 in P3; written by P4 (receiving).
+--
+
+CREATE TABLE `purchase__order_item` (
+  `id` int(11) NOT NULL,
+  `po_id` int(11) NOT NULL,
+  `vendor_part_id` int(11) NOT NULL,
+  `quantity` decimal(30,10) NOT NULL,
+  `quantity_unit_id` int(11) NOT NULL,
+  `unit_price` decimal(30,10) NOT NULL DEFAULT 0.0000000000,
+  `currency` varchar(8) NOT NULL DEFAULT 'PLN',
+  `quantity_received` decimal(30,10) NOT NULL DEFAULT 0.0000000000,
+  `comment` text,
+  PRIMARY KEY (`id`),
+  KEY `idx_poi_po` (`po_id`),
+  CONSTRAINT `fk_poi_po` FOREIGN KEY (`po_id`) REFERENCES `purchase__order` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_poi_vp` FOREIGN KEY (`vendor_part_id`) REFERENCES `list__vendor_part` (`id`),
+  CONSTRAINT `fk_poi_unit` FOREIGN KEY (`quantity_unit_id`) REFERENCES `part__unit` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `ref__flowpin_checkpoints`
 --
 
@@ -1598,6 +1649,18 @@ ALTER TABLE `purchase__rfq_item`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
+-- AUTO_INCREMENT for table `purchase__order`
+--
+ALTER TABLE `purchase__order`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `purchase__order_item`
+--
+ALTER TABLE `purchase__order_item`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
 -- AUTO_INCREMENT for table `ref__flowpin_update_progress`
 --
 ALTER TABLE `ref__flowpin_update_progress`
@@ -1832,6 +1895,22 @@ ALTER TABLE `purchase__rfq_item`
   ADD CONSTRAINT `fk_rfq_item_rfq` FOREIGN KEY (`rfq_id`) REFERENCES `purchase__rfq` (`id`) ON DELETE CASCADE,
   ADD CONSTRAINT `fk_rfq_item_unit` FOREIGN KEY (`quantity_unit_id`) REFERENCES `part__unit` (`id`),
   ADD CONSTRAINT `fk_rfq_item_vp` FOREIGN KEY (`vendor_part_id`) REFERENCES `list__vendor_part` (`id`);
+
+--
+-- Constraints for table `purchase__order`
+--
+ALTER TABLE `purchase__order`
+  ADD CONSTRAINT `fk_po_rfq` FOREIGN KEY (`converted_from_rfq_id`) REFERENCES `purchase__rfq` (`id`) ON DELETE SET NULL,
+  ADD CONSTRAINT `fk_po_user` FOREIGN KEY (`created_by`) REFERENCES `user` (`user_id`),
+  ADD CONSTRAINT `fk_po_vendor` FOREIGN KEY (`vendor_id`) REFERENCES `list__vendor` (`id`);
+
+--
+-- Constraints for table `purchase__order_item`
+--
+ALTER TABLE `purchase__order_item`
+  ADD CONSTRAINT `fk_poi_po` FOREIGN KEY (`po_id`) REFERENCES `purchase__order` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `fk_poi_unit` FOREIGN KEY (`quantity_unit_id`) REFERENCES `part__unit` (`id`),
+  ADD CONSTRAINT `fk_poi_vp` FOREIGN KEY (`vendor_part_id`) REFERENCES `list__vendor_part` (`id`);
 
 --
 -- Constraints for table `ref__valuepackage`

@@ -2,9 +2,8 @@
 use Atte\DB\MsaDB;
 use Atte\Utils\Purchase\Master\VendorRepository;
 use Atte\Utils\Purchase\Master\VendorPartRepository;
-use Atte\Utils\Purchase\Order\RFQRepository;
-use Atte\Utils\Purchase\Order\RFQItemRepository;
 use Atte\Utils\Purchase\Order\PurchaseOrderRepository;
+use Atte\Utils\Purchase\Order\PurchaseOrderItemRepository;
 
 if(!isset($_SESSION['isAdmin']) || $_SESSION['isAdmin'] !== true) {
     header("Location: http://".BASEURL."/");
@@ -14,55 +13,53 @@ if(!isset($_SESSION['isAdmin']) || $_SESSION['isAdmin'] !== true) {
 $MsaDB = MsaDB::getInstance();
 $id = (int)($_GET['id'] ?? 0);
 if ($id <= 0) {
-    header("Location: http://".BASEURL."/admin/purchase/rfqs");
+    header("Location: http://".BASEURL."/admin/purchase/orders");
     exit;
 }
 
-$rfqRepository = new RFQRepository($MsaDB);
-$rfq = $rfqRepository->getById($id);
-if ($rfq === null) {
-    header("Location: http://".BASEURL."/admin/purchase/rfqs");
+$poRepository = new PurchaseOrderRepository($MsaDB);
+$po = $poRepository->getById($id);
+if ($po === null) {
+    header("Location: http://".BASEURL."/admin/purchase/orders");
     exit;
 }
 
-$rfqItemRepository = new RFQItemRepository($MsaDB);
-$vendorRepository  = new VendorRepository($MsaDB);
+$poItemRepository    = new PurchaseOrderItemRepository($MsaDB);
+$vendorRepository    = new VendorRepository($MsaDB);
 $vendorPartRepository = new VendorPartRepository($MsaDB);
 
-$vendor = $vendorRepository->getById($rfq->vendorId);
-$vendorParts = $vendorPartRepository->getByVendor($rfq->vendorId, true);
-$items = $rfqItemRepository->getByRfq($rfq->id);
+$vendor      = $vendorRepository->getById($po->vendorId);
+$vendorParts = $vendorPartRepository->getByVendor($po->vendorId, true);
+$items       = $poItemRepository->getByPo($po->id);
+
+// Pre-compute per-row line total to keep the template tidy.
+foreach ($items as $item) {
+    $item->_lineTotal = $item->quantity * $item->unitPrice;
+}
 
 $stateLabels = [
-    'draft'      => ['Szkic',         'badge-secondary'],
-    'sent'       => ['Wysłane',       'badge-primary'],
-    'responded'  => ['Odpowiedź',     'badge-success'],
-    'cancelled'  => ['Anulowane',     'badge-danger'],
-    'converted'  => ['Skonwertowane', 'badge-info'],
+    'draft'              => ['Szkic',                'badge-secondary'],
+    'sent'               => ['Wysłane',              'badge-primary'],
+    'confirmed'          => ['Potwierdzone',         'badge-info'],
+    'partially_received' => ['Częściowo odebrane',   'badge-warning'],
+    'received'           => ['Odebrane',             'badge-success'],
+    'cancelled'          => ['Anulowane',            'badge-danger'],
 ];
-$stateInfo = $stateLabels[$rfq->state] ?? [$rfq->state, 'badge-secondary'];
-$canEdit   = $rfq->state === 'draft';
-
-// When the RFQ has been converted, look up the linked PO so we can
-// surface "Powiązane zamówienie: … →" on the header card.
-$linkedPo = null;
-if ($rfq->state === 'converted') {
-    $linkedPo = (new PurchaseOrderRepository($MsaDB))->getByRfq($rfq->id);
-}
+$stateInfo = $stateLabels[$po->state] ?? [$po->state, 'badge-secondary'];
+$canEdit   = $po->state === 'draft';
 
 include('modals.php');
 ?>
 
-<div id="rfqPageContext"
-     data-rfq-id="<?= $rfq->id ?>"
-     data-vendor-id="<?= $rfq->vendorId ?>"
-     data-can-edit="<?= $canEdit ? '1' : '0' ?>"
-     data-converted-po-id="<?= $linkedPo ? $linkedPo->id : '' ?>"></div>
+<div id="poPageContext"
+     data-po-id="<?= $po->id ?>"
+     data-vendor-id="<?= $po->vendorId ?>"
+     data-can-edit="<?= $canEdit ? '1' : '0' ?>"></div>
 
 <div class="container-fluid w-75 mt-3">
     <div class="row">
         <div class="col-12 my-2">
-            <h2>Edycja zapytania: <small class="text-muted"><?= htmlspecialchars($rfq->rfqNumber ?? ('#' . $rfq->id)) ?></small></h2>
+            <h2>Edycja zamówienia: <small class="text-muted"><?= htmlspecialchars($po->poNumber ?? ('#' . $po->id)) ?></small></h2>
             <div id="alertContainer"></div>
         </div>
     </div>
@@ -76,55 +73,63 @@ include('modals.php');
                         <span class="badge <?= $stateInfo[1] ?> ml-2"><?= htmlspecialchars($stateInfo[0]) ?></span>
                     </h5>
                     <div>
-                        <?php if (in_array($rfq->state, ['draft','sent','responded'], true)): ?>
-                            <button class="btn btn-sm btn-success convert-rfq-btn"
-                                    data-id="<?= $rfq->id ?>"
-                                    data-number="<?= htmlspecialchars($rfq->rfqNumber ?? '') ?>">
-                                <i class="bi bi-arrow-right-circle"></i> Konwertuj na zamówienie
-                            </button>
-                        <?php endif; ?>
-                        <?php if ($rfq->state === 'draft'): ?>
-                            <button class="btn btn-sm btn-primary send-rfq-btn"
-                                    data-id="<?= $rfq->id ?>"
-                                    data-number="<?= htmlspecialchars($rfq->rfqNumber ?? '') ?>"
+                        <?php if ($po->state === 'draft'): ?>
+                            <button class="btn btn-sm btn-primary send-po-btn"
+                                    data-id="<?= $po->id ?>"
+                                    data-number="<?= htmlspecialchars($po->poNumber ?? '') ?>"
                                     data-vendor="<?= htmlspecialchars($vendor ? $vendor->name : '') ?>">
                                 <i class="bi bi-send"></i> Wyślij
                             </button>
                         <?php endif; ?>
-                        <?php if (!in_array($rfq->state, ['cancelled','converted'], true)): ?>
-                            <button class="btn btn-sm btn-danger cancel-rfq-btn"
-                                    data-id="<?= $rfq->id ?>"
-                                    data-number="<?= htmlspecialchars($rfq->rfqNumber ?? '') ?>">
-                                <i class="bi bi-x-circle"></i> Anuluj
+                        <?php if ($po->state === 'sent'): ?>
+                            <button class="btn btn-sm btn-info confirm-po-btn"
+                                    data-id="<?= $po->id ?>"
+                                    data-number="<?= htmlspecialchars($po->poNumber ?? '') ?>"
+                                    data-vendor="<?= htmlspecialchars($vendor ? $vendor->name : '') ?>">
+                                <i class="bi bi-check-circle"></i> Potwierdź
                             </button>
                         <?php endif; ?>
-                        <?php if ($rfq->state === 'converted' && $linkedPo): ?>
-                            <a class="btn btn-sm btn-info"
-                               href="http://<?= BASEURL ?>/admin/purchase/orders/edit?id=<?= $linkedPo->id ?>">
-                                Powiązane zamówienie: <?= htmlspecialchars($linkedPo->poNumber ?? ('#' . $linkedPo->id)) ?> →
-                            </a>
+                        <?php if (in_array($po->state, ['draft','sent','confirmed'], true)): ?>
+                            <button class="btn btn-sm btn-danger cancel-po-btn"
+                                    data-id="<?= $po->id ?>"
+                                    data-number="<?= htmlspecialchars($po->poNumber ?? '') ?>">
+                                <i class="bi bi-x-circle"></i> Anuluj
+                            </button>
                         <?php endif; ?>
                     </div>
                 </div>
                 <div class="card-body">
                     <div class="row">
-                        <div class="col-md-4">
+                        <div class="col-md-3">
                             <strong>Numer:</strong>
-                            <?= htmlspecialchars($rfq->rfqNumber ?? '—') ?>
+                            <?= htmlspecialchars($po->poNumber ?? '—') ?>
                         </div>
-                        <div class="col-md-4">
-                            <strong>Oczekiwana data:</strong>
-                            <?= htmlspecialchars($rfq->expectedReplyDate ?? '—') ?>
+                        <div class="col-md-3">
+                            <strong>Numer u dostawcy:</strong>
+                            <?= htmlspecialchars($po->vendorPoNumber ?? '—') ?>
                         </div>
-                        <div class="col-md-4">
-                            <strong>Wysłano:</strong>
-                            <?= htmlspecialchars($rfq->sentAt ?? '—') ?>
+                        <div class="col-md-3">
+                            <strong>Oczekiwana dostawa:</strong>
+                            <?= htmlspecialchars($po->expectedDeliveryDate ?? '—') ?>
+                        </div>
+                        <div class="col-md-3">
+                            <strong>Wysłano / Potwierdzono:</strong>
+                            <?= htmlspecialchars($po->sentAt ? $po->sentAt : '—') ?>
+                            /
+                            <?= htmlspecialchars($po->confirmedAt ? $po->confirmedAt : '—') ?>
                         </div>
                     </div>
-                    <?php if ($rfq->comment): ?>
+                    <?php if ($po->convertedFromRfqId): ?>
+                        <hr>
+                        <i class="bi bi-arrow-left-right"></i>
+                        <a href="http://<?= BASEURL ?>/admin/purchase/rfqs/edit?id=<?= $po->convertedFromRfqId ?>">
+                            ← Powiązane zapytanie: <?= htmlspecialchars($po->convertedFromRfqNumber ?? ('#' . $po->convertedFromRfqId)) ?>
+                        </a>
+                    <?php endif; ?>
+                    <?php if ($po->comment): ?>
                         <hr>
                         <strong>Komentarz:</strong>
-                        <div><?= nl2br(htmlspecialchars($rfq->comment)) ?></div>
+                        <div><?= nl2br(htmlspecialchars($po->comment)) ?></div>
                     <?php endif; ?>
                 </div>
             </div>
@@ -137,13 +142,13 @@ include('modals.php');
             <div class="card">
                 <div class="card-header"><h5>Dodaj pozycję</h5></div>
                 <div class="card-body">
-                    <form id="addRfqItemForm">
-                        <input type="hidden" id="rfq_item_rfq_id" value="<?= $rfq->id ?>">
+                    <form id="addOrderItemForm">
+                        <input type="hidden" id="po_item_po_id" value="<?= $po->id ?>">
                         <div class="row">
-                            <div class="col-md-8">
+                            <div class="col-md-7">
                                 <div class="form-group">
                                     <label>Artykuł u dostawcy:</label>
-                                    <select id="rfq_item_vendor_part_select" class="selectpicker form-control" data-live-search="true" data-width="100%">
+                                    <select id="po_item_vendor_part_select" class="selectpicker form-control" data-live-search="true" data-width="100%">
                                         <option value="">Wybierz...</option>
                                         <?php foreach ($vendorParts as $vp): ?>
                                             <option value="<?= $vp->id ?>"
@@ -152,28 +157,28 @@ include('modals.php');
                                             </option>
                                         <?php endforeach; ?>
                                     </select>
-                                    <input type="hidden" id="rfq_item_vendor_part_id">
-                                    <input type="hidden" id="rfq_item_quantity_unit_id">
+                                    <input type="hidden" id="po_item_vendor_part_id">
+                                    <input type="hidden" id="po_item_quantity_unit_id">
                                 </div>
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-2">
                                 <div class="form-group">
-                                    <label for="rfq_item_quantity">Ilość:</label>
-                                    <input type="number" step="0.0001" min="0.0001" class="form-control" id="rfq_item_quantity" required>
+                                    <label for="po_item_quantity">Ilość:</label>
+                                    <input type="number" step="0.0001" min="0.0001" class="form-control" id="po_item_quantity" required>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="form-group">
+                                    <label for="po_item_unit_price">Cena jedn.:</label>
+                                    <input type="number" step="0.0001" min="0" class="form-control" id="po_item_unit_price" value="0">
                                 </div>
                             </div>
                         </div>
                         <div class="row">
                             <div class="col-md-4">
                                 <div class="form-group">
-                                    <label for="rfq_item_unit_price">Cena (opcjonalna):</label>
-                                    <input type="number" step="0.0001" min="0" class="form-control" id="rfq_item_unit_price">
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="form-group">
-                                    <label for="rfq_item_currency">Waluta:</label>
-                                    <select class="form-control" id="rfq_item_currency">
+                                    <label for="po_item_currency">Waluta:</label>
+                                    <select class="form-control" id="po_item_currency">
                                         <option value="PLN">PLN</option>
                                         <option value="EUR">EUR</option>
                                         <option value="USD">USD</option>
@@ -182,8 +187,8 @@ include('modals.php');
                             </div>
                         </div>
                         <div class="form-group">
-                            <label for="rfq_item_comment">Komentarz:</label>
-                            <textarea class="form-control" id="rfq_item_comment" rows="2"></textarea>
+                            <label for="po_item_comment">Komentarz:</label>
+                            <textarea class="form-control" id="po_item_comment" rows="2"></textarea>
                         </div>
                         <button type="submit" class="btn btn-primary">
                             <i class="bi bi-plus-circle"></i> Dodaj pozycję
@@ -207,7 +212,7 @@ include('modals.php');
                 <div class="card-body">
                     <?php if (empty($items)): ?>
                         <div class="alert alert-info">
-                            <i class="bi bi-info-circle"></i> Brak pozycji w tym zapytaniu.
+                            <i class="bi bi-info-circle"></i> Brak pozycji w tym zamówieniu.
                         </div>
                     <?php else: ?>
                         <div class="table-responsive">
@@ -220,7 +225,8 @@ include('modals.php');
                                     <th>Producent</th>
                                     <th>JM</th>
                                     <th>Ilość</th>
-                                    <th>Cena</th>
+                                    <th>Cena&nbsp;jedn.</th>
+                                    <th>Wartość</th>
                                     <th>Waluta</th>
                                     <th>Akcje</th>
                                 </tr>
@@ -234,7 +240,8 @@ include('modals.php');
                                         <td><?= htmlspecialchars($item->producerName ?? '—') ?></td>
                                         <td><?= htmlspecialchars($item->unitName ?? '—') ?></td>
                                         <td class="text-center"><?= htmlspecialchars(rtrim(rtrim(number_format($item->quantity, 4, '.', ''), '0'), '.')) ?></td>
-                                        <td class="text-center"><?= $item->unitPrice !== null ? htmlspecialchars(number_format($item->unitPrice, 4, '.', ' ')) : '—' ?></td>
+                                        <td class="text-right"><?= htmlspecialchars(number_format($item->unitPrice, 4, '.', ' ')) ?></td>
+                                        <td class="text-right"><?= htmlspecialchars(number_format($item->_lineTotal, 2, '.', ' ')) ?></td>
                                         <td class="text-center"><?= htmlspecialchars($item->currency) ?></td>
                                         <td>
                                             <?php if ($canEdit): ?>
@@ -262,4 +269,4 @@ include('modals.php');
     </div>
 </div>
 
-<script src="<?= asset('public_html/components/Admin/Purchase/Rfqs/Edit/edit-rfq-view.js') ?>"></script>
+<script src="<?= asset('public_html/components/Admin/Purchase/Orders/Edit/edit-order-view.js') ?>"></script>
