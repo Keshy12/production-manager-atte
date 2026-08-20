@@ -103,11 +103,7 @@ if(!isset($_SESSION['user_id']) && !isset($skip))
             <li class="nav-item">
                 <a class="nav-link btn btn-light skip" href="http://<?=BASEURL?>/transfer">Transfer</a>
             </li>
-            <?php if(isset($_SESSION['isAdmin']) && $_SESSION['isAdmin'] === true) :?>
-                <li class="nav-item">
-                    <a class="nav-link btn btn-light skip" href="http://<?=BASEURL?>/verification">Weryfikuj</a>
-                </li>
-            <?php endif; ?>
+
             <li class="nav-item">
                 <a class="nav-link btn btn-light skip" href="http://<?=BASEURL?>/commissions">Zlecenia</a>
             </li>

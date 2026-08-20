@@ -38,10 +38,7 @@ switch ($request) {
         includeWithVariables($headerDir, array('title' => 'Transfer'));
         require $componentsDir . '/transfer/transfer-view.php';
         break;
-    case 'verification':
-        includeWithVariables($headerDir, array('title' => 'Weryfikacja'));
-        require $componentsDir . '/verification/verification-view.php';
-        break;
+
     case 'archive':
         includeWithVariables($headerDir, array('title' => 'Archiwum'));
         require $componentsDir . '/archive/archive-view.php';
