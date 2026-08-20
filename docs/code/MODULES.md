@@ -441,32 +441,7 @@
 
 ---
 
-## 12. Verification/ — Quality Control (3 files)
-
-**Purpose:** Verify incoming/outgoing transfers. Quality control check before finalizing.
-
-**Key files:**
-- `verification-view.php` — Card-based verification interface
-- `verify.php` — AJAX endpoint for confirming verification
-- `get-verification-values.php` — AJAX endpoint for fetching pending verifications
-
-**Routes:** `/verification`
-
-**Key Utils classes:** None (pure AJAX endpoints)
-
-**Database tables:**
-- `inventory__sku`, `inventory__tht`, `inventory__smd`, `inventory__parts` — Transfer records awaiting verification
-- `inventory__input_type` — Operation type
-
-**Notable behaviors:**
-- Filter by device type (SKU, THT, SMD, Parts)
-- Shows comment field for each transfer
-- "Korekta?" checkbox allows quantity correction
-- Verified transfers update the system; corrections require comment
-
----
-
-## 13. Warehouse/ — Stock Views (4 files)
+## 12. Warehouse/ — Stock Views (4 files)
 
 **Purpose:** View current stock levels across all warehouses. Supports correction of stock quantities.
 
@@ -494,7 +469,7 @@
 
 ---
 
-## 14. tests/ — Development Test Pages (1 file)
+## 13. tests/ — Development Test Pages (1 file)
 
 **Purpose:** Developer test harness for debugging and testing.
 
@@ -521,7 +496,7 @@
 | `/production/tht` | Production/ (type=tht) |
 | `/production/smd` | Production/ (type=smd) |
 | `/transfer` | Transfer/ |
-| `/verification` | Verification/ |
+
 | `/archive` | Archive/ |
 | `/warehouse` | Warehouse/ |
 | `/commissions` | Commissions/ |

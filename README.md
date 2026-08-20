@@ -20,7 +20,7 @@ A comprehensive inventory management system built with vanilla PHP, jQuery, and 
 ### Advanced Features
 - **User Management**: Role-based access control with admin permissions
 - **Transfer System**: Inter-magazine inventory transfers
-- **Verification Module**: Quality control and verification workflows
+
 - **Archive System**: Historical data management
 - **Notification System**: Automated alerts and notifications
 - **Google Sheets Integration**: Data synchronization with external spreadsheets
@@ -113,7 +113,7 @@ mysql -u your_username -p your_database < atte_ms.sql
 ### Inventory Control
 - **Warehouse**: Stock level management and monitoring
 - **Transfer**: Inter-location inventory movement
-- **Verification**: Quality control workflows
+
 
 ### Administration
 - **BOM Management**: Bill of materials upload and editing
@@ -144,7 +144,7 @@ mysql -u your_username -p your_database < atte_ms.sql
 1. Monitor stock levels across all magazines
 2. Receive automatic alerts for low stock items
 3. Transfer inventory between locations
-4. Verify inventory accuracy through verification module
+4. Verify inventory accuracy through audit trail
 
 ## ⚙️ Configuration
 

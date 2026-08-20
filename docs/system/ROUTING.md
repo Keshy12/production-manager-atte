@@ -83,7 +83,7 @@ default:
 | `production/tht` | Produkcja THT | `public_html/components/production/production-view.php` | Sets `$_GET['type'] = 'tht'` (`index.php:16`). Auth-gated (session check inside component). |
 | `production/smd` | Produkcja SMD | `public_html/components/production/production-view.php` | Sets `$_GET['type'] = 'smd'` (`index.php:21`). Shares same component as THT. Auth-gated. |
 | `transfer` | Transfer | `public_html/components/transfer/transfer-view.php` | Auth-gated. |
-| `verification` | Weryfikacja | `public_html/components/verification/verification-view.php` | Auth-gated. |
+
 | `archive` | Archiwum | `public_html/components/archive/archive-view.php` | Auth-gated. |
 | `warehouse` | Magazyn | `public_html/components/warehouse/warehouse-view.php` | Auth-gated. |
 | `commissions` | Zlecenia | `public_html/components/commissions/commissions-view.php` | Auth-gated. |
@@ -131,7 +131,7 @@ The following routes have **no session check** in `index.php` — auth is delega
 
 - `production/tht`, `production/smd`
 - `transfer`
-- `verification`
+
 - `archive`
 - `warehouse`
 - `commissions`
