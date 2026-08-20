@@ -13,7 +13,7 @@ atte_ms_NEW/
 ├── docs/                    # Documentation (this folder)
 ├── public_html/              # Webroot — all HTTP-accessible files
 │   ├── assets/              # Static assets (img, js, layout)
-│   ├── components/          # 20 module directories (124 PHP files)
+│   ├── components/          # 19 module directories (121 PHP files)
 │   └── var/                 # Runtime storage (locks, logs)
 ├── src/
 │   ├── classes/             # PHP class library (Api, DB, Utils)
@@ -27,7 +27,7 @@ atte_ms_NEW/
 
 ## 2. `public_html/components/` — Module Directories
 
-All 20 modules listed with full path, purpose, and PHP file count. The `Admin/` and `Profile/` parents each contain sub-modules that are first-class modules in their own right (no nesting).
+All 19 modules listed with full path, purpose, and PHP file count. The `Admin/` and `Profile/` parents each contain sub-modules that are first-class modules in their own right (no nesting).
 
 | Module Path | Purpose                                              | Files |
 |-------------|------------------------------------------------------|-------|
@@ -48,7 +48,7 @@ All 20 modules listed with full path, purpose, and PHP file count. The `Admin/` 
 | `Profile/DevicesProduced/` | User's devices-produced view                         | 4 |
 | `Profile/Warehouse/` | User's own warehouse view                            | 5 |
 | `Transfer/` | Transfer workflow, component selection, confirmation | 7 |
-| `Verification/` | Production verification (get/set values)             | 3 |
+
 | `Warehouse/` | Admin/manager stock view, correct-warehouse          | 4 |
 | `tests/` | Test harness                                         | 1 |
 
@@ -111,7 +111,7 @@ Single switch-based router (no framework). All routes map to `public_html/compon
 | `/production/tht` | THT production entry |
 | `/production/smd` | SMD production entry |
 | `/transfer` | Transfer workflow |
-| `/verification` | Production verification |
+
 | `/archive` | Archived transfers |
 | `/warehouse` | Warehouse view |
 | `/commissions` | Commission management |

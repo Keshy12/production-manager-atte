@@ -79,6 +79,8 @@ Each `inventory__*` table is a **transfer/transaction ledger row** for a specifi
 | `inventory__smd` | `id`, `smd_id`, `smd_bom_id`, `sub_magazine_id`, `qty`, `commission_id`, `transfer_group_id`, `input_type_id`, `is_cancelled`, `cancelled_at`, `cancelled_by`, `timestamp`, `production_date`, `isVerified`, `verifiedBy` | Ledger entry for SMD device stock. |
 | `inventory__tht` | `id`, `tht_id`, `tht_bom_id`, `sub_magazine_id`, `qty`, `commission_id`, `transfer_group_id`, `input_type_id`, `is_cancelled`, `cancelled_at`, `cancelled_by`, `timestamp`, `production_date`, `isVerified`, `verifiedBy` | Ledger entry for THT device stock. |
 | `inventory__input_type` | `id`, `name` | Defines the type of stock movement (e.g. "production in", "transfer", "return"). |
+
+> **Audit-only columns:** `isVerified` and `verifiedBy` appear on all four `inventory__*` tables above. The `/verification` admin QC workflow was retired; these columns remain in the schema as inert historical records. Producers may still write `isVerified = 0` for new rows, but no UI transitions them to `1`. See `MODULES.md` for the workflow change history.
 | `inventory__transfer_groups` | `id`, `created_by`, `type_id`, `params`, `is_cancelled`, `cancelled_at`, `cancelled_by`, `created_at`, `flowpin_update_session_id` | Groups multiple `inventory__*` rows into a single atomic transfer operation. |
 
 ```sql
@@ -493,7 +495,7 @@ The `user.password` column stores SHA-256 hashes. The README notes this is a kno
 
 ---
 
-**Next up:** [MODULES.md](../code/MODULES.md) — Per-module guide; what's in each of the 20 module directories.
+**Next up:** [MODULES.md](../code/MODULES.md) — Per-module guide; what's in each of the 19 module directories.
 
 ---
 

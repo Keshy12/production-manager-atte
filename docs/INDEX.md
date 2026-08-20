@@ -17,7 +17,7 @@ Read these documents in order to ramp up efficiently:
 3. [ARCHITECTURE.md](./system/ARCHITECTURE.md) — High-level system design; how the pieces fit together
 4. [ROUTING.md](./system/ROUTING.md) — How HTTP requests are routed; adding new pages
 5. [DATABASE.md](./data/DATABASE.md) — MySQL schema reference; all tables and relationships
-6. [MODULES.md](./code/MODULES.md) — Per-module guide; what's in each of the 20 module directories
+6. [MODULES.md](./code/MODULES.md) — Per-module guide; what's in each of the 19 module directories
 7. [CLASSES.md](./code/CLASSES.md) — Domain class reference; core business logic classes
 8. [INTEGRATIONS.md](./operations/INTEGRATIONS.md) — Google Sheets sync and FlowPin integration details
 9. [CRON.md](./operations/CRON.md) — Scheduled jobs; what runs automatically and when
@@ -85,7 +85,7 @@ docs/
 → See [CLASSES.md](./code/CLASSES.md) — domain class map with purpose and key methods for each class under `src/classes/`.
 
 **Q: Where do I find module X?**
-→ See [MODULES.md](./code/MODULES.md) — directory listing of all 20 module folders under `public_html/components/`.
+→ See [MODULES.md](./code/MODULES.md) — directory listing of all 19 module folders under `public_html/components/`.
 
 ---
 
