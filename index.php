@@ -112,6 +112,21 @@ switch ($request) {
         includeWithVariables($headerDir, array('title' => 'Edycja Magazynów'));
         require $componentsDir . '/admin/magazines/edit/edit-magazines-view.php';
         break;
+    case 'admin/purchase/vendors':
+        requireAdmin();
+        includeWithVariables($headerDir, array('title' => 'Dostawcy'));
+        require $componentsDir . '/Admin/Purchase/Vendors/vendors-view.php';
+        break;
+    case 'admin/purchase/producers':
+        requireAdmin();
+        includeWithVariables($headerDir, array('title' => 'Producenci'));
+        require $componentsDir . '/Admin/Purchase/Producers/producers-view.php';
+        break;
+    case 'admin/purchase/vendor-parts':
+        requireAdmin();
+        includeWithVariables($headerDir, array('title' => 'Artykuły u dostawców'));
+        require $componentsDir . '/Admin/Purchase/VendorParts/vendor-parts-view.php';
+        break;
 
     case 'admin/synchronization/flowpin':
         requireAdmin();

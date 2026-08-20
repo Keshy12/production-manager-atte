@@ -166,6 +166,51 @@
 - Sheets sync exports: warehouse data, BOM_FLAT, BOM_FLAT_SKU, warehouse comparison
 - Import orders from Sheets creates commissions and transfers
 
+#### Admin/Purchase/ — Procurement Module — Master Data (P1) (34 files)
+
+**Purpose:** Manage vendors (dostawcy), their contact persons, producers (producenci), and the per-(vendor × producer × part) catalog row. This is Phase 1 of the procurement module — RFQ/PO/receipt flows come in later phases (see `docs/procurement/PLAN.md`).
+
+**Key files (Vendors):**
+- `Vendors/vendors-view.php` — Vendor list, add form, and detail modal (showing linked suppliers + VendorParts)
+- `Vendors/modals.php` — edit/delete/detail modals
+- `Vendors/vendor-{add,update,toggle-active,get,detail}.php` — AJAX endpoints
+- `Vendors/supplier-{add,update,toggle-active}.php` — AJAX for inline supplier management in the detail modal
+- `Vendors/vendor-part-{add,toggle-active}.php` — AJAX for inline VendorPart management in the detail modal
+- `Vendors/table-row-template.php`, `Vendors/vendors-view.js`
+
+**Key files (Producers):**
+- `Producers/producers-view.php`, `Producers/modals.php`
+- `Producers/producer-{add,update,toggle-active,get}.php`
+- `Producers/table-row-template.php`, `Producers/producers-view.js`
+
+**Key files (VendorParts):**
+- `VendorParts/vendor-parts-view.php` — list with 4 searchable FK dropdowns (vendor/producer/part/unit), `VendorParts/modals.php`
+- `VendorParts/vp-{add,update,toggle-active,get}.php`
+- `VendorParts/vp-search-{vendors,producers,parts,units}.php` — AJAX search endpoints for the FK dropdowns
+- `VendorParts/table-row-template.php`, `VendorParts/vendor-parts-view.js`
+
+**Key Utils classes (foundation, `Atte\Utils\Purchase\Master`):**
+- `Vendor` + `VendorRepository` — CRUD + `countVendorParts`, `countSuppliers`
+- `VendorSupplier` + `VendorSupplierRepository` — contact persons per vendor
+- `Producer` + `ProducerRepository` — manufacturer catalogue
+- `VendorPart` + `VendorPartRepository` — joined queries against `list__vendor`, `list__producer`, `list__parts`, `part__unit`; `existsForVendorAndPartNo()` for uniqueness
+
+**Database tables:**
+- `list__vendor` — vendors (name, address, lead time, is_active)
+- `list__vendor_supplier` — vendor contact persons (1-to-many → vendor, cascading)
+- `list__producer` — manufacturers
+- `list__vendor_part` — catalog row for (vendor × producer × part) triple; unique on `(vendor_id, vendor_part_no)`
+
+**One-time import helper:**
+- `src/cron/import-vendors-from-gsheet.php` — CLI importer that pulls vendor / contact / VendorPart data from the Google Sheets spreadsheet shared with `update-part-prices.php`. Idempotent, supports `--dry-run`. CLI bootstrap pattern (`require_once config.php`, bypass `config-google-sheets.php` because Hybridauth breaks under CLI) documented in the script header.
+
+**Notable behaviors:**
+- Soft-delete via `is_active` flag — never hard-delete referenced rows
+- Vendor detail modal pre-computes supplier + VendorPart counts to avoid N+1
+- `vendor_part_no` uniqueness check excludes the row being edited (so editing doesn't false-positive against itself)
+- VendorJM is auto-created in `part__unit` on first sight (auto-create flow lives in the import script, not the UI yet — that's P2)
+- `Admin/` directory is capitalized; case-sensitive on Linux
+
 ---
 
 ## 2. Archive/ — Historical Transfer Records (9 files)

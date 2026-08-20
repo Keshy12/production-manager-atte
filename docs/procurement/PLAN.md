@@ -1,6 +1,6 @@
 # Plan — Procurement Module (Zakupy / Dostawcy)
 
-**Status:** Draft v1.0 — re-read complete, all sections approved by the user. Ready for Phase 1 implementation on `feature/component-procurement`.
+**Status:** Draft v1.1 — **Phase 1 complete and merged into `feature/component-procurement`**. Schema in place, data imported from Google Sheets, admin UI for vendors/producers/vendor-parts is live under `Admin → Zakupy`.
 **Branch:** `feature/component-procurement`
 **Owner:** TBD
 

@@ -155,6 +155,14 @@ if(!isset($_SESSION['user_id']) && !isset($skip))
                                 <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/magazines/edit">Edytuj Magazyny</a>
                             </div>
                         </div>
+                        <div class="dropdown-submenu dropdown-submenu-left">
+                            <a class="dropdown-item dropdown-arrow sub-dropdown" href="#">Zakupy</a>
+                            <div class="dropdown-menu bg-light" style="right: 100%" aria-labelledby="submenu">
+                                <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/purchase/vendors">Dostawcy</a>
+                                <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/purchase/producers">Producenci</a>
+                                <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/purchase/vendor-parts">Artykuły u dostawców</a>
+                            </div>
+                        </div>
                         <div class="dropdown-divider"></div>
                         <a class="dropdown-item" href="http://<?=BASEURL?>/admin/synchronization/flowpin">
                             <i class="bi bi-cloud-download"></i> Dane z FlowPin
