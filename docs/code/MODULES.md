@@ -285,6 +285,26 @@
 
 ---
 
+#### Admin/Purchase/Cart/ — Procurement UX — Koszyk (4 files, v1.4)
+
+**Purpose:** Single entry point for creating new RFQ or PO documents. Replaces the inline "Nowe zapytanie" / "Nowe zamówienie" forms on the RFQ and PO list pages. User picks a vendor, adds items (with quantity + optional unit price + currency), then chooses "Utwórz zapytanie" or "Utwórz zamówienie".
+
+**Key files:**
+- `cart-view.php` — main page: vendor selectpicker + document type selector + date + comment + "Dodaj artykuł" form + items table + final action buttons
+- `cart-action.php` — POST handler that wraps document + item creation in a single transaction. Validates input, calls `PurchaseActionHandler::createDocument('rfq'|'po', vendorId, userId)`, creates the matching line items, redirects to the new document's edit page
+- `search-vendor-parts.php` — AJAX LIKE-search over `list__vendor_part` filtered to the selected vendor (mirrors the P2/P3 versions in RFQ/PO edit directories)
+- `cart-view.js` — client-side cart state (in-memory; lost on refresh per current spec — DB-backed cart is deferred)
+
+**Notable behaviors:**
+- The vendor-part picker is loaded via AJAX once the vendor is selected, then refilled on each keystroke (length ≥ 2)
+- Changing the vendor clears the cart (items reference a specific vendor)
+- Document-type toggle updates the date field label between "Oczekiwana data odpowiedzi" (RFQ) and "Oczekiwana data dostawy" (PO)
+- Currency defaults to PLN; EUR / USD selectable
+- The cart is **session-scoped, in-memory only** — refresh discards it. DB-backed persistence is planned for a future phase.
+- After successful create, the user is redirected straight to the new document's edit page (`/admin/purchase/rfqs/edit?id=…` or `/admin/purchase/orders/edit?id=…`)
+
+---
+
 ## 2. Archive/ — Historical Transfer Records (9 files)
 
 **Purpose:** View and manage historical transfer data. Supports filtering by device type, warehouse, user, operation type, Flowpin session, and date range. Allows cancelling of transferred items.

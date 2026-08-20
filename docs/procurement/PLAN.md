@@ -1,6 +1,6 @@
 # Plan — Procurement Module (Zakupy / Dostawcy)
 
-**Status:** Draft v1.3 — **Phase 3 complete and merged into `feature/component-procurement`**. PO lifecycle (draft → sent → confirmed | cancelled) is live under `Admin → Zakupy → Zamówienia`. `PurchaseActionHandler::createDocument('po')`, `createPoFromRfq()`, and `computeLastKnownPrice()` are all active. `quantity_received` writes ship in P4.
+**Status:** Draft v1.4 — **Phase 3 + Koszyk UX complete and merged into `feature/component-procurement`**. Cart-style entry point for new RFQs/POs is live under `Admin → Zakupy → Koszyk`. List-page filters and DB-backed cart persistence are deferred. `quantity_received` writes ship in P4.
 **Branch:** `feature/component-procurement`
 **Owner:** TBD
 
