@@ -51,14 +51,17 @@ $("#bomTypeSelect").change(function(){
 
 function showAdditionalFields(type)
 {
-    $("#laminateField, #versionField, #createNewBomFields, #isActiveField").hide();
+    $("#laminateField, #versionField, #createNewBomFields, #isActiveField, #clearCascadeBtn").hide();
+    $("#clearCascadeBtn").prop("disabled", true);
     if(type == "tht")
     {
-        $("#versionField").show();
+        $("#versionField, #clearCascadeBtn").show();
+        $("#clearCascadeBtn").prop("disabled", false);
     }
     else if(type == "smd")
     {
-        $("#versionField, #laminateField").show();
+        $("#versionField, #laminateField, #clearCascadeBtn").show();
+        $("#clearCascadeBtn").prop("disabled", false);
     }
 }
 
@@ -70,7 +73,6 @@ $("#versionSelect").change(function(){
 
 $("#list__device").change(function(){
     $("#editBomTBody, #alerts").empty();
-    $("#bomLoadingRow").show();
     $("#bomTotalPriceContainer").hide(); // Hide price on device change
     let bomType = $("#bomTypeSelect").val();
     let deviceId = $("#list__device").val();
@@ -312,7 +314,7 @@ function generateBomTable()
                     `+errorMessage+`
                 </div></td>
                 </tr>`;
-                $("#createNewBomFields, #isActiveField, #bomTotalPriceContainer").hide();
+                $("#createNewBomFields, #cloneBomBtn, #isActiveField, #bomTotalPriceContainer").hide();
                 // $("#editButtonsCol").hide(); // Remove this line
                 $("#alerts").append(resultAlert);
                 return;
@@ -324,9 +326,9 @@ function generateBomTable()
             $("#bomTotalPriceContainer").show();
 
             if (isEditable) {
-                $("#createNewBomFields, #isActiveField").show();
+                $("#createNewBomFields, #cloneBomBtn, #isActiveField").show();
             } else {
-                $("#createNewBomFields, #isActiveField").hide();
+                $("#createNewBomFields, #cloneBomBtn, #isActiveField").hide();
             }
             
             let hasMissingDefault = false;
@@ -765,6 +767,270 @@ $("#clearCascadeBtn").click(function(){
         $("#laminateSelect").empty().append($('#list__laminate_hidden option').clone());
         $("#laminateSelect").prop('disabled', false).selectpicker('refresh');
     }
+});
+
+
+// ---------- Clone BOM ----------
+function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+        return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+}
+
+function resetCloneModal(bomType) {
+    $("#cloneBomModal").attr('data-bom-type', bomType);
+
+    // Source device is populated from the same hidden list as the target selector
+    let $device = $("#cloneSourceDevice");
+    $device.empty().append($('#list__' + bomType + '_hidden option').clone());
+    $device.selectpicker('refresh').selectpicker('val', '');
+
+    // Reset cascade
+    $("#cloneSourceLaminate").empty().prop('disabled', true).selectpicker('refresh').selectpicker('val', '');
+    $("#cloneSourceVersion").empty().prop('disabled', true).selectpicker('refresh').selectpicker('val', '');
+    $("#cloneSourceLaminateGroup, #cloneSourceVersionGroup").hide();
+
+    // Reset preview / state
+    $("#cloneSourcePreview").hide().empty();
+    $("#cloneTargetWarning").hide().empty();
+    $("#cloneModalAlert").empty();
+    $("#cloneSourceBomId").val('');
+    $("#cloneBomConfirmBtn").prop('disabled', true);
+
+    // Show controls appropriate to the bom type
+    if (bomType === 'tht' || bomType === 'sku') {
+        $("#cloneSourceVersionGroup").show();
+    } else if (bomType === 'smd') {
+        $("#cloneSourceLaminateGroup, #cloneSourceVersionGroup").show();
+        $("#cloneSourceLaminate").empty().append($('#list__laminate_hidden option').clone());
+        $("#cloneSourceLaminate").prop('disabled', false).selectpicker('refresh').selectpicker('val', '');
+    }
+}
+
+function clearClonePreview() {
+    $("#cloneSourcePreview").hide().empty();
+    $("#cloneSourceBomId").val('');
+    $("#cloneBomConfirmBtn").prop('disabled', true);
+}
+
+function countTargetRows() {
+    return $("#editBomTBody tr").filter(function() {
+        let ct = $(this).find('button[data-component-type]').first().attr('data-component-type');
+        // Truthy filter — OUT_SMD / OUT_THT rows are rendered with data-component-type=""
+        return !!ct;
+    }).length;
+}
+
+$("#cloneBomBtn").click(function(){
+    let targetBomId = $("#createNewBomFields").attr('data-bom-id');
+    let bomType = $("#bomTypeSelect").val();
+    if (!targetBomId) {
+        $("#alerts").html(`<tr><td colspan="3"><div class="alert alert-danger" role="alert">
+            Najpierw wybierz docelowy BOM.
+        </div></td></tr>`);
+        return;
+    }
+    if (!bomType) {
+        $("#alerts").html(`<tr><td colspan="3"><div class="alert alert-danger" role="alert">
+            Najpierw wybierz typ BOM.
+        </div></td></tr>`);
+        return;
+    }
+    if (bomType === 'smd') {
+        // SMD rows are not editable on this page; nothing to clone into.
+        return;
+    }
+
+    resetCloneModal(bomType);
+    $("#cloneBomModal").attr('data-target-bom-id', targetBomId);
+
+    let targetRowCount = countTargetRows();
+    if (targetRowCount > 0) {
+        $("#cloneTargetWarning").html(
+            '<div class="alert alert-warning mb-0">Uwaga: aktualny BOM zostanie nadpisany (ma '
+            + targetRowCount + ' pozycji).</div>'
+        ).show();
+    }
+
+    $("#cloneBomModal").modal('show');
+});
+
+$("#cloneSourceDevice").change(function(){
+    clearClonePreview();
+    let bomType = $("#cloneBomModal").attr('data-bom-type');
+    let deviceId = $(this).val();
+    if (!deviceId) {
+        $("#cloneSourceVersion").empty().prop('disabled', true).selectpicker('refresh');
+        return;
+    }
+
+    if (bomType === 'tht' || bomType === 'sku') {
+        let possibleVersions = $("#cloneSourceDevice option[value='" + deviceId + "']").data("jsonversions") || {};
+        let $ver = $("#cloneSourceVersion");
+        $ver.empty();
+        let keys = Object.keys(possibleVersions);
+        if (keys.length === 1 && possibleVersions[keys[0]] == null) {
+            $ver.append('<option value="n/d">n/d</option>');
+        } else if (keys.length > 0) {
+            for (let vid in possibleVersions) {
+                if (!possibleVersions.hasOwnProperty(vid)) continue;
+                let vname = possibleVersions[vid][0];
+                $ver.append('<option value="' + vname + '">' + vname + '</option>');
+            }
+        } else {
+            $ver.append('<option value="n/d">n/d</option>');
+        }
+        $ver.prop('disabled', false).selectpicker('refresh').selectpicker('val', '');
+    } else if (bomType === 'smd') {
+        let jsonLaminates = $("#cloneSourceDevice option[value='" + deviceId + "']").data("jsonlaminates") || {};
+        let $lam = $("#cloneSourceLaminate");
+        $lam.empty();
+        for (let lamId in jsonLaminates) {
+            if (!jsonLaminates.hasOwnProperty(lamId)) continue;
+            let lamName = jsonLaminates[lamId][0];
+            let versions = JSON.stringify(jsonLaminates[lamId].versions || {});
+            $lam.append('<option value="' + lamId + '" data-jsonversions=\'' + versions + '\'>' + lamName + '</option>');
+        }
+        $lam.prop('disabled', false).selectpicker('refresh').selectpicker('val', '');
+        $("#cloneSourceVersion").empty().prop('disabled', true).selectpicker('refresh');
+    }
+});
+
+$("#cloneSourceLaminate").change(function(){
+    clearClonePreview();
+    let bomType = $("#cloneBomModal").attr('data-bom-type');
+    if (bomType !== 'smd') return;
+    let selectedLaminateId = $(this).val();
+    if (!selectedLaminateId) {
+        $("#cloneSourceVersion").empty().prop('disabled', true).selectpicker('refresh');
+        return;
+    }
+    let versions = $("#cloneSourceLaminate option[value='" + selectedLaminateId + "']").data("jsonversions") || {};
+    let $ver = $("#cloneSourceVersion");
+    $ver.empty();
+    for (let vid in versions) {
+        if (!versions.hasOwnProperty(vid)) continue;
+        let vname = versions[vid][0];
+        $ver.append('<option value="' + vname + '">' + vname + '</option>');
+    }
+    $ver.prop('disabled', false).selectpicker('refresh').selectpicker('val', '');
+});
+
+let clonePreviewXhr = null;
+
+$("#cloneSourceVersion").change(function(){
+    clearClonePreview();
+    let bomType  = $("#cloneBomModal").attr('data-bom-type');
+    let deviceId = $("#cloneSourceDevice").val();
+    let version  = $(this).val();
+    let laminateId = (bomType === 'smd') ? $("#cloneSourceLaminate").val() : '';
+    if (!bomType || !deviceId || version === null) {
+        return;
+    }
+
+    if (clonePreviewXhr && clonePreviewXhr.readyState !== 4) {
+        clonePreviewXhr.abort();
+    }
+
+    clonePreviewXhr = $.ajax({
+        type: "POST",
+        url: COMPONENTS_PATH + "/admin/bom/edit/get-bom-preview.php",
+        data: {
+            bomType: bomType,
+            deviceId: deviceId,
+            version: version,
+            laminateId: laminateId
+        },
+        success: function(data) {
+            if (!data.wasSuccessful) {
+                $("#cloneSourcePreview").html(
+                    '<div class="text-danger">' + escapeHtml(data.errorMessage || 'Nie udało się pobrać podglądu.') + '</div>'
+                ).show();
+                return;
+            }
+
+            $("#cloneSourceBomId").val(data.sourceBomId || '');
+            $("#cloneBomConfirmBtn").prop('disabled', !(data.sourceBomId && data.sourceBomId > 0));
+
+            let count = data.componentCount || 0;
+            let $content = $('<div></div>');
+            $content.append('<div><b>Ten BOM zawiera ' + count + ' pozycji</b></div>');
+            if (data.components && data.components.length > 0) {
+                let $list = $('<ul class="mb-0 mt-2 small"></ul>');
+                let maxList = 10;
+                for (let i = 0; i < Math.min(data.components.length, maxList); i++) {
+                    let c = data.components[i];
+                    $list.append('<li>' + escapeHtml(c.name) + ' <span class="text-muted">(' + escapeHtml(c.type) + ' &times;' + c.quantity + ')</span></li>');
+                }
+                if (data.components.length > maxList) {
+                    $list.append('<li class="text-muted">...i ' + (data.components.length - maxList) + ' więcej</li>');
+                }
+                $content.append($list);
+            }
+            $("#cloneSourcePreview").empty().append($content).show();
+        },
+        error: function(jqXHR, textStatus) {
+            if (textStatus === 'abort') return;
+            $("#cloneSourcePreview").html(
+                '<div class="text-danger">Błąd połączenia z serwerem.</div>'
+            ).show();
+        }
+    });
+});
+
+$("#cloneBomConfirmBtn").click(function(){
+    let bomType      = $("#cloneBomModal").attr('data-bom-type');
+    let targetBomId  = $("#cloneBomModal").attr('data-target-bom-id');
+    let sourceBomId  = $("#cloneSourceBomId").val();
+    if (!bomType || !targetBomId || !sourceBomId) {
+        $("#cloneModalAlert").html(
+            '<div class="alert alert-danger mb-0">Nie wybrano źródłowego BOM-u.</div>'
+        );
+        return;
+    }
+
+    let $btn = $(this);
+    $btn.prop('disabled', true);
+    $("#cloneModalAlert").empty();
+
+    $.ajax({
+        type: "POST",
+        url: COMPONENTS_PATH + "/admin/bom/edit/clone-bom.php",
+        data: {
+            bomType: bomType,
+            targetBomId: targetBomId,
+            sourceBomId: sourceBomId
+        },
+        success: function(data) {
+            if (data && data.wasSuccessful) {
+                $("#cloneBomModal").modal('hide');
+                let inserted = (data.insertedCount != null) ? data.insertedCount : 0;
+                let resultAlert = `<div class="alert alert-success alert-dismissible fade show" role="alert">
+                    Skopiowano ` + inserted + ` pozycji z BOM źródłowego.
+                    <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>`;
+                $("#ajaxResult").append(resultAlert);
+                setTimeout(function() {
+                    $(".alert-success").alert('close');
+                }, 2000);
+                generateBomTable();
+            } else {
+                let msg = (data && data.errorMessage) ? data.errorMessage : 'Nie udało się sklonować BOM.';
+                $("#cloneModalAlert").html(
+                    '<div class="alert alert-danger mb-0">' + escapeHtml(msg) + '</div>'
+                );
+                $btn.prop('disabled', false);
+            }
+        },
+        error: function() {
+            $("#cloneModalAlert").html(
+                '<div class="alert alert-danger mb-0">Błąd połączenia z serwerem.</div>'
+            );
+            $btn.prop('disabled', false);
+        }
+    });
 });
 
 

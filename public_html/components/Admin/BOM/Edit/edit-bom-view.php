@@ -57,6 +57,10 @@ include('modals.php');
             data-width="500px" class="selectpicker" data-live-search="true" disabled>
     </select>
     <button id="nextBom" class="btn btn-light mx-2" disabled><b>&rsaquo;</b></button>
+    <button id="clearCascadeBtn" class="btn btn-light mx-2" type="button"
+            title="Wyczyść kaskadę" aria-label="Wyczyść kaskadę" disabled>
+        <i class="bi bi-trash"></i>
+    </button>
 </div>
 
 <div class="d-flex justify-content-center">
@@ -69,13 +73,15 @@ include('modals.php');
         <select id="versionSelect" data-width="100px"
                 data-title="Wersja..." class="selectpicker" disabled>
         </select>
-        <button id="clearCascadeBtn" class="btn btn-outline-secondary btn-sm mx-2" type="button">Wyczyść</button>
     </span>
 </div>
 
-<div class="d-flex justify-content-center">
-    <button id="createNewBomFields" class="btn btn-outline-secondary mt-4" style="display:none;">
+<div class="d-flex justify-content-center flex-wrap">
+    <button id="createNewBomFields" class="btn btn-outline-secondary mt-4 mx-2" style="display:none;">
         Dodaj nową pozycję
+    </button>
+    <button id="cloneBomBtn" class="btn btn-outline-info mt-4 mx-2" style="display:none;">
+        Klonuj z innego BOM
     </button>
 </div>
 
