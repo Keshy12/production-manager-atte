@@ -31,6 +31,7 @@ $MsaDB = MsaDB::getInstance();
 $sql = "
     SELECT vp.id,
            vp.vendor_part_no,
+           vp.producer_part_no,
            vp.vendor_jm_id,
            vp.full_pack_quantity,
            p.name       AS part_name,
