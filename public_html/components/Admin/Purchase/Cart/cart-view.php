@@ -1,6 +1,5 @@
 <?php
 use Atte\DB\MsaDB;
-use Atte\Utils\Purchase\Master\VendorRepository;
 
 if(!isset($_SESSION['isAdmin']) || $_SESSION['isAdmin'] !== true) {
     header("Location: http://".BASEURL."/");
@@ -8,8 +7,51 @@ if(!isset($_SESSION['isAdmin']) || $_SESSION['isAdmin'] !== true) {
 }
 
 $MsaDB = MsaDB::getInstance();
-$vendorRepository = new VendorRepository($MsaDB);
-$vendors = $vendorRepository->getAll(true);   // active only — used to populate the vendor-first picker
+
+// Vendors with their parts_ids (only active vendors, only active VendorParts)
+$vendorsWithParts = $MsaDB->query(
+    "SELECT v.id, v.name, GROUP_CONCAT(vp.parts_id) AS parts_ids
+       FROM `list__vendor` v
+       LEFT JOIN `list__vendor_part` vp ON vp.vendor_id = v.id AND vp.is_active = 1
+      WHERE v.is_active = 1
+      GROUP BY v.id, v.name
+      ORDER BY v.name ASC"
+);
+
+// Parts with their vendors_ids
+$partsWithVendors = $MsaDB->query(
+    "SELECT p.id, p.name, GROUP_CONCAT(vp.vendor_id) AS vendors_ids
+       FROM `list__parts` p
+       LEFT JOIN `list__vendor_part` vp ON vp.parts_id = p.id AND vp.is_active = 1
+      WHERE p.isActive = 1
+      GROUP BY p.id, p.name
+      ORDER BY p.name ASC"
+);
+
+// VendorParts lookup index — keyed by "vendorId:partId" → list of {id, vendor_part_no,
+// producer_part_no, full_pack_quantity, vendor_jm_id, unit_name, vendor_name}
+$vpRows = $MsaDB->query(
+    "SELECT vp.id, vp.vendor_id, vp.parts_id, vp.vendor_part_no,
+            vp.producer_part_no, vp.vendor_jm_id, vp.full_pack_quantity,
+            v.name AS vendor_name, u.name AS unit_name
+       FROM `list__vendor_part` vp
+       JOIN `list__vendor` v ON vp.vendor_id = v.id
+       JOIN `part__unit`    u ON vp.vendor_jm_id = u.id
+      WHERE vp.is_active = 1 AND v.is_active = 1"
+);
+$vendorPartsIndex = [];
+foreach ($vpRows as $r) {
+    $key = $r['vendor_id'] . ':' . $r['parts_id'];
+    $vendorPartsIndex[$key][] = [
+        'id'                 => (int)$r['id'],
+        'vendor_part_no'     => $r['vendor_part_no'],
+        'producer_part_no'   => $r['producer_part_no'],
+        'vendor_jm_id'       => (int)$r['vendor_jm_id'],
+        'unit_name'          => $r['unit_name'],
+        'full_pack_quantity' => (float)$r['full_pack_quantity'],
+        'vendor_name'        => $r['vendor_name'],
+    ];
+}
 ?>
 
 <div class="container-fluid w-75 mt-3">
@@ -17,106 +59,74 @@ $vendors = $vendorRepository->getAll(true);   // active only — used to populat
         <div class="col-12 my-2">
             <h2><i class="bi bi-cart3"></i> Koszyk zakupowy</h2>
             <p class="text-muted">
-                Wybierz <strong>część</strong> i dobierz dostawcę z najlepszą ceną,
-                albo <strong>dostawcę</strong> i wybierz pozycje z jego katalogu.
-                Koszyk grupuje pozycje po dostawcy &mdash; każde zamówienie/zapytanie
-                obejmuje tylko jednego dostawcę. Koszyk jest tymczasowy &mdash; po odświeżeniu
-                strony zostaje wyczyszczony.
+                Wybierz <strong>dostawcę</strong> i <strong>część</strong> &mdash; selektory
+                filtrują się nawzajem, więc widzisz tylko kombinacje, które istnieją w katalogu.
+                Jeśli dostawca ma kilka numerów katalogowych dla tej samej części, wybierz właściwy
+                z listy &bdquo;Numer u dostawcy&rdquo;. Koszyk grupuje pozycje po dostawcy
+                &mdash; każde zamówienie/zapytanie obejmuje tylko jednego dostawcę. Koszyk
+                jest tymczasowy &mdash; po odświeżeniu strony zostaje wyczyszczony.
             </p>
             <div id="alertContainer"></div>
         </div>
     </div>
 
-    <!-- ===== A. Tryb: wg części ===== -->
+    <!-- ===== Wybierz dostawcę i część (cascading pickers) ===== -->
     <div class="card mb-3">
-        <div class="card-header"><h5 class="mb-0">A. Wybierz część</h5></div>
+        <div class="card-header"><h5 class="mb-0">Wybierz dostawcę i część</h5></div>
         <div class="card-body">
-            <label for="partPicker">Część:</label>
-            <select id="partPicker" class="selectpicker form-control" data-live-search="true" data-width="100%">
-                <option value="">Wyszukaj część...</option>
-            </select>
-            <small id="partSummary" class="text-muted form-text mt-2"></small>
-        </div>
-    </div>
-
-    <div class="card mb-3" id="vendorListCard" style="display:none">
-        <div class="card-header"><h5 class="mb-0">Dostępni dostawcy</h5></div>
-        <div class="card-body">
-            <div class="table-responsive">
-                <table class="table table-striped table-hover">
-                    <thead class="thead-light">
-                        <tr>
-                            <th>Dostawca</th>
-                            <th>Numer u dostawcy</th>
-                            <th>Numer u producenta</th>
-                            <th>JM</th>
-                            <th>Pełne opak.</th>
-                            <th>Ostatnia cena</th>
-                            <th style="width: 110px;">Ilość</th>
-                            <th style="width: 110px;">Akcje</th>
-                        </tr>
-                    </thead>
-                    <tbody id="vendorListBody"></tbody>
-                </table>
+            <div class="row">
+                <div class="col-md-6">
+                    <label for="vendorSelect">Dostawca:</label>
+                    <select id="vendorSelect" class="selectpicker form-control" data-live-search="true" data-width="100%">
+                        <option value="">Wybierz dostawcę...</option>
+                        <?php foreach ($vendorsWithParts as $v): ?>
+                            <option value="<?= (int)$v['id'] ?>"
+                                    data-name="<?= htmlspecialchars($v['name']) ?>"
+                                    data-parts='<?= htmlspecialchars(json_encode($v['parts_ids']), ENT_QUOTES) ?>'>
+                                <?= htmlspecialchars($v['name']) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label for="partSelect">Część:</label>
+                    <select id="partSelect" class="selectpicker form-control" data-live-search="true" data-width="100%">
+                        <option value="">Wybierz część...</option>
+                        <?php foreach ($partsWithVendors as $p): ?>
+                            <option value="<?= (int)$p['id'] ?>"
+                                    data-name="<?= htmlspecialchars($p['name']) ?>"
+                                    data-vendors='<?= htmlspecialchars(json_encode($p['vendors_ids']), ENT_QUOTES) ?>'>
+                                <?= htmlspecialchars($p['name']) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
             </div>
-            <div id="vendorListEmpty" class="alert alert-warning" style="display:none">
-                Brak aktywnych dostawców dla wybranej części. Dodaj nowego dostawcę w
-                <a href="/admin/purchase/vendor-parts">Admin → Zakupy → Artykuły u dostawców</a>.
-            </div>
-        </div>
-    </div>
-
-    <!-- ===== B. Tryb: wg dostawcy ===== -->
-    <div class="card mb-3">
-        <div class="card-header"><h5 class="mb-0">B. Wybierz dostawcę</h5></div>
-        <div class="card-body">
-            <label for="vendorPicker">Dostawca:</label>
-            <select id="vendorPicker" class="selectpicker form-control" data-live-search="true" data-width="100%">
-                <option value="">Wybierz dostawcę...</option>
-                <?php foreach ($vendors as $v): ?>
-                    <option value="<?= $v->id ?>"
-                        data-name="<?= htmlspecialchars($v->name) ?>"
-                        data-lead-time="<?= (int)$v->leadTimeDays ?>">
-                        <?= htmlspecialchars($v->name) ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-            <small id="vendorSummary" class="text-muted form-text mt-2"></small>
-        </div>
-    </div>
-
-    <div class="card mb-3" id="vendorCatalogCard" style="display:none">
-        <div class="card-header"><h5 class="mb-0">Katalog dostawcy</h5></div>
-        <div class="card-body">
-            <div class="table-responsive">
-                <table class="table table-striped table-hover">
-                    <thead class="thead-light">
-                        <tr>
-                            <th>Część</th>
-                            <th>Numer u dostawcy</th>
-                            <th>Numer u producenta</th>
-                            <th>JM</th>
-                            <th>Pełne opak.</th>
-                            <th>Ostatnia cena</th>
-                            <th style="width: 110px;">Ilość</th>
-                            <th style="width: 110px;">Akcje</th>
-                        </tr>
-                    </thead>
-                    <tbody id="vendorCatalogBody"></tbody>
-                </table>
-            </div>
-            <div id="vendorCatalogEmpty" class="alert alert-warning" style="display:none">
-                Ten dostawca nie ma jeszcze żadnych artykułów w katalogu. Dodaj je w
-                <a href="/admin/purchase/vendor-parts">Admin → Zakupy → Artykuły u dostawców</a>.
+            <div class="row mt-3" id="vendorPartRow" style="display:none">
+                <div class="col-md-6">
+                    <label for="vendorPartNoSelect">Numer u dostawcy:</label>
+                    <select id="vendorPartNoSelect" class="selectpicker form-control" data-width="100%">
+                        <!-- populated by JS once vendor + part picked -->
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="cartQty">Ilość:</label>
+                    <input type="number" id="cartQty" class="form-control" min="0.0001" step="0.0001" value="1">
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <button type="button" id="addToCartBtn" class="btn btn-success btn-block" disabled>
+                        <i class="bi bi-plus-circle"></i> Dodaj do koszyka
+                    </button>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- ===== C. Koszyk (grupowany po dostawcy) ===== -->
+    <!-- ===== Koszyk (grupowany po dostawcy) ===== -->
     <div class="card mb-3" id="cartCard" style="display:none">
         <div class="card-header">
             <h5 class="mb-0">
-                C. Koszyk
+                Koszyk
                 <span class="badge badge-info" id="cartCount">0</span>
                 <button type="button" id="clearCartBtn" class="btn btn-sm btn-outline-secondary float-right">
                     <i class="bi bi-trash"></i> Wyczyść koszyk
@@ -132,5 +142,6 @@ $vendors = $vendorRepository->getAll(true);   // active only — used to populat
         (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http')
         . '://' . BASEURL . '/admin/purchase/cart'
     ); ?>;
+    var VENDOR_PARTS_INDEX = <?= json_encode($vendorPartsIndex, JSON_UNESCAPED_UNICODE) ?>;
 </script>
 <script src="<?= asset('public_html/components/Admin/Purchase/Cart/cart-view.js') ?>"></script>

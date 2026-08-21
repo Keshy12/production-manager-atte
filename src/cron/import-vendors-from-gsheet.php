@@ -443,9 +443,12 @@ for ($i = 1; $i < count($rawVariantValues); $i++) {
         if ($updateExisting && $existing['producerPartNo'] === null && $producerPartNo) {
             // Backfill: existing row has NULL producer_part_no, sheet has a value.
             // Safe to update — won't overwrite any manually-entered data.
-            dbFetchOne($MsaDB, "UPDATE `list__vendor_part` SET producer_part_no = ? WHERE id = ?", [$producerPartNo, $existing['id']]);
-            // (dbFetchOne is used here purely as a thin execute wrapper; we don't
-            // need the returned row, only side effect.)
+            $MsaDB->update(
+                'list__vendor_part',
+                ['producer_part_no' => $producerPartNo],
+                'id',
+                $existing['id']
+            );
             $partStats['backfilled']++;
             logLine("  [vp] backfilled producer_part_no=$producerPartNo on vendor=$vendorNm part=$partNo vendorPartNo=$vendorPartNo");
         } else {

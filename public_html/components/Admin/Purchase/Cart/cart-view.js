@@ -1,18 +1,18 @@
-// Koszyk — part-first OR vendor-first discovery, both feed a shared
-// cart grouped by vendor (client-side state).
+// Koszyk — cascading vendor↔part picker that lands items in a
+// shared cart grouped by vendor (client-side state).
 //
 // Flow:
-//   A. Pick a Part from the picker → "Dostępni dostawcy" table
-//      refreshes with every VendorPart for that part (last unit
-//      price from PO history + active RFQ/PO counts). Set qty +
-//      "Dodaj do koszyka" per row.
-//   B. Pick a Vendor → their full catalog (every active VendorPart
-//      for that vendor) loads the same way. Same add-to-cart
-//      path.
-//   Either flow lands the item in the same shared cart,
-//   grouped by vendor_id. Each vendor group has its own
-//   "Utwórz zapytanie" / "Utwórz zamówienie" buttons — submits
-//   only that group's items to POST /cart-action.php.
+//   1. User picks a vendor (or a part). The other picker disables
+//      every option that wouldn't match the picked side.
+//   2. Once both are picked, the "Numer u dostawcy" dropdown
+//      populates with every VendorPart for that combo (same part
+//      can be listed under several vendor_part_no by one vendor —
+//      e.g. alternates). The dropdown defaults to the first one.
+//   3. User picks qty and clicks "Dodaj do koszyka". Same item
+//      (same vendor_part_id) merges in qty instead of duplicating.
+//   4. Each vendor group in the cart has its own "Utwórz zapytanie"
+//      / "Utwórz zamówienie" buttons — submits only that group's
+//      items to POST /cart-action.php.
 
 (function () {
     'use strict';
@@ -26,20 +26,16 @@
     };
 
     // DOM refs
-    var $partPicker        = $('#partPicker');
-    var $partSummary       = $('#partSummary');
-    var $vendorListCard    = $('#vendorListCard');
-    var $vendorListBody    = $('#vendorListBody');
-    var $vendorListEmpty   = $('#vendorListEmpty');
-    var $vendorPicker      = $('#vendorPicker');
-    var $vendorSummary     = $('#vendorSummary');
-    var $vendorCatalogCard = $('#vendorCatalogCard');
-    var $vendorCatalogBody = $('#vendorCatalogBody');
-    var $vendorCatalogEmpty= $('#vendorCatalogEmpty');
-    var $cartCard          = $('#cartCard');
-    var $cartBody          = $('#cartBody');
-    var $cartCount         = $('#cartCount');
-    var $clearBtn          = $('#clearCartBtn');
+    var $vendorSelect        = $('#vendorSelect');
+    var $partSelect          = $('#partSelect');
+    var $vendorPartRow       = $('#vendorPartRow');
+    var $vendorPartNoSelect  = $('#vendorPartNoSelect');
+    var $cartQty             = $('#cartQty');
+    var $addToCartBtn        = $('#addToCartBtn');
+    var $cartCard            = $('#cartCard');
+    var $cartBody            = $('#cartBody');
+    var $cartCount           = $('#cartCount');
+    var $clearBtn            = $('#clearCartBtn');
 
     // ---- helpers ----
 
@@ -104,135 +100,104 @@
         return docType === 'rfq' ? '⚠' : '📦';
     }
 
-    function loadParts(query) {
-        $.ajax({
-            url: PURCHASE_CART_BASE + '/parts-search.php',
-            method: 'GET',
-            data: { q: query || '' },
-            dataType: 'json'
-        }).done(function (rows) {
-            $partPicker.find('option').not(':first').remove();
-            (rows || []).forEach(function (r) {
-                $partPicker.append(
-                    $('<option></option>')
-                        .attr('value', r.id)
-                        .attr('data-name', r.name)
-                        .attr('data-jm-name', r.jm_name || '')
-                        .attr('data-jm-id', r.jm_id || 0)
-                        .text(r.label || r.name)
-                );
-            });
-            refreshSelectpicker($partPicker);
-        }).fail(function (xhr) {
-            setAlert('Błąd wyszukiwania części: HTTP ' + xhr.status, 'danger');
-        });
+    function safeJsonArray(raw) {
+        if (!raw) return [];
+        try {
+            var v = JSON.parse(raw);
+            return Array.isArray(v) ? v : [];
+        } catch (e) { return []; }
     }
 
-    function loadVendorsForPart(partId) {
-        $vendorListBody.empty();
-        $vendorListEmpty.hide();
-        $vendorListCard.show();
-        $.ajax({
-            url: PURCHASE_CART_BASE + '/find-vendors-for-part.php',
-            method: 'GET',
-            data: { parts_id: partId },
-            dataType: 'json'
-        }).done(function (rows) {
-            renderVendorTable(rows || []);
-        }).fail(function (xhr) {
-            setAlert('Błąd ładowania dostawców: HTTP ' + xhr.status, 'danger');
+    // ---- cascading-filter logic ----
+
+    function applyVendorFilter() {
+        var vendorId = parseInt($vendorSelect.val(), 10) || null;
+        var partsIds = [];
+        if (vendorId) {
+            var $opt = $vendorSelect.find('option:selected');
+            partsIds = safeJsonArray($opt.attr('data-parts'));
+        }
+        var partId = parseInt($partSelect.val(), 10) || null;
+
+        $partSelect.find('option').each(function () {
+            var id = parseInt($(this).val(), 10) || 0;
+            if (id === 0) return; // skip the placeholder
+            var disabled = (vendorId && partsIds.indexOf(id) === -1);
+            $(this).prop('disabled', disabled);
         });
+        refreshSelectpicker($partSelect);
+        // If currently selected part is now disabled, clear it
+        if (partId && $partSelect.find('option[value="' + partId + '"]').prop('disabled')) {
+            $partSelect.val('');
+            refreshSelectpicker($partSelect);
+        }
     }
 
-    function renderVendorTable(rows) {
-        if (!rows || rows.length === 0) {
-            $vendorListBody.empty();
-            $vendorListEmpty.show();
+    function applyPartFilter() {
+        var partId = parseInt($partSelect.val(), 10) || null;
+        var vendorsIds = [];
+        if (partId) {
+            var $opt = $partSelect.find('option:selected');
+            vendorsIds = safeJsonArray($opt.attr('data-vendors'));
+        }
+        var vendorId = parseInt($vendorSelect.val(), 10) || null;
+
+        $vendorSelect.find('option').each(function () {
+            var id = parseInt($(this).val(), 10) || 0;
+            if (id === 0) return;
+            var disabled = (partId && vendorsIds.indexOf(id) === -1);
+            $(this).prop('disabled', disabled);
+        });
+        refreshSelectpicker($vendorSelect);
+        if (vendorId && $vendorSelect.find('option[value="' + vendorId + '"]').prop('disabled')) {
+            $vendorSelect.val('');
+            refreshSelectpicker($vendorSelect);
+        }
+    }
+
+    function refreshVendorPartRow() {
+        var vendorId = parseInt($vendorSelect.val(), 10) || null;
+        var partId = parseInt($partSelect.val(), 10) || null;
+        if (!vendorId || !partId) {
+            $vendorPartRow.hide();
+            $addToCartBtn.prop('disabled', true);
+            $vendorPartNoSelect.empty();
+            refreshSelectpicker($vendorPartNoSelect);
             return;
         }
-        $vendorListEmpty.hide();
-        var html = '';
-        rows.forEach(function (v) {
-            var inCart = cart.items.some(function (i) { return i.vendor_part_id === v.id; });
-            html += '<tr data-vp-id="' + v.id + '"' +
-                ' data-vendor-id="' + v.vendor_id + '"' +
-                ' data-vendor-name="' + escapeHtml(v.vendor_name) + '"' +
-                ' data-vendor-part-no="' + escapeHtml(v.vendor_part_no) + '"' +
-                ' data-producer-part-no="' + escapeHtml(v.producer_part_no || '') + '"' +
-                ' data-part-name="' + escapeHtml(v.part_name) + '"' +
-                ' data-producer-name="' + escapeHtml(v.producer_name) + '"' +
-                ' data-unit-name="' + escapeHtml(v.unit_name) + '"' +
-                ' data-vendor-jm-id="' + v.vendor_jm_id + '"' +
-                ' data-full-pack-quantity="' + v.full_pack_quantity + '"' +
-                ' data-last-unit-price="' + (v.last_unit_price !== null ? v.last_unit_price : '') + '">' +
-                '<td>' + escapeHtml(v.vendor_name) + (inCart ? ' <span class="badge badge-info">w koszyku</span>' : '') + '</td>' +
-                '<td>' + escapeHtml(v.vendor_part_no) + '</td>' +
-                '<td>' + escapeHtml(v.producer_part_no || '—') + '</td>' +
-                '<td>' + escapeHtml(v.unit_name) + '</td>' +
-                '<td>' + formatQty(v.full_pack_quantity) + '</td>' +
-                '<td>' + formatPrice(v.last_unit_price) + '</td>' +
-                '<td><input type="number" class="form-control form-control-sm vp-qty" value="1" min="0.0001" step="0.0001"></td>' +
-                '<td><button type="button" class="btn btn-sm btn-success vp-add-btn"' + (inCart ? ' disabled' : '') + '>Dodaj</button></td>' +
-                '</tr>';
-        });
-        $vendorListBody.html(html);
-    }
-
-    function loadVendorCatalog(vendorId) {
-        $vendorCatalogBody.empty();
-        $vendorCatalogEmpty.hide();
-        $vendorCatalogCard.show();
-        $.ajax({
-            url: PURCHASE_CART_BASE + '/vendor-catalog.php',
-            method: 'GET',
-            data: { vendor_id: vendorId },
-            dataType: 'json'
-        }).done(function (rows) {
-            renderVendorCatalog(rows || [], vendorId);
-        }).fail(function (xhr) {
-            setAlert('Błąd ładowania katalogu: HTTP ' + xhr.status, 'danger');
-        });
-    }
-
-    function renderVendorCatalog(rows, vendorId) {
-        // For the catalog view, vendor_id + vendor_name come from
-        // the picker, not from each row (avoids duplicating).
-        var vendorName = $vendorPicker.find('option:selected').data('name') || '';
-        if (!rows || rows.length === 0) {
-            $vendorCatalogBody.empty();
-            $vendorCatalogEmpty.show();
+        var key = vendorId + ':' + partId;
+        var options = VENDOR_PARTS_INDEX[key] || [];
+        if (options.length === 0) {
+            $vendorPartRow.show();
+            $addToCartBtn.prop('disabled', true);
+            $vendorPartNoSelect.html('<option value="" disabled>Brak katalogu u tego dostawcy dla tej części</option>');
+            refreshSelectpicker($vendorPartNoSelect);
             return;
         }
-        $vendorCatalogEmpty.hide();
         var html = '';
-        rows.forEach(function (v) {
-            // Ensure vendor_id is set (server should already include it)
-            v.vendor_id = vendorId;
-            v.vendor_name = vendorName;
-            var inCart = cart.items.some(function (i) { return i.vendor_part_id === v.id; });
-            html += '<tr data-vp-id="' + v.id + '"' +
-                ' data-vendor-id="' + vendorId + '"' +
-                ' data-vendor-name="' + escapeHtml(vendorName) + '"' +
-                ' data-vendor-part-no="' + escapeHtml(v.vendor_part_no) + '"' +
-                ' data-producer-part-no="' + escapeHtml(v.producer_part_no || '') + '"' +
-                ' data-part-name="' + escapeHtml(v.part_name) + '"' +
-                ' data-producer-name="' + escapeHtml(v.producer_name) + '"' +
-                ' data-unit-name="' + escapeHtml(v.unit_name) + '"' +
-                ' data-vendor-jm-id="' + v.vendor_jm_id + '"' +
-                ' data-full-pack-quantity="' + v.full_pack_quantity + '"' +
-                ' data-last-unit-price="' + (v.last_unit_price !== null ? v.last_unit_price : '') + '">' +
-                '<td>' + escapeHtml(v.part_name) + (inCart ? ' <span class="badge badge-info">w koszyku</span>' : '') + '</td>' +
-                '<td>' + escapeHtml(v.vendor_part_no) + '</td>' +
-                '<td>' + escapeHtml(v.producer_part_no || '—') + '</td>' +
-                '<td>' + escapeHtml(v.unit_name) + '</td>' +
-                '<td>' + formatQty(v.full_pack_quantity) + '</td>' +
-                '<td>' + formatPrice(v.last_unit_price) + '</td>' +
-                '<td><input type="number" class="form-control form-control-sm vp-qty" value="1" min="0.0001" step="0.0001"></td>' +
-                '<td><button type="button" class="btn btn-sm btn-success vp-add-btn"' + (inCart ? ' disabled' : '') + '>Dodaj</button></td>' +
-                '</tr>';
+        options.forEach(function (vp) {
+            var prod = vp.producer_part_no
+                ? ' <small class="text-muted">(prod: ' + escapeHtml(vp.producer_part_no) + ')</small>'
+                : '';
+            html += '<option value="' + escapeHtml(vp.vendor_part_no) + '"' +
+                ' data-vp-id="' + vp.id + '"' +
+                ' data-producer-part-no="' + escapeHtml(vp.producer_part_no || '') + '"' +
+                ' data-vendor-jm-id="' + vp.vendor_jm_id + '"' +
+                ' data-unit-name="' + escapeHtml(vp.unit_name) + '"' +
+                ' data-full-pack-quantity="' + vp.full_pack_quantity + '">' +
+                escapeHtml(vp.vendor_part_no) + prod +
+                ' <small class="text-muted">— ' + escapeHtml(vp.unit_name) + ' · opak. ' + vp.full_pack_quantity + '</small>' +
+                '</option>';
         });
-        $vendorCatalogBody.html(html);
+        $vendorPartNoSelect.html(html);
+        refreshSelectpicker($vendorPartNoSelect);
+        $vendorPartNoSelect.selectpicker('val', options[0].vendor_part_no);
+        refreshSelectpicker($vendorPartNoSelect);
+        $vendorPartRow.show();
+        $addToCartBtn.prop('disabled', false);
     }
+
+    // ---- active-docs / cart rendering ----
 
     function loadActiveDocs() {
         if (cart.items.length === 0) {
@@ -283,7 +248,7 @@
                 '<div class="d-flex justify-content-between align-items-center mb-2">' +
                 '<h6 class="mb-0">' + escapeHtml(group.name) +
                     ' <small class="text-muted">(' + group.items.length + ' poz. · łącznie ' + formatPrice(groupValue) + ')</small>' +
-                '</h6>' +
+                    '</h6>' +
                 '</div>' +
                 '<div class="table-responsive">' +
                 '<table class="table table-sm table-striped">' +
@@ -310,7 +275,7 @@
                 docs.forEach(function (d) {
                     docBadges += '<span class="badge ' + stateBadgeClass(d.state) + ' mr-1" title="' +
                         stateBadgeLabel(d.state) + ' · ' + formatQty(d.quantity) + ' · ' + formatPrice(d.unit_price) + '">' +
-                        (d.doc_type === 'rfq' ? '⚠' : '📦') + ' ' + escapeHtml(d.number) + ' · ' + stateBadgeLabel(d.state) +
+                        docTypeIcon(d.doc_type) + ' ' + escapeHtml(d.number) + ' · ' + stateBadgeLabel(d.state) +
                         '</span>';
                 });
                 if (!docBadges) {
@@ -344,35 +309,48 @@
         $cartBody.html(html);
     }
 
-    function addVendorPartToCart($row) {
-        var qty = parseFloat($row.find('.vp-qty').val());
-        if (isNaN(qty) || qty <= 0) {
+    function addCurrentSelectionToCart() {
+        if ($addToCartBtn.prop('disabled')) return;
+        var vendorId = parseInt($vendorSelect.val(), 10) || null;
+        var partId = parseInt($partSelect.val(), 10) || null;
+        var $opt = $vendorPartNoSelect.find('option:selected');
+        var vendorPartId = parseInt($opt.attr('data-vp-id'), 10) || null;
+        var vendorPartNo = $vendorPartNoSelect.val();
+        var producerPartNo = $opt.attr('data-producer-part-no') || null;
+        var qty = parseFloat($cartQty.val());
+        if (!vendorId || !partId || !vendorPartId || isNaN(qty) || qty <= 0) {
             setAlert('Podaj prawidłową ilość.', 'warning');
             return;
         }
-        var data = $row.data();
-        var existing = cart.items.find(function (i) { return i.vendor_part_id === data.vpId; });
+        var $vendorOpt = $vendorSelect.find('option:selected');
+        var $partOpt = $partSelect.find('option:selected');
+        var existing = cart.items.find(function (i) {
+            return i.vendor_part_id === vendorPartId;
+        });
         if (existing) {
             existing.quantity += qty;
         } else {
             cart.items.push({
-                vendor_part_id    : data.vpId,
-                vendor_id         : data.vendorId,
-                vendor_name       : data.vendorName,
-                vendor_part_no    : data.vendorPartNo,
-                producer_part_no  : data.producerPartNo || null,
-                part_name         : data.partName,
-                producer_name     : data.producerName,
-                unit_name         : data.unitName,
-                vendor_jm_id      : data.vendorJmId,
-                full_pack_quantity: data.fullPackQuantity,
+                vendor_part_id    : vendorPartId,
+                vendor_id         : vendorId,
+                vendor_name       : $vendorOpt.attr('data-name') || '',
+                vendor_part_no    : vendorPartNo,
+                producer_part_no  : producerPartNo || null,
+                part_name         : $partOpt.attr('data-name') || '',
+                producer_name     : '',
+                unit_name         : $opt.attr('data-unit-name') || '',
+                vendor_jm_id      : parseInt($opt.attr('data-vendor-jm-id'), 10) || null,
+                full_pack_quantity: parseFloat($opt.attr('data-full-pack-quantity')) || null,
                 quantity          : qty,
-                unit_price        : data.lastUnitPrice !== '' ? data.lastUnitPrice : null,
+                unit_price        : null,
                 currency          : 'PLN'
             });
         }
-        // Mark the source row as "w koszyku" by replacing its Add button.
-        $row.find('.vp-add-btn').prop('disabled', true).text('Dodano');
+        // Reset qty + hide the picker row so the user sees the cart update
+        $cartQty.val('1');
+        $vendorPartRow.hide();
+        $vendorPartNoSelect.val('');
+        refreshSelectpicker($vendorPartNoSelect);
         renderCart();
         loadActiveDocs();
         setAlert('Dodano pozycję do koszyka.', 'success');
@@ -427,46 +405,18 @@
 
     // ---- event handlers ----
 
-    // Part picker: change reloads vendor list
-    $partPicker.on('change', function () {
-        var partId = parseInt($(this).val(), 10) || null;
-        if (!partId) {
-            $vendorListCard.hide();
-            $partSummary.text('');
-            return;
-        }
-        var partLabel = $(this).find('option:selected').data('name') || '';
-        $partSummary.text('Ładowanie dostawców dla: ' + partLabel + '…');
-        loadVendorsForPart(partId);
+    $vendorSelect.on('change', function () {
+        applyVendorFilter();
+        refreshVendorPartRow();
     });
 
-    // Part picker live-search: event delegation on a static ancestor
-    // so selectpicker-internal DOM changes don't break the handler.
-    $partPicker.closest('.card-body').on('input keyup', '.bs-searchbox input', function () {
-        var q = $(this).val();
-        if (q.length < 2) return;
-        loadParts(q);
+    $partSelect.on('change', function () {
+        applyPartFilter();
+        refreshVendorPartRow();
     });
 
-    // Vendor-first picker: change loads that vendor's catalog
-    $vendorPicker.on('change', function () {
-        var vendorId = parseInt($(this).val(), 10) || null;
-        if (!vendorId) {
-            $vendorCatalogCard.hide();
-            $vendorSummary.text('');
-            return;
-        }
-        var vendorName = $(this).find('option:selected').data('name') || '';
-        $vendorSummary.text('Ładowanie katalogu: ' + vendorName + '…');
-        loadVendorCatalog(vendorId);
-    });
-
-    // Add row (works for both part-driven and vendor-driven tables)
-    $vendorListBody.on('click', '.vp-add-btn', function () {
-        addVendorPartToCart($(this).closest('tr'));
-    });
-    $vendorCatalogBody.on('click', '.vp-add-btn', function () {
-        addVendorPartToCart($(this).closest('tr'));
+    $addToCartBtn.on('click', function () {
+        addCurrentSelectionToCart();
     });
 
     // Remove cart item
@@ -491,12 +441,6 @@
         cart.items = [];
         cart.activeDocs = {};
         renderCart();
-        // Re-mark vendor rows (drop the disabled "Dodano" state) by
-        // re-loading both views if they're visible.
-        var partId = parseInt($partPicker.val(), 10);
-        if (partId) loadVendorsForPart(partId);
-        var vendorId = parseInt($vendorPicker.val(), 10);
-        if (vendorId) loadVendorCatalog(vendorId);
         setAlert('Koszyk wyczyszczony.', 'info');
     });
 
