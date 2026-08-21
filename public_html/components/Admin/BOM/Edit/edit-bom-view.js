@@ -35,6 +35,7 @@ $(document).ready(function() {
 $("#bomTypeSelect").change(function(){
     $("#list__device, #versionSelect, #laminateSelect, #editBomTBody, #alerts").empty();
     $("#bomTotalPriceContainer").hide(); // Hide price on type change
+    $("#cloneBomBtn").hide(); // Hide clone button on type change (SMD has no editable target)
     $('#list__'+this.value+'_hidden option').clone()
                                             .appendTo('#list__device');
     $('#list__device, #previousBom, #nextBom').prop("disabled", false)
