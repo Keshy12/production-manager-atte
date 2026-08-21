@@ -25,36 +25,38 @@ $vendors = $vendorRepository->getAll(true);   // active only
         </div>
     </div>
 
-    <!-- ===== Step 1: Parametry dokumentu (compact form) ===== -->
+    <!-- ===== Step 1: Parametry dokumentu (full-size form) ===== -->
     <div class="row" id="step1ParamsCard">
         <div class="col-12">
             <div class="card mb-3">
-                <div class="card-header py-2"><h6 class="mb-0">1. Parametry dokumentu</h6></div>
-                <div class="card-body py-3">
-                    <div class="form-row">
-                        <div class="form-group col-md-6 mb-2">
-                            <label class="small mb-1" for="cartVendor">Dostawca</label>
-                            <select id="cartVendor" class="selectpicker form-control form-control-sm" data-live-search="true" data-width="100%">
-                                <option value="">Wybierz...</option>
-                                <?php foreach ($vendors as $v): ?>
-                                    <option value="<?= $v->id ?>"><?= htmlspecialchars($v->name) ?></option>
-                                <?php endforeach; ?>
-                            </select>
+                <div class="card-header"><h5 class="mb-0">1. Parametry dokumentu</h5></div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-8">
+                            <div class="form-group">
+                                <label for="cartVendor">Dostawca:</label>
+                                <select id="cartVendor" class="selectpicker form-control" data-live-search="true" data-width="100%">
+                                    <option value="">Wybierz dostawcę...</option>
+                                    <?php foreach ($vendors as $v): ?>
+                                        <option value="<?= $v->id ?>"><?= htmlspecialchars($v->name) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
                         </div>
-                        <div class="form-group col-md-3 mb-2">
-                            <label class="small mb-1" for="cartDate">Termin</label>
-                            <input type="date" id="cartDate" class="form-control form-control-sm">
-                        </div>
-                        <div class="form-group col-md-3 mb-2 d-flex align-items-end">
-                            <button id="nextBtn" class="btn btn-primary btn-sm btn-block">
-                                Dalej <i class="bi bi-arrow-right"></i>
-                            </button>
+                        <div class="col-md-4">
+                            <div class="form-group">
+                                <label for="cartDate">Termin (data odpowiedzi / dostawy):</label>
+                                <input type="date" id="cartDate" class="form-control">
+                            </div>
                         </div>
                     </div>
-                    <div class="form-group mb-0">
-                        <label class="small mb-1" for="cartComment">Komentarz (opcjonalnie)</label>
-                        <input type="text" id="cartComment" class="form-control form-control-sm" placeholder="Wpisz komentarz...">
+                    <div class="form-group">
+                        <label for="cartComment">Komentarz (opcjonalnie):</label>
+                        <textarea id="cartComment" class="form-control" rows="2"></textarea>
                     </div>
+                    <button id="nextBtn" class="btn btn-primary">
+                        Dalej <i class="bi bi-arrow-right"></i>
+                    </button>
                 </div>
             </div>
         </div>
