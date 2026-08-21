@@ -55,13 +55,15 @@ function showAdditionalFields(type)
     $("#clearCascadeBtn").prop("disabled", true);
     if(type == "tht")
     {
-        $("#versionField, #clearCascadeBtn").show();
-        $("#clearCascadeBtn").prop("disabled", false);
+        $("#versionField").show();
     }
     else if(type == "smd")
     {
-        $("#versionField, #laminateField, #clearCascadeBtn").show();
-        $("#clearCascadeBtn").prop("disabled", false);
+        $("#versionField, #laminateField").show();
+    }
+    if(type == "sku" || type == "tht" || type == "smd")
+    {
+        $("#clearCascadeBtn").show().prop("disabled", false);
     }
 }
 
@@ -755,7 +757,7 @@ $("#nextBom").click(function(){
 
 $("#clearCascadeBtn").click(function(){
     let bomType = $("#bomTypeSelect").val();
-    if(bomType !== 'smd' && bomType !== 'tht') return;
+    if(bomType !== 'smd' && bomType !== 'tht' && bomType !== 'sku') return;
 
     $("#editBomTBody, #alerts").empty();
     $("#bomTotalPriceContainer").hide();
