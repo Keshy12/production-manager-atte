@@ -791,7 +791,9 @@ function resetCloneModal(bomType) {
     $("#cloneSourceLaminateGroup, #cloneSourceVersionGroup").hide();
 
     // Reset preview / state
-    $("#cloneSourcePreview").hide().empty();
+    $("#cloneSourcePreview").hide();
+    $("#cloneSourceCount").text('0');
+    $("#cloneSourceTBody").empty();
     $("#cloneTargetWarning").hide().empty();
     $("#cloneModalAlert").empty();
     $("#cloneSourceBomId").val('');
@@ -808,9 +810,127 @@ function resetCloneModal(bomType) {
 }
 
 function clearClonePreview() {
-    $("#cloneSourcePreview").hide().empty();
+    $("#cloneSourcePreview").hide();
+    $("#cloneSourceCount").text('0');
+    $("#cloneSourceTBody").empty();
     $("#cloneSourceBomId").val('');
     $("#cloneBomConfirmBtn").prop('disabled', true);
+}
+
+// State for the preview fetch — used by requestClonePreview to abort in-flight
+// requests so a stale response can't override the latest one.
+let clonePreviewXhr = null;
+
+// Render a successful preview into the static #cloneSourceTBody / #cloneSourceCount
+// markup. Always targets the existing elements — never re-creates them — so the
+// table structure survives across re-opens and across error/success transitions.
+function renderClonePreviewRows(components, count) {
+    $("#cloneSourceCount").text(count);
+    let $tbody = $("#cloneSourceTBody");
+    $tbody.empty();
+    if (components.length > 0) {
+        for (let i = 0; i < components.length; i++) {
+            let c = components[i];
+            let $row = $('<tr></tr>');
+            $row.append(
+                '<td class="text-left">' +
+                    '<b>' + escapeHtml(c.name) + '</b><br>' +
+                    '<small class="text-muted">' + escapeHtml(c.description || '') + '</small>' +
+                '</td>'
+            );
+            $row.append('<td>' + escapeHtml(String(c.quantity)) + '</td>');
+            $tbody.append($row);
+        }
+    } else {
+        $tbody.append('<tr><td colspan="2" class="text-muted">Brak pozycji</td></tr>');
+    }
+    $("#cloneSourcePreview").show();
+}
+
+// Same idea as renderClonePreviewRows, but for the failure case — replaces the
+// table body with a single error row and resets the count to 0. Keeps the table
+// markup intact so a successful retry can re-target it.
+function renderClonePreviewError(message) {
+    $("#cloneSourceCount").text('0');
+    $("#cloneSourceTBody").empty().append(
+        '<tr><td colspan="2" class="text-danger">' + escapeHtml(message) + '</td></tr>'
+    );
+    $("#cloneSourcePreview").show();
+}
+
+// Fetch the source-BOM preview from get-bom-preview.php. Aborts any in-flight
+// request first. Called from the device, laminate, and version change handlers.
+function requestClonePreview(params) {
+    let bomType    = params.bomType;
+    let deviceId   = params.deviceId;
+    let version    = params.version;
+    let laminateId = (params.laminateId !== undefined && params.laminateId !== null) ? params.laminateId : '';
+    if (!bomType || !deviceId || version === null) return;
+
+    if (clonePreviewXhr && clonePreviewXhr.readyState !== 4) {
+        clonePreviewXhr.abort();
+    }
+
+    clonePreviewXhr = $.ajax({
+        type: "POST",
+        url: COMPONENTS_PATH + "/admin/bom/edit/get-bom-preview.php",
+        data: {
+            bomType: bomType,
+            deviceId: deviceId,
+            version: version,
+            laminateId: laminateId
+        },
+        success: function(data) {
+            if (!data.wasSuccessful) {
+                renderClonePreviewError(data.errorMessage || 'Nie udało się pobrać podglądu.');
+                return;
+            }
+
+            $("#cloneSourceBomId").val(data.sourceBomId || '');
+            $("#cloneBomConfirmBtn").prop('disabled', !(data.sourceBomId && data.sourceBomId > 0));
+
+            renderClonePreviewRows(data.components || [], data.componentCount || 0);
+        },
+        error: function(jqXHR, textStatus) {
+            if (textStatus === 'abort') return;
+            renderClonePreviewError('Błąd połączenia z serwerem.');
+        }
+    });
+}
+
+// Populate a version select from a versions dict (key -> [name], or null for the
+// "n/d" sentinel). If there's exactly one option — including the "n/d" fallback —
+// pre-select it and trigger 'change' so the preview fetch fires immediately.
+function populateCloneVersionSelect($ver, versions) {
+    $ver.empty();
+    let keys = Object.keys(versions || {});
+    let autoSelectValue = null;
+
+    if (keys.length === 1) {
+        let v = versions[keys[0]];
+        if (v == null) {
+            $ver.append('<option value="n/d">n/d</option>');
+            autoSelectValue = 'n/d';
+        } else {
+            let vname = v[0];
+            $ver.append('<option value="' + vname + '">' + vname + '</option>');
+            autoSelectValue = vname;
+        }
+    } else if (keys.length > 1) {
+        for (let vid in versions) {
+            if (!versions.hasOwnProperty(vid)) continue;
+            let vname = versions[vid][0];
+            $ver.append('<option value="' + vname + '">' + vname + '</option>');
+        }
+    } else {
+        $ver.append('<option value="n/d">n/d</option>');
+        autoSelectValue = 'n/d';
+    }
+    $ver.prop('disabled', false).selectpicker('refresh').selectpicker('val', '');
+    if (autoSelectValue !== null) {
+        $ver.selectpicker('val', autoSelectValue);
+        $ver.trigger('change');
+    }
 }
 
 function countTargetRows() {
@@ -865,23 +985,29 @@ $("#cloneSourceDevice").change(function(){
     }
 
     if (bomType === 'tht' || bomType === 'sku') {
-        let possibleVersions = $("#cloneSourceDevice option[value='" + deviceId + "']").data("jsonversions") || {};
-        let $ver = $("#cloneSourceVersion");
-        $ver.empty();
-        let keys = Object.keys(possibleVersions);
-        if (keys.length === 1 && possibleVersions[keys[0]] == null) {
-            $ver.append('<option value="n/d">n/d</option>');
-        } else if (keys.length > 0) {
-            for (let vid in possibleVersions) {
-                if (!possibleVersions.hasOwnProperty(vid)) continue;
-                let vname = possibleVersions[vid][0];
-                $ver.append('<option value="' + vname + '">' + vname + '</option>');
-            }
+        // Treat THT devices whose name doesn't start with "THT." as versionless
+        // — mirrors the main page's `generateBomTable()` rule. Hide the version
+        // picker and fire the preview directly with `version = 'n/d'` so the
+        // modal still works without forcing the user through a meaningless
+        // cascade.
+        let deviceName = $("#cloneSourceDevice option:selected").text().trim();
+        let isVersionlessTht = (bomType === 'tht') && !deviceName.startsWith("THT.");
+        if (isVersionlessTht) {
+            $("#cloneSourceVersionGroup").hide();
+            $("#cloneSourceVersion").empty().prop('disabled', true).selectpicker('refresh');
+            requestClonePreview({
+                bomType: bomType,
+                deviceId: deviceId,
+                version: 'n/d',
+                laminateId: ''
+            });
         } else {
-            $ver.append('<option value="n/d">n/d</option>');
+            $("#cloneSourceVersionGroup").show();
+            let possibleVersions = $("#cloneSourceDevice option[value='" + deviceId + "']").data("jsonversions") || {};
+            populateCloneVersionSelect($("#cloneSourceVersion"), possibleVersions);
         }
-        $ver.prop('disabled', false).selectpicker('refresh').selectpicker('val', '');
     } else if (bomType === 'smd') {
+        $("#cloneSourceVersionGroup").show();
         let jsonLaminates = $("#cloneSourceDevice option[value='" + deviceId + "']").data("jsonlaminates") || {};
         let $lam = $("#cloneSourceLaminate");
         $lam.empty();
@@ -906,17 +1032,8 @@ $("#cloneSourceLaminate").change(function(){
         return;
     }
     let versions = $("#cloneSourceLaminate option[value='" + selectedLaminateId + "']").data("jsonversions") || {};
-    let $ver = $("#cloneSourceVersion");
-    $ver.empty();
-    for (let vid in versions) {
-        if (!versions.hasOwnProperty(vid)) continue;
-        let vname = versions[vid][0];
-        $ver.append('<option value="' + vname + '">' + vname + '</option>');
-    }
-    $ver.prop('disabled', false).selectpicker('refresh').selectpicker('val', '');
+    populateCloneVersionSelect($("#cloneSourceVersion"), versions);
 });
-
-let clonePreviewXhr = null;
 
 $("#cloneSourceVersion").change(function(){
     clearClonePreview();
@@ -924,57 +1041,11 @@ $("#cloneSourceVersion").change(function(){
     let deviceId = $("#cloneSourceDevice").val();
     let version  = $(this).val();
     let laminateId = (bomType === 'smd') ? $("#cloneSourceLaminate").val() : '';
-    if (!bomType || !deviceId || version === null) {
-        return;
-    }
-
-    if (clonePreviewXhr && clonePreviewXhr.readyState !== 4) {
-        clonePreviewXhr.abort();
-    }
-
-    clonePreviewXhr = $.ajax({
-        type: "POST",
-        url: COMPONENTS_PATH + "/admin/bom/edit/get-bom-preview.php",
-        data: {
-            bomType: bomType,
-            deviceId: deviceId,
-            version: version,
-            laminateId: laminateId
-        },
-        success: function(data) {
-            if (!data.wasSuccessful) {
-                $("#cloneSourcePreview").html(
-                    '<div class="text-danger">' + escapeHtml(data.errorMessage || 'Nie udało się pobrać podglądu.') + '</div>'
-                ).show();
-                return;
-            }
-
-            $("#cloneSourceBomId").val(data.sourceBomId || '');
-            $("#cloneBomConfirmBtn").prop('disabled', !(data.sourceBomId && data.sourceBomId > 0));
-
-            let count = data.componentCount || 0;
-            let $content = $('<div></div>');
-            $content.append('<div><b>Ten BOM zawiera ' + count + ' pozycji</b></div>');
-            if (data.components && data.components.length > 0) {
-                let $list = $('<ul class="mb-0 mt-2 small"></ul>');
-                let maxList = 10;
-                for (let i = 0; i < Math.min(data.components.length, maxList); i++) {
-                    let c = data.components[i];
-                    $list.append('<li>' + escapeHtml(c.name) + ' <span class="text-muted">(' + escapeHtml(c.type) + ' &times;' + c.quantity + ')</span></li>');
-                }
-                if (data.components.length > maxList) {
-                    $list.append('<li class="text-muted">...i ' + (data.components.length - maxList) + ' więcej</li>');
-                }
-                $content.append($list);
-            }
-            $("#cloneSourcePreview").empty().append($content).show();
-        },
-        error: function(jqXHR, textStatus) {
-            if (textStatus === 'abort') return;
-            $("#cloneSourcePreview").html(
-                '<div class="text-danger">Błąd połączenia z serwerem.</div>'
-            ).show();
-        }
+    requestClonePreview({
+        bomType: bomType,
+        deviceId: deviceId,
+        version: version,
+        laminateId: laminateId
     });
 });
 
