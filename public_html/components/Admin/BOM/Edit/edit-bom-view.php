@@ -59,7 +59,7 @@ include('modals.php');
     <button id="nextBom" class="btn btn-light mx-2" disabled><b>&rsaquo;</b></button>
     <button id="clearCascadeBtn" class="btn btn-light mx-2" type="button"
             title="Wyczyść kaskadę" aria-label="Wyczyść kaskadę" disabled>
-        <i class="bi bi-trash"></i>
+        <i class="bi bi-eraser-fill"></i>
     </button>
 </div>
 
