@@ -25,59 +25,82 @@ $vendors = $vendorRepository->getAll(true);   // active only
         </div>
     </div>
 
-    <!-- ===== Step 1 + Step 2 (unified) Parametry dokumentu card ===== -->
-    <div class="row">
+    <!-- ===== Step 1: Parametry dokumentu (compact form) ===== -->
+    <div class="row" id="step1ParamsCard">
         <div class="col-12">
-            <div class="card">
-                <div class="card-header">
-                    <h5>
-                        1. Parametry dokumentu
-                        <small id="stepHint" class="text-muted float-right"></small>
-                    </h5>
-                </div>
-                <div class="card-body">
-                    <!-- Step 1: vendor selectpicker (active) -->
-                    <div class="row" id="step1VendorRow">
-                        <div class="col-md-8">
-                            <label for="cartVendor">Dostawca:</label>
-                            <select id="cartVendor" class="selectpicker form-control" data-live-search="true" data-width="100%">
-                                <option value="">Wybierz dostawcę...</option>
+            <div class="card mb-3">
+                <div class="card-header py-2"><h6 class="mb-0">1. Parametry dokumentu</h6></div>
+                <div class="card-body py-3">
+                    <div class="form-row">
+                        <div class="form-group col-md-6 mb-2">
+                            <label class="small mb-1" for="cartVendor">Dostawca</label>
+                            <select id="cartVendor" class="selectpicker form-control form-control-sm" data-live-search="true" data-width="100%">
+                                <option value="">Wybierz...</option>
                                 <?php foreach ($vendors as $v): ?>
                                     <option value="<?= $v->id ?>"><?= htmlspecialchars($v->name) ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
-                    </div>
-                    <!-- Step 2: vendor display + Zmień dostawcę -->
-                    <div class="row" id="step2VendorRow" style="display:none">
-                        <div class="col-md-8">
-                            <label>Dostawca:</label>
-                            <p class="form-control-plaintext">
-                                <strong id="vendorNameDisplay"></strong>
-                                <a href="#" id="backBtn" class="ml-2">
-                                    <i class="bi bi-arrow-left"></i> Zmień dostawcę
-                                </a>
-                            </p>
+                        <div class="form-group col-md-3 mb-2">
+                            <label class="small mb-1" for="cartDate">Termin</label>
+                            <input type="date" id="cartDate" class="form-control form-control-sm">
+                        </div>
+                        <div class="form-group col-md-3 mb-2 d-flex align-items-end">
+                            <button id="nextBtn" class="btn btn-primary btn-sm btn-block">
+                                Dalej <i class="bi bi-arrow-right"></i>
+                            </button>
                         </div>
                     </div>
-
-                    <!-- Common: date + comment (editable in both steps) -->
-                    <div class="row mt-3">
-                        <div class="col-md-12">
-                            <label for="cartDate">Termin (data odpowiedzi / dostawy):</label>
-                            <input type="date" id="cartDate" class="form-control">
-                        </div>
+                    <div class="form-group mb-0">
+                        <label class="small mb-1" for="cartComment">Komentarz (opcjonalnie)</label>
+                        <input type="text" id="cartComment" class="form-control form-control-sm" placeholder="Wpisz komentarz...">
                     </div>
-                    <div class="form-group mt-3">
-                        <label for="cartComment">Komentarz (opcjonalnie):</label>
-                        <textarea id="cartComment" class="form-control" rows="2"></textarea>
-                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
-                    <!-- Step 1: Dalej button -->
-                    <div class="mt-3" id="step1NextRow">
-                        <button id="nextBtn" class="btn btn-primary">
-                            Dalej <i class="bi bi-arrow-right"></i>
-                        </button>
+    <!-- ===== Step 2: collapsed summary line ===== -->
+    <div id="step2SummaryCard" style="display:none">
+        <div class="alert alert-light border py-2 px-3 mb-3 d-flex justify-content-between align-items-center flex-wrap">
+            <div class="small flex-grow-1 mr-3" style="min-width: 0;">
+                <strong>Dostawca:</strong> <span id="summaryVendor">—</span>
+                <span class="mx-2 text-muted">|</span>
+                <strong>Termin:</strong> <span id="summaryDate">—</span>
+                <span class="mx-2 text-muted">|</span>
+                <strong>Komentarz:</strong> <span id="summaryComment">—</span>
+            </div>
+            <div class="small">
+                <a href="#" id="editParamsBtn"><i class="bi bi-pencil"></i> Edytuj</a>
+                <span class="mx-2 text-muted">|</span>
+                <a href="#" id="backBtn"><i class="bi bi-arrow-left"></i> Zmień dostawcę</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== Step 2: expanded edit form (hidden by default) ===== -->
+    <div id="step2EditCard" style="display:none">
+        <div class="card mb-3">
+            <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">1. Parametry dokumentu</h6>
+                <a href="#" id="cancelEditBtn" class="small">Anuluj</a>
+            </div>
+            <div class="card-body py-3">
+                <div class="form-row">
+                    <div class="form-group col-md-5 mb-2">
+                        <label class="small mb-1">Dostawca</label>
+                        <p class="form-control-plaintext mb-0"><strong id="editVendorDisplay">—</strong></p>
+                    </div>
+                    <div class="form-group col-md-3 mb-2">
+                        <label class="small mb-1" for="cartDateEdit">Termin</label>
+                        <input type="date" id="cartDateEdit" class="form-control form-control-sm">
+                    </div>
+                    <div class="form-group col-md-3 mb-2">
+                        <label class="small mb-1" for="cartCommentEdit">Komentarz</label>
+                        <input type="text" id="cartCommentEdit" class="form-control form-control-sm">
+                    </div>
+                    <div class="form-group col-md-1 mb-2 d-flex align-items-end">
+                        <button id="saveEditBtn" class="btn btn-primary btn-sm btn-block">Zapisz</button>
                     </div>
                 </div>
             </div>

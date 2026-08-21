@@ -1,7 +1,9 @@
 // Koszyk — client-side cart state (in-memory; lost on refresh).
 // Two-step wizard:
 //   Step 1: pick vendor + optional date/comment + "Dalej" →
-//   Step 2: vendor locked, edit date/comment, add items, "Utwórz" → creates RFQ or PO.
+//   Step 2: collapsed summary line with "Edytuj" / "Zmień dostawcę"
+//            inline edit form (when "Edytuj" clicked)
+//            + add-item form + items table + final action buttons.
 //
 // The two sister endpoints (cart-action.php, search-vendor-parts.php)
 // run on the same origin so we just hit them by relative URL.
@@ -18,30 +20,38 @@
         items       : []        // {vendor_part_id, vendor_part_no, part_name, producer_name, unit_name, quantity, unit_price, currency}
     };
 
-    var $vendor         = $('#cartVendor');
-    var $date           = $('#cartDate');
-    var $comment        = $('#cartComment');
-    var $nextBtn        = $('#nextBtn');
-    var $backBtn        = $('#backBtn');
-    var $vendorDisplay  = $('#vendorNameDisplay');
-    var $step1VendorRow = $('#step1VendorRow');
-    var $step2VendorRow = $('#step2VendorRow');
-    var $step1NextRow   = $('#step1NextRow');
-    var $step2Content   = $('#step2Content');
-    var $stepHint       = $('#stepHint');
-    var $addRow         = $('#addItemRow');
-    var $addPart        = $('#addVendorPart');
-    var $addQty         = $('#addQty');
-    var $addPrice       = $('#addPrice');
-    var $addCur         = $('#addCurrency');
-    var $addBtn         = $('#addItemBtn');
-    var $itemsRow       = $('#cartItemsRow');
-    var $itemsBody      = $('#cartItemsBody');
-    var $count          = $('#cartCount');
-    var $actions        = $('#finalActionsRow');
-    var $rfqBtn         = $('#createRfqBtn');
-    var $poBtn          = $('#createPoBtn');
-    var $clearBtn       = $('#clearCartBtn');
+    // DOM refs
+    var $vendor            = $('#cartVendor');
+    var $date              = $('#cartDate');
+    var $comment           = $('#cartComment');
+    var $nextBtn           = $('#nextBtn');
+    var $backBtn           = $('#backBtn');
+    var $editParamsBtn     = $('#editParamsBtn');
+    var $cancelEditBtn     = $('#cancelEditBtn');
+    var $saveEditBtn       = $('#saveEditBtn');
+    var $step1ParamsCard   = $('#step1ParamsCard');
+    var $step2SummaryCard  = $('#step2SummaryCard');
+    var $step2EditCard     = $('#step2EditCard');
+    var $step2Content      = $('#step2Content');
+    var $summaryVendor     = $('#summaryVendor');
+    var $summaryDate       = $('#summaryDate');
+    var $summaryComment    = $('#summaryComment');
+    var $editVendorDisplay = $('#editVendorDisplay');
+    var $cartDateEdit      = $('#cartDateEdit');
+    var $cartCommentEdit   = $('#cartCommentEdit');
+    var $addRow            = $('#addItemRow');
+    var $addPart           = $('#addVendorPart');
+    var $addQty            = $('#addQty');
+    var $addPrice          = $('#addPrice');
+    var $addCur            = $('#addCurrency');
+    var $addBtn            = $('#addItemBtn');
+    var $itemsRow          = $('#cartItemsRow');
+    var $itemsBody         = $('#cartItemsBody');
+    var $count             = $('#cartCount');
+    var $actions           = $('#finalActionsRow');
+    var $rfqBtn            = $('#createRfqBtn');
+    var $poBtn             = $('#createPoBtn');
+    var $clearBtn          = $('#clearCartBtn');
 
     // ---- helpers ----
 
@@ -62,22 +72,30 @@
         );
     }
 
+    function emptyDash(v) {
+        return (v === null || v === undefined || v === '') ? '—' : v;
+    }
+
+    function refreshSummary() {
+        $summaryVendor.text(emptyDash(cart.vendorName));
+        $summaryDate.text(emptyDash(cart.date));
+        $summaryComment.text(emptyDash(cart.comment));
+    }
+
     function setStep(n) {
         cart.step = n;
         if (n === 1) {
-            $step1VendorRow.show();
-            $step2VendorRow.hide();
-            $step1NextRow.show();
+            $step1ParamsCard.show();
+            $step2SummaryCard.hide();
+            $step2EditCard.hide();
             $step2Content.hide();
-            $stepHint.text('');
             setAlert('');
         } else {
-            $step1VendorRow.hide();
-            $step2VendorRow.show();
-            $step1NextRow.hide();
+            $step1ParamsCard.hide();
+            $step2SummaryCard.show();
+            $step2EditCard.hide();   // collapsed view by default
             $step2Content.show();
-            $stepHint.text('(edytowalne)');
-            $vendorDisplay.text(cart.vendorName);
+            refreshSummary();
             showAddRowIfReady();
         }
     }
@@ -196,7 +214,7 @@
 
     // ---- event handlers ----
 
-    // Vendor selection (step 1 only — step 2 vendor is locked)
+    // Step 1: vendor selection (selectpicker)
     $vendor.on('change', function () {
         cart.vendorId = parseInt($(this).val(), 10) || null;
         cart.vendorName = cart.vendorId ? $vendor.find('option:selected').text() : '';
@@ -204,7 +222,7 @@
         loadVendorParts('');
     });
 
-    // Date + comment sync (works in both steps since inputs are shared)
+    // Step 1: live sync of date + comment inputs (also used in step 2 expand)
     $date.on('change',    function () { cart.date    = $(this).val(); });
     $comment.on('change', function () { cart.comment = $(this).val(); });
 
@@ -214,10 +232,13 @@
             setAlert('Wybierz dostawcę przed kontynuacją.', 'warning');
             return;
         }
+        // Sync date + comment from inputs (in case change event didn't fire)
+        cart.date    = $date.val() || '';
+        cart.comment = $comment.val() || '';
         setStep(2);
     });
 
-    // Step 2 → Step 1 (clear items + comment + date)
+    // Step 2 → Step 1 (clear all + go back)
     $backBtn.on('click', function (e) {
         e.preventDefault();
         cart.items    = [];
@@ -225,8 +246,36 @@
         cart.date     = '';
         $comment.val('');
         $date.val('');
-        renderCart();   // hides items + actions rows
+        renderCart();
         setStep(1);
+    });
+
+    // Step 2 collapsed → expanded edit form
+    $editParamsBtn.on('click', function (e) {
+        e.preventDefault();
+        // Populate edit inputs with current cart state
+        $editVendorDisplay.text(cart.vendorName);
+        $cartDateEdit.val(cart.date);
+        $cartCommentEdit.val(cart.comment);
+        $step2SummaryCard.hide();
+        $step2EditCard.show();
+    });
+
+    // Step 2 expanded → collapsed (cancel: discard pending changes)
+    $cancelEditBtn.on('click', function (e) {
+        e.preventDefault();
+        $step2EditCard.hide();
+        $step2SummaryCard.show();
+    });
+
+    // Step 2 expanded → collapsed (save: apply changes)
+    $saveEditBtn.on('click', function () {
+        cart.date    = $cartDateEdit.val() || '';
+        cart.comment = $cartCommentEdit.val() || '';
+        refreshSummary();
+        $step2EditCard.hide();
+        $step2SummaryCard.show();
+        setAlert('Parametry zaktualizowane.', 'success');
     });
 
     // Live search on the VendorPart picker (only in step 2)
@@ -332,6 +381,6 @@
         setAlert('Koszyk wyczyszczony.', 'info');
     });
 
-    // Initial render — show step 1 by default
+    // Initial render
     setStep(1);
 })();
