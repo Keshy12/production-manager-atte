@@ -20,7 +20,7 @@
         vendorName  : '',
         date        : '',
         comment     : '',
-        items       : []        // {vendor_part_id, vendor_part_no, part_name, producer_name, unit_name, quantity, unit_price, currency}
+        items       : []        // {vendor_part_id, vendor_part_no, producer_part_no, part_name, producer_name, unit_name, quantity, unit_price, currency}
     };
 
     // DOM refs
@@ -60,6 +60,7 @@
     var $addVendorPartBtn   = $('#addVendorPartBtn');
     var $modalPartsPicker   = $('#modalPartsPicker');
     var $modalVendorPartNo  = $('#modalVendorPartNo');
+    var $modalProducerPartNo = $('#modalProducerPartNo');
     var $modalVendorJm      = $('#modalVendorJm');
     var $modalFullPack      = $('#modalFullPack');
     var $saveVendorPartBtn  = $('#saveVendorPartBtn');
@@ -138,11 +139,14 @@
             (rows || []).forEach(function (r) {
                 // Subtext = producer (falls back to vendor's unit if producer
                 // missing) — bootstrap-select shows this as a smaller line
-                // below the main label in the dropdown.
+                // below the main label in the dropdown. vendor_part_no and
+                // producer_part_no are intentionally NOT in the picker
+                // label; they appear in the cart items table instead.
                 var subtext = r.producer_name || r.unit_name || '';
                 var $opt = $('<option></option>')
                     .attr('value', r.id)
                     .attr('data-vendor-part-no', r.vendor_part_no || '')
+                    .attr('data-producer-part-no', r.producer_part_no || '')
                     .attr('data-part-name', r.part_name || '')
                     .attr('data-producer-name', r.producer_name || '')
                     .attr('data-unit-name', r.unit_name || '')
@@ -198,6 +202,7 @@
         $modalPartsPicker.find('option').not(':first').remove();
         refreshSelectpicker($modalPartsPicker);
         $modalVendorPartNo.val('');
+        $modalProducerPartNo.val('');
         $modalFullPack.val('1');
         setModalAlert('');
     }
@@ -223,9 +228,9 @@
         var html = '';
         cart.items.forEach(function (item, idx) {
             html += '<tr>' +
-                '<td>' + escapeHtml(item.vendor_part_no) + '</td>' +
                 '<td>' + escapeHtml(item.part_name || '') + '</td>' +
-                '<td>' + escapeHtml(item.producer_name || '') + '</td>' +
+                '<td>' + escapeHtml(item.vendor_part_no) + '</td>' +
+                '<td>' + (item.producer_part_no ? escapeHtml(item.producer_part_no) : '<span class="text-muted">—</span>') + '</td>' +
                 '<td>' + escapeHtml(item.unit_name || '') + '</td>' +
                 '<td>' + formatQty(item.quantity) + '</td>' +
                 '<td>' + (item.unit_price !== null && item.unit_price !== '' ? formatPrice(item.unit_price) : '<span class="text-muted">—</span>') + '</td>' +
@@ -369,14 +374,15 @@
         }
 
         cart.items.push({
-            vendor_part_id : vpId,
-            vendor_part_no : $sel.attr('data-vendor-part-no') || '',
-            part_name      : $sel.attr('data-part-name')     || '',
-            producer_name  : $sel.attr('data-producer-name') || '',
-            unit_name      : $sel.attr('data-unit-name')     || '',
-            quantity       : qty,
-            unit_price     : price,
-            currency       : cur
+            vendor_part_id    : vpId,
+            vendor_part_no    : $sel.attr('data-vendor-part-no')    || '',
+            producer_part_no  : $sel.attr('data-producer-part-no') || null,
+            part_name         : $sel.attr('data-part-name')         || '',
+            producer_name     : $sel.attr('data-producer-name')     || '',
+            unit_name         : $sel.attr('data-unit-name')         || '',
+            quantity          : qty,
+            unit_price        : price,
+            currency          : cur
         });
 
         renderCart();
@@ -425,6 +431,7 @@
 
         var partsId = parseInt($modalPartsPicker.val(), 10) || 0;
         var vendorPartNo = $modalVendorPartNo.val().trim();
+        var producerPartNo = $modalProducerPartNo.val().trim();
         var vendorJmId = parseInt($modalVendorJm.val(), 10) || 0;
         var fullPack = parseFloat($modalFullPack.val()) || 1;
 
@@ -451,6 +458,7 @@
                 vendor_id        : cart.vendorId,
                 parts_id         : partsId,
                 vendor_part_no   : vendorPartNo,
+                producer_part_no : producerPartNo,
                 vendor_jm_id     : vendorJmId,
                 full_pack_quantity: fullPack
             },

@@ -40,6 +40,7 @@ if (empty($raw)) {
 $vendorId = (int)($raw['vendor_id'] ?? 0);
 $partsId = (int)($raw['parts_id'] ?? 0);
 $vendorPartNo = trim((string)($raw['vendor_part_no'] ?? ''));
+$producerPartNo = trim((string)($raw['producer_part_no'] ?? '')) ?: null;
 $vendorJmId = (int)($raw['vendor_jm_id'] ?? 0);
 $fullPackQuantity = (float)($raw['full_pack_quantity'] ?? 1);
 $comment = trim((string)($raw['comment'] ?? '')) ?: null;
@@ -54,11 +55,30 @@ if ($fullPackQuantity <= 0) {
 
 try {
     $repo = new VendorPartRepository($MsaDB);
-    $newId = $repo->create($vendorId, $partsId, $vendorPartNo, $vendorJmId, $fullPackQuantity, $comment);
+    // The selected Part belongs to a Producer — fetch it to populate
+    // producer_id (which is required on list__vendor_part per P1).
+    $partRow = $MsaDB->query("SELECT producer_id FROM list__parts WHERE id = ?", [$partsId]);
+    $producerId = ($partRow && count($partRow) > 0) ? (int)$partRow[0]['producer_id'] : 0;
+    if ($producerId <= 0) {
+        echo json_encode(['success' => false, 'error' => 'Wybrana część nie ma przypisanego producenta.']);
+        exit;
+    }
+
+    $newId = $repo->create(
+        $vendorId,
+        $producerId,
+        $partsId,
+        $vendorPartNo,
+        $vendorJmId,
+        $fullPackQuantity,
+        $comment,
+        $producerPartNo
+    );
     echo json_encode([
         'success'           => true,
         'id'                => $newId,
         'vendor_part_no'    => $vendorPartNo,
+        'producer_part_no'  => $producerPartNo,
         'parts_id'          => $partsId,
         'vendor_jm_id'      => $vendorJmId,
         'full_pack_quantity'=> $fullPackQuantity,

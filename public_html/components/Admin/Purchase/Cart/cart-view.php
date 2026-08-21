@@ -183,9 +183,9 @@ $units = $MsaDB->query("SELECT id, name FROM part__unit ORDER BY name ASC");
                             <table class="table table-striped table-hover">
                                 <thead class="thead-light">
                                     <tr>
-                                        <th>VendorPartNo</th>
-                                        <th>Part</th>
-                                        <th>Producent</th>
+                                        <th>Część</th>
+                                        <th>Numer u dostawcy</th>
+                                        <th>Numer u producenta</th>
                                         <th>JM</th>
                                         <th>Ilość</th>
                                         <th>Cena</th>
@@ -246,7 +246,13 @@ $units = $MsaDB->query("SELECT id, name FROM part__unit ORDER BY name ASC");
                         <label for="modalVendorPartNo">Numer katalogowy u dostawcy:</label>
                         <input type="text" id="modalVendorPartNo" class="form-control" placeholder="np. STM32F103C8T6">
                     </div>
-                    <div class="form-group col-md-3">
+                    <div class="form-group col-md-6">
+                        <label for="modalProducerPartNo">Numer katalogowy u producenta (opcjonalnie):</label>
+                        <input type="text" id="modalProducerPartNo" class="form-control" placeholder="np. STM32F103C8">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group col-md-6">
                         <label for="modalVendorJm">JM u dostawcy:</label>
                         <select id="modalVendorJm" class="form-control">
                             <?php foreach ($units as $u): ?>
@@ -254,7 +260,7 @@ $units = $MsaDB->query("SELECT id, name FROM part__unit ORDER BY name ASC");
                             <?php endforeach; ?>
                         </select>
                     </div>
-                    <div class="form-group col-md-3">
+                    <div class="form-group col-md-6">
                         <label for="modalFullPack">Pełne opakowanie:</label>
                         <input type="number" step="0.0001" min="0.0001" id="modalFullPack" class="form-control" value="1">
                     </div>

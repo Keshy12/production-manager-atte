@@ -10,6 +10,7 @@ class VendorPart {
     public int $producerId;
     public int $partsId;
     public string $vendorPartNo;
+    public ?string $producerPartNo;
     public int $vendorJmId;
     public float $fullPackQuantity;
     public bool $isActive;
@@ -28,6 +29,7 @@ class VendorPart {
         $this->producerId = (int)$row['producerId'];
         $this->partsId = (int)$row['partsId'];
         $this->vendorPartNo = (string)$row['vendorPartNo'];
+        $this->producerPartNo = $row['producerPartNo'] ?? null;
         $this->vendorJmId = (int)$row['vendorJmId'];
         $this->fullPackQuantity = (float)($row['fullPackQuantity'] ?? 1);
         $this->isActive = (bool)(int)($row['isActive'] ?? 0);

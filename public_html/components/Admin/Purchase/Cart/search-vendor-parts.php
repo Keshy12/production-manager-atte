@@ -52,23 +52,21 @@ $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
 $out = [];
 foreach ($rows as $r) {
-    // Lead with the internal part name (our catalog); vendor's reference
-    // is shown in parentheses after. Falls back to vendor_part_no when
-    // the part name is empty.
-    $partName      = $r['part_name']     ?? '';
-    $vendorPartNo  = $r['vendor_part_no'] ?? '';
-    $label = $partName !== '' ? $partName : $vendorPartNo;
-    if ($vendorPartNo !== '' && $vendorPartNo !== $label) {
-        $label .= '  (' . $vendorPartNo . ')';
-    }
+    // Lead with the internal part name (our catalog). Vendor's reference
+    // and producer's reference are intentionally NOT shown in the
+    // picker label — they live in the cart items table instead, so the
+    // admin sees them at a glance when reviewing the order.
+    $partName = $r['part_name'] ?? '';
+    $label    = $partName !== '' ? $partName : ($r['vendor_part_no'] ?? '');
     $out[] = [
-        'id'              => (int)$r['id'],
-        'vendor_part_no'  => $vendorPartNo,
-        'vendor_jm_id'    => (int)$r['vendor_jm_id'],
-        'part_name'       => $partName,
-        'producer_name'   => $r['producer_name'],
-        'unit_name'       => $r['unit_name'],
-        'label'           => $label,
+        'id'               => (int)$r['id'],
+        'vendor_part_no'   => $r['vendor_part_no'] ?? '',
+        'producer_part_no' => $r['producer_part_no'] ?? null,
+        'vendor_jm_id'     => (int)$r['vendor_jm_id'],
+        'part_name'        => $partName,
+        'producer_name'    => $r['producer_name'],
+        'unit_name'        => $r['unit_name'],
+        'label'            => $label,
     ];
 }
 

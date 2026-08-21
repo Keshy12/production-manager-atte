@@ -16,6 +16,7 @@ class VendorPartRepository {
                        vp.producer_id AS producerId,
                        vp.parts_id AS partsId,
                        vp.vendor_part_no AS vendorPartNo,
+                       vp.producer_part_no AS producerPartNo,
                        vp.vendor_jm_id AS vendorJmId,
                        vp.full_pack_quantity AS fullPackQuantity,
                        vp.is_active AS isActive,
@@ -104,7 +105,16 @@ class VendorPartRepository {
         return $result;
     }
 
-    public function create(int $vendorId, int $producerId, int $partsId, string $vendorPartNo, int $vendorJmId, float $fullPackQuantity = 1, ?string $comment = null): int {
+    public function create(
+        int $vendorId,
+        int $producerId,
+        int $partsId,
+        string $vendorPartNo,
+        int $vendorJmId,
+        float $fullPackQuantity = 1,
+        ?string $comment = null,
+        ?string $producerPartNo = null
+    ): int {
         $MsaDB = $this->MsaDB;
         if ($vendorId   <= 0) throw new \InvalidArgumentException("VendorPart vendorId must be positive.");
         if ($producerId <= 0) throw new \InvalidArgumentException("VendorPart producerId must be positive.");
@@ -113,15 +123,27 @@ class VendorPartRepository {
         if ($fullPackQuantity <= 0) throw new \InvalidArgumentException("VendorPart fullPackQuantity must be positive.");
         $vendorPartNo = trim($vendorPartNo);
         if ($vendorPartNo === '') throw new \InvalidArgumentException("VendorPart vendorPartNo cannot be empty.");
+        $producerPartNo = ($producerPartNo === null || $producerPartNo === '')
+            ? null : trim($producerPartNo);
 
         return $MsaDB->insert(
             'list__vendor_part',
-            ['vendor_id', 'producer_id', 'parts_id', 'vendor_part_no', 'vendor_jm_id', 'full_pack_quantity', 'is_active', 'comment'],
-            [$vendorId, $producerId, $partsId, $vendorPartNo, $vendorJmId, $fullPackQuantity, 1, $comment]
+            ['vendor_id', 'producer_id', 'parts_id', 'vendor_part_no', 'producer_part_no', 'vendor_jm_id', 'full_pack_quantity', 'is_active', 'comment'],
+            [$vendorId, $producerId, $partsId, $vendorPartNo, $producerPartNo, $vendorJmId, $fullPackQuantity, 1, $comment]
         );
     }
 
-    public function update(int $id, int $vendorId, int $producerId, int $partsId, string $vendorPartNo, int $vendorJmId, float $fullPackQuantity, ?string $comment): bool {
+    public function update(
+        int $id,
+        int $vendorId,
+        int $producerId,
+        int $partsId,
+        string $vendorPartNo,
+        int $vendorJmId,
+        float $fullPackQuantity,
+        ?string $comment,
+        ?string $producerPartNo = null
+    ): bool {
         $MsaDB = $this->MsaDB;
         if ($vendorId   <= 0) throw new \InvalidArgumentException("VendorPart vendorId must be positive.");
         if ($producerId <= 0) throw new \InvalidArgumentException("VendorPart producerId must be positive.");
@@ -130,6 +152,8 @@ class VendorPartRepository {
         if ($fullPackQuantity <= 0) throw new \InvalidArgumentException("VendorPart fullPackQuantity must be positive.");
         $vendorPartNo = trim($vendorPartNo);
         if ($vendorPartNo === '') throw new \InvalidArgumentException("VendorPart vendorPartNo cannot be empty.");
+        $producerPartNo = ($producerPartNo === null || $producerPartNo === '')
+            ? null : trim($producerPartNo);
 
         return $MsaDB->update(
             'list__vendor_part',
@@ -138,6 +162,7 @@ class VendorPartRepository {
                 'producer_id'        => $producerId,
                 'parts_id'           => $partsId,
                 'vendor_part_no'     => $vendorPartNo,
+                'producer_part_no'   => $producerPartNo,
                 'vendor_jm_id'       => $vendorJmId,
                 'full_pack_quantity' => $fullPackQuantity,
                 'comment'            => $comment,
