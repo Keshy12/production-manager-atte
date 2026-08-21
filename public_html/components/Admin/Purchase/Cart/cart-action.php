@@ -46,6 +46,19 @@ if (count($items) === 0) {
     exit;
 }
 
+// In the new part-first discovery UX the cart holds items from
+// multiple vendors; each "Utwórz" button submits only the items
+// for its own vendor. Filter here before validation/insertion.
+if ($vendorId > 0) {
+    $items = array_values(array_filter($items, function ($i) use ($vendorId) {
+        return isset($i['vendor_id']) && (int)$i['vendor_id'] === $vendorId;
+    }));
+    if (count($items) === 0) {
+        echo json_encode(['success' => false, 'error' => 'Brak pozycji dla wybranego dostawcy.']);
+        exit;
+    }
+}
+
 // Validate every item
 foreach ($items as $i => $item) {
     $vpId = (int)($item['vendor_part_id'] ?? 0);
