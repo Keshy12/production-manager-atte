@@ -17,140 +17,171 @@ $vendors = $vendorRepository->getAll(true);   // active only
         <div class="col-12 my-2">
             <h2><i class="bi bi-cart3"></i> Koszyk zakupowy</h2>
             <p class="text-muted">
-                Wybierz dostawcę i dodaj artykuły do koszyka. Na końcu utwórz zapytanie ofertowe albo zamówienie.
+                Utwórz nowe zapytanie ofertowe lub zamówienie. Najpierw wybierz dostawcę i podaj parametry,
+                potem dodaj artykuły do koszyka.
                 Koszyk jest tymczasowy &mdash; po odświeżeniu strony zostaje wyczyszczony (docelowo będzie zapisywany w bazie).
             </p>
             <div id="alertContainer"></div>
         </div>
     </div>
 
+    <!-- ===== Step 1 + Step 2 (unified) Parametry dokumentu card ===== -->
     <div class="row">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header"><h5>Parametry dokumentu</h5></div>
-                <div class="card-body">
-                    <div class="row">
-                        <div class="col-md-8">
-                            <div class="form-group">
-                                <label for="cartVendor">Dostawca:</label>
-                                <select id="cartVendor" class="selectpicker form-control" data-live-search="true" data-width="100%">
-                                    <option value="">Wybierz dostawcę...</option>
-                                    <?php foreach ($vendors as $v): ?>
-                                        <option value="<?= $v->id ?>"><?= htmlspecialchars($v->name) ?></option>
-                                    <?php endforeach; ?>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="form-group">
-                                <label for="cartDate">Termin (data odpowiedzi / dostawy):</label>
-                                <input type="date" id="cartDate" class="form-control">
-                            </div>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label for="cartComment">Komentarz (opcjonalnie):</label>
-                        <textarea id="cartComment" class="form-control" rows="2"></textarea>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="row mt-3" id="addItemRow" style="display:none">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header"><h5>Dodaj artykuł</h5></div>
-                <div class="card-body">
-                    <div class="row">
-                        <div class="col-md-8">
-                            <div class="form-group">
-                                <label for="addVendorPart">Artykuł u dostawcy:</label>
-                                <select id="addVendorPart" class="selectpicker form-control" data-live-search="true" data-width="100%">
-                                    <option value="">Wybierz artykuł...</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="form-group">
-                                <label for="addQty">Ilość:</label>
-                                <input type="number" step="0.0001" min="0.0001" id="addQty" class="form-control">
-                            </div>
-                        </div>
-                    </div>
-                    <div class="row">
-                        <div class="col-md-4">
-                            <div class="form-group">
-                                <label for="addPrice">Cena jednostkowa (opcjonalnie):</label>
-                                <input type="number" step="0.0001" min="0" id="addPrice" class="form-control">
-                            </div>
-                        </div>
-                        <div class="col-md-4">
-                            <div class="form-group">
-                                <label for="addCurrency">Waluta:</label>
-                                <select id="addCurrency" class="form-control">
-                                    <option value="PLN" selected>PLN</option>
-                                    <option value="EUR">EUR</option>
-                                    <option value="USD">USD</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="col-md-4 d-flex align-items-end">
-                            <button type="button" id="addItemBtn" class="btn btn-success btn-block">
-                                <i class="bi bi-plus-circle"></i> Dodaj do koszyka
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="row mt-3" id="cartItemsRow" style="display:none">
         <div class="col-12">
             <div class="card">
                 <div class="card-header">
                     <h5>
-                        <i class="bi bi-list-ul"></i> Pozycje w koszyku
-                        <span class="badge badge-info" id="cartCount">0</span>
+                        1. Parametry dokumentu
+                        <small id="stepHint" class="text-muted float-right"></small>
                     </h5>
                 </div>
                 <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table table-striped table-hover">
-                            <thead class="thead-light">
-                                <tr>
-                                    <th>VendorPartNo</th>
-                                    <th>Part</th>
-                                    <th>Producent</th>
-                                    <th>JM</th>
-                                    <th>Ilość</th>
-                                    <th>Cena</th>
-                                    <th>Waluta</th>
-                                    <th>Akcje</th>
-                                </tr>
-                            </thead>
-                            <tbody id="cartItemsBody"></tbody>
-                        </table>
+                    <!-- Step 1: vendor selectpicker (active) -->
+                    <div class="row" id="step1VendorRow">
+                        <div class="col-md-8">
+                            <label for="cartVendor">Dostawca:</label>
+                            <select id="cartVendor" class="selectpicker form-control" data-live-search="true" data-width="100%">
+                                <option value="">Wybierz dostawcę...</option>
+                                <?php foreach ($vendors as $v): ?>
+                                    <option value="<?= $v->id ?>"><?= htmlspecialchars($v->name) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                    </div>
+                    <!-- Step 2: vendor display + Zmień dostawcę -->
+                    <div class="row" id="step2VendorRow" style="display:none">
+                        <div class="col-md-8">
+                            <label>Dostawca:</label>
+                            <p class="form-control-plaintext">
+                                <strong id="vendorNameDisplay"></strong>
+                                <a href="#" id="backBtn" class="ml-2">
+                                    <i class="bi bi-arrow-left"></i> Zmień dostawcę
+                                </a>
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Common: date + comment (editable in both steps) -->
+                    <div class="row mt-3">
+                        <div class="col-md-12">
+                            <label for="cartDate">Termin (data odpowiedzi / dostawy):</label>
+                            <input type="date" id="cartDate" class="form-control">
+                        </div>
+                    </div>
+                    <div class="form-group mt-3">
+                        <label for="cartComment">Komentarz (opcjonalnie):</label>
+                        <textarea id="cartComment" class="form-control" rows="2"></textarea>
+                    </div>
+
+                    <!-- Step 1: Dalej button -->
+                    <div class="mt-3" id="step1NextRow">
+                        <button id="nextBtn" class="btn btn-primary">
+                            Dalej <i class="bi bi-arrow-right"></i>
+                        </button>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="row mt-3" id="finalActionsRow" style="display:none">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-body">
-                    <button type="button" id="createRfqBtn" class="btn btn-primary">
-                        <i class="bi bi-file-earmark-text"></i> Utwórz zapytanie
-                    </button>
-                    <button type="button" id="createPoBtn" class="btn btn-success">
-                        <i class="bi bi-bag-check"></i> Utwórz zamówienie
-                    </button>
-                    <button type="button" id="clearCartBtn" class="btn btn-outline-secondary float-right">
-                        <i class="bi bi-trash"></i> Wyczyść koszyk
-                    </button>
+    <!-- ===== Step 2: cart (Dodaj artykuł + Pozycje + Akcje końcowe) ===== -->
+    <div id="step2Content" style="display:none">
+
+        <div class="row mt-3" id="addItemRow">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header"><h5>2. Dodaj artykuł</h5></div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-8">
+                                <div class="form-group">
+                                    <label for="addVendorPart">Artykuł u dostawcy:</label>
+                                    <select id="addVendorPart" class="selectpicker form-control" data-live-search="true" data-width="100%">
+                                        <option value="">Wybierz artykuł...</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label for="addQty">Ilość:</label>
+                                    <input type="number" step="0.0001" min="0.0001" id="addQty" class="form-control">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label for="addPrice">Cena jednostkowa (opcjonalnie):</label>
+                                    <input type="number" step="0.0001" min="0" id="addPrice" class="form-control">
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label for="addCurrency">Waluta:</label>
+                                    <select id="addCurrency" class="form-control">
+                                        <option value="PLN" selected>PLN</option>
+                                        <option value="EUR">EUR</option>
+                                        <option value="USD">USD</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-4 d-flex align-items-end">
+                                <button type="button" id="addItemBtn" class="btn btn-success btn-block">
+                                    <i class="bi bi-plus-circle"></i> Dodaj do koszyka
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-3" id="cartItemsRow" style="display:none">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>
+                            <i class="bi bi-list-ul"></i> Pozycje w koszyku
+                            <span class="badge badge-info" id="cartCount">0</span>
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover">
+                                <thead class="thead-light">
+                                    <tr>
+                                        <th>VendorPartNo</th>
+                                        <th>Part</th>
+                                        <th>Producent</th>
+                                        <th>JM</th>
+                                        <th>Ilość</th>
+                                        <th>Cena</th>
+                                        <th>Waluta</th>
+                                        <th>Akcje</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="cartItemsBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-3" id="finalActionsRow" style="display:none">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <button type="button" id="createRfqBtn" class="btn btn-primary">
+                            <i class="bi bi-file-earmark-text"></i> Utwórz zapytanie
+                        </button>
+                        <button type="button" id="createPoBtn" class="btn btn-success">
+                            <i class="bi bi-bag-check"></i> Utwórz zamówienie
+                        </button>
+                        <button type="button" id="clearCartBtn" class="btn btn-outline-secondary float-right">
+                            <i class="bi bi-trash"></i> Wyczyść koszyk
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -158,11 +189,6 @@ $vendors = $vendorRepository->getAll(true);   // active only
 </div>
 
 <script>
-    // Expose an absolute base URL (with protocol) for the AJAX endpoints
-    // in this directory. jQuery treats 'foo/bar.php' as a relative URL
-    // and concatenates it to the page URL — producing a malformed path
-    // like /admin/purchase/localhost/atte_ms_new/... — so we MUST pass a
-    // full http(s)://host/path to make jQuery treat it as absolute.
     var PURCHASE_CART_BASE = <?php echo json_encode(
         (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http')
         . '://' . BASEURL . '/admin/purchase/cart'

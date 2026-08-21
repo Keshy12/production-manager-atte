@@ -1,34 +1,47 @@
 // Koszyk — client-side cart state (in-memory; lost on refresh).
-// The four sister endpoints (cart-action.php, search-vendor-parts.php)
+// Two-step wizard:
+//   Step 1: pick vendor + optional date/comment + "Dalej" →
+//   Step 2: vendor locked, edit date/comment, add items, "Utwórz" → creates RFQ or PO.
+//
+// The two sister endpoints (cart-action.php, search-vendor-parts.php)
 // run on the same origin so we just hit them by relative URL.
 
 (function () {
     'use strict';
 
     var cart = {
-        vendorId : null,
-        vendorName: '',
-        date     : '',
-        comment  : '',
-        items    : []   // {vendor_part_id, vendor_part_no, part_name, producer_name, unit_name, quantity, unit_price, currency}
+        step        : 1,        // 1 = picking vendor, 2 = adding items
+        vendorId    : null,
+        vendorName  : '',
+        date        : '',
+        comment     : '',
+        items       : []        // {vendor_part_id, vendor_part_no, part_name, producer_name, unit_name, quantity, unit_price, currency}
     };
 
-    var $vendor    = $('#cartVendor');
-    var $date      = $('#cartDate');
-    var $comment   = $('#cartComment');
-    var $addRow    = $('#addItemRow');
-    var $addPart   = $('#addVendorPart');
-    var $addQty    = $('#addQty');
-    var $addPrice  = $('#addPrice');
-    var $addCur    = $('#addCurrency');
-    var $addBtn    = $('#addItemBtn');
-    var $itemsRow  = $('#cartItemsRow');
-    var $itemsBody = $('#cartItemsBody');
-    var $count     = $('#cartCount');
-    var $actions   = $('#finalActionsRow');
-    var $rfqBtn    = $('#createRfqBtn');
-    var $poBtn     = $('#createPoBtn');
-    var $clearBtn  = $('#clearCartBtn');
+    var $vendor         = $('#cartVendor');
+    var $date           = $('#cartDate');
+    var $comment        = $('#cartComment');
+    var $nextBtn        = $('#nextBtn');
+    var $backBtn        = $('#backBtn');
+    var $vendorDisplay  = $('#vendorNameDisplay');
+    var $step1VendorRow = $('#step1VendorRow');
+    var $step2VendorRow = $('#step2VendorRow');
+    var $step1NextRow   = $('#step1NextRow');
+    var $step2Content   = $('#step2Content');
+    var $stepHint       = $('#stepHint');
+    var $addRow         = $('#addItemRow');
+    var $addPart        = $('#addVendorPart');
+    var $addQty         = $('#addQty');
+    var $addPrice       = $('#addPrice');
+    var $addCur         = $('#addCurrency');
+    var $addBtn         = $('#addItemBtn');
+    var $itemsRow       = $('#cartItemsRow');
+    var $itemsBody      = $('#cartItemsBody');
+    var $count          = $('#cartCount');
+    var $actions        = $('#finalActionsRow');
+    var $rfqBtn         = $('#createRfqBtn');
+    var $poBtn          = $('#createPoBtn');
+    var $clearBtn       = $('#clearCartBtn');
 
     // ---- helpers ----
 
@@ -49,9 +62,34 @@
         );
     }
 
+    function setStep(n) {
+        cart.step = n;
+        if (n === 1) {
+            $step1VendorRow.show();
+            $step2VendorRow.hide();
+            $step1NextRow.show();
+            $step2Content.hide();
+            $stepHint.text('');
+            setAlert('');
+        } else {
+            $step1VendorRow.hide();
+            $step2VendorRow.show();
+            $step1NextRow.hide();
+            $step2Content.show();
+            $stepHint.text('(edytowalne)');
+            $vendorDisplay.text(cart.vendorName);
+            showAddRowIfReady();
+        }
+    }
+
     function showAddRowIfReady() {
-        if (cart.vendorId) { $addRow.show(); }
-        else               { $addRow.hide(); $itemsRow.hide(); $actions.hide(); }
+        if (cart.step === 2 && cart.vendorId) {
+            $addRow.show();
+        } else {
+            $addRow.hide();
+            $itemsRow.hide();
+            $actions.hide();
+        }
     }
 
     function loadVendorParts(query) {
@@ -158,26 +196,41 @@
 
     // ---- event handlers ----
 
+    // Vendor selection (step 1 only — step 2 vendor is locked)
     $vendor.on('change', function () {
         cart.vendorId = parseInt($(this).val(), 10) || null;
         cart.vendorName = cart.vendorId ? $vendor.find('option:selected').text() : '';
-        showAddRowIfReady();
         clearAddForm();
         loadVendorParts('');
-        // When vendor changes, clear the cart (items reference a specific vendor).
-        if (cart.items.length > 0) {
-            cart.items = [];
-            renderCart();
-            setAlert('Dostawca został zmieniony — koszyk wyczyszczony.', 'info');
-        }
     });
 
-    $date.on('change', function () { cart.date = $(this).val(); });
+    // Date + comment sync (works in both steps since inputs are shared)
+    $date.on('change',    function () { cart.date    = $(this).val(); });
     $comment.on('change', function () { cart.comment = $(this).val(); });
 
-    // Live search on the VendorPart picker
+    // Step 1 → Step 2 transition
+    $nextBtn.on('click', function () {
+        if (!cart.vendorId) {
+            setAlert('Wybierz dostawcę przed kontynuacją.', 'warning');
+            return;
+        }
+        setStep(2);
+    });
+
+    // Step 2 → Step 1 (clear items + comment + date)
+    $backBtn.on('click', function (e) {
+        e.preventDefault();
+        cart.items    = [];
+        cart.comment  = '';
+        cart.date     = '';
+        $comment.val('');
+        $date.val('');
+        renderCart();   // hides items + actions rows
+        setStep(1);
+    });
+
+    // Live search on the VendorPart picker (only in step 2)
     $addPart.on('keyup', function (e) {
-        // Bootstrap-select exposes the search input as `.bs-searchbox input`.
         var $searchInput = $addPart.parent().find('.bs-searchbox input');
         if ($searchInput.length === 0) { return; }
         var q = $searchInput.val();
@@ -186,6 +239,7 @@
     });
 
     $addBtn.on('click', function () {
+        if (cart.step !== 2) { return; }
         var $sel = $addPart.find('option:selected');
         var vpId = parseInt($sel.attr('value'), 10) || 0;
         var qty  = parseFloat($addQty.val());
@@ -278,6 +332,6 @@
         setAlert('Koszyk wyczyszczony.', 'info');
     });
 
-    // Initial render
-    renderCart();
+    // Initial render — show step 1 by default
+    setStep(1);
 })();
