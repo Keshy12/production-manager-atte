@@ -293,6 +293,7 @@ function generateBomTable()
         data: {bomType: bomType, bomValues: bomValues, createNewBom: createNewBom, warehouseId: warehouseId},
         beforeSend: function() {
             $("#bomLoadingRow").show();
+            $("#createNewBomFields, #cloneBomBtn").prop("disabled", true);
         },
         success: function (data) {
             let result = data;
@@ -431,6 +432,7 @@ function generateBomTable()
         },
         complete: function() {
             $("#bomLoadingRow").hide();
+            $("#createNewBomFields, #cloneBomBtn").prop("disabled", false);
         }
     });
 }
