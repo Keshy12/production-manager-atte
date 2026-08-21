@@ -12,6 +12,8 @@
  * Run from CLI:
  *   php src/cron/import-vendors-from-gsheet.php
  *   php src/cron/import-vendors-from-gsheet.php --dry-run
+ *   php src/cron/import-vendors-from-gsheet.php --update-existing
+ *   php src/cron/import-vendors-from-gsheet.php --dry-run --update-existing
  *
  * Behaviour:
  *   - Idempotent: re-runs are safe. Existing rows are skipped (matched by
@@ -24,6 +26,11 @@
  *   - PartNo not found in `list__parts.name` => row skipped + logged.
  *   - Empty cells in vendor 'Notes' leave `comment` as NULL.
  *   - Lead time column is interpreted as DAYS (per spec).
+ *   - --update-existing: when set, backfills producer_part_no on
+ *     existing VendorPart rows whose value is currently NULL. Rows that
+ *     already have a value are skipped (we don't blindly overwrite).
+ *     Use this once to populate historical rows from the spreadsheet
+ *     after the producer_part_no column was added in P5.
  *
  * CLI bootstrap notes:
  *   - config.php is required explicitly because Apache's .htaccess prepend
@@ -44,6 +51,7 @@ use Atte\DB\MsaDB;
 set_time_limit(0);
 
 $dryRun = in_array('--dry-run', $argv ?? [], true);
+$updateExisting = in_array('--update-existing', $argv ?? [], true);
 
 $spreadsheetId = '1OowYceg8hWtuCmnqPiqCyg5N3rVaAngEvmnGRhjeOew';
 
@@ -370,7 +378,8 @@ if (!$rawVariantValues || count($rawVariantValues) < 2) {
 
 $partStats = ['total' => 0, 'inserted' => 0, 'skipped_existing' => 0,
               'skipped_no_part' => 0, 'skipped_no_vendor' => 0,
-              'skipped_no_producer' => 0, 'skipped_no_unit' => 0];
+              'skipped_no_producer' => 0, 'skipped_no_unit' => 0,
+              'backfilled' => 0, 'skipped_already_set' => 0];
 
 for ($i = 1; $i < count($rawVariantValues); $i++) {
     $r = $rawVariantValues[$i];
@@ -425,11 +434,29 @@ for ($i = 1; $i < count($rawVariantValues); $i++) {
     }
 
     $existing = dbFetchOne($MsaDB,
-        "SELECT id FROM `list__vendor_part` WHERE vendor_id = ? AND vendor_part_no = ?",
+        "SELECT id, producer_part_no AS producerPartNo
+           FROM `list__vendor_part`
+          WHERE vendor_id = ? AND vendor_part_no = ?",
         [$vendorId, $vendorPartNo]
     );
     if ($existing) {
-        $partStats['skipped_existing']++;
+        if ($updateExisting && $existing['producerPartNo'] === null && $producerPartNo) {
+            // Backfill: existing row has NULL producer_part_no, sheet has a value.
+            // Safe to update — won't overwrite any manually-entered data.
+            dbFetchOne($MsaDB, "UPDATE `list__vendor_part` SET producer_part_no = ? WHERE id = ?", [$producerPartNo, $existing['id']]);
+            // (dbFetchOne is used here purely as a thin execute wrapper; we don't
+            // need the returned row, only side effect.)
+            $partStats['backfilled']++;
+            logLine("  [vp] backfilled producer_part_no=$producerPartNo on vendor=$vendorNm part=$partNo vendorPartNo=$vendorPartNo");
+        } else {
+            if ($updateExisting && $producerPartNo && $existing['producerPartNo'] !== null) {
+                $partStats['skipped_already_set']++;
+                logLine("  [vp] skipped (already set: " . $existing['producerPartNo'] . ") for vendor=$vendorNm part=$partNo vendorPartNo=$vendorPartNo");
+            } else {
+                $partStats['skipped_existing']++;
+                logLine("  [vp] skipped (existing) vendor=$vendorNm producer=$producerNm part=$partNo vendorPartNo=$vendorPartNo");
+            }
+        }
         continue;
     }
 
@@ -458,7 +485,7 @@ for ($i = 1; $i < count($rawVariantValues); $i++) {
     $pPartLog = $producerPartNo ? " producerPartNo=$producerPartNo" : '';
     logLine("  [vp] created vendor=$vendorNm producer=$producerId part=$partNo vendorPartNo=$vendorPartNo$pPartLog");
 }
-logLine("VendorParts summary: total={$partStats['total']} inserted={$partStats['inserted']} skipped_existing={$partStats['skipped_existing']} skipped_no_part={$partStats['skipped_no_part']} skipped_no_vendor={$partStats['skipped_no_vendor']} skipped_no_producer={$partStats['skipped_no_producer']} skipped_no_unit={$partStats['skipped_no_unit']}");
+logLine("VendorParts summary: total={$partStats['total']} inserted={$partStats['inserted']} skipped_existing={$partStats['skipped_existing']} skipped_no_part={$partStats['skipped_no_part']} skipped_no_vendor={$partStats['skipped_no_vendor']} skipped_no_producer={$partStats['skipped_no_producer']} skipped_no_unit={$partStats['skipped_no_unit']} backfilled={$partStats['backfilled']} skipped_already_set={$partStats['skipped_already_set']}");
 
 logLine('=== Vendor import complete ===');
 logLine("Log file: $logFile");
