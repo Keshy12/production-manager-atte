@@ -101,6 +101,9 @@ if ($wasSuccessful) {
             $insertedCount++;
         }
 
+        // Cloned content is a draft until reviewed — mark target BOM inactive.
+        $MsaDB->update('bom__' . $bomType, ['isActive' => 0], 'id', $targetBomInt);
+
         $MsaDB->db->commit();
     } catch (\Throwable $e) {
         if ($MsaDB->db->inTransaction()) {
