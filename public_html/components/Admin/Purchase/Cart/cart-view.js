@@ -136,6 +136,10 @@
         }).done(function (rows) {
             $addPart.find('option').not(':first').remove();
             (rows || []).forEach(function (r) {
+                // Subtext = producer (falls back to vendor's unit if producer
+                // missing) — bootstrap-select shows this as a smaller line
+                // below the main label in the dropdown.
+                var subtext = r.producer_name || r.unit_name || '';
                 var $opt = $('<option></option>')
                     .attr('value', r.id)
                     .attr('data-vendor-part-no', r.vendor_part_no || '')
@@ -143,6 +147,7 @@
                     .attr('data-producer-name', r.producer_name || '')
                     .attr('data-unit-name', r.unit_name || '')
                     .attr('data-vendor-jm-id', r.vendor_jm_id)
+                    .attr('data-subtext', subtext)
                     .text(r.label || r.vendor_part_no);
                 $addPart.append($opt);
             });
@@ -161,11 +166,21 @@
         }).done(function (rows) {
             $modalPartsPicker.find('option').not(':first').remove();
             (rows || []).forEach(function (r) {
+                // Subtext = description (if different from name) with JM
+                // appended; gives the admin more context when picking.
+                var subParts = [];
+                if (r.description && r.description !== r.name) {
+                    subParts.push(r.description);
+                }
+                if (r.jm_name) {
+                    subParts.push(r.jm_name);
+                }
                 var $opt = $('<option></option>')
                     .attr('value', r.id)
                     .attr('data-jm-id', r.jm_id)
                     .attr('data-name', r.name)
                     .attr('data-jm-name', r.jm_name)
+                    .attr('data-subtext', subParts.join(' • '))
                     .text(r.label || r.name);
                 $modalPartsPicker.append($opt);
             });
