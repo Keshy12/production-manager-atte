@@ -164,6 +164,16 @@ switch ($request) {
         includeWithVariables($headerDir, array('title' => 'Koszyk zakupowy'));
         require $componentsDir . '/Admin/Purchase/Cart/cart-view.php';
         break;
+    case 'admin/purchase/receipts':
+        requireAdmin();
+        includeWithVariables($headerDir, array('title' => 'Przyjęcia'));
+        require $componentsDir . '/Admin/Purchase/Receipts/receipts-view.php';
+        break;
+    case 'admin/purchase/orders/receive':
+        requireAdmin();
+        includeWithVariables($headerDir, array('title' => 'Przyjmij towar'));
+        require $componentsDir . '/Admin/Purchase/Orders/Receive/receive-view.php';
+        break;
 
     case 'admin/synchronization/flowpin':
         requireAdmin();

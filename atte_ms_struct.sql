@@ -882,6 +882,44 @@ CREATE TABLE `purchase__order_item` (
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `purchase__order_receipt`
+--
+
+CREATE TABLE `purchase__order_receipt` (
+  `id` int(11) NOT NULL,
+  `po_id` int(11) NOT NULL,
+  `document_number` varchar(64) DEFAULT NULL,
+  `received_by` int(11) NOT NULL,
+  `received_at` datetime NOT NULL DEFAULT current_timestamp(),
+  `comment` text,
+  PRIMARY KEY (`id`),
+  KEY `idx_receipt_po` (`po_id`),
+  CONSTRAINT `fk_receipt_po` FOREIGN KEY (`po_id`) REFERENCES `purchase__order` (`id`),
+  CONSTRAINT `fk_receipt_user` FOREIGN KEY (`received_by`) REFERENCES `user` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Table structure for table `purchase__order_receipt_item`
+--
+
+CREATE TABLE `purchase__order_receipt_item` (
+  `id` int(11) NOT NULL,
+  `receipt_id` int(11) NOT NULL,
+  `po_item_id` int(11) NOT NULL,
+  `quantity_received` decimal(30,10) NOT NULL,
+  `sub_magazine_id` int(11) NOT NULL,
+  `comment` text,
+  PRIMARY KEY (`id`),
+  KEY `idx_receipt_item_receipt` (`receipt_id`),
+  KEY `idx_receipt_item_po_item` (`po_item_id`),
+  CONSTRAINT `fk_receipt_item_receipt` FOREIGN KEY (`receipt_id`) REFERENCES `purchase__order_receipt` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_receipt_item_mag` FOREIGN KEY (`sub_magazine_id`) REFERENCES `magazine__list` (`sub_magazine_id`),
+  CONSTRAINT `fk_receipt_item_po_item` FOREIGN KEY (`po_item_id`) REFERENCES `purchase__order_item` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `ref__flowpin_checkpoints`
 --
 
@@ -1661,6 +1699,18 @@ ALTER TABLE `purchase__order_item`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
+-- AUTO_INCREMENT for table `purchase__order_receipt`
+--
+ALTER TABLE `purchase__order_receipt`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `purchase__order_receipt_item`
+--
+ALTER TABLE `purchase__order_receipt_item`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
 -- AUTO_INCREMENT for table `ref__flowpin_update_progress`
 --
 ALTER TABLE `ref__flowpin_update_progress`
@@ -1911,6 +1961,21 @@ ALTER TABLE `purchase__order_item`
   ADD CONSTRAINT `fk_poi_po` FOREIGN KEY (`po_id`) REFERENCES `purchase__order` (`id`) ON DELETE CASCADE,
   ADD CONSTRAINT `fk_poi_unit` FOREIGN KEY (`quantity_unit_id`) REFERENCES `part__unit` (`id`),
   ADD CONSTRAINT `fk_poi_vp` FOREIGN KEY (`vendor_part_id`) REFERENCES `list__vendor_part` (`id`);
+
+--
+-- Constraints for table `purchase__order_receipt`
+--
+ALTER TABLE `purchase__order_receipt`
+  ADD CONSTRAINT `fk_receipt_po` FOREIGN KEY (`po_id`) REFERENCES `purchase__order` (`id`),
+  ADD CONSTRAINT `fk_receipt_user` FOREIGN KEY (`received_by`) REFERENCES `user` (`user_id`);
+
+--
+-- Constraints for table `purchase__order_receipt_item`
+--
+ALTER TABLE `purchase__order_receipt_item`
+  ADD CONSTRAINT `fk_receipt_item_mag` FOREIGN KEY (`sub_magazine_id`) REFERENCES `magazine__list` (`sub_magazine_id`),
+  ADD CONSTRAINT `fk_receipt_item_po_item` FOREIGN KEY (`po_item_id`) REFERENCES `purchase__order_item` (`id`),
+  ADD CONSTRAINT `fk_receipt_item_receipt` FOREIGN KEY (`receipt_id`) REFERENCES `purchase__order_receipt` (`id`) ON DELETE CASCADE;
 
 --
 -- Constraints for table `ref__valuepackage`

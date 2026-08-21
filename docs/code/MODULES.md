@@ -285,6 +285,38 @@
 
 ---
 
+#### Admin/Purchase/Receipts/ — Procurement Module — Receiving (P4) (5 files)
+
+**Purpose:** Goods-receiving log. Lists every receipt ever recorded (PZ / WZ documents against POs), with a click-through detail modal showing the per-receipt line items (vendor_part_no, part, producer, JM, ilość). This is the audit trail of what physically arrived against what was ordered.
+
+**Key files:**
+- `receipts-view.php` — list of receipts (ID / Numer dokumentu / linked PO number / Dostawca / Pozycje count / Ilość łącznie / Przyjął / Data / Akcje). Loads via `OrderReceiptRepository::getAll(true)` which filters out receipts for cancelled POs.
+- `receipts-view.js` — row click / "Zobacz" button opens the info modal.
+- `modals.php` — info modal (read-only) showing per-receipt line items.
+- `receipt-get.php` — GET `id`. Returns `{success, receipt, items}` JSON for the modal.
+- `table-row-template.php` — static `<script type="text/template">` row template.
+
+#### Admin/Purchase/Orders/Receive/ — Procurement Module — Per-PO Receive (P4) (4 files)
+
+**Purpose:** Per-PO receiving form. Triggered by the "Przyjmij towar" button on the PO edit page header. Admin picks a sub-magazine and document number (PZ/WZ), enters `quantity_received` per line (with live "remaining / max 110%" hints), and submits. The handler runs the inventory ledger writes in one transaction.
+
+**Key files:**
+- `receive-view.php` — form page with state guard (only `confirmed`/`partially_received` POs are receivable), sub-magazine picker (server-rendered from `MagazineRepository::getAllMagazines(true)`), per-PO-item input table.
+- `receive-action.php` — POST endpoint. Mirrors the handler's lenient 110% over-delivery check for clean field-level errors, then calls `PurchaseActionHandler::createReceipt(...)`. Catches `InvalidArgumentException`, `LogicException`, `RuntimeException` separately for granular error reporting.
+- `modals.php` — placeholder (no extra modal needed; the form submits directly).
+- `receive-view.js` — live client-side validation (adds `is-invalid` class when an input exceeds 110% of remaining). Form submit → AJAX POST → on success, navigate to the receipts list page.
+
+**Cross-cutting change in P4:** the existing PO edit page header (`Orders/Edit/edit-order-view.php`) gained a "Przyjmij towar" button visible when `state ∈ {confirmed, partially_received}`. When the PO is `received` or `cancelled`, the button is replaced by a disabled "Towar już przyjęty" / "Zamówienie anulowane" label.
+
+**PurchaseActionHandler::createReceipt() activation** — the previously-stubbed method is now the most logic-dense in the handler. In one transaction it:
+- Validates PO state and per-line ownership + quantity + magazine + lenient 110% over-delivery cap.
+- Resolves `input_type_id` from `inventory__input_type` (LIKE 'purchase%' OR fallback to id=1).
+- Opens a `TransferGroupManager::createTransferGroup(..., 'purchase_receipt', ['po_id' => ...])`.
+- Inserts the receipt header + per-line items.
+- Bumps `purchase__order_item.quantity_received` per line.
+- Inserts positive `inventory__parts` rows (`commission_id=null`, `is_cancelled=0`, `isVerified=0`).
+- Transitions the PO to `partially_received` or `received` based on the running total vs ordered.
+
 #### Admin/Purchase/Cart/ — Procurement UX — Koszyk (4 files, v1.4)
 
 **Purpose:** Single entry point for creating new RFQ or PO documents. Replaces the inline "Nowe zapytanie" / "Nowe zamówienie" forms on the RFQ and PO list pages. User picks a vendor, adds items (with quantity + optional unit price + currency), then chooses "Utwórz zapytanie" or "Utwórz zamówienie".

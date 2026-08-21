@@ -54,7 +54,8 @@ include('modals.php');
 <div id="poPageContext"
      data-po-id="<?= $po->id ?>"
      data-vendor-id="<?= $po->vendorId ?>"
-     data-can-edit="<?= $canEdit ? '1' : '0' ?>"></div>
+     data-can-edit="<?= $canEdit ? '1' : '0' ?>"
+     data-can-receive="<?= in_array($po->state, ['confirmed','partially_received'], true) ? '1' : '0' ?>"></div>
 
 <div class="container-fluid w-75 mt-3">
     <div class="row">
@@ -87,6 +88,20 @@ include('modals.php');
                                     data-number="<?= htmlspecialchars($po->poNumber ?? '') ?>"
                                     data-vendor="<?= htmlspecialchars($vendor ? $vendor->name : '') ?>">
                                 <i class="bi bi-check-circle"></i> Potwierdź
+                            </button>
+                        <?php endif; ?>
+                        <?php if (in_array($po->state, ['confirmed','partially_received'], true)): ?>
+                            <a class="btn btn-sm btn-success"
+                               href="http://<?= BASEURL ?>/admin/purchase/orders/receive?po_id=<?= $po->id ?>">
+                                <i class="bi bi-box-arrow-in-down"></i> Przyjmij towar
+                            </a>
+                        <?php elseif ($po->state === 'received'): ?>
+                            <button class="btn btn-sm btn-secondary" disabled>
+                                <i class="bi bi-check2-all"></i> Towar już przyjęty
+                            </button>
+                        <?php elseif ($po->state === 'cancelled'): ?>
+                            <button class="btn btn-sm btn-secondary" disabled>
+                                <i class="bi bi-x-octagon"></i> Zamówienie anulowane
                             </button>
                         <?php endif; ?>
                         <?php if (in_array($po->state, ['draft','sent','confirmed'], true)): ?>

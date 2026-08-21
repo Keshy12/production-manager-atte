@@ -2,6 +2,8 @@
 namespace Atte\Utils\Purchase\Order;
 
 use Atte\DB\MsaDB;
+use Atte\Utils\Purchase\Master\VendorPartRepository;
+use Atte\Utils\TransferGroupManager;
 
 class PurchaseActionHandler {
     private $MsaDB;
@@ -218,6 +220,238 @@ class PurchaseActionHandler {
             return $poId;
         } catch (\Throwable $e) {
             if ($MsaDB->db->inTransaction()) {
+                $MsaDB->db->rollBack();
+            }
+            throw $e;
+        }
+    }
+
+    public function createReceipt(
+        int $poId,
+        int $receivedBy,
+        array $items,
+        ?string $documentNumber = null,
+        ?string $receiptComment = null
+    ): int {
+        if ($poId <= 0)      throw new \InvalidArgumentException("poId must be positive.");
+        if ($receivedBy <= 0) throw new \InvalidArgumentException("receivedBy must be positive.");
+        if (empty($items))    throw new \InvalidArgumentException("At least one receipt item is required.");
+
+        if ($documentNumber !== null) {
+            $documentNumber = trim($documentNumber);
+            if ($documentNumber === '') $documentNumber = null;
+        }
+        if ($receiptComment !== null) {
+            $receiptComment = trim($receiptComment);
+            if ($receiptComment === '') $receiptComment = null;
+        }
+
+        $MsaDB = $this->MsaDB;
+        $poRepo     = new PurchaseOrderRepository($MsaDB);
+        $poItemRepo = new PurchaseOrderItemRepository($MsaDB);
+        $vpRepo     = new VendorPartRepository($MsaDB);
+        $receiptRepo = new OrderReceiptRepository($MsaDB);
+        $transferGroupManager = new TransferGroupManager($MsaDB);
+
+        // 1. Load PO; state guard.
+        $po = $poRepo->getById($poId);
+        if ($po === null) {
+            throw new \LogicException("PO not found");
+        }
+        if (!in_array($po->state, ['confirmed','partially_received'], true)) {
+            throw new \LogicException("PO must be confirmed or partially_received to receive goods");
+        }
+
+        // 2. Load PO items; build id-indexed map for ownership + remaining math.
+        $poItems = $poItemRepo->getByPo($poId);
+        $poItemsById = [];
+        $orderedTotal = 0.0;
+        foreach ($poItems as $pi) {
+            $poItemsById[$pi->id] = $pi;
+            $orderedTotal += (float)$pi->quantity;
+        }
+
+        // 3. Validate each receipt item: ownership, qty > 0, magazine active, lenient 110% cap.
+        $epsilon = 1e-6;
+        $normalized = [];
+        foreach ($items as $idx => $raw) {
+            $poItemId    = (int)($raw['po_item_id']      ?? 0);
+            $qtyRecvRaw  = $raw['quantity_received']   ?? null;
+            $subMag      = (int)($raw['sub_magazine_id'] ?? 0);
+            $lineComment = $raw['comment']              ?? null;
+
+            if ($poItemId <= 0) {
+                throw new \InvalidArgumentException("receipt item #{$idx}: missing po_item_id");
+            }
+            if (!isset($poItemsById[$poItemId])) {
+                throw new \LogicException("receipt item #{$idx}: po_item_id {$poItemId} does not belong to PO {$poId}");
+            }
+            $poItem = $poItemsById[$poItemId];
+
+            if (!is_numeric($qtyRecvRaw) || (float)$qtyRecvRaw <= 0) {
+                throw new \InvalidArgumentException("receipt item #{$idx}: quantity_received must be > 0");
+            }
+            $qtyRecv = (float)$qtyRecvRaw;
+
+            if ($subMag <= 0) {
+                throw new \InvalidArgumentException("receipt item #{$idx}: sub_magazine_id must be positive");
+            }
+
+            // Active magazine check.
+            $magStmt = $MsaDB->db->prepare("SELECT isActive FROM `magazine__list` WHERE sub_magazine_id = ?");
+            $magStmt->execute([$subMag]);
+            $magRow = $magStmt->fetch(\PDO::FETCH_ASSOC);
+            if ($magRow === false) {
+                throw new \LogicException("receipt item #{$idx}: sub_magazine_id {$subMag} does not exist");
+            }
+            if ((int)$magRow['isActive'] !== 1) {
+                throw new \LogicException("receipt item #{$idx}: sub_magazine_id {$subMag} is not an active magazine");
+            }
+
+            // Lenient 110% over-delivery cap.
+            $remaining = ((float)$poItem->quantity) - ((float)$poItem->quantityReceived);
+            $maxAllowed = $remaining * 1.10 + $epsilon;
+            $newRunning = ((float)$poItem->quantityReceived) + $qtyRecv;
+            if ($newRunning > $maxAllowed) {
+                throw new \LogicException(sprintf(
+                    "Line %d (%s): over-delivery would push running total %.4f above max %.4f (remaining %.4f x 1.10)",
+                    $poItem->id,
+                    $poItem->vendorPartNo ?? ('vp#' . $poItem->vendorPartId),
+                    $newRunning,
+                    $maxAllowed,
+                    $remaining
+                ));
+            }
+
+            if ($lineComment !== null) {
+                $lineComment = trim((string)$lineComment);
+                if ($lineComment === '') $lineComment = null;
+            }
+
+            $normalized[] = [
+                'poItemId'         => $poItemId,
+                'poItem'           => $poItem,
+                'quantityReceived' => $qtyRecv,
+                'subMagazineId'    => $subMag,
+                'comment'          => $lineComment,
+            ];
+        }
+
+        // Transaction participation: join caller's transaction if already open,
+        // otherwise own the transaction for the duration of this call.
+        $ownedTransaction = !$MsaDB->db->inTransaction();
+        if ($ownedTransaction) {
+            $MsaDB->db->beginTransaction();
+        }
+
+        try {
+            // 5.1 Resolve input_type_id (prefer a 'purchase%' row, fall back to id=1).
+            $typeStmt = $MsaDB->db->prepare(
+                "SELECT id FROM `inventory__input_type`
+                 WHERE name LIKE 'purchase%' OR id = 1
+                 ORDER BY (name LIKE 'purchase%') DESC, id ASC
+                 LIMIT 1"
+            );
+            $typeStmt->execute();
+            $typeRow = $typeStmt->fetch(\PDO::FETCH_ASSOC);
+            if ($typeRow === false) {
+                throw new \RuntimeException("No inventory__input_type row - please configure at least one input type");
+            }
+            $inputTypeId = (int)$typeRow['id'];
+
+            // 5.2 Open the transfer group (used to attribute inventory__parts rows).
+            $transferGroupId = $transferGroupManager->createTransferGroup(
+                $receivedBy,
+                'purchase_receipt',
+                ['po_id' => $poId]
+            );
+
+            // 5.3 Create the receipt header.
+            $receiptId = $receiptRepo->create($poId, $receivedBy, $documentNumber, $receiptComment);
+
+            // 5.4 For each receipt item: insert receipt item, bump quantity_received,
+            //     resolve parts_id, write a positive inventory__parts row.
+            foreach ($normalized as $ni) {
+                $poItem = $ni['poItem'];
+
+                // a) receipt-item row
+                $riCols = ['receipt_id', 'po_item_id', 'quantity_received', 'sub_magazine_id', 'comment'];
+                $riVals = [
+                    $receiptId,
+                    $ni['poItemId'],
+                    $ni['quantityReceived'],
+                    $ni['subMagazineId'],
+                    $ni['comment'],
+                ];
+                $riPlaceholders = array_fill(0, count($riCols), '?');
+                $riSql = "INSERT INTO `purchase__order_receipt_item` (`"
+                    . implode('`,`', $riCols) . "`) VALUES ("
+                    . implode(',', $riPlaceholders) . ")";
+                $riStmt = $MsaDB->db->prepare($riSql);
+                $riStmt->execute($riVals);
+
+                // b) bump running total
+                $MsaDB->update(
+                    'purchase__order_item',
+                    [
+                        'quantity_received' => (float)$poItem->quantityReceived + $ni['quantityReceived'],
+                    ],
+                    'id',
+                    $ni['poItemId']
+                );
+
+                // c) resolve parts_id from the vendor part
+                $vp = $vpRepo->getById($poItem->vendorPartId);
+                if ($vp === null) {
+                    throw new \LogicException("Vendor part {$poItem->vendorPartId} not found for PO item {$poItem->id}");
+                }
+
+                // d) positive inventory ledger row. timestamp = NOW(), isVerified = 0
+                //    (audit-only column per DATABASE.md; admin UI never flips it to 1).
+                $comment = sprintf(
+                    'Przyjecie z PO %s (%s)',
+                    $po->poNumber ?? ('#' . $po->id),
+                    $poItem->vendorPartNo ?? ('vp#' . $poItem->vendorPartId)
+                );
+                $invCols = [
+                    'parts_id', 'sub_magazine_id', 'qty', 'commission_id',
+                    'transfer_group_id', 'is_cancelled', 'input_type_id',
+                    'comment', 'timestamp', 'isVerified',
+                ];
+                $invVals = [
+                    $vp->partsId,
+                    $ni['subMagazineId'],
+                    $ni['quantityReceived'],
+                    null,
+                    $transferGroupId,
+                    0,
+                    $inputTypeId,
+                    $comment,
+                    date('Y-m-d H:i:s'),
+                    0,
+                ];
+                $invPlaceholders = array_fill(0, count($invCols), '?');
+                $invSql = "INSERT INTO `inventory__parts` (`"
+                    . implode('`,`', $invCols) . "`) VALUES ("
+                    . implode(',', $invPlaceholders) . ")";
+                $invStmt = $MsaDB->db->prepare($invSql);
+                $invStmt->execute($invVals);
+            }
+
+            // 5.5 PO state transition (based on the post-write running total).
+            $sum = $poItemRepo->sumQuantityReceivedByPo($poId);
+            if ($orderedTotal > 0 && $sum + $epsilon >= $orderedTotal) {
+                $poRepo->setState($poId, 'received');
+            } elseif ($sum > 0) {
+                $poRepo->setState($poId, 'partially_received');
+            }
+
+            if ($ownedTransaction) {
+                $MsaDB->db->commit();
+            }
+            return $receiptId;
+        } catch (\Throwable $e) {
+            if ($ownedTransaction && $MsaDB->db->inTransaction()) {
                 $MsaDB->db->rollBack();
             }
             throw $e;

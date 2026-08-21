@@ -1,6 +1,6 @@
 # Plan — Procurement Module (Zakupy / Dostawcy)
 
-**Status:** Draft v1.4 — **Phase 3 + Koszyk UX complete and merged into `feature/component-procurement`**. Cart-style entry point for new RFQs/POs is live under `Admin → Zakupy → Koszyk`. List-page filters and DB-backed cart persistence are deferred. `quantity_received` writes ship in P4.
+**Status:** Draft v1.5 — **Phase 4 complete and merged into `feature/component-procurement`**. Goods receiving is live under `Admin → Zakupy → Przyjęcia` (list) and `Przyjmij towar` button on each confirmed PO. Receiving closes the loop into the inventory ledger via positive `inventory__parts` rows inside a `purchase_receipt` transfer group. The procurement workflow is now end-to-end: Koszyk → RFQ → PO → confirm → receive → stock appears in `/warehouse` and `/archive`.
 **Branch:** `feature/component-procurement`
 **Owner:** TBD
 
