@@ -2,7 +2,7 @@
 function filterCSVArray($csvArray, $packageToExclude)
 {
     $csvArray = array_filter($csvArray, function($row) {
-        return $row[1] !== "DNP" && $row[1] !== "DNP_SS520G";
+        return !str_starts_with($row[1], 'DNP');
     });
     
     $csvArray = array_filter($csvArray, function($row) use ($packageToExclude) {
