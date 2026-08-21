@@ -19,7 +19,7 @@
 </div>
 
 <div class="modal fade" id="cloneBomModal" tabindex="-1" role="dialog">
-    <div class="modal-dialog" role="document">
+    <div class="modal-dialog modal-lg" role="document">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">Klonuj BOM</h5>
@@ -57,9 +57,19 @@
 
                 <input type="hidden" id="cloneSourceBomId" value="">
 
-                <div id="cloneSourcePreview" style="display:none;"
-                     class="border rounded p-3 mt-3 bg-light">
-                    <!-- Filled in by JS after the source BOM resolves -->
+                <div id="cloneSourcePreview" style="display:none;" class="mt-3">
+                    <div class="text-muted small mb-2">
+                        <b>Ten BOM zawiera <span id="cloneSourceCount">0</span> pozycji</b>
+                    </div>
+                    <table class="table table-bordered table-sm text-center mb-0 small" style="max-width: 100%;">
+                        <thead>
+                            <tr>
+                                <th style="width:70%" scope="col">Komponent</th>
+                                <th style="width:30%" scope="col">Ilość</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cloneSourceTBody"></tbody>
+                    </table>
                 </div>
 
                 <div id="cloneTargetWarning" style="display:none;" class="mt-3">

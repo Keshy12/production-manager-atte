@@ -80,9 +80,13 @@ if ($wasSuccessful) {
         $sourceBomId = (int)$bom->id;
 
         $list__sku = $MsaDB->readIdName('list__sku');
+        $list__sku_desc = $MsaDB->readIdName('list__sku', 'id', 'description');
         $list__tht = $MsaDB->readIdName('list__tht');
+        $list__tht_desc = $MsaDB->readIdName('list__tht', 'id', 'description');
         $list__smd = $MsaDB->readIdName('list__smd');
+        $list__smd_desc = $MsaDB->readIdName('list__smd', 'id', 'description');
         $list__parts = $MsaDB->readIdName('list__parts');
+        $list__parts_desc = $MsaDB->readIdName('list__parts', 'id', 'description');
 
         try {
             $rows = $bom->getComponents(1);
@@ -94,10 +98,12 @@ if ($wasSuccessful) {
                 if ($name === null) {
                     continue;
                 }
+                $description = ${$bucket . '_desc'}[$id] ?? '';
                 $components[] = [
-                    'type'     => $type,
-                    'name'     => (string)$name,
-                    'quantity' => (float)$row['quantity'],
+                    'type'        => $type,
+                    'name'        => (string)$name,
+                    'description' => (string)$description,
+                    'quantity'    => (float)$row['quantity'],
                 ];
             }
             $componentCount = count($components);
