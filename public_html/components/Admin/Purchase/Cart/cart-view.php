@@ -10,6 +10,9 @@ if(!isset($_SESSION['isAdmin']) || $_SESSION['isAdmin'] !== true) {
 $MsaDB = MsaDB::getInstance();
 $vendorRepository = new VendorRepository($MsaDB);
 $vendors = $vendorRepository->getAll(true);   // active only
+
+// Active units for the "Dodaj nowy" modal's JM dropdown
+$units = $MsaDB->query("SELECT id, name FROM part__unit ORDER BY name ASC");
 ?>
 
 <div class="container-fluid w-75 mt-3">
@@ -115,7 +118,12 @@ $vendors = $vendorRepository->getAll(true);   // active only
         <div class="row mt-3" id="addItemRow">
             <div class="col-12">
                 <div class="card">
-                    <div class="card-header"><h5>2. Dodaj artykuł</h5></div>
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">2. Dodaj artykuł</h5>
+                        <a href="#" id="addVendorPartBtn" class="small">
+                            <i class="bi bi-plus-circle"></i> Dodaj nowy artykuł u dostawcy
+                        </a>
+                    </div>
                     <div class="card-body">
                         <div class="row">
                             <div class="col-md-8">
@@ -208,6 +216,56 @@ $vendors = $vendorRepository->getAll(true);   // active only
                         </button>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== "Dodaj nowy artykuł u dostawcy" modal ===== -->
+<div class="modal fade" id="addVendorPartModal" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Dodaj nowy artykuł u dostawcy</h5>
+                <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small">
+                    Wybierz część z naszego katalogu i podaj numer katalogowy, pod jakim ten
+                    sam produkt występuje u tego dostawcy. Zostanie utworzony wpis
+                    <code>list__vendor_part</code> powiązany z wybranym dostawcą.
+                </p>
+                <div class="form-group">
+                    <label for="modalPartsPicker">Część z naszego katalogu:</label>
+                    <select id="modalPartsPicker" class="selectpicker form-control" data-live-search="true" data-width="100%">
+                        <option value="">Wyszukaj część...</option>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <div class="form-group col-md-6">
+                        <label for="modalVendorPartNo">Numer katalogowy u dostawcy:</label>
+                        <input type="text" id="modalVendorPartNo" class="form-control" placeholder="np. STM32F103C8T6">
+                    </div>
+                    <div class="form-group col-md-3">
+                        <label for="modalVendorJm">JM u dostawcy:</label>
+                        <select id="modalVendorJm" class="form-control">
+                            <?php foreach ($units as $u): ?>
+                                <option value="<?= (int)$u['id'] ?>"><?= htmlspecialchars($u['name']) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="form-group col-md-3">
+                        <label for="modalFullPack">Pełne opakowanie:</label>
+                        <input type="number" step="0.0001" min="0.0001" id="modalFullPack" class="form-control" value="1">
+                    </div>
+                </div>
+                <div id="modalAlert"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Anuluj</button>
+                <button type="button" id="saveVendorPartBtn" class="btn btn-primary">
+                    <i class="bi bi-check-lg"></i> Zapisz
+                </button>
             </div>
         </div>
     </div>

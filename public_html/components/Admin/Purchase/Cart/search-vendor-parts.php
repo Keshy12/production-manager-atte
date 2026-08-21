@@ -52,15 +52,20 @@ $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
 $out = [];
 foreach ($rows as $r) {
-    $label = $r['vendor_part_no'];
-    if (!empty($r['part_name'])) {
-        $label .= '  —  ' . $r['part_name'];
+    // Lead with the internal part name (our catalog); vendor's reference
+    // is shown in parentheses after. Falls back to vendor_part_no when
+    // the part name is empty.
+    $partName      = $r['part_name']     ?? '';
+    $vendorPartNo  = $r['vendor_part_no'] ?? '';
+    $label = $partName !== '' ? $partName : $vendorPartNo;
+    if ($vendorPartNo !== '' && $vendorPartNo !== $label) {
+        $label .= '  (' . $vendorPartNo . ')';
     }
     $out[] = [
         'id'              => (int)$r['id'],
-        'vendor_part_no'  => $r['vendor_part_no'],
+        'vendor_part_no'  => $vendorPartNo,
         'vendor_jm_id'    => (int)$r['vendor_jm_id'],
-        'part_name'       => $r['part_name'],
+        'part_name'       => $partName,
         'producer_name'   => $r['producer_name'],
         'unit_name'       => $r['unit_name'],
         'label'           => $label,

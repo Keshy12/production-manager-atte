@@ -4,9 +4,12 @@
 //   Step 2: collapsed summary line with "Edytuj" / "Zmień dostawcę"
 //            inline edit form (when "Edytuj" clicked)
 //            + add-item form + items table + final action buttons.
+//            also: "Dodaj nowy artykuł u dostawcy" modal for creating
+//            a fresh list__vendor_part row inline.
 //
-// The two sister endpoints (cart-action.php, search-vendor-parts.php)
-// run on the same origin so we just hit them by relative URL.
+// The sister endpoints (cart-action.php, search-vendor-parts.php,
+// parts-search.php, vendor-part-add.php) run on the same origin so
+// we just hit them by relative URL.
 
 (function () {
     'use strict';
@@ -53,6 +56,14 @@
     var $poBtn             = $('#createPoBtn');
     var $clearBtn          = $('#clearCartBtn');
 
+    // "Dodaj nowy artykuł u dostawcy" modal refs
+    var $addVendorPartBtn   = $('#addVendorPartBtn');
+    var $modalPartsPicker   = $('#modalPartsPicker');
+    var $modalVendorPartNo  = $('#modalVendorPartNo');
+    var $modalVendorJm      = $('#modalVendorJm');
+    var $modalFullPack      = $('#modalFullPack');
+    var $saveVendorPartBtn  = $('#saveVendorPartBtn');
+
     // ---- helpers ----
 
     function refreshSelectpicker($el) {
@@ -61,8 +72,9 @@
         }
     }
 
-    function setAlert(msg, kind) {
-        var $box = $('#alertContainer');
+    function setAlert(msg, kind, container) {
+        var $box = container ? $(container) : $('#alertContainer');
+        if (!$box || !$box.length) { return; }
         if (!msg) { $box.empty(); return; }
         $box.html(
             '<div class="alert alert-' + (kind || 'info') + ' alert-dismissible fade show" role="alert">' +
@@ -126,7 +138,7 @@
             (rows || []).forEach(function (r) {
                 var $opt = $('<option></option>')
                     .attr('value', r.id)
-                    .attr('data-vendor-part-no', r.vendor_part_no)
+                    .attr('data-vendor-part-no', r.vendor_part_no || '')
                     .attr('data-part-name', r.part_name || '')
                     .attr('data-producer-name', r.producer_name || '')
                     .attr('data-unit-name', r.unit_name || '')
@@ -138,6 +150,41 @@
         }).fail(function (xhr) {
             setAlert('Błąd ładowania artykułów: HTTP ' + xhr.status, 'danger');
         });
+    }
+
+    function loadModalParts(query) {
+        $.ajax({
+            url: PURCHASE_CART_BASE + '/parts-search.php',
+            method: 'GET',
+            data: { q: query || '' },
+            dataType: 'json'
+        }).done(function (rows) {
+            $modalPartsPicker.find('option').not(':first').remove();
+            (rows || []).forEach(function (r) {
+                var $opt = $('<option></option>')
+                    .attr('value', r.id)
+                    .attr('data-jm-id', r.jm_id)
+                    .attr('data-name', r.name)
+                    .attr('data-jm-name', r.jm_name)
+                    .text(r.label || r.name);
+                $modalPartsPicker.append($opt);
+            });
+            refreshSelectpicker($modalPartsPicker);
+        }).fail(function (xhr) {
+            setModalAlert('Błąd wyszukiwania części: HTTP ' + xhr.status, 'danger');
+        });
+    }
+
+    function setModalAlert(msg, kind) {
+        setAlert(msg, kind, '#modalAlert');
+    }
+
+    function resetModalForm() {
+        $modalPartsPicker.find('option').not(':first').remove();
+        refreshSelectpicker($modalPartsPicker);
+        $modalVendorPartNo.val('');
+        $modalFullPack.val('1');
+        setModalAlert('');
     }
 
     function clearAddForm() {
@@ -232,7 +279,6 @@
             setAlert('Wybierz dostawcę przed kontynuacją.', 'warning');
             return;
         }
-        // Sync date + comment from inputs (in case change event didn't fire)
         cart.date    = $date.val() || '';
         cart.comment = $comment.val() || '';
         setStep(2);
@@ -253,7 +299,6 @@
     // Step 2 collapsed → expanded edit form
     $editParamsBtn.on('click', function (e) {
         e.preventDefault();
-        // Populate edit inputs with current cart state
         $editVendorDisplay.text(cart.vendorName);
         $cartDateEdit.val(cart.date);
         $cartCommentEdit.val(cart.comment);
@@ -278,7 +323,7 @@
         setAlert('Parametry zaktualizowane.', 'success');
     });
 
-    // Live search on the VendorPart picker (only in step 2)
+    // Live search on the VendorPart picker (step 2 add-item form)
     $addPart.on('keyup', function (e) {
         var $searchInput = $addPart.parent().find('.bs-searchbox input');
         if ($searchInput.length === 0) { return; }
@@ -322,6 +367,93 @@
         renderCart();
         clearAddForm();
         setAlert('Dodano pozycję do koszyka.', 'success');
+    });
+
+    // ---- "Dodaj nowy artykuł u dostawcy" modal handlers ----
+
+    $addVendorPartBtn.on('click', function (e) {
+        e.preventDefault();
+        if (!cart.vendorId) {
+            setAlert('Najpierw wybierz dostawcę.', 'warning');
+            return;
+        }
+        resetModalForm();
+        $('#addVendorPartModal').modal('show');
+    });
+
+    // Live search inside the modal's Part picker
+    $modalPartsPicker.on('keyup', function () {
+        var $searchInput = $modalPartsPicker.parent().find('.bs-searchbox input');
+        if ($searchInput.length === 0) { return; }
+        var q = $searchInput.val();
+        if (q.length < 2 && $searchInput.val() !== '') {
+            // Re-trigger when user clears the search box
+            if (q === '') { loadModalParts(''); }
+            return;
+        }
+        if (q.length < 2) { return; }
+        loadModalParts(q);
+    });
+
+    // When a Part is picked, auto-fill the JM dropdown with the part's JM
+    $modalPartsPicker.on('change', function () {
+        var $opt = $modalPartsPicker.find('option:selected');
+        var jmId = parseInt($opt.attr('data-jm-id'), 10) || 0;
+        if (jmId) {
+            $modalVendorJm.val(jmId);
+        }
+    });
+
+    // Save the new VendorPart
+    $saveVendorPartBtn.on('click', function () {
+        setModalAlert('');
+
+        var partsId = parseInt($modalPartsPicker.val(), 10) || 0;
+        var vendorPartNo = $modalVendorPartNo.val().trim();
+        var vendorJmId = parseInt($modalVendorJm.val(), 10) || 0;
+        var fullPack = parseFloat($modalFullPack.val()) || 1;
+
+        if (!partsId) {
+            setModalAlert('Wybierz część z naszego katalogu.', 'warning');
+            return;
+        }
+        if (!vendorPartNo) {
+            setModalAlert('Podaj numer katalogowy u dostawcy.', 'warning');
+            return;
+        }
+        if (!vendorJmId) {
+            setModalAlert('Wybierz JM u dostawcy.', 'warning');
+            return;
+        }
+
+        var $btn = $saveVendorPartBtn;
+        $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Zapisuję...');
+
+        $.ajax({
+            url: PURCHASE_CART_BASE + '/vendor-part-add.php',
+            method: 'POST',
+            data: {
+                vendor_id        : cart.vendorId,
+                parts_id         : partsId,
+                vendor_part_no   : vendorPartNo,
+                vendor_jm_id     : vendorJmId,
+                full_pack_quantity: fullPack
+            },
+            dataType: 'json'
+        }).done(function (response) {
+            if (response && response.success) {
+                $('#addVendorPartModal').modal('hide');
+                // Reload the add-item VendorPart picker so the new entry shows up
+                loadVendorParts('');
+                setAlert('Dodano nowy artykuł u dostawcy: ' + response.vendor_part_no, 'success');
+            } else {
+                setModalAlert(response && response.error ? response.error : 'Nieznany błąd.', 'danger');
+            }
+        }).fail(function (xhr) {
+            setModalAlert('Błąd HTTP ' + xhr.status, 'danger');
+        }).always(function () {
+            $btn.prop('disabled', false).html('<i class="bi bi-check-lg"></i> Zapisz');
+        });
     });
 
     function buildPayload(forcedType) {
