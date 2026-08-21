@@ -7,7 +7,7 @@
  *   - list__vendor
  *   - list__vendor_supplier
  *   - list__producer (created on demand)
- *   - list__vendor_part
+ *   - list__vendor_part (including the optional producer_part_no column)
  *
  * Run from CLI:
  *   php src/cron/import-vendors-from-gsheet.php
@@ -19,6 +19,8 @@
  *     producer name).
  *   - Producer is created on first sight.
  *   - Vendor JM unit is created in `part__unit` on first sight.
+ *   - Producer PartNo (column 5 of order_variants) is imported when
+ *     present and non-empty; the column stays NULL when missing.
  *   - PartNo not found in `list__parts.name` => row skipped + logged.
  *   - Empty cells in vendor 'Notes' leave `comment` as NULL.
  *   - Lead time column is interpreted as DAYS (per spec).
@@ -375,13 +377,14 @@ for ($i = 1; $i < count($rawVariantValues); $i++) {
     if (count(array_filter($r, fn($v) => trim((string)$v) !== '')) === 0) continue;
     $partStats['total']++;
 
-    $partNo       = trim((string)($r[1] ?? ''));
-    $producerNm   = trim((string)($r[4] ?? ''));
-    $vendorNm     = trim((string)($r[6] ?? ''));
-    $vendorPartNo = trim((string)($r[7] ?? ''));
-    $vendorJM     = trim((string)($r[8] ?? ''));
-    $fullPackRaw  = trim((string)($r[9] ?? ''));
-    $comment      = trim((string)($r[10] ?? '')) ?: null;
+    $partNo         = trim((string)($r[1] ?? ''));
+    $producerNm     = trim((string)($r[4] ?? ''));
+    $producerPartNo = trim((string)($r[5] ?? '')) ?: null;
+    $vendorNm       = trim((string)($r[6] ?? ''));
+    $vendorPartNo   = trim((string)($r[7] ?? ''));
+    $vendorJM       = trim((string)($r[8] ?? ''));
+    $fullPackRaw    = trim((string)($r[9] ?? ''));
+    $comment        = trim((string)($r[10] ?? '')) ?: null;
 
     if ($partNo === '' || $vendorNm === '' || $vendorPartNo === '' || $producerNm === '') {
         $partStats['skipped_no_part']++;
@@ -438,6 +441,7 @@ for ($i = 1; $i < count($rawVariantValues); $i++) {
         'producer_id'        => $producerId > 0 ? $producerId : 0,
         'parts_id'           => $partsId,
         'vendor_part_no'     => $vendorPartNo,
+        'producer_part_no'   => $producerPartNo,
         'vendor_jm_id'       => $unitId > 0 ? $unitId : 0,
         'full_pack_quantity' => (float)$packNorm,
         'comment'            => $comment,
@@ -445,12 +449,14 @@ for ($i = 1; $i < count($rawVariantValues); $i++) {
 
     if ($dryRun) {
         $partStats['inserted']++;
-        logLine("  [vp] would create vendor=$vendorNm producer=$producerNm part=$partNo vendorPartNo=$vendorPartNo unit=$vendorJM pack=$packNorm");
+        $pPartLog = $producerPartNo ? " producerPartNo=$producerPartNo" : '';
+        logLine("  [vp] would create vendor=$vendorNm producer=$producerNm part=$partNo vendorPartNo=$vendorPartNo$pPartLog unit=$vendorJM pack=$packNorm");
         continue;
     }
     dbInsertAssoc($MsaDB, 'list__vendor_part', $data);
     $partStats['inserted']++;
-    logLine("  [vp] created vendor=$vendorNm producer=$producerId part=$partNo vendorPartNo=$vendorPartNo");
+    $pPartLog = $producerPartNo ? " producerPartNo=$producerPartNo" : '';
+    logLine("  [vp] created vendor=$vendorNm producer=$producerId part=$partNo vendorPartNo=$vendorPartNo$pPartLog");
 }
 logLine("VendorParts summary: total={$partStats['total']} inserted={$partStats['inserted']} skipped_existing={$partStats['skipped_existing']} skipped_no_part={$partStats['skipped_no_part']} skipped_no_vendor={$partStats['skipped_no_vendor']} skipped_no_producer={$partStats['skipped_no_producer']} skipped_no_unit={$partStats['skipped_no_unit']}");
 
