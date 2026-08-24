@@ -506,8 +506,6 @@
                 '<thead class="thead-light">' +
                 '<tr>' +
                     '<th>Część</th>' +
-                    '<th>Numer u dostawcy</th>' +
-                    '<th>Numer u producenta</th>' +
                     '<th>JM</th>' +
                     '<th>Ilość</th>' +
                     '<th>Cena</th>' +
@@ -533,10 +531,22 @@
                     docBadges = '<span class="text-muted">—</span>';
                 }
 
+                // Część cell carries prefixed sub-lines: vendor/producer
+                // numbers (merged when identical) and the description.
+                var vn = item.vendor_part_no || '';
+                var pn = item.producer_part_no || '';
+                var partCell = escapeHtml(item.part_name);
+                if (vn && pn && vn === pn) {
+                    partCell += '<div><small class="text-muted">Nr dost./prod.: ' + escapeHtml(vn) + '</small></div>';
+                } else {
+                    if (vn) partCell += '<div><small class="text-muted">Nr dost.: ' + escapeHtml(vn) + '</small></div>';
+                    if (pn) partCell += '<div><small class="text-muted">Nr prod.: ' + escapeHtml(pn) + '</small></div>';
+                }
+                if (item.description) {
+                    partCell += '<div><small class="text-muted">' + escapeHtml(item.description) + '</small></div>';
+                }
                 html += '<tr>' +
-                    '<td>' + escapeHtml(item.part_name) + '</td>' +
-                    '<td>' + escapeHtml(item.vendor_part_no) + '</td>' +
-                    '<td>' + (item.producer_part_no ? escapeHtml(item.producer_part_no) : '<span class="text-muted">—</span>') + '</td>' +
+                    '<td>' + partCell + '</td>' +
                     '<td>' + escapeHtml(item.unit_name) + '</td>' +
                     '<td>' + formatQty(item.quantity) + '</td>' +
                     '<td>' + formatPrice(item.unit_price) + '</td>' +
@@ -601,6 +611,7 @@
                 vendor_part_no    : vendorPartNo,
                 producer_part_no  : producerPartNo,
                 part_name         : $partOpt.attr('data-name') || '',
+                description       : $partOpt.attr('data-subtext') || '',
                 producer_name     : '',
                 unit_name         : $opt.attr('data-unit-name') || '',
                 vendor_jm_id      : parseInt($opt.attr('data-vendor-jm-id'), 10) || null,
@@ -613,7 +624,7 @@
         // Reset qty + price, clear the part picker (vendor stays selected
         // so the user can queue the next part from the same vendor).
         // Currency stays sticky — usually several items in a row share it.
-        $cartQty.val('1');
+        $cartQty.val('');
         $cartPrice.val('');
         $partSelect.val('');
         refreshSelectpicker($partSelect);
