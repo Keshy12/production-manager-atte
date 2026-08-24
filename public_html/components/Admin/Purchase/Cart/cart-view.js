@@ -122,12 +122,12 @@
         $partSelect.find('option').each(function () {
             var id = parseInt($(this).val(), 10) || 0;
             if (id === 0) return; // skip the placeholder
-            var disabled = (vendorId && partsIds.indexOf(id) === -1);
-            $(this).prop('disabled', disabled);
+            var hide = !!(vendorId && partsIds.indexOf(id) === -1);
+            $(this).prop('hidden', hide);
         });
         refreshSelectpicker($partSelect);
-        // If currently selected part is now disabled, clear it
-        if (partId && $partSelect.find('option[value="' + partId + '"]').prop('disabled')) {
+        // If currently selected part is now hidden, clear it
+        if (partId && $partSelect.find('option[value="' + partId + '"]').prop('hidden')) {
             $partSelect.val('');
             refreshSelectpicker($partSelect);
         }
@@ -145,11 +145,11 @@
         $vendorSelect.find('option').each(function () {
             var id = parseInt($(this).val(), 10) || 0;
             if (id === 0) return;
-            var disabled = (partId && vendorsIds.indexOf(id) === -1);
-            $(this).prop('disabled', disabled);
+            var hide = !!(partId && vendorsIds.indexOf(id) === -1);
+            $(this).prop('hidden', hide);
         });
         refreshSelectpicker($vendorSelect);
-        if (vendorId && $vendorSelect.find('option[value="' + vendorId + '"]').prop('disabled')) {
+        if (vendorId && $vendorSelect.find('option[value="' + vendorId + '"]').prop('hidden')) {
             $vendorSelect.val('');
             refreshSelectpicker($vendorSelect);
         }
