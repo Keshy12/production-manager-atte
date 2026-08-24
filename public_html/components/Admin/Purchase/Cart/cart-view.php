@@ -160,6 +160,10 @@ foreach ($vpRows as $r) {
             text-decoration: none;
         }
         .clear-picker-link:hover { color: #dc3545 !important; text-decoration: none; }
+        /* Part description (data-subtext) belongs in the dropdown list only —
+           rendered in the closed button it overflows the card. */
+        #partSelect ~ .bootstrap-select .filter-option small,
+        .bootstrap-select > #partSelect + .filter-option small { display: none; }
     </style>
     <div class="card mb-3" id="selectionDocsCard" style="display:none">
         <div class="card-header py-2" id="selectionDocsHeader" role="button" data-toggle="collapse"
