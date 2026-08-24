@@ -80,7 +80,7 @@ foreach ($vpRows as $r) {
         <div class="card-header"><h5 class="mb-0">Wybierz dostawcę i część</h5></div>
         <div class="card-body">
             <div class="row">
-                <div class="col-md-6">
+                <div class="col-md-3">
                     <label for="vendorSelect">Dostawca:</label>
                     <div class="d-flex align-items-start">
                         <div class="flex-grow-1 mr-1">
@@ -94,10 +94,9 @@ foreach ($vpRows as $r) {
                                 <?php endforeach; ?>
                             </select>
                         </div>
-                        <a href="#" id="clearVendorBtn" class="text-muted clear-picker-link ml-1" title="Wyczyść wybór dostawcy"><i class="bi bi-x"></i></a>
                     </div>
                 </div>
-                <div class="col-md-6">
+                <div class="col-md-3">
                     <label for="partSelect">Część:</label>
                     <div class="d-flex align-items-start">
                         <div class="flex-grow-1 mr-1">
@@ -112,12 +111,11 @@ foreach ($vpRows as $r) {
                                 <?php endforeach; ?>
                             </select>
                         </div>
-                        <a href="#" id="clearPartBtn" class="text-muted clear-picker-link ml-1" title="Wyczyść wybór części"><i class="bi bi-x"></i></a>
                     </div>
                 </div>
             </div>
             <div class="row mt-3" id="vendorPartRow">
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <label for="vendorPartNoSelect">Numer u dostawcy:</label>
                     <div class="d-flex align-items-start">
                         <div class="flex-grow-1 mr-1">
@@ -145,9 +143,12 @@ foreach ($vpRows as $r) {
                         <option value="USD">USD</option>
                     </select>
                 </div>
-                <div class="col-md-2 d-flex align-items-end">
-                    <button type="button" id="addToCartBtn" class="btn btn-success btn-block" disabled>
+                <div class="col-md-3 d-flex align-items-end">
+                    <button type="button" id="addToCartBtn" class="btn btn-success flex-fill mr-1" disabled>
                         <i class="bi bi-plus-circle"></i> Dodaj
+                    </button>
+                    <button type="button" id="clearSelectionBtn" class="btn btn-outline-secondary" title="Wyczyść wybór dostawcy i części">
+                        Wyczyść
                     </button>
                 </div>
             </div>

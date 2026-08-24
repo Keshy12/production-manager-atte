@@ -638,22 +638,14 @@
         $selectionDocsHeader.removeClass('is-open');
     });
 
-    // ✕ next to a picker clears just that side; the other picker's
-    // full option list is restored (no empty <option> exists anymore —
-    // val('') deselects everything and selectpicker shows its title).
-    $('#clearVendorBtn').on('click', function (e) {
-        e.preventDefault();
+    // "Wyczysc" (next to Dodaj) clears the whole selection; the variant
+    // picker empties and both pickers' full option lists are restored.
+    $('#clearSelectionBtn').on('click', function () {
         $vendorSelect.val('');
         refreshSelectpicker($vendorSelect);
-        applyVendorFilter();   // vendor cleared → restore full parts list
-        refreshVendorPartRow();
-        loadSelectionDocs();
-    });
-
-    $('#clearPartBtn').on('click', function (e) {
-        e.preventDefault();
         $partSelect.val('');
         refreshSelectpicker($partSelect);
+        applyVendorFilter();   // vendor cleared → restore full parts list
         applyPartFilter();     // part cleared → restore full vendors list
         refreshVendorPartRow();
         loadSelectionDocs();
