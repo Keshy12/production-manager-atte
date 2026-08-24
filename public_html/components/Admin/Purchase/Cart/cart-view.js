@@ -241,19 +241,21 @@
                 '</option>';
         });
         $vendorPartNoSelect.html(html);
-        // Prefer the id handed over from the search modal; else first alternate.
-        var preferred = null;
-        if (preferredVpId) {
-            options.forEach(function (vp) { if (vp.id === preferredVpId) preferred = vp.id; });
+        // Pre-select ONLY on an explicit hand-off (search modal) or when
+        // exactly one option exists — otherwise the user chooses.
+        var targetId = null;
+        if (preferred !== null) {
+            targetId = String(preferred);
+        } else if (options.length === 1) {
+            targetId = String(options[0].id);
         }
-        var targetId = String(preferred !== null ? preferred : options[0].id);
         // Explicit selectpicker('val') + double refresh — plain .val()
         // alone proved unreliable on freshly-built option lists.
         refreshSelectpicker($vendorPartNoSelect);
-        if (typeof $vendorPartNoSelect.selectpicker === 'function') {
+        if (targetId !== null && typeof $vendorPartNoSelect.selectpicker === 'function') {
             try { $vendorPartNoSelect.selectpicker('val', targetId); } catch (e) { /* noop */ }
+            refreshSelectpicker($vendorPartNoSelect);
         }
-        refreshSelectpicker($vendorPartNoSelect);
         updateAddBtnState();
     }
 
