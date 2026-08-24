@@ -110,7 +110,7 @@ foreach ($vpRows as $r) {
                 </div>
             </div>
             <div class="row mt-3" id="vendorPartRow">
-                <div class="col-md-6">
+                <div class="col-md-4">
                     <label for="vendorPartNoSelect">Numer u dostawcy:</label>
                     <div class="d-flex align-items-start">
                         <div class="flex-grow-1 mr-1">
@@ -121,6 +121,10 @@ foreach ($vpRows as $r) {
                         </div>
                         <a href="#" id="vpSearchBtn" class="text-muted clear-picker-link ml-1" title="Szukaj po numerze dostawcy / producenta / części"><i class="bi bi-search"></i></a>
                     </div>
+                </div>
+                <div class="col-md-2">
+                    <label for="cartPackages">Opak.:</label>
+                    <input type="number" id="cartPackages" class="form-control" min="0" step="1" placeholder="opak." title="Ilość = opakowania × ilość w opakowaniu">
                 </div>
                 <div class="col-md-2">
                     <label for="cartQty">Ilość:</label>

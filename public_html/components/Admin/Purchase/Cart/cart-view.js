@@ -33,6 +33,7 @@
     var $vendorSelect        = $('#vendorSelect');
     var $partSelect          = $('#partSelect');
     var $vendorPartNoSelect  = $('#vendorPartNoSelect');
+    var $cartPackages        = $('#cartPackages');
     var $cartQty             = $('#cartQty');
     var $cartPrice           = $('#cartPrice');
     var $cartCurrency        = $('#cartCurrency');
@@ -193,6 +194,22 @@
         $addToCartBtn.prop('disabled', !ok);
     }
 
+    // Full-pack quantity of the currently selected variant (null when the
+    // variant has no usable pack size or nothing is selected).
+    function selectedFullPackQty() {
+        var raw = $vendorPartNoSelect.find('option:selected').attr('data-full-pack-quantity');
+        var v = parseFloat(raw);
+        return (!isNaN(v) && v > 0) ? v : null;
+    }
+
+    // Clears the packages input and enables it only when the selected
+    // variant has a usable full_pack_quantity.
+    function resetPackagesInput() {
+        var fpq = selectedFullPackQty();
+        $cartPackages.val('');
+        $cartPackages.prop('disabled', fpq === null);
+    }
+
     function getScopedVpOptions(vendorId, partId) {
         var out = [];
         Object.keys(VENDOR_PARTS_INDEX).forEach(function (key) {
@@ -246,6 +263,7 @@
         if (!vendorId && !partId) {
             $vendorPartNoSelect.empty();
             refreshSelectpicker($vendorPartNoSelect);
+            resetPackagesInput();
             $addToCartBtn.prop('disabled', true);
             return;
         }
@@ -253,6 +271,7 @@
         if (options.length === 0) {
             $vendorPartNoSelect.empty();
             refreshSelectpicker($vendorPartNoSelect);
+            resetPackagesInput();
             $addToCartBtn.prop('disabled', true);
             return;
         }
@@ -309,6 +328,7 @@
             try { $vendorPartNoSelect.selectpicker('val', targetId); } catch (e) { /* noop */ }
             refreshSelectpicker($vendorPartNoSelect);
         }
+        resetPackagesInput();
         updateAddBtnState();
         // A programmatic pre-selection doesn't fire change — complete the
         // combo (auto-pick vendor/part) manually.
@@ -745,6 +765,14 @@
         applyPartFilter();     // part cleared → restore full vendors list
         refreshVendorPartRow();
         loadSelectionDocs();
+    });
+
+    // Opak. → Ilość: qty = packages × full pack quantity.
+    $cartPackages.on('input', function () {
+        var fpq = selectedFullPackQty();
+        var pkgs = parseFloat($(this).val());
+        if (fpq === null || isNaN(pkgs) || pkgs < 0) return;
+        $cartQty.val(parseFloat((pkgs * fpq).toFixed(6)));
     });
 
     $addToCartBtn.on('click', function () {
