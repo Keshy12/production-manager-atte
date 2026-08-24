@@ -104,19 +104,31 @@ foreach ($vpRows as $r) {
                 </div>
             </div>
             <div class="row mt-3" id="vendorPartRow" style="display:none">
-                <div class="col-md-6">
+                <div class="col-md-4">
                     <label for="vendorPartNoSelect">Numer u dostawcy:</label>
                     <select id="vendorPartNoSelect" class="selectpicker form-control" data-width="100%">
                         <!-- populated by JS once vendor + part picked -->
                     </select>
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-2">
                     <label for="cartQty">Ilość:</label>
                     <input type="number" id="cartQty" class="form-control" min="0.0001" step="0.0001" value="1">
                 </div>
-                <div class="col-md-3 d-flex align-items-end">
+                <div class="col-md-2">
+                    <label for="cartPrice">Cena:</label>
+                    <input type="number" id="cartPrice" class="form-control" min="0" step="0.0001" placeholder="opcjonalna">
+                </div>
+                <div class="col-md-2">
+                    <label for="cartCurrency">Waluta:</label>
+                    <select id="cartCurrency" class="form-control">
+                        <option value="PLN" selected>PLN</option>
+                        <option value="EUR">EUR</option>
+                        <option value="USD">USD</option>
+                    </select>
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
                     <button type="button" id="addToCartBtn" class="btn btn-success btn-block" disabled>
-                        <i class="bi bi-plus-circle"></i> Dodaj do koszyka
+                        <i class="bi bi-plus-circle"></i> Dodaj
                     </button>
                 </div>
             </div>

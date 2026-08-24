@@ -31,6 +31,8 @@
     var $vendorPartRow       = $('#vendorPartRow');
     var $vendorPartNoSelect  = $('#vendorPartNoSelect');
     var $cartQty             = $('#cartQty');
+    var $cartPrice           = $('#cartPrice');
+    var $cartCurrency        = $('#cartCurrency');
     var $addToCartBtn        = $('#addToCartBtn');
     var $cartCard            = $('#cartCard');
     var $cartBody            = $('#cartBody');
@@ -401,8 +403,15 @@
         var vendorPartNo = $vendorPartNoSelect.val();
         var producerPartNo = $opt.attr('data-producer-part-no') || null;
         var qty = parseFloat($cartQty.val());
+        var priceRaw = $cartPrice.val() === '' ? NaN : parseFloat($cartPrice.val());
+        var unitPrice = (!isNaN(priceRaw) && priceRaw >= 0) ? priceRaw : null;
+        var currency = $cartCurrency.val() || 'PLN';
         if (!vendorId || !partId || !vendorPartId || isNaN(qty) || qty <= 0) {
             setAlert('Podaj prawidłową ilość.', 'warning');
+            return;
+        }
+        if (!isNaN(priceRaw) && priceRaw < 0) {
+            setAlert('Cena nie może być ujemna.', 'warning');
             return;
         }
         var $vendorOpt = $vendorSelect.find('option:selected');
@@ -412,6 +421,12 @@
         });
         if (existing) {
             existing.quantity += qty;
+            // A price entered on the repeat add refreshes the item's
+            // price/currency; empty price keeps the previous one.
+            if (unitPrice !== null) {
+                existing.unit_price = unitPrice;
+                existing.currency = currency;
+            }
         } else {
             cart.items.push({
                 vendor_part_id    : vendorPartId,
@@ -425,14 +440,16 @@
                 vendor_jm_id      : parseInt($opt.attr('data-vendor-jm-id'), 10) || null,
                 full_pack_quantity: parseFloat($opt.attr('data-full-pack-quantity')) || null,
                 quantity          : qty,
-                unit_price        : null,
-                currency          : 'PLN'
+                unit_price        : unitPrice,
+                currency          : currency
             });
         }
-        // Reset qty, clear the part picker (vendor stays selected so the
+        // Reset qty + price, clear the part picker (vendor stays selected so the
         // user can queue the next part from the same vendor), hide the
-        // picker row and the docs strip.
+        // picker row and the docs strip. Currency stays sticky — usually
+        // several items in a row share it.
         $cartQty.val('1');
+        $cartPrice.val('');
         $partSelect.val('');
         refreshSelectpicker($partSelect);
         applyPartFilter();          // part cleared → restore full vendor list
