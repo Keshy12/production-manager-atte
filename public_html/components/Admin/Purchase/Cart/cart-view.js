@@ -608,7 +608,11 @@
         setAlert('Koszyk wyczyszczony.', 'info');
     });
 
-    // Initial render
-    renderCart();
-    syncFromPickers();
+    // Initial render — deferred to ready() so it runs AFTER header.js's
+    // ready handler has initialized the selectpickers. A refresh() called
+    // pre-init is swallowed, leaving the vp picker's menu stale.
+    $(function () {
+        renderCart();
+        syncFromPickers();
+    });
 })();
