@@ -1,15 +1,15 @@
-// Koszyk — cascading vendor↔part picker that lands items in a
+// Koszyk — three mutually-driving pickers that land items in a
 // shared cart grouped by vendor (client-side state).
 //
 // Flow:
-//   1. User picks a vendor (or a part). The other picker disables
-//      every option that wouldn't match the picked side.
-//   2. Once both are picked, the "Numer u dostawcy" dropdown
-//      populates with every VendorPart for that combo (same part
-//      can be listed under several vendor_part_no by one vendor —
-//      e.g. alternates). The dropdown defaults to the first one.
-//   3. User picks qty and clicks "Dodaj do koszyka". Same item
-//      (same vendor_part_id) merges in qty instead of duplicating.
+//   1. Pick a vendor → parts list narrows to what that vendor carries.
+//      Pick a part → vendors list narrows accordingly.
+//   2. "Numer u dostawcy" lists EVERY VendorPart up front; picking one
+//      auto-selects its vendor AND part. Once both other pickers hold a
+//      value, this picker scopes down to that combo's alternates.
+//   3. Qty / price / currency row is always visible; "Dodaj" enables
+//      once a valid VendorPart is selected. Same vendor_part_id merges
+//      in qty instead of duplicating.
 //   4. Each vendor group in the cart has its own "Utwórz zapytanie"
 //      / "Utwórz zamówienie" buttons — submits only that group's
 //      items to POST /cart-action.php.
@@ -28,7 +28,6 @@
     // DOM refs
     var $vendorSelect        = $('#vendorSelect');
     var $partSelect          = $('#partSelect');
-    var $vendorPartRow       = $('#vendorPartRow');
     var $vendorPartNoSelect  = $('#vendorPartNoSelect');
     var $cartQty             = $('#cartQty');
     var $cartPrice           = $('#cartPrice');
@@ -169,46 +168,56 @@
         }
     }
 
-    function refreshVendorPartRow() {
+    // ---- three-way picker sync ----
+    // All three pickers drive each other: vendor/part filter each other's
+    // options; "Numer u dostawcy" lists EVERY VendorPart (server-rendered)
+    // and picking one auto-selects its vendor + part. The vp picker is
+    // scoped to the current combo once both other pickers hold a value.
+
+    function updateAddBtnState() {
+        var $sel = $vendorPartNoSelect.find('option:selected');
+        var ok = $sel.length > 0
+            && !$sel.prop('hidden')
+            && (parseInt($sel.attr('data-vp-id'), 10) || 0) > 0;
+        $addToCartBtn.prop('disabled', !ok);
+    }
+
+    function syncFromPickers() {
         var vendorId = parseInt($vendorSelect.val(), 10) || null;
         var partId = parseInt($partSelect.val(), 10) || null;
+
         if (!vendorId || !partId) {
-            $vendorPartRow.hide();
-            $addToCartBtn.prop('disabled', true);
-            $vendorPartNoSelect.empty();
+            // Combo incomplete → show the full catalog, drop any selection.
+            $vendorPartNoSelect.find('option').prop('hidden', false);
+            $vendorPartNoSelect.val('');
             refreshSelectpicker($vendorPartNoSelect);
+            $addToCartBtn.prop('disabled', true);
             return;
         }
-        var key = vendorId + ':' + partId;
-        var options = VENDOR_PARTS_INDEX[key] || [];
-        if (options.length === 0) {
-            $vendorPartRow.show();
-            $addToCartBtn.prop('disabled', true);
-            $vendorPartNoSelect.html('<option value="" disabled>Brak katalogu u tego dostawcy dla tej części</option>');
-            refreshSelectpicker($vendorPartNoSelect);
-            return;
-        }
-        var html = '';
-        options.forEach(function (vp) {
-            var prod = vp.producer_part_no
-                ? ' <small class="text-muted">(prod: ' + escapeHtml(vp.producer_part_no) + ')</small>'
-                : '';
-            html += '<option value="' + escapeHtml(vp.vendor_part_no) + '"' +
-                ' data-vp-id="' + vp.id + '"' +
-                ' data-producer-part-no="' + escapeHtml(vp.producer_part_no || '') + '"' +
-                ' data-vendor-jm-id="' + vp.vendor_jm_id + '"' +
-                ' data-unit-name="' + escapeHtml(vp.unit_name) + '"' +
-                ' data-full-pack-quantity="' + vp.full_pack_quantity + '">' +
-                escapeHtml(vp.vendor_part_no) + prod +
-                ' <small class="text-muted">— ' + escapeHtml(vp.unit_name) + ' · opak. ' + vp.full_pack_quantity + '</small>' +
-                '</option>';
+
+        // Scope visible options to the picked combo.
+        $vendorPartNoSelect.find('option').each(function () {
+            var $o = $(this);
+            var hide = parseInt($o.attr('data-vendor-id'), 10) !== vendorId ||
+                       parseInt($o.attr('data-part-id'), 10) !== partId;
+            $o.prop('hidden', hide);
         });
-        $vendorPartNoSelect.html(html);
         refreshSelectpicker($vendorPartNoSelect);
-        $vendorPartNoSelect.selectpicker('val', options[0].vendor_part_no);
-        refreshSelectpicker($vendorPartNoSelect);
-        $vendorPartRow.show();
-        $addToCartBtn.prop('disabled', false);
+
+        // If the current selection fell outside the combo, default to the
+        // first visible alternate (same part can have several numbers).
+        var $cur = $vendorPartNoSelect.find('option:selected');
+        if ($cur.length === 0 || $cur.prop('hidden')) {
+            var $first = null;
+            $vendorPartNoSelect.find('option').each(function () {
+                if (!$(this).prop('hidden')) { $first = $(this); return false; }
+            });
+            if ($first) {
+                $vendorPartNoSelect.val($first.attr('value'));
+                refreshSelectpicker($vendorPartNoSelect);
+            }
+        }
+        updateAddBtnState();
     }
 
     // ---- active-docs / cart rendering ----
@@ -400,7 +409,7 @@
         var partId = parseInt($partSelect.val(), 10) || null;
         var $opt = $vendorPartNoSelect.find('option:selected');
         var vendorPartId = parseInt($opt.attr('data-vp-id'), 10) || null;
-        var vendorPartNo = $vendorPartNoSelect.val();
+        var vendorPartNo = $opt.attr('data-vendor-part-no') || '';
         var producerPartNo = $opt.attr('data-producer-part-no') || null;
         var qty = parseFloat($cartQty.val());
         var priceRaw = $cartPrice.val() === '' ? NaN : parseFloat($cartPrice.val());
@@ -444,16 +453,18 @@
                 currency          : currency
             });
         }
-        // Reset qty + price, clear the part picker (vendor stays selected so the
-        // user can queue the next part from the same vendor), hide the
-        // picker row and the docs strip. Currency stays sticky — usually
-        // several items in a row share it.
+        // Reset qty + price, clear the part picker and the vp picker
+        // (vendor stays selected so the user can queue the next part from
+        // the same vendor). Currency stays sticky — usually several items
+        // in a row share it.
         $cartQty.val('1');
         $cartPrice.val('');
         $partSelect.val('');
         refreshSelectpicker($partSelect);
         applyPartFilter();          // part cleared → restore full vendor list
-        refreshVendorPartRow();
+        $vendorPartNoSelect.val('');
+        refreshSelectpicker($vendorPartNoSelect);
+        syncFromPickers();          // full catalog visible again, add disabled
         loadSelectionDocs();
         renderCart();
         loadActiveDocs();
@@ -511,20 +522,32 @@
 
     $vendorSelect.on('change', function () {
         applyVendorFilter();
-        refreshVendorPartRow();
+        syncFromPickers();
         loadSelectionDocs();
     });
 
     $partSelect.on('change', function () {
         applyPartFilter();
-        refreshVendorPartRow();
+        syncFromPickers();
         loadSelectionDocs();
     });
 
-    // Switching between alternates re-scopes the header badge instantly
-    // (no refetch needed — docs for the whole combo are cached).
+    // Picking a vendor part no FIRST auto-selects its vendor + part.
     $vendorPartNoSelect.on('change', function () {
+        var $opt = $(this).find('option:selected');
+        var vid = parseInt($opt.attr('data-vendor-id'), 10) || null;
+        var pid = parseInt($opt.attr('data-part-id'), 10) || null;
+        if (vid && pid) {
+            $vendorSelect.val(vid);
+            refreshSelectpicker($vendorSelect);
+            $partSelect.val(pid);
+            refreshSelectpicker($partSelect);
+            applyVendorFilter();   // scope parts to this vendor
+            applyPartFilter();     // scope vendors to this part
+        }
+        syncFromPickers();
         updateSelectionDocsBadge();
+        loadSelectionDocs();
     });
 
     // Chevron flip driven by real collapse events (CSS aria-expanded
@@ -543,7 +566,7 @@
         $vendorSelect.val('');
         refreshSelectpicker($vendorSelect);
         applyVendorFilter();   // vendor cleared → restore full parts list
-        refreshVendorPartRow();
+        syncFromPickers();
         loadSelectionDocs();
     });
 
@@ -552,7 +575,7 @@
         $partSelect.val('');
         refreshSelectpicker($partSelect);
         applyPartFilter();     // part cleared → restore full vendors list
-        refreshVendorPartRow();
+        syncFromPickers();
         loadSelectionDocs();
     });
 
@@ -587,4 +610,5 @@
 
     // Initial render
     renderCart();
+    syncFromPickers();
 })();
