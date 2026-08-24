@@ -34,11 +34,13 @@ $partsWithVendors = $MsaDB->query(
 $vpRows = $MsaDB->query(
     "SELECT vp.id, vp.vendor_id, vp.parts_id, vp.vendor_part_no,
             vp.producer_part_no, vp.vendor_jm_id, vp.full_pack_quantity,
-            v.name AS vendor_name, u.name AS unit_name, p.name AS part_name
+            v.name AS vendor_name, u.name AS unit_name, p.name AS part_name,
+            pr.name AS producer_name
        FROM `list__vendor_part` vp
        JOIN `list__vendor` v ON vp.vendor_id = v.id
        JOIN `part__unit`    u ON vp.vendor_jm_id = u.id
        JOIN `list__parts`   p ON vp.parts_id = p.id
+       LEFT JOIN `list__producer` pr ON pr.id = vp.producer_id
       WHERE vp.is_active = 1 AND v.is_active = 1"
 );
 $vendorPartsIndex = [];
@@ -49,6 +51,7 @@ foreach ($vpRows as $r) {
         'parts_id'           => (int)$r['parts_id'],
         'vendor_part_no'     => $r['vendor_part_no'],
         'producer_part_no'   => $r['producer_part_no'],
+        'producer_name'      => $r['producer_name'],
         'vendor_jm_id'       => (int)$r['vendor_jm_id'],
         'unit_name'          => $r['unit_name'],
         'full_pack_quantity' => (float)$r['full_pack_quantity'],
@@ -163,7 +166,7 @@ foreach ($vpRows as $r) {
                     <div class="table-responsive mt-2" style="max-height:50vh; overflow-y:auto;">
                         <table class="table table-sm table-striped mb-0">
                             <thead class="thead-light">
-                                <tr><th>Numer u dostawcy</th><th>Nr producenta</th><th>Dostawca</th><th>Część</th><th>JM / opak.</th><th></th></tr>
+                                <tr><th>Numer u dostawcy</th><th>Nr producenta</th><th>Producent</th><th>Dostawca</th><th>Część</th><th>JM / opak.</th><th></th></tr>
                             </thead>
                             <tbody id="vpSearchResults"></tbody>
                         </table>

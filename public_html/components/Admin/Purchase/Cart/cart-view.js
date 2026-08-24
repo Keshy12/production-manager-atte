@@ -206,6 +206,39 @@
         return out;
     }
 
+    // Reads the currently selected variant option and auto-fills whichever
+    // of vendor/part is still unset or mismatched. Returns true when the
+    // combo changed; the variant list then narrows via a deferred rebuild.
+    function completeComboFromSelection() {
+        var $opt = $vendorPartNoSelect.find('option:selected');
+        if ($opt.length === 0) return false;
+        var vid = parseInt($opt.attr('data-vendor-id'), 10) || null;
+        var pid = parseInt($opt.attr('data-part-id'), 10) || null;
+        var vpid = parseInt($opt.attr('data-vp-id'), 10) || null;
+        var curVid = parseInt($vendorSelect.val(), 10) || null;
+        var curPid = parseInt($partSelect.val(), 10) || null;
+        var changed = false;
+        if (vid && vid !== curVid) {
+            $vendorSelect.val(vid);
+            refreshSelectpicker($vendorSelect);
+            applyVendorFilter();   // scope parts to this vendor
+            changed = true;
+        }
+        if (pid && pid !== curPid) {
+            $partSelect.val(pid);
+            refreshSelectpicker($partSelect);
+            applyPartFilter();     // scope vendors to this part
+            changed = true;
+        }
+        if (changed) {
+            // Defer the rebuild until bootstrap-select finishes its own
+            // change dispatch — mutating the select mid-dispatch lets
+            // bs-select's post-change render wipe the fresh selection.
+            setTimeout(function () { refreshVendorPartRow(vpid); }, 0);
+        }
+        return changed;
+    }
+
     function refreshVendorPartRow(preferredVpId) {
         var vendorId = parseInt($vendorSelect.val(), 10) || null;
         var partId = parseInt($partSelect.val(), 10) || null;
@@ -223,25 +256,38 @@
             $addToCartBtn.prop('disabled', true);
             return;
         }
-        var html = '';
+        // Group by producer (bootstrap-select renders optgroup headers),
+        // preserving first-seen order.
+        var groups = {};
+        var groupOrder = [];
         options.forEach(function (vp) {
-            // Producer part no rides as subtext — visible under the label
-            // in the dropdown and matched by live-search typing.
-            var subtext = vp.producer_part_no
-                ? ' data-subtext="' + escapeHtml(vp.producer_part_no) + '"'
-                : '';
-            html += '<option value="' + vp.id + '"' +
-                subtext +
-                ' data-vp-id="' + vp.id + '"' +
-                ' data-vendor-id="' + vp.vendor_id + '"' +
-                ' data-part-id="' + vp.parts_id + '"' +
-                ' data-vendor-part-no="' + escapeHtml(vp.vendor_part_no) + '"' +
-                ' data-producer-part-no="' + escapeHtml(vp.producer_part_no || '') + '"' +
-                ' data-vendor-jm-id="' + vp.vendor_jm_id + '"' +
-                ' data-unit-name="' + escapeHtml(vp.unit_name) + '"' +
-                ' data-full-pack-quantity="' + vp.full_pack_quantity + '">' +
-                escapeHtml(vp.vendor_part_no) +
-                '</option>';
+            var g = vp.producer_name || 'Bez producenta';
+            if (!groups[g]) { groups[g] = []; groupOrder.push(g); }
+            groups[g].push(vp);
+        });
+        var html = '';
+        groupOrder.forEach(function (g) {
+            html += '<optgroup label="' + escapeHtml(g) + '">';
+            groups[g].forEach(function (vp) {
+                // Producer part no rides as subtext (searchable) unless
+                // identical to the vendor part no.
+                var subtext = (vp.producer_part_no && vp.producer_part_no !== vp.vendor_part_no)
+                    ? ' data-subtext="' + escapeHtml(vp.producer_part_no) + '"'
+                    : '';
+                html += '<option value="' + vp.id + '"' +
+                    subtext +
+                    ' data-vp-id="' + vp.id + '"' +
+                    ' data-vendor-id="' + vp.vendor_id + '"' +
+                    ' data-part-id="' + vp.parts_id + '"' +
+                    ' data-vendor-part-no="' + escapeHtml(vp.vendor_part_no) + '"' +
+                    ' data-producer-part-no="' + escapeHtml(vp.producer_part_no || '') + '"' +
+                    ' data-vendor-jm-id="' + vp.vendor_jm_id + '"' +
+                    ' data-unit-name="' + escapeHtml(vp.unit_name) + '"' +
+                    ' data-full-pack-quantity="' + vp.full_pack_quantity + '">' +
+                    escapeHtml(vp.vendor_part_no) +
+                    '</option>';
+            });
+            html += '</optgroup>';
         });
         $vendorPartNoSelect.html(html);
         // Pre-select ONLY on an explicit hand-off (search modal) or when
@@ -264,6 +310,11 @@
             refreshSelectpicker($vendorPartNoSelect);
         }
         updateAddBtnState();
+        // A programmatic pre-selection doesn't fire change — complete the
+        // combo (auto-pick vendor/part) manually.
+        if (targetId !== null) {
+            completeComboFromSelection();
+        }
     }
 
     // ---- modal search flow ----
@@ -275,6 +326,7 @@
             html += '<tr>' +
                 '<td>' + escapeHtml(r.vendor_part_no) + '</td>' +
                 '<td>' + (r.producer_part_no ? escapeHtml(r.producer_part_no) : '—') + '</td>' +
+                '<td>' + (r.producer_name ? escapeHtml(r.producer_name) : '—') + '</td>' +
                 '<td>' + escapeHtml(r.vendor_name) + '</td>' +
                 '<td>' + escapeHtml(r.part_name) + '</td>' +
                 '<td>' + escapeHtml(r.unit_name) + ' · opak. ' + formatQty(r.full_pack_quantity) + '</td>' +
@@ -634,37 +686,9 @@
         loadSelectionDocs();
     });
 
-    // Picking a variant from a partially-scoped list completes the
-    // combo: its vendor and/or part get auto-selected, the pickers
-    // re-filter, and the variant list narrows to the combo's alternates
-    // keeping the exact variant chosen.
+    // Picking a variant from a partially-scoped list completes the combo.
     $vendorPartNoSelect.on('change', function () {
-        var $opt = $(this).find('option:selected');
-        var vid = parseInt($opt.attr('data-vendor-id'), 10) || null;
-        var pid = parseInt($opt.attr('data-part-id'), 10) || null;
-        var vpid = parseInt($opt.attr('data-vp-id'), 10) || null;
-        var curVid = parseInt($vendorSelect.val(), 10) || null;
-        var curPid = parseInt($partSelect.val(), 10) || null;
-        var changed = false;
-        if (vid && vid !== curVid) {
-            $vendorSelect.val(vid);
-            refreshSelectpicker($vendorSelect);
-            applyVendorFilter();   // scope parts to this vendor
-            changed = true;
-        }
-        if (pid && pid !== curPid) {
-            $partSelect.val(pid);
-            refreshSelectpicker($partSelect);
-            applyPartFilter();     // scope vendors to this part
-            changed = true;
-        }
-        if (changed) {
-            // Defer the rebuild until bootstrap-select finishes its own
-            // change dispatch — mutating the select mid-dispatch lets
-            // bs-select's post-change render wipe the fresh selection.
-            var keepVpId = vpid;
-            setTimeout(function () { refreshVendorPartRow(keepVpId); }, 0);
-        }
+        completeComboFromSelection();
         updateSelectionDocsBadge();
         loadSelectionDocs();
     });
