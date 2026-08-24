@@ -1,15 +1,15 @@
-// Koszyk — three mutually-driving pickers plus a search modal that land
+// Koszyk — cascading vendor/part pickers plus a search modal that land
 // items in a shared cart grouped by vendor (client-side state).
 //
 // Flow:
 //   1. Pick a vendor → parts list narrows to what that vendor carries.
 //      Pick a part → vendors list narrows accordingly.
-//   2. "Numer u dostawcy" lists EVERY VendorPart up front; picking one
-//      auto-selects its vendor AND part. Once both other pickers hold a
-//      value, this picker scopes down to that combo's alternates.
+//   2. "Numer u dostawcy" starts empty and populates only once BOTH
+//      vendor and part are picked, listing that combo's alternates.
 //   3. The magnifier icon next to it opens a search modal (AJAX endpoint
 //      vendor-part-search.php) for finding items by vendor/producer part
-//      no or part/vendor name across the whole catalog.
+//      no or part/vendor name across the whole catalog; picking a result
+//      auto-selects its vendor AND part.
 //   4. Qty / price / currency row is always visible; "Dodaj" enables once
 //      a valid VendorPart is selected. Same vendor_part_id merges in qty
 //      instead of duplicating.
@@ -178,10 +178,10 @@
     }
 
     // ---- three-way picker sync ----
-    // Vendor/part filter each other's options. "Numer u dostawcy" lists
-    // EVERY VendorPart (server-rendered); picking one auto-selects its
-    // vendor + part. Once both other pickers hold a value, this picker
-    // scopes down to that combo's alternates.
+    // Vendor/part filter each other's options. "Numer u dostawcy" starts
+    // EMPTY — it populates only once both other pickers hold a value,
+    // listing that combo's alternates. Catalog-wide lookup lives in the
+    // search modal.
 
     function updateAddBtnState() {
         var $sel = $vendorPartNoSelect.find('option:selected');
@@ -191,41 +191,47 @@
         $addToCartBtn.prop('disabled', !ok);
     }
 
-    function syncFromPickers() {
+    function refreshVendorPartRow(preferredVpId) {
         var vendorId = parseInt($vendorSelect.val(), 10) || null;
         var partId = parseInt($partSelect.val(), 10) || null;
-
         if (!vendorId || !partId) {
-            // Combo incomplete → show the full catalog, drop any selection.
-            $vendorPartNoSelect.find('option').prop('hidden', false);
-            $vendorPartNoSelect.val('');
+            $vendorPartNoSelect.empty();
             refreshSelectpicker($vendorPartNoSelect);
             $addToCartBtn.prop('disabled', true);
             return;
         }
-
-        // Scope visible options to the picked combo.
-        $vendorPartNoSelect.find('option').each(function () {
-            var $o = $(this);
-            var hide = parseInt($o.attr('data-vendor-id'), 10) !== vendorId ||
-                       parseInt($o.attr('data-part-id'), 10) !== partId;
-            $o.prop('hidden', hide);
-        });
-        refreshSelectpicker($vendorPartNoSelect);
-
-        // If the current selection fell outside the combo, default to the
-        // first visible alternate (same part can have several numbers).
-        var $cur = $vendorPartNoSelect.find('option:selected');
-        if ($cur.length === 0 || $cur.prop('hidden')) {
-            var $first = null;
-            $vendorPartNoSelect.find('option').each(function () {
-                if (!$(this).prop('hidden')) { $first = $(this); return false; }
-            });
-            if ($first) {
-                $vendorPartNoSelect.val($first.attr('value'));
-                refreshSelectpicker($vendorPartNoSelect);
-            }
+        var options = VENDOR_PARTS_INDEX[vendorId + ':' + partId] || [];
+        if (options.length === 0) {
+            $vendorPartNoSelect.empty();
+            refreshSelectpicker($vendorPartNoSelect);
+            $addToCartBtn.prop('disabled', true);
+            return;
         }
+        var html = '';
+        options.forEach(function (vp) {
+            var prod = vp.producer_part_no
+                ? ' <small class="text-muted">(' + escapeHtml(vp.producer_part_no) + ')</small>'
+                : '';
+            html += '<option value="' + vp.id + '"' +
+                ' data-vp-id="' + vp.id + '"' +
+                ' data-vendor-id="' + vp.vendor_id + '"' +
+                ' data-part-id="' + vp.parts_id + '"' +
+                ' data-vendor-part-no="' + escapeHtml(vp.vendor_part_no) + '"' +
+                ' data-producer-part-no="' + escapeHtml(vp.producer_part_no || '') + '"' +
+                ' data-vendor-jm-id="' + vp.vendor_jm_id + '"' +
+                ' data-unit-name="' + escapeHtml(vp.unit_name) + '"' +
+                ' data-full-pack-quantity="' + vp.full_pack_quantity + '">' +
+                escapeHtml(vp.vendor_part_no) + prod +
+                '</option>';
+        });
+        $vendorPartNoSelect.html(html);
+        // Prefer the id handed over from the search modal; else first alternate.
+        var preferred = null;
+        if (preferredVpId) {
+            options.forEach(function (vp) { if (vp.id === preferredVpId) preferred = vp.id; });
+        }
+        $vendorPartNoSelect.val(String(preferred !== null ? preferred : options[0].id));
+        refreshSelectpicker($vendorPartNoSelect);
         updateAddBtnState();
     }
 
@@ -272,9 +278,9 @@
         });
     }
 
-    // Picking a search result selects the matching option in the vp
-    // selectpicker and drives the other two pickers (programmatic .val()
-    // does NOT fire change — the follow-up calls run explicitly here).
+    // Picking a search result drives the other two pickers, then hands
+    // the chosen id to refreshVendorPartRow so the populated alternates
+    // list selects it (programmatic .val() does NOT fire change).
     function pickVp(r) {
         $vendorSelect.val(r.vendor_id);
         refreshSelectpicker($vendorSelect);
@@ -282,9 +288,7 @@
         refreshSelectpicker($partSelect);
         applyVendorFilter();   // scope parts to this vendor
         applyPartFilter();     // scope vendors to this part
-        $vendorPartNoSelect.val(String(r.id));
-        refreshSelectpicker($vendorPartNoSelect);
-        syncFromPickers();     // scopes options; our pick belongs to the combo, so it stays
+        refreshVendorPartRow(r.id);
         updateSelectionDocsBadge();
         loadSelectionDocs();
         $vpSearchModal.modal('hide');
@@ -523,18 +527,15 @@
                 currency          : currency
             });
         }
-        // Reset qty + price, clear the part picker and the vp picker
-        // (vendor stays selected so the user can queue the next part from
-        // the same vendor). Currency stays sticky — usually several items
-        // in a row share it.
+        // Reset qty + price, clear the part picker (vendor stays selected
+        // so the user can queue the next part from the same vendor).
+        // Currency stays sticky — usually several items in a row share it.
         $cartQty.val('1');
         $cartPrice.val('');
         $partSelect.val('');
         refreshSelectpicker($partSelect);
         applyPartFilter();          // part cleared → restore full vendor list
-        $vendorPartNoSelect.val('');
-        refreshSelectpicker($vendorPartNoSelect);
-        syncFromPickers();          // full catalog visible again, add disabled
+        refreshVendorPartRow();     // combo incomplete → empties picker, add disabled
         loadSelectionDocs();
         renderCart();
         loadActiveDocs();
@@ -592,32 +593,19 @@
 
     $vendorSelect.on('change', function () {
         applyVendorFilter();
-        syncFromPickers();
+        refreshVendorPartRow();
         loadSelectionDocs();
     });
 
     $partSelect.on('change', function () {
         applyPartFilter();
-        syncFromPickers();
+        refreshVendorPartRow();
         loadSelectionDocs();
     });
 
-    // Picking a vendor part no FIRST auto-selects its vendor + part.
+    // Switching between combo alternates re-scopes the docs badge.
     $vendorPartNoSelect.on('change', function () {
-        var $opt = $(this).find('option:selected');
-        var vid = parseInt($opt.attr('data-vendor-id'), 10) || null;
-        var pid = parseInt($opt.attr('data-part-id'), 10) || null;
-        if (vid && pid) {
-            $vendorSelect.val(vid);
-            refreshSelectpicker($vendorSelect);
-            $partSelect.val(pid);
-            refreshSelectpicker($partSelect);
-            applyVendorFilter();   // scope parts to this vendor
-            applyPartFilter();     // scope vendors to this part
-        }
-        syncFromPickers();
         updateSelectionDocsBadge();
-        loadSelectionDocs();
     });
 
     // Magnifier next to the vp picker opens the global search modal.
@@ -658,7 +646,7 @@
         $vendorSelect.val('');
         refreshSelectpicker($vendorSelect);
         applyVendorFilter();   // vendor cleared → restore full parts list
-        syncFromPickers();
+        refreshVendorPartRow();
         loadSelectionDocs();
     });
 
@@ -667,7 +655,7 @@
         $partSelect.val('');
         refreshSelectpicker($partSelect);
         applyPartFilter();     // part cleared → restore full vendors list
-        syncFromPickers();
+        refreshVendorPartRow();
         loadSelectionDocs();
     });
 
@@ -705,6 +693,6 @@
     // pre-init is swallowed, leaving the vp picker's menu stale.
     $(function () {
         renderCart();
-        syncFromPickers();
+        refreshVendorPartRow();
     });
 })();

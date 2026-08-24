@@ -42,7 +42,6 @@ $vpRows = $MsaDB->query(
       WHERE vp.is_active = 1 AND v.is_active = 1"
 );
 $vendorPartsIndex = [];
-$allVendorParts = [];
 foreach ($vpRows as $r) {
     $entry = [
         'id'                 => (int)$r['id'],
@@ -57,7 +56,6 @@ foreach ($vpRows as $r) {
         'part_name'          => $r['part_name'],
     ];
     $vendorPartsIndex[$r['vendor_id'] . ':' . $r['parts_id']][] = $entry;
-    $allVendorParts[] = $entry;
 }
 ?>
 
@@ -124,20 +122,8 @@ foreach ($vpRows as $r) {
                     <div class="d-flex align-items-start">
                         <div class="flex-grow-1 mr-1">
                             <select id="vendorPartNoSelect" class="selectpicker form-control" data-live-search="true" data-width="100%" title="Wybierz numer u dostawcy...">
-                                <?php foreach ($allVendorParts as $vp): ?>
-                                    <option value="<?= $vp['id'] ?>"
-                                            data-vp-id="<?= $vp['id'] ?>"
-                                            data-vendor-id="<?= $vp['vendor_id'] ?>"
-                                            data-part-id="<?= $vp['parts_id'] ?>"
-                                            data-vendor-part-no="<?= htmlspecialchars($vp['vendor_part_no']) ?>"
-                                            data-producer-part-no="<?= htmlspecialchars($vp['producer_part_no'] ?? '') ?>"
-                                            data-vendor-jm-id="<?= $vp['vendor_jm_id'] ?>"
-                                            data-unit-name="<?= htmlspecialchars($vp['unit_name']) ?>"
-                                            data-full-pack-quantity="<?= $vp['full_pack_quantity'] ?>"
-                                            data-subtext="<?= htmlspecialchars($vp['vendor_name'] . ' · ' . $vp['part_name']) ?>">
-                                        <?= htmlspecialchars($vp['vendor_part_no']) ?><?= $vp['producer_part_no'] !== null && $vp['producer_part_no'] !== '' ? ' <small class="text-muted">(' . htmlspecialchars($vp['producer_part_no']) . ')</small>' : '' ?>
-                                    </option>
-                                <?php endforeach; ?>
+                                <!-- populated by JS once vendor + part are both picked;
+                                     catalog-wide lookup lives in the search modal -->
                             </select>
                         </div>
                         <a href="#" id="vpSearchBtn" class="text-muted clear-picker-link ml-1" title="Szukaj po numerze dostawcy / producenta / części"><i class="bi bi-search"></i></a>
