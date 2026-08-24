@@ -225,10 +225,13 @@
         }
         var html = '';
         options.forEach(function (vp) {
-            var prod = vp.producer_part_no
-                ? ' <small class="text-muted">(' + escapeHtml(vp.producer_part_no) + ')</small>'
+            // Producer part no rides as subtext — visible under the label
+            // in the dropdown and matched by live-search typing.
+            var subtext = vp.producer_part_no
+                ? ' data-subtext="' + escapeHtml(vp.producer_part_no) + '"'
                 : '';
             html += '<option value="' + vp.id + '"' +
+                subtext +
                 ' data-vp-id="' + vp.id + '"' +
                 ' data-vendor-id="' + vp.vendor_id + '"' +
                 ' data-part-id="' + vp.parts_id + '"' +
@@ -237,7 +240,7 @@
                 ' data-vendor-jm-id="' + vp.vendor_jm_id + '"' +
                 ' data-unit-name="' + escapeHtml(vp.unit_name) + '"' +
                 ' data-full-pack-quantity="' + vp.full_pack_quantity + '">' +
-                escapeHtml(vp.vendor_part_no) + prod +
+                escapeHtml(vp.vendor_part_no) +
                 '</option>';
         });
         $vendorPartNoSelect.html(html);
