@@ -243,6 +243,10 @@
         $vendorPartNoSelect.html(html);
         // Pre-select ONLY on an explicit hand-off (search modal) or when
         // exactly one option exists — otherwise the user chooses.
+        var preferred = null;
+        if (preferredVpId) {
+            options.forEach(function (vp) { if (vp.id === preferredVpId) preferred = vp.id; });
+        }
         var targetId = null;
         if (preferred !== null) {
             targetId = String(preferred);
