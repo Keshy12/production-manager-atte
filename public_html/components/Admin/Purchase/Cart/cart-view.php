@@ -82,7 +82,7 @@ foreach ($vpRows as $r) {
                         <?php foreach ($vendorsWithParts as $v): ?>
                             <option value="<?= (int)$v['id'] ?>"
                                     data-name="<?= htmlspecialchars($v['name']) ?>"
-                                    data-parts='<?= htmlspecialchars(json_encode($v['parts_ids']), ENT_QUOTES) ?>'>
+                                    data-parts='<?= htmlspecialchars(json_encode($v['parts_ids'] === null ? [] : array_map('intval', explode(',', $v['parts_ids']))), ENT_QUOTES) ?>'>
                                 <?= htmlspecialchars($v['name']) ?>
                             </option>
                         <?php endforeach; ?>
@@ -95,7 +95,7 @@ foreach ($vpRows as $r) {
                         <?php foreach ($partsWithVendors as $p): ?>
                             <option value="<?= (int)$p['id'] ?>"
                                     data-name="<?= htmlspecialchars($p['name']) ?>"
-                                    data-vendors='<?= htmlspecialchars(json_encode($p['vendors_ids']), ENT_QUOTES) ?>'>
+                                    data-vendors='<?= htmlspecialchars(json_encode($p['vendors_ids'] === null ? [] : array_map('intval', explode(',', $p['vendors_ids']))), ENT_QUOTES) ?>'>
                                 <?= htmlspecialchars($p['name']) ?>
                             </option>
                         <?php endforeach; ?>

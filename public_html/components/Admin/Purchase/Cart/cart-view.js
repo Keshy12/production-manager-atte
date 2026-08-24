@@ -104,6 +104,11 @@
         if (!raw) return [];
         try {
             var v = JSON.parse(raw);
+            // Defensive: GROUP_CONCAT output double-encoded as a JSON string
+            // ("1,2,3") parses to a string, not an array — split it.
+            if (typeof v === 'string') {
+                return v.split(',').map(function (n) { return parseInt(n, 10); }).filter(function (n) { return !isNaN(n); });
+            }
             return Array.isArray(v) ? v : [];
         } catch (e) { return []; }
     }
