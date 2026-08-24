@@ -246,7 +246,13 @@
         if (preferredVpId) {
             options.forEach(function (vp) { if (vp.id === preferredVpId) preferred = vp.id; });
         }
-        $vendorPartNoSelect.val(String(preferred !== null ? preferred : options[0].id));
+        var targetId = String(preferred !== null ? preferred : options[0].id);
+        // Explicit selectpicker('val') + double refresh — plain .val()
+        // alone proved unreliable on freshly-built option lists.
+        refreshSelectpicker($vendorPartNoSelect);
+        if (typeof $vendorPartNoSelect.selectpicker === 'function') {
+            try { $vendorPartNoSelect.selectpicker('val', targetId); } catch (e) { /* noop */ }
+        }
         refreshSelectpicker($vendorPartNoSelect);
         updateAddBtnState();
     }
@@ -644,7 +650,11 @@
             changed = true;
         }
         if (changed) {
-            refreshVendorPartRow(vpid);   // narrow to combo, keep the pick
+            // Defer the rebuild until bootstrap-select finishes its own
+            // change dispatch — mutating the select mid-dispatch lets
+            // bs-select's post-change render wipe the fresh selection.
+            var keepVpId = vpid;
+            setTimeout(function () { refreshVendorPartRow(keepVpId); }, 0);
         }
         updateSelectionDocsBadge();
         loadSelectionDocs();
