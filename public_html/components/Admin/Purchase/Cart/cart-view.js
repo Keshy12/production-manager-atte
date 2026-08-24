@@ -542,7 +542,7 @@
         e.preventDefault();
         $vendorSelect.val('');
         refreshSelectpicker($vendorSelect);
-        applyPartFilter();
+        applyVendorFilter();   // vendor cleared → restore full parts list
         refreshVendorPartRow();
         loadSelectionDocs();
     });
@@ -551,7 +551,7 @@
         e.preventDefault();
         $partSelect.val('');
         refreshSelectpicker($partSelect);
-        applyVendorFilter();
+        applyPartFilter();     // part cleared → restore full vendors list
         refreshVendorPartRow();
         loadSelectionDocs();
     });
