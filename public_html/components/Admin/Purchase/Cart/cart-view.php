@@ -89,9 +89,7 @@ foreach ($vpRows as $r) {
                                 <?php endforeach; ?>
                             </select>
                         </div>
-                        <button type="button" id="clearVendorBtn" class="btn btn-outline-secondary" title="Wyczyść wybór dostawcy">
-                            <i class="bi bi-x"></i>
-                        </button>
+                        <a href="#" id="clearVendorBtn" class="text-muted clear-picker-link ml-1" title="Wyczyść wybór dostawcy"><i class="bi bi-x"></i></a>
                     </div>
                 </div>
                 <div class="col-md-6">
@@ -109,9 +107,7 @@ foreach ($vpRows as $r) {
                                 <?php endforeach; ?>
                             </select>
                         </div>
-                        <button type="button" id="clearPartBtn" class="btn btn-outline-secondary" title="Wyczyść wybór części">
-                            <i class="bi bi-x"></i>
-                        </button>
+                        <a href="#" id="clearPartBtn" class="text-muted clear-picker-link ml-1" title="Wyczyść wybór części"><i class="bi bi-x"></i></a>
                     </div>
                 </div>
             </div>
@@ -158,6 +154,12 @@ foreach ($vpRows as $r) {
         }
         #selectionDocsHeader[aria-expanded="true"] .bi-chevron-right,
         #selectionDocsHeader.is-open .bi-chevron-right { transform: rotate(90deg); }
+        .clear-picker-link {
+            font-size: 1.3rem;
+            line-height: 38px;
+            text-decoration: none;
+        }
+        .clear-picker-link:hover { color: #dc3545 !important; text-decoration: none; }
     </style>
     <div class="card mb-3" id="selectionDocsCard" style="display:none">
         <div class="card-header py-2" id="selectionDocsHeader" role="button" data-toggle="collapse"

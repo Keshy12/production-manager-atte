@@ -538,7 +538,8 @@
     // ✕ next to a picker clears just that side; the other picker's
     // full option list is restored (no empty <option> exists anymore —
     // val('') deselects everything and selectpicker shows its title).
-    $('#clearVendorBtn').on('click', function () {
+    $('#clearVendorBtn').on('click', function (e) {
+        e.preventDefault();
         $vendorSelect.val('');
         refreshSelectpicker($vendorSelect);
         applyPartFilter();
@@ -546,7 +547,8 @@
         loadSelectionDocs();
     });
 
-    $('#clearPartBtn').on('click', function () {
+    $('#clearPartBtn').on('click', function (e) {
+        e.preventDefault();
         $partSelect.val('');
         refreshSelectpicker($partSelect);
         applyVendorFilter();
