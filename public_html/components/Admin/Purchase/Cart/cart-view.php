@@ -30,8 +30,7 @@ $partsWithVendors = $MsaDB->query(
 
 // VendorParts lookup index — keyed by "vendorId:partId" → list of {id, vendor_part_no,
 // producer_part_no, full_pack_quantity, vendor_jm_id, unit_name, vendor_name, …}
-// plus a flat $allVendorParts list used to render the "Numer u dostawcy" picker,
-// which can be picked FIRST and drives the other two selects.
+// (consumed by cart-view.js loadSelectionDocs()).
 $vpRows = $MsaDB->query(
     "SELECT vp.id, vp.vendor_id, vp.parts_id, vp.vendor_part_no,
             vp.producer_part_no, vp.vendor_jm_id, vp.full_pack_quantity,
@@ -43,7 +42,6 @@ $vpRows = $MsaDB->query(
       WHERE vp.is_active = 1 AND v.is_active = 1"
 );
 $vendorPartsIndex = [];
-$allVendorParts = [];
 foreach ($vpRows as $r) {
     $entry = [
         'id'                 => (int)$r['id'],
@@ -58,7 +56,6 @@ foreach ($vpRows as $r) {
         'part_name'          => $r['part_name'],
     ];
     $vendorPartsIndex[$r['vendor_id'] . ':' . $r['parts_id']][] = $entry;
-    $allVendorParts[] = $entry;
 }
 ?>
 
@@ -121,23 +118,11 @@ foreach ($vpRows as $r) {
             </div>
             <div class="row mt-3" id="vendorPartRow">
                 <div class="col-md-4">
-                    <label for="vendorPartNoSelect">Numer u dostawcy:</label>
-                    <select id="vendorPartNoSelect" class="selectpicker form-control" data-live-search="true" data-width="100%" title="Wybierz numer u dostawcy...">
-                        <?php foreach ($allVendorParts as $vp): ?>
-                            <option value="<?= $vp['id'] ?>"
-                                    data-vp-id="<?= $vp['id'] ?>"
-                                    data-vendor-id="<?= $vp['vendor_id'] ?>"
-                                    data-part-id="<?= $vp['parts_id'] ?>"
-                                    data-vendor-part-no="<?= htmlspecialchars($vp['vendor_part_no']) ?>"
-                                    data-producer-part-no="<?= htmlspecialchars($vp['producer_part_no'] ?? '') ?>"
-                                    data-vendor-jm-id="<?= $vp['vendor_jm_id'] ?>"
-                                    data-unit-name="<?= htmlspecialchars($vp['unit_name']) ?>"
-                                    data-full-pack-quantity="<?= $vp['full_pack_quantity'] ?>"
-                                    data-subtext="<?= htmlspecialchars($vp['vendor_name'] . ' · ' . $vp['part_name']) ?>">
-                                <?= htmlspecialchars($vp['vendor_part_no']) ?><?= $vp['producer_part_no'] !== null && $vp['producer_part_no'] !== '' ? ' <small class="text-muted">(' . htmlspecialchars($vp['producer_part_no']) . ')</small>' : '' ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
+                    <label>Numer u dostawcy:</label>
+                    <button type="button" id="vpDisplayBtn" class="form-control text-left d-flex justify-content-between align-items-center" title="Kliknij, aby wyszukać numer u dostawcy">
+                        <span id="vpDisplayText" class="text-muted">Szukaj numeru u dostawcy…</span>
+                        <i class="bi bi-search text-muted"></i>
+                    </button>
                 </div>
                 <div class="col-md-2">
                     <label for="cartQty">Ilość:</label>
@@ -159,6 +144,30 @@ foreach ($vpRows as $r) {
                     <button type="button" id="addToCartBtn" class="btn btn-success btn-block" disabled>
                         <i class="bi bi-plus-circle"></i> Dodaj
                     </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== Modal: szukaj numeru u dostawcy ===== -->
+    <div class="modal fade" id="vpSearchModal" tabindex="-1" role="dialog" aria-hidden="true">
+        <div class="modal-dialog modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title"><i class="bi bi-search"></i> Szukaj numeru u dostawcy</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Zamknij"><span>&times;</span></button>
+                </div>
+                <div class="modal-body">
+                    <input type="text" id="vpSearchInput" class="form-control" placeholder="Min. 2 znaki — numer dostawcy, numer producenta, część lub dostawca…" autocomplete="off">
+                    <div id="vpSearchStatus" class="text-muted mt-2" style="display:none"></div>
+                    <div class="table-responsive mt-2" style="max-height:50vh; overflow-y:auto;">
+                        <table class="table table-sm table-striped mb-0">
+                            <thead class="thead-light">
+                                <tr><th>Numer u dostawcy</th><th>Nr producenta</th><th>Dostawca</th><th>Część</th><th>JM / opak.</th><th></th></tr>
+                            </thead>
+                            <tbody id="vpSearchResults"></tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
