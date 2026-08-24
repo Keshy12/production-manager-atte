@@ -77,30 +77,42 @@ foreach ($vpRows as $r) {
             <div class="row">
                 <div class="col-md-6">
                     <label for="vendorSelect">Dostawca:</label>
-                    <select id="vendorSelect" class="selectpicker form-control" data-live-search="true" data-width="100%">
-                        <option value="">Wybierz dostawcę...</option>
-                        <?php foreach ($vendorsWithParts as $v): ?>
-                            <option value="<?= (int)$v['id'] ?>"
-                                    data-name="<?= htmlspecialchars($v['name']) ?>"
-                                    data-parts='<?= htmlspecialchars(json_encode($v['parts_ids'] === null ? [] : array_map('intval', explode(',', $v['parts_ids']))), ENT_QUOTES) ?>'>
-                                <?= htmlspecialchars($v['name']) ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
+                    <div class="d-flex align-items-start">
+                        <div class="flex-grow-1 mr-1">
+                            <select id="vendorSelect" class="selectpicker form-control" data-live-search="true" data-width="100%" title="Wybierz dostawcę...">
+                                <?php foreach ($vendorsWithParts as $v): ?>
+                                    <option value="<?= (int)$v['id'] ?>"
+                                            data-name="<?= htmlspecialchars($v['name']) ?>"
+                                            data-parts='<?= htmlspecialchars(json_encode($v['parts_ids'] === null ? [] : array_map('intval', explode(',', $v['parts_ids']))), ENT_QUOTES) ?>'>
+                                        <?= htmlspecialchars($v['name']) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <button type="button" id="clearVendorBtn" class="btn btn-outline-secondary" title="Wyczyść wybór dostawcy">
+                            <i class="bi bi-x"></i>
+                        </button>
+                    </div>
                 </div>
                 <div class="col-md-6">
                     <label for="partSelect">Część:</label>
-                    <select id="partSelect" class="selectpicker form-control" data-live-search="true" data-width="100%" data-show-subtext="true">
-                        <option value="">Wybierz część...</option>
-                        <?php foreach ($partsWithVendors as $p): ?>
-                            <option value="<?= (int)$p['id'] ?>"
-                                    data-name="<?= htmlspecialchars($p['name']) ?>"
-                                    data-subtext="<?= htmlspecialchars($p['description']) ?>"
-                                    data-vendors='<?= htmlspecialchars(json_encode($p['vendors_ids'] === null ? [] : array_map('intval', explode(',', $p['vendors_ids']))), ENT_QUOTES) ?>'>
-                                <?= htmlspecialchars($p['name']) ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
+                    <div class="d-flex align-items-start">
+                        <div class="flex-grow-1 mr-1">
+                            <select id="partSelect" class="selectpicker form-control" data-live-search="true" data-width="100%" data-show-subtext="true" title="Wybierz część...">
+                                <?php foreach ($partsWithVendors as $p): ?>
+                                    <option value="<?= (int)$p['id'] ?>"
+                                            data-name="<?= htmlspecialchars($p['name']) ?>"
+                                            data-subtext="<?= htmlspecialchars($p['description']) ?>"
+                                            data-vendors='<?= htmlspecialchars(json_encode($p['vendors_ids'] === null ? [] : array_map('intval', explode(',', $p['vendors_ids']))), ENT_QUOTES) ?>'>
+                                        <?= htmlspecialchars($p['name']) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <button type="button" id="clearPartBtn" class="btn btn-outline-secondary" title="Wyczyść wybór części">
+                            <i class="bi bi-x"></i>
+                        </button>
+                    </div>
                 </div>
             </div>
             <div class="row mt-3" id="vendorPartRow" style="display:none">

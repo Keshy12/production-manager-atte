@@ -535,6 +535,25 @@
         $selectionDocsHeader.removeClass('is-open');
     });
 
+    // ✕ next to a picker clears just that side; the other picker's
+    // full option list is restored (no empty <option> exists anymore —
+    // val('') deselects everything and selectpicker shows its title).
+    $('#clearVendorBtn').on('click', function () {
+        $vendorSelect.val('');
+        refreshSelectpicker($vendorSelect);
+        applyPartFilter();
+        refreshVendorPartRow();
+        loadSelectionDocs();
+    });
+
+    $('#clearPartBtn').on('click', function () {
+        $partSelect.val('');
+        refreshSelectpicker($partSelect);
+        applyVendorFilter();
+        refreshVendorPartRow();
+        loadSelectionDocs();
+    });
+
     $addToCartBtn.on('click', function () {
         addCurrentSelectionToCart();
     });
