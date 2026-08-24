@@ -20,11 +20,11 @@ $vendorsWithParts = $MsaDB->query(
 
 // Parts with their vendors_ids
 $partsWithVendors = $MsaDB->query(
-    "SELECT p.id, p.name, GROUP_CONCAT(vp.vendor_id) AS vendors_ids
+    "SELECT p.id, p.name, p.description, GROUP_CONCAT(vp.vendor_id) AS vendors_ids
        FROM `list__parts` p
        LEFT JOIN `list__vendor_part` vp ON vp.parts_id = p.id AND vp.is_active = 1
       WHERE p.isActive = 1
-      GROUP BY p.id, p.name
+      GROUP BY p.id, p.name, p.description
       ORDER BY p.name ASC"
 );
 
@@ -90,11 +90,12 @@ foreach ($vpRows as $r) {
                 </div>
                 <div class="col-md-6">
                     <label for="partSelect">Część:</label>
-                    <select id="partSelect" class="selectpicker form-control" data-live-search="true" data-width="100%">
+                    <select id="partSelect" class="selectpicker form-control" data-live-search="true" data-width="100%" data-show-subtext="true">
                         <option value="">Wybierz część...</option>
                         <?php foreach ($partsWithVendors as $p): ?>
                             <option value="<?= (int)$p['id'] ?>"
                                     data-name="<?= htmlspecialchars($p['name']) ?>"
+                                    data-subtext="<?= htmlspecialchars($p['description']) ?>"
                                     data-vendors='<?= htmlspecialchars(json_encode($p['vendors_ids'] === null ? [] : array_map('intval', explode(',', $p['vendors_ids']))), ENT_QUOTES) ?>'>
                                 <?= htmlspecialchars($p['name']) ?>
                             </option>
@@ -120,6 +121,14 @@ foreach ($vpRows as $r) {
                 </div>
             </div>
         </div>
+    </div>
+
+    <!-- ===== Aktywne dokumenty dla wybranej pozycji ===== -->
+    <div class="card mb-3" id="selectionDocsCard" style="display:none">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="bi bi-exclamation-triangle text-warning"></i> Aktywne dokumenty dla wybranej pozycji</h5>
+        </div>
+        <div class="card-body" id="selectionDocsBody"></div>
     </div>
 
     <!-- ===== Koszyk (grupowany po dostawcy) ===== -->

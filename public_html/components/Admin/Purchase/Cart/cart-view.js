@@ -36,6 +36,8 @@
     var $cartBody            = $('#cartBody');
     var $cartCount           = $('#cartCount');
     var $clearBtn            = $('#clearCartBtn');
+    var $selectionDocsCard   = $('#selectionDocsCard');
+    var $selectionDocsBody   = $('#selectionDocsBody');
 
     // ---- helpers ----
 
@@ -203,6 +205,59 @@
     }
 
     // ---- active-docs / cart rendering ----
+
+    // Active docs for the *currently picked* vendor+part combo — shown
+    // in the strip card above the cart as soon as both pickers hold a
+    // value (no need to add anything to the cart first).
+    function loadSelectionDocs() {
+        var vendorId = parseInt($vendorSelect.val(), 10) || null;
+        var partId = parseInt($partSelect.val(), 10) || null;
+        if (!vendorId || !partId) {
+            $selectionDocsCard.hide();
+            $selectionDocsBody.empty();
+            return;
+        }
+        var options = VENDOR_PARTS_INDEX[vendorId + ':' + partId] || [];
+        var vpIds = options.map(function (vp) { return vp.id; });
+        if (vpIds.length === 0) {
+            $selectionDocsCard.hide();
+            return;
+        }
+        $.ajax({
+            url: PURCHASE_CART_BASE + '/cart-active-docs.php',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(vpIds),
+            dataType: 'json'
+        }).done(function (docs) {
+            renderSelectionDocs(options, docs || {});
+        }).fail(function () {
+            renderSelectionDocs(options, {});
+        });
+    }
+
+    function renderSelectionDocs(options, docs) {
+        var html = '';
+        var any = false;
+        options.forEach(function (vp) {
+            var list = docs[vp.id] || [];
+            if (list.length === 0) return;
+            any = true;
+            html += '<div class="mb-1"><strong>' + escapeHtml(vp.vendor_part_no) + ':</strong> ';
+            list.forEach(function (d) {
+                html += '<span class="badge ' + stateBadgeClass(d.state) + ' mr-1" title="' +
+                    stateBadgeLabel(d.state) + ' · ' + formatQty(d.quantity) + ' szt. · ' + formatPrice(d.unit_price) + '">' +
+                    docTypeIcon(d.doc_type) + ' ' + escapeHtml(d.number) + ' · ' + stateBadgeLabel(d.state) +
+                    '</span>';
+            });
+            html += '</div>';
+        });
+        if (!any) {
+            html = '<span class="text-muted">Brak aktywnych dokumentów dla tej pozycji.</span>';
+        }
+        $selectionDocsBody.html(html);
+        $selectionDocsCard.show();
+    }
 
     function loadActiveDocs() {
         if (cart.items.length === 0) {
@@ -413,11 +468,13 @@
     $vendorSelect.on('change', function () {
         applyVendorFilter();
         refreshVendorPartRow();
+        loadSelectionDocs();
     });
 
     $partSelect.on('change', function () {
         applyPartFilter();
         refreshVendorPartRow();
+        loadSelectionDocs();
     });
 
     $addToCartBtn.on('click', function () {
