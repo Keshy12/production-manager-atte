@@ -4,8 +4,9 @@
 // Flow:
 //   1. Pick a vendor → parts list narrows to what that vendor carries.
 //      Pick a part → vendors list narrows accordingly.
-//   2. "Numer u dostawcy" starts empty and populates only once BOTH
-//      vendor and part are picked, listing that combo's alternates.
+//   2. "Numer u dostawcy" scopes by whatever constraint exists: vendor
+//      picked → that vendor's items; part picked → that part's items
+//      across vendors; both → combo alternates; neither → empty.
 //   3. The magnifier icon next to it opens a search modal (AJAX endpoint
 //      vendor-part-search.php) for finding items by vendor/producer part
 //      no or part/vendor name across the whole catalog; picking a result
@@ -179,9 +180,10 @@
 
     // ---- three-way picker sync ----
     // Vendor/part filter each other's options. "Numer u dostawcy" starts
-    // EMPTY — it populates only once both other pickers hold a value,
-    // listing that combo's alternates. Catalog-wide lookup lives in the
-    // search modal.
+    // empty and scopes by whatever constraint exists: vendor picked →
+    // that vendor's items; part picked → that part's items across
+    // vendors; both → combo alternates. Catalog-wide lookup lives in
+    // the search modal.
 
     function updateAddBtnState() {
         var $sel = $vendorPartNoSelect.find('option:selected');
@@ -191,16 +193,30 @@
         $addToCartBtn.prop('disabled', !ok);
     }
 
+    function getScopedVpOptions(vendorId, partId) {
+        var out = [];
+        Object.keys(VENDOR_PARTS_INDEX).forEach(function (key) {
+            var parts = key.split(':');
+            var vid = parseInt(parts[0], 10);
+            var pid = parseInt(parts[1], 10);
+            if (vendorId && vid !== vendorId) return;
+            if (partId && pid !== partId) return;
+            VENDOR_PARTS_INDEX[key].forEach(function (vp) { out.push(vp); });
+        });
+        return out;
+    }
+
     function refreshVendorPartRow(preferredVpId) {
         var vendorId = parseInt($vendorSelect.val(), 10) || null;
         var partId = parseInt($partSelect.val(), 10) || null;
-        if (!vendorId || !partId) {
+        // Nothing constrained → keep the picker empty.
+        if (!vendorId && !partId) {
             $vendorPartNoSelect.empty();
             refreshSelectpicker($vendorPartNoSelect);
             $addToCartBtn.prop('disabled', true);
             return;
         }
-        var options = VENDOR_PARTS_INDEX[vendorId + ':' + partId] || [];
+        var options = getScopedVpOptions(vendorId, partId);
         if (options.length === 0) {
             $vendorPartNoSelect.empty();
             refreshSelectpicker($vendorPartNoSelect);

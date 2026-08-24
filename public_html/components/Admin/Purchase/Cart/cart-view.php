@@ -80,47 +80,39 @@ foreach ($vpRows as $r) {
         <div class="card-header"><h5 class="mb-0">Wybierz dostawcę i część</h5></div>
         <div class="card-body">
             <div class="row">
-                <div class="col-md-3">
+                <div class="col-md-6">
                     <label for="vendorSelect">Dostawca:</label>
-                    <div class="d-flex align-items-start">
-                        <div class="flex-grow-1 mr-1">
-                            <select id="vendorSelect" class="selectpicker form-control" data-live-search="true" data-width="100%" title="Wybierz dostawcę...">
-                                <?php foreach ($vendorsWithParts as $v): ?>
-                                    <option value="<?= (int)$v['id'] ?>"
-                                            data-name="<?= htmlspecialchars($v['name']) ?>"
-                                            data-parts='<?= htmlspecialchars(json_encode($v['parts_ids'] === null ? [] : array_map('intval', explode(',', $v['parts_ids']))), ENT_QUOTES) ?>'>
-                                        <?= htmlspecialchars($v['name']) ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                    </div>
+                    <select id="vendorSelect" class="selectpicker form-control" data-live-search="true" data-width="100%" title="Wybierz dostawcę...">
+                        <?php foreach ($vendorsWithParts as $v): ?>
+                            <option value="<?= (int)$v['id'] ?>"
+                                    data-name="<?= htmlspecialchars($v['name']) ?>"
+                                    data-parts='<?= htmlspecialchars(json_encode($v['parts_ids'] === null ? [] : array_map('intval', explode(',', $v['parts_ids']))), ENT_QUOTES) ?>'>
+                                <?= htmlspecialchars($v['name']) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-6">
                     <label for="partSelect">Część:</label>
-                    <div class="d-flex align-items-start">
-                        <div class="flex-grow-1 mr-1">
-                            <select id="partSelect" class="selectpicker form-control" data-live-search="true" data-width="100%" title="Wybierz część...">
-                                <?php foreach ($partsWithVendors as $p): ?>
-                                    <option value="<?= (int)$p['id'] ?>"
-                                            data-name="<?= htmlspecialchars($p['name']) ?>"
-                                            data-subtext="<?= htmlspecialchars($p['description']) ?>"
-                                            data-vendors='<?= htmlspecialchars(json_encode($p['vendors_ids'] === null ? [] : array_map('intval', explode(',', $p['vendors_ids']))), ENT_QUOTES) ?>'>
-                                        <?= htmlspecialchars($p['name']) ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                    </div>
+                    <select id="partSelect" class="selectpicker form-control" data-live-search="true" data-width="100%" title="Wybierz część...">
+                        <?php foreach ($partsWithVendors as $p): ?>
+                            <option value="<?= (int)$p['id'] ?>"
+                                    data-name="<?= htmlspecialchars($p['name']) ?>"
+                                    data-subtext="<?= htmlspecialchars($p['description']) ?>"
+                                    data-vendors='<?= htmlspecialchars(json_encode($p['vendors_ids'] === null ? [] : array_map('intval', explode(',', $p['vendors_ids']))), ENT_QUOTES) ?>'>
+                                <?= htmlspecialchars($p['name']) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
                 </div>
             </div>
             <div class="row mt-3" id="vendorPartRow">
-                <div class="col-md-3">
+                <div class="col-md-6">
                     <label for="vendorPartNoSelect">Numer u dostawcy:</label>
                     <div class="d-flex align-items-start">
                         <div class="flex-grow-1 mr-1">
                             <select id="vendorPartNoSelect" class="selectpicker form-control" data-live-search="true" data-width="100%" title="Wybierz numer u dostawcy...">
-                                <!-- populated by JS once vendor + part are both picked;
+                                <!-- populated by JS once vendor and/or part are picked;
                                      catalog-wide lookup lives in the search modal -->
                             </select>
                         </div>
@@ -143,12 +135,14 @@ foreach ($vpRows as $r) {
                         <option value="USD">USD</option>
                     </select>
                 </div>
-                <div class="col-md-3 d-flex align-items-end">
-                    <button type="button" id="addToCartBtn" class="btn btn-success flex-fill mr-1" disabled>
-                        <i class="bi bi-plus-circle"></i> Dodaj
-                    </button>
-                    <button type="button" id="clearSelectionBtn" class="btn btn-outline-secondary" title="Wyczyść wybór dostawcy i części">
+            </div>
+            <div class="row mt-2">
+                <div class="col-12 text-right">
+                    <button type="button" id="clearSelectionBtn" class="btn btn-danger mr-1" title="Wyczyść wybór dostawcy i części">
                         Wyczyść
+                    </button>
+                    <button type="button" id="addToCartBtn" class="btn btn-success" disabled>
+                        <i class="bi bi-plus-circle"></i> Dodaj
                     </button>
                 </div>
             </div>
