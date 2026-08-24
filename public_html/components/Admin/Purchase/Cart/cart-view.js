@@ -1,17 +1,19 @@
-// Koszyk — cascading vendor/part pickers plus a search-modal VendorPart
-// picker that land items in a shared cart grouped by vendor (client-side
-// state).
+// Koszyk — three mutually-driving pickers plus a search modal that land
+// items in a shared cart grouped by vendor (client-side state).
 //
 // Flow:
 //   1. Pick a vendor → parts list narrows to what that vendor carries.
 //      Pick a part → vendors list narrows accordingly.
-//   2. "Numer u dostawcy" opens a search modal backed by an AJAX endpoint
-//      (vendor-part-search.php). Picking a result sets the pending
-//      VendorPart and auto-selects its vendor AND part.
-//   3. Qty / price / currency row is always visible; "Dodaj" enables once
-//      a VendorPart is pending and matches the picked vendor+part combo.
-//      Same vendor_part_id merges in qty instead of duplicating.
-//   4. Each vendor group in the cart has its own "Utwórz zapytanie"
+//   2. "Numer u dostawcy" lists EVERY VendorPart up front; picking one
+//      auto-selects its vendor AND part. Once both other pickers hold a
+//      value, this picker scopes down to that combo's alternates.
+//   3. The magnifier icon next to it opens a search modal (AJAX endpoint
+//      vendor-part-search.php) for finding items by vendor/producer part
+//      no or part/vendor name across the whole catalog.
+//   4. Qty / price / currency row is always visible; "Dodaj" enables once
+//      a valid VendorPart is selected. Same vendor_part_id merges in qty
+//      instead of duplicating.
+//   5. Each vendor group in the cart has its own "Utwórz zapytanie"
 //      / "Utwórz zamówienie" buttons — submits only that group's
 //      items to POST /cart-action.php.
 
@@ -29,6 +31,7 @@
     // DOM refs
     var $vendorSelect        = $('#vendorSelect');
     var $partSelect          = $('#partSelect');
+    var $vendorPartNoSelect  = $('#vendorPartNoSelect');
     var $cartQty             = $('#cartQty');
     var $cartPrice           = $('#cartPrice');
     var $cartCurrency        = $('#cartCurrency');
@@ -42,13 +45,10 @@
     var $selectionDocsBody   = $('#selectionDocsBody');
     var $selectionDocsContent = $('#selectionDocsContent');
     var $selectionDocsCount  = $('#selectionDocsCount');
-    var $vpDisplayBtn   = $('#vpDisplayBtn');
-    var $vpDisplayText  = $('#vpDisplayText');
     var $vpSearchModal  = $('#vpSearchModal');
     var $vpSearchInput  = $('#vpSearchInput');
     var $vpSearchStatus = $('#vpSearchStatus');
     var $vpSearchResults = $('#vpSearchResults');
-    var pendingVp = null;   // chosen VendorPart: {id, vendor_id, parts_id, vendor_part_no, producer_part_no, producer_name, unit_name, full_pack_quantity, vendor_name, part_name}
     var vpSearchRows = [];  // last endpoint response, indexed for row buttons
     var vpSearchTimer = null;
     // Last fetched strip payload: { options: [vp,…], docs: {vpId: [doc,…]} }
@@ -177,46 +177,54 @@
         }
     }
 
-    // ---- VendorPart picker state ----
-    // The chosen VendorPart lives in `pendingVp` (a plain object from the
-    // search endpoint), not in a selected <option>. It is valid only while
-    // the vendor+part pickers still match its combo — any mismatch drops it.
-
-    function renderVpDisplay() {
-        if (pendingVp) {
-            $vpDisplayText
-                .removeClass('text-muted')
-                .html('<strong>' + escapeHtml(pendingVp.vendor_part_no) + '</strong>' +
-                    (pendingVp.producer_part_no ? ' <small class="text-muted">(' + escapeHtml(pendingVp.producer_part_no) + ')</small>' : '') +
-                    ' <small class="text-muted">— ' + escapeHtml(pendingVp.vendor_name) + ' · ' + escapeHtml(pendingVp.part_name) + '</small>');
-        } else {
-            $vpDisplayText
-                .addClass('text-muted')
-                .html('Szukaj numeru u dostawcy…');
-        }
-    }
-
-    function clearPendingVp() {
-        pendingVp = null;
-        renderVpDisplay();
-        updateAddBtnState();
-    }
+    // ---- three-way picker sync ----
+    // Vendor/part filter each other's options. "Numer u dostawcy" lists
+    // EVERY VendorPart (server-rendered); picking one auto-selects its
+    // vendor + part. Once both other pickers hold a value, this picker
+    // scopes down to that combo's alternates.
 
     function updateAddBtnState() {
-        var ok = pendingVp !== null
-            && parseInt($vendorSelect.val(), 10) === pendingVp.vendor_id
-            && parseInt($partSelect.val(), 10) === pendingVp.parts_id;
+        var $sel = $vendorPartNoSelect.find('option:selected');
+        var ok = $sel.length > 0
+            && !$sel.prop('hidden')
+            && (parseInt($sel.attr('data-vp-id'), 10) || 0) > 0;
         $addToCartBtn.prop('disabled', !ok);
     }
 
     function syncFromPickers() {
-        var vid = parseInt($vendorSelect.val(), 10);
-        var pid = parseInt($partSelect.val(), 10);
+        var vendorId = parseInt($vendorSelect.val(), 10) || null;
+        var partId = parseInt($partSelect.val(), 10) || null;
 
-        // Combo changed under a pending VendorPart → drop it.
-        if (pendingVp && (vid !== pendingVp.vendor_id || pid !== pendingVp.parts_id)) {
-            clearPendingVp();
+        if (!vendorId || !partId) {
+            // Combo incomplete → show the full catalog, drop any selection.
+            $vendorPartNoSelect.find('option').prop('hidden', false);
+            $vendorPartNoSelect.val('');
+            refreshSelectpicker($vendorPartNoSelect);
+            $addToCartBtn.prop('disabled', true);
             return;
+        }
+
+        // Scope visible options to the picked combo.
+        $vendorPartNoSelect.find('option').each(function () {
+            var $o = $(this);
+            var hide = parseInt($o.attr('data-vendor-id'), 10) !== vendorId ||
+                       parseInt($o.attr('data-part-id'), 10) !== partId;
+            $o.prop('hidden', hide);
+        });
+        refreshSelectpicker($vendorPartNoSelect);
+
+        // If the current selection fell outside the combo, default to the
+        // first visible alternate (same part can have several numbers).
+        var $cur = $vendorPartNoSelect.find('option:selected');
+        if ($cur.length === 0 || $cur.prop('hidden')) {
+            var $first = null;
+            $vendorPartNoSelect.find('option').each(function () {
+                if (!$(this).prop('hidden')) { $first = $(this); return false; }
+            });
+            if ($first) {
+                $vendorPartNoSelect.val($first.attr('value'));
+                refreshSelectpicker($vendorPartNoSelect);
+            }
         }
         updateAddBtnState();
     }
@@ -264,19 +272,20 @@
         });
     }
 
-    // Picking a search result sets the pending VendorPart and drives the
-    // other two pickers (programmatic .val() does NOT fire change — the
-    // follow-up calls run explicitly here).
+    // Picking a search result selects the matching option in the vp
+    // selectpicker and drives the other two pickers (programmatic .val()
+    // does NOT fire change — the follow-up calls run explicitly here).
     function pickVp(r) {
-        pendingVp = r;
         $vendorSelect.val(r.vendor_id);
         refreshSelectpicker($vendorSelect);
         $partSelect.val(r.parts_id);
         refreshSelectpicker($partSelect);
         applyVendorFilter();   // scope parts to this vendor
         applyPartFilter();     // scope vendors to this part
-        renderVpDisplay();
-        updateAddBtnState();
+        $vendorPartNoSelect.val(String(r.id));
+        refreshSelectpicker($vendorPartNoSelect);
+        syncFromPickers();     // scopes options; our pick belongs to the combo, so it stays
+        updateSelectionDocsBadge();
         loadSelectionDocs();
         $vpSearchModal.modal('hide');
     }
@@ -341,10 +350,11 @@
         updateSelectionDocsBadge();
     }
 
-    // Header badge reflects the *specific* VendorPart currently pending
-    // (picked in the search modal) — not the combo-wide total.
+    // Header badge reflects the *specific* VendorPart currently picked
+    // in "Numer u dostawcy" — not the combo-wide total.
     function updateSelectionDocsBadge() {
-        var vpId = pendingVp ? pendingVp.id : null;
+        var $opt = $vendorPartNoSelect.find('option:selected');
+        var vpId = parseInt($opt.attr('data-vp-id'), 10) || null;
         var list = (vpId !== null && selectionDocsCache.docs[vpId]) ? selectionDocsCache.docs[vpId] : [];
         if (list.length > 0) {
             $selectionDocsCount.text(list.length).show();
@@ -465,12 +475,12 @@
 
     function addCurrentSelectionToCart() {
         if ($addToCartBtn.prop('disabled')) return;
-        if (!pendingVp) return;
         var vendorId = parseInt($vendorSelect.val(), 10) || null;
         var partId = parseInt($partSelect.val(), 10) || null;
-        var vendorPartId = pendingVp.id;
-        var vendorPartNo = pendingVp.vendor_part_no || '';
-        var producerPartNo = pendingVp.producer_part_no || null;
+        var $opt = $vendorPartNoSelect.find('option:selected');
+        var vendorPartId = parseInt($opt.attr('data-vp-id'), 10) || null;
+        var vendorPartNo = $opt.attr('data-vendor-part-no') || '';
+        var producerPartNo = $opt.attr('data-producer-part-no') || null;
         var qty = parseFloat($cartQty.val());
         var priceRaw = $cartPrice.val() === '' ? NaN : parseFloat($cartPrice.val());
         var unitPrice = (!isNaN(priceRaw) && priceRaw >= 0) ? priceRaw : null;
@@ -504,26 +514,27 @@
                 vendor_part_no    : vendorPartNo,
                 producer_part_no  : producerPartNo,
                 part_name         : $partOpt.attr('data-name') || '',
-                producer_name     : pendingVp.producer_name || '',
-                unit_name         : pendingVp.unit_name || '',
-                vendor_jm_id      : pendingVp.vendor_jm_id || null,
-                full_pack_quantity: pendingVp.full_pack_quantity || null,
+                producer_name     : '',
+                unit_name         : $opt.attr('data-unit-name') || '',
+                vendor_jm_id      : parseInt($opt.attr('data-vendor-jm-id'), 10) || null,
+                full_pack_quantity: parseFloat($opt.attr('data-full-pack-quantity')) || null,
                 quantity          : qty,
                 unit_price        : unitPrice,
                 currency          : currency
             });
         }
-        // Reset qty + price, clear the part picker and the pending
-        // VendorPart (vendor stays selected so the user can queue the next
-        // part from the same vendor). Currency stays sticky — usually
-        // several items in a row share it.
+        // Reset qty + price, clear the part picker and the vp picker
+        // (vendor stays selected so the user can queue the next part from
+        // the same vendor). Currency stays sticky — usually several items
+        // in a row share it.
         $cartQty.val('1');
         $cartPrice.val('');
         $partSelect.val('');
         refreshSelectpicker($partSelect);
         applyPartFilter();          // part cleared → restore full vendor list
-        clearPendingVp();
-        syncFromPickers();          // drops stale state, add disabled
+        $vendorPartNoSelect.val('');
+        refreshSelectpicker($vendorPartNoSelect);
+        syncFromPickers();          // full catalog visible again, add disabled
         loadSelectionDocs();
         renderCart();
         loadActiveDocs();
@@ -591,8 +602,27 @@
         loadSelectionDocs();
     });
 
-    // Modal open + search + pick handlers
-    $vpDisplayBtn.on('click', function () {
+    // Picking a vendor part no FIRST auto-selects its vendor + part.
+    $vendorPartNoSelect.on('change', function () {
+        var $opt = $(this).find('option:selected');
+        var vid = parseInt($opt.attr('data-vendor-id'), 10) || null;
+        var pid = parseInt($opt.attr('data-part-id'), 10) || null;
+        if (vid && pid) {
+            $vendorSelect.val(vid);
+            refreshSelectpicker($vendorSelect);
+            $partSelect.val(pid);
+            refreshSelectpicker($partSelect);
+            applyVendorFilter();   // scope parts to this vendor
+            applyPartFilter();     // scope vendors to this part
+        }
+        syncFromPickers();
+        updateSelectionDocsBadge();
+        loadSelectionDocs();
+    });
+
+    // Magnifier next to the vp picker opens the global search modal.
+    $('#vpSearchBtn').on('click', function (e) {
+        e.preventDefault();
         $vpSearchModal.modal('show');
     });
 
