@@ -615,10 +615,19 @@
                 if (item.description) {
                     partCell += '<div><small class="text-muted">' + escapeHtml(item.description) + '</small></div>';
                 }
+                // Ilość cell carries the package count as a sub-line
+                // (yellow when qty doesn't match whole packages).
+                var qtyCell = formatQty(item.quantity);
+                if (item.full_pack_quantity && item.full_pack_quantity > 0) {
+                    var pkgs = item.quantity / item.full_pack_quantity;
+                    var evenPkgs = Math.abs(pkgs - Math.round(pkgs)) < 1e-9;
+                    qtyCell += '<div><small class="' + (evenPkgs ? 'text-muted' : 'text-warning') + '">' +
+                        parseFloat(pkgs.toFixed(2)) + ' opak.</small></div>';
+                }
                 html += '<tr>' +
                     '<td>' + partCell + '</td>' +
                     '<td>' + escapeHtml(item.unit_name) + '</td>' +
-                    '<td>' + formatQty(item.quantity) + '</td>' +
+                    '<td>' + qtyCell + '</td>' +
                     '<td>' + formatPrice(item.unit_price) + '</td>' +
                     '<td>' + escapeHtml(item.currency) + '</td>' +
                     '<td>' + formatPrice(lineTotal) + '</td>' +
