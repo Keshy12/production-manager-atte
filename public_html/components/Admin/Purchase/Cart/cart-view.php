@@ -96,7 +96,7 @@ foreach ($vpRows as $r) {
                     <label for="partSelect">Część:</label>
                     <div class="d-flex align-items-start">
                         <div class="flex-grow-1 mr-1">
-                            <select id="partSelect" class="selectpicker form-control" data-live-search="true" data-width="100%" data-show-subtext="true" title="Wybierz część...">
+                            <select id="partSelect" class="selectpicker form-control" data-live-search="true" data-width="100%" title="Wybierz część...">
                                 <?php foreach ($partsWithVendors as $p): ?>
                                     <option value="<?= (int)$p['id'] ?>"
                                             data-name="<?= htmlspecialchars($p['name']) ?>"
@@ -160,10 +160,6 @@ foreach ($vpRows as $r) {
             text-decoration: none;
         }
         .clear-picker-link:hover { color: #dc3545 !important; text-decoration: none; }
-        /* Part description (data-subtext) belongs in the dropdown list only —
-           rendered in the closed button it overflows the card. */
-        #partSelect ~ .bootstrap-select .filter-option small,
-        .bootstrap-select > #partSelect + .filter-option small { display: none; }
     </style>
     <div class="card mb-3" id="selectionDocsCard" style="display:none">
         <div class="card-header py-2" id="selectionDocsHeader" role="button" data-toggle="collapse"
