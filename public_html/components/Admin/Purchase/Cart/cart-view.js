@@ -619,9 +619,35 @@
         loadSelectionDocs();
     });
 
-    // Switching between combo alternates re-scopes the docs badge.
+    // Picking a variant from a partially-scoped list completes the
+    // combo: its vendor and/or part get auto-selected, the pickers
+    // re-filter, and the variant list narrows to the combo's alternates
+    // keeping the exact variant chosen.
     $vendorPartNoSelect.on('change', function () {
+        var $opt = $(this).find('option:selected');
+        var vid = parseInt($opt.attr('data-vendor-id'), 10) || null;
+        var pid = parseInt($opt.attr('data-part-id'), 10) || null;
+        var vpid = parseInt($opt.attr('data-vp-id'), 10) || null;
+        var curVid = parseInt($vendorSelect.val(), 10) || null;
+        var curPid = parseInt($partSelect.val(), 10) || null;
+        var changed = false;
+        if (vid && vid !== curVid) {
+            $vendorSelect.val(vid);
+            refreshSelectpicker($vendorSelect);
+            applyVendorFilter();   // scope parts to this vendor
+            changed = true;
+        }
+        if (pid && pid !== curPid) {
+            $partSelect.val(pid);
+            refreshSelectpicker($partSelect);
+            applyPartFilter();     // scope vendors to this part
+            changed = true;
+        }
+        if (changed) {
+            refreshVendorPartRow(vpid);   // narrow to combo, keep the pick
+        }
         updateSelectionDocsBadge();
+        loadSelectionDocs();
     });
 
     // Magnifier next to the vp picker opens the global search modal.
