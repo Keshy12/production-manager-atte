@@ -197,6 +197,15 @@ foreach ($vpRows as $r) {
             text-decoration: none;
         }
         .clear-picker-link:hover { color: #dc3545 !important; text-decoration: none; }
+        /* Non-blocking warning: qty doesn't match whole packages */
+        .packages-uneven {
+            border-color: #ffc107;
+            background-color: #fff8e1;
+        }
+        .packages-uneven:focus {
+            border-color: #ffb300;
+            box-shadow: 0 0 0 .2rem rgba(255,193,7,.25);
+        }
     </style>
     <div class="card mb-3" id="selectionDocsCard" style="display:none">
         <div class="card-header py-2" id="selectionDocsHeader" role="button" data-toggle="collapse"

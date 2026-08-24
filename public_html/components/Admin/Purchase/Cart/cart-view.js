@@ -207,7 +207,25 @@
     function resetPackagesInput() {
         var fpq = selectedFullPackQty();
         $cartPackages.val('');
+        $cartPackages.removeClass('packages-uneven');
         $cartPackages.prop('disabled', fpq === null);
+    }
+
+    // Recomputes the Opak. field from Ilość (qty / full pack quantity)
+    // and flags fractional package counts in yellow — non-blocking.
+    function updatePackagesDisplay() {
+        var fpq = selectedFullPackQty();
+        var qty = parseFloat($cartQty.val());
+        if (fpq === null || isNaN(qty) || qty < 0) {
+            $cartPackages.removeClass('packages-uneven');
+            return;
+        }
+        var pkgs = qty / fpq;
+        var even = Math.abs(pkgs - Math.round(pkgs)) < 1e-9;
+        $cartPackages.val(parseFloat(pkgs.toFixed(2)));
+        $cartPackages.toggleClass('packages-uneven', !even);
+        $cartPackages.attr('title', even ? 'Ilość = opakowania × ilość w opakowaniu'
+                                         : 'Uwaga: ilość nie odpowiada pełnej liczbie opakowań');
     }
 
     function getScopedVpOptions(vendorId, partId) {
@@ -771,8 +789,20 @@
     $cartPackages.on('input', function () {
         var fpq = selectedFullPackQty();
         var pkgs = parseFloat($(this).val());
-        if (fpq === null || isNaN(pkgs) || pkgs < 0) return;
+        if (fpq === null || isNaN(pkgs) || pkgs < 0) {
+            $(this).removeClass('packages-uneven');
+            return;
+        }
         $cartQty.val(parseFloat((pkgs * fpq).toFixed(6)));
+        var even = Math.abs(pkgs - Math.round(pkgs)) < 1e-9;
+        $(this).toggleClass('packages-uneven', !even);
+        $(this).attr('title', even ? 'Ilość = opakowania × ilość w opakowaniu'
+                                   : 'Uwaga: ilość nie odpowiada pełnej liczbie opakowań');
+    });
+
+    // Ilość → Opak.: packages = qty / full pack quantity.
+    $cartQty.on('input', function () {
+        updatePackagesDisplay();
     });
 
     $addToCartBtn.on('click', function () {
