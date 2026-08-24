@@ -125,10 +125,16 @@ foreach ($vpRows as $r) {
 
     <!-- ===== Aktywne dokumenty dla wybranej pozycji ===== -->
     <div class="card mb-3" id="selectionDocsCard" style="display:none">
-        <div class="card-header">
-            <h5 class="mb-0"><i class="bi bi-exclamation-triangle text-warning"></i> Aktywne dokumenty dla wybranej pozycji</h5>
+        <div class="card-header py-2">
+            <button type="button" class="btn btn-sm btn-link p-0 shadow-none" data-toggle="collapse"
+                    data-target="#selectionDocsBody" aria-expanded="false" aria-controls="selectionDocsBody">
+                <i class="bi bi-exclamation-triangle text-warning"></i> Aktywne dokumenty dla wybranej pozycji
+                <span class="badge badge-pill badge-warning align-middle ml-1" id="selectionDocsCount" style="display:none">0</span>
+            </button>
         </div>
-        <div class="card-body" id="selectionDocsBody"></div>
+        <div class="collapse" id="selectionDocsBody">
+            <div class="card-body py-2" id="selectionDocsContent"></div>
+        </div>
     </div>
 
     <!-- ===== Koszyk (grupowany po dostawcy) ===== -->

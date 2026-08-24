@@ -38,6 +38,7 @@
     var $clearBtn            = $('#clearCartBtn');
     var $selectionDocsCard   = $('#selectionDocsCard');
     var $selectionDocsBody   = $('#selectionDocsBody');
+    var $selectionDocsCount  = $('#selectionDocsCount');
 
     // ---- helpers ----
 
@@ -238,11 +239,11 @@
 
     function renderSelectionDocs(options, docs) {
         var html = '';
-        var any = false;
+        var total = 0;
         options.forEach(function (vp) {
             var list = docs[vp.id] || [];
             if (list.length === 0) return;
-            any = true;
+            total += list.length;
             html += '<div class="mb-1"><strong>' + escapeHtml(vp.vendor_part_no) + ':</strong> ';
             list.forEach(function (d) {
                 html += '<span class="badge ' + stateBadgeClass(d.state) + ' mr-1" title="' +
@@ -252,8 +253,11 @@
             });
             html += '</div>';
         });
-        if (!any) {
+        if (total === 0) {
             html = '<span class="text-muted">Brak aktywnych dokumentów dla tej pozycji.</span>';
+            $selectionDocsCount.hide();
+        } else {
+            $selectionDocsCount.text(total).show();
         }
         $selectionDocsBody.html(html);
         $selectionDocsCard.show();
