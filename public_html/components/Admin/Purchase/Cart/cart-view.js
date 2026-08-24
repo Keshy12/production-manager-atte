@@ -53,6 +53,7 @@
     var $vpSearchResults = $('#vpSearchResults');
     var vpSearchRows = [];  // last endpoint response, indexed for row buttons
     var vpSearchTimer = null;
+    var lastResolvedVpId = null;   // variant id the amount inputs belong to
     // Last fetched strip payload: { options: [vp,…], docs: {vpId: [doc,…]} }
     var selectionDocsCache   = { options: [], docs: {} };
 
@@ -228,6 +229,23 @@
                                          : 'Uwaga: ilość nie odpowiada pełnej liczbie opakowań');
     }
 
+    // Ilość/Cena/Waluta are editable only once a concrete variant is
+    // selected; while ambiguous they're disabled and qty/price cleared.
+    function syncAmountsInputs() {
+        var $sel = $vendorPartNoSelect.find('option:selected');
+        var resolved = $sel.length > 0
+            && !$sel.prop('hidden')
+            && (parseInt($sel.attr('data-vp-id'), 10) || 0) > 0;
+        $cartQty.prop('disabled', !resolved);
+        $cartPrice.prop('disabled', !resolved);
+        $cartCurrency.prop('disabled', !resolved);
+        if (!resolved) {
+            $cartQty.val('');
+            $cartPrice.val('');
+            $cartPackages.val('').prop('disabled', true).removeClass('packages-uneven');
+        }
+    }
+
     function getScopedVpOptions(vendorId, partId) {
         var out = [];
         Object.keys(VENDOR_PARTS_INDEX).forEach(function (key) {
@@ -281,7 +299,8 @@
         if (!vendorId && !partId) {
             $vendorPartNoSelect.empty();
             refreshSelectpicker($vendorPartNoSelect);
-            resetPackagesInput();
+            lastResolvedVpId = null;
+            syncAmountsInputs();
             $addToCartBtn.prop('disabled', true);
             return;
         }
@@ -289,7 +308,8 @@
         if (options.length === 0) {
             $vendorPartNoSelect.empty();
             refreshSelectpicker($vendorPartNoSelect);
-            resetPackagesInput();
+            lastResolvedVpId = null;
+            syncAmountsInputs();
             $addToCartBtn.prop('disabled', true);
             return;
         }
@@ -346,7 +366,19 @@
             try { $vendorPartNoSelect.selectpicker('val', targetId); } catch (e) { /* noop */ }
             refreshSelectpicker($vendorPartNoSelect);
         }
-        resetPackagesInput();
+        // Amount inputs belong to a concrete device — clear them when it
+        // changed, keep them otherwise.
+        var resolvedId = targetId !== null ? parseInt(targetId, 10) : null;
+        if (resolvedId !== lastResolvedVpId) {
+            $cartQty.val('');
+            $cartPrice.val('');
+            resetPackagesInput();
+            lastResolvedVpId = resolvedId;
+        } else {
+            // Same device — just re-evaluate enable/disable by fpq.
+            $cartPackages.prop('disabled', selectedFullPackQty() === null);
+        }
+        syncAmountsInputs();
         updateAddBtnState();
         // A programmatic pre-selection doesn't fire change — complete the
         // combo (auto-pick vendor/part) manually.
