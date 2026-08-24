@@ -37,6 +37,7 @@
     var $cartCount           = $('#cartCount');
     var $clearBtn            = $('#clearCartBtn');
     var $selectionDocsCard   = $('#selectionDocsCard');
+    var $selectionDocsHeader = $('#selectionDocsHeader');
     var $selectionDocsBody   = $('#selectionDocsBody');
     var $selectionDocsContent = $('#selectionDocsContent');
     var $selectionDocsCount  = $('#selectionDocsCount');
@@ -428,11 +429,15 @@
                 currency          : 'PLN'
             });
         }
-        // Reset qty + hide the picker row so the user sees the cart update
+        // Reset qty, clear the part picker (vendor stays selected so the
+        // user can queue the next part from the same vendor), hide the
+        // picker row and the docs strip.
         $cartQty.val('1');
-        $vendorPartRow.hide();
-        $vendorPartNoSelect.val('');
-        refreshSelectpicker($vendorPartNoSelect);
+        $partSelect.val('');
+        refreshSelectpicker($partSelect);
+        applyPartFilter();          // part cleared → restore full vendor list
+        refreshVendorPartRow();
+        loadSelectionDocs();
         renderCart();
         loadActiveDocs();
         setAlert('Dodano pozycję do koszyka.', 'success');
@@ -503,6 +508,14 @@
     // (no refetch needed — docs for the whole combo are cached).
     $vendorPartNoSelect.on('change', function () {
         updateSelectionDocsBadge();
+    });
+
+    // Chevron flip driven by real collapse events (CSS aria-expanded
+    // selector kept as backup).
+    $selectionDocsBody.on('show.bs.collapse', function () {
+        $selectionDocsHeader.addClass('is-open');
+    }).on('hide.bs.collapse', function () {
+        $selectionDocsHeader.removeClass('is-open');
     });
 
     $addToCartBtn.on('click', function () {

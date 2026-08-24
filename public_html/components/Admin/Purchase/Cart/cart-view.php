@@ -127,8 +127,13 @@ foreach ($vpRows as $r) {
     <style>
         #selectionDocsHeader { cursor: pointer; user-select: none; }
         #selectionDocsHeader:hover { background-color: rgba(0,0,0,.04); }
-        #selectionDocsHeader .bi-chevron-right { transition: transform .15s ease; }
-        #selectionDocsHeader[aria-expanded="true"] .bi-chevron-right { transform: rotate(90deg); }
+        /* <i> is inline by default — transform needs inline-block to apply */
+        #selectionDocsHeader .bi-chevron-right {
+            display: inline-block;
+            transition: transform .15s ease;
+        }
+        #selectionDocsHeader[aria-expanded="true"] .bi-chevron-right,
+        #selectionDocsHeader.is-open .bi-chevron-right { transform: rotate(90deg); }
     </style>
     <div class="card mb-3" id="selectionDocsCard" style="display:none">
         <div class="card-header py-2" id="selectionDocsHeader" role="button" data-toggle="collapse"
