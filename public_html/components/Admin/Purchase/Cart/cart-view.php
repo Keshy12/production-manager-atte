@@ -124,13 +124,18 @@ foreach ($vpRows as $r) {
     </div>
 
     <!-- ===== Aktywne dokumenty dla wybranej pozycji ===== -->
+    <style>
+        #selectionDocsHeader { cursor: pointer; user-select: none; }
+        #selectionDocsHeader:hover { background-color: rgba(0,0,0,.04); }
+        #selectionDocsHeader .bi-chevron-right { transition: transform .15s ease; }
+        #selectionDocsHeader[aria-expanded="true"] .bi-chevron-right { transform: rotate(90deg); }
+    </style>
     <div class="card mb-3" id="selectionDocsCard" style="display:none">
-        <div class="card-header py-2">
-            <button type="button" class="btn btn-sm btn-link p-0 shadow-none" data-toggle="collapse"
-                    data-target="#selectionDocsBody" aria-expanded="false" aria-controls="selectionDocsBody">
-                <i class="bi bi-exclamation-triangle text-warning"></i> Aktywne dokumenty dla wybranej pozycji
-                <span class="badge badge-pill badge-warning align-middle ml-1" id="selectionDocsCount" style="display:none">0</span>
-            </button>
+        <div class="card-header py-2" id="selectionDocsHeader" role="button" data-toggle="collapse"
+                data-target="#selectionDocsBody" aria-expanded="false" aria-controls="selectionDocsBody">
+            <i class="bi bi-chevron-right text-muted mr-1"></i>
+            Aktywne dokumenty dla wybranej pozycji
+            <span class="badge badge-pill badge-warning align-middle ml-1" id="selectionDocsCount" style="display:none">0</span>
         </div>
         <div class="collapse" id="selectionDocsBody">
             <div class="card-body py-2" id="selectionDocsContent"></div>

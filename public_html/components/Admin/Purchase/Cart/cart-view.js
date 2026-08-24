@@ -38,7 +38,10 @@
     var $clearBtn            = $('#clearCartBtn');
     var $selectionDocsCard   = $('#selectionDocsCard');
     var $selectionDocsBody   = $('#selectionDocsBody');
+    var $selectionDocsContent = $('#selectionDocsContent');
     var $selectionDocsCount  = $('#selectionDocsCount');
+    // Last fetched strip payload: { options: [vp,…], docs: {vpId: [doc,…]} }
+    var selectionDocsCache   = { options: [], docs: {} };
 
     // ---- helpers ----
 
@@ -215,7 +218,9 @@
         var partId = parseInt($partSelect.val(), 10) || null;
         if (!vendorId || !partId) {
             $selectionDocsCard.hide();
-            $selectionDocsBody.empty();
+            $selectionDocsBody.collapse('hide');
+            $selectionDocsContent.empty();
+            selectionDocsCache = { options: [], docs: {} };
             return;
         }
         var options = VENDOR_PARTS_INDEX[vendorId + ':' + partId] || [];
@@ -238,13 +243,15 @@
     }
 
     function renderSelectionDocs(options, docs) {
+        selectionDocsCache = { options: options, docs: docs };
         var html = '';
         var total = 0;
         options.forEach(function (vp) {
             var list = docs[vp.id] || [];
             if (list.length === 0) return;
             total += list.length;
-            html += '<div class="mb-1"><strong>' + escapeHtml(vp.vendor_part_no) + ':</strong> ';
+            html += '<div class="mb-1"><strong>' + escapeHtml(vp.vendor_part_no) + '</strong>' +
+                ' <span class="text-muted">(' + list.length + ')</span>: ';
             list.forEach(function (d) {
                 html += '<span class="badge ' + stateBadgeClass(d.state) + ' mr-1" title="' +
                     stateBadgeLabel(d.state) + ' · ' + formatQty(d.quantity) + ' szt. · ' + formatPrice(d.unit_price) + '">' +
@@ -255,12 +262,23 @@
         });
         if (total === 0) {
             html = '<span class="text-muted">Brak aktywnych dokumentów dla tej pozycji.</span>';
-            $selectionDocsCount.hide();
-        } else {
-            $selectionDocsCount.text(total).show();
         }
-        $selectionDocsBody.html(html);
+        $selectionDocsContent.html(html);
         $selectionDocsCard.show();
+        updateSelectionDocsBadge();
+    }
+
+    // Header badge reflects the *specific* VendorPart currently picked
+    // in "Numer u dostawcy" — not the combo-wide total.
+    function updateSelectionDocsBadge() {
+        var $opt = $vendorPartNoSelect.find('option:selected');
+        var vpId = parseInt($opt.attr('data-vp-id'), 10) || null;
+        var list = (vpId !== null && selectionDocsCache.docs[vpId]) ? selectionDocsCache.docs[vpId] : [];
+        if (list.length > 0) {
+            $selectionDocsCount.text(list.length).show();
+        } else {
+            $selectionDocsCount.hide();
+        }
     }
 
     function loadActiveDocs() {
@@ -479,6 +497,12 @@
         applyPartFilter();
         refreshVendorPartRow();
         loadSelectionDocs();
+    });
+
+    // Switching between alternates re-scopes the header badge instantly
+    // (no refetch needed — docs for the whole combo are cached).
+    $vendorPartNoSelect.on('change', function () {
+        updateSelectionDocsBadge();
     });
 
     $addToCartBtn.on('click', function () {
