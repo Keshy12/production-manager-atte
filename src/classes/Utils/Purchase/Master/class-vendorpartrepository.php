@@ -40,7 +40,7 @@ class VendorPartRepository {
         $stmt = $MsaDB->db->prepare($sql);
         $stmt->execute([$id]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-        return $row === false ? null : new VendorPart($MsaDB, $row);
+        return $row === false ? null : new VendorPart($row);
     }
 
     public function getAll(bool $onlyActive = false): array {
@@ -52,7 +52,7 @@ class VendorPartRepository {
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
         $result = [];
         foreach ($rows as $row) {
-            $result[] = new VendorPart($MsaDB, $row);
+            $result[] = new VendorPart($row);
         }
         return $result;
     }
@@ -68,7 +68,7 @@ class VendorPartRepository {
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
         $result = [];
         foreach ($rows as $row) {
-            $result[] = new VendorPart($MsaDB, $row);
+            $result[] = new VendorPart($row);
         }
         return $result;
     }
@@ -84,7 +84,7 @@ class VendorPartRepository {
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
         $result = [];
         foreach ($rows as $row) {
-            $result[] = new VendorPart($MsaDB, $row);
+            $result[] = new VendorPart($row);
         }
         return $result;
     }
@@ -100,7 +100,7 @@ class VendorPartRepository {
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
         $result = [];
         foreach ($rows as $row) {
-            $result[] = new VendorPart($MsaDB, $row);
+            $result[] = new VendorPart($row);
         }
         return $result;
     }

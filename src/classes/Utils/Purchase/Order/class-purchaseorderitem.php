@@ -4,8 +4,7 @@ namespace Atte\Utils\Purchase\Order;
 use Atte\DB\MsaDB;
 
 class PurchaseOrderItem {
-    private $MsaDB;
-    public int $id;
+        public int $id;
     public int $poId;
     public int $vendorPartId;
     public float $quantity;
@@ -20,9 +19,7 @@ class PurchaseOrderItem {
     public ?string $unitName;
     public ?string $vendorPartNo;
 
-    public function __construct(MsaDB $MsaDB, array $row){
-        $this->MsaDB = $MsaDB;
-        $this->id = (int)$row['id'];
+    public function __construct(array $row){        $this->id = (int)$row['id'];
         $this->poId = (int)$row['poId'];
         $this->vendorPartId = (int)$row['vendorPartId'];
         $this->quantity = (float)$row['quantity'];

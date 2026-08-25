@@ -38,7 +38,7 @@ class RFQItemRepository {
         $stmt = $MsaDB->db->prepare($sql);
         $stmt->execute([$id]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-        return $row === false ? null : new RFQItem($MsaDB, $row);
+        return $row === false ? null : new RFQItem($row);
     }
 
     public function getByRfq(int $rfqId): array {
@@ -49,7 +49,7 @@ class RFQItemRepository {
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
         $result = [];
         foreach ($rows as $row) {
-            $result[] = new RFQItem($MsaDB, $row);
+            $result[] = new RFQItem($row);
         }
         return $result;
     }

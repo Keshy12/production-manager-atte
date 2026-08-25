@@ -39,7 +39,7 @@ class PurchaseOrderItemRepository {
         $stmt = $MsaDB->db->prepare($sql);
         $stmt->execute([$id]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-        return $row === false ? null : new PurchaseOrderItem($MsaDB, $row);
+        return $row === false ? null : new PurchaseOrderItem($row);
     }
 
     public function getByPo(int $poId): array {
@@ -50,7 +50,7 @@ class PurchaseOrderItemRepository {
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
         $result = [];
         foreach ($rows as $row) {
-            $result[] = new PurchaseOrderItem($MsaDB, $row);
+            $result[] = new PurchaseOrderItem($row);
         }
         return $result;
     }

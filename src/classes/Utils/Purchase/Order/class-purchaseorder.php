@@ -4,8 +4,7 @@ namespace Atte\Utils\Purchase\Order;
 use Atte\DB\MsaDB;
 
 class PurchaseOrder {
-    private $MsaDB;
-    public int $id;
+        public int $id;
     public int $vendorId;
     public string $state;
     public ?string $poNumber;
@@ -22,9 +21,7 @@ class PurchaseOrder {
     public ?string $rfqNumber;
     public ?string $convertedFromRfqNumber;
 
-    public function __construct(MsaDB $MsaDB, array $row){
-        $this->MsaDB = $MsaDB;
-        $this->id = (int)$row['id'];
+    public function __construct(array $row){        $this->id = (int)$row['id'];
         $this->vendorId = (int)$row['vendorId'];
         $this->state = (string)$row['state'];
         $this->poNumber = $row['poNumber'] ?? null;

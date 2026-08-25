@@ -37,7 +37,7 @@ class PurchaseOrderRepository {
         $stmt = $MsaDB->db->prepare($sql);
         $stmt->execute([$id]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-        return $row === false ? null : new PurchaseOrder($MsaDB, $row);
+        return $row === false ? null : new PurchaseOrder($row);
     }
 
     public function getAll(bool $onlyActive = false): array {
@@ -49,7 +49,7 @@ class PurchaseOrderRepository {
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
         $result = [];
         foreach ($rows as $row) {
-            $result[] = new PurchaseOrder($MsaDB, $row);
+            $result[] = new PurchaseOrder($row);
         }
         return $result;
     }
@@ -62,7 +62,7 @@ class PurchaseOrderRepository {
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
         $result = [];
         foreach ($rows as $row) {
-            $result[] = new PurchaseOrder($MsaDB, $row);
+            $result[] = new PurchaseOrder($row);
         }
         return $result;
     }
@@ -75,7 +75,7 @@ class PurchaseOrderRepository {
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
         $result = [];
         foreach ($rows as $row) {
-            $result[] = new PurchaseOrder($MsaDB, $row);
+            $result[] = new PurchaseOrder($row);
         }
         return $result;
     }
@@ -86,7 +86,7 @@ class PurchaseOrderRepository {
         $stmt = $MsaDB->db->prepare($sql);
         $stmt->execute([$rfqId]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-        return $row === false ? null : new PurchaseOrder($MsaDB, $row);
+        return $row === false ? null : new PurchaseOrder($row);
     }
 
     public function create(int $vendorId, int $createdBy, ?int $convertedFromRfqId = null, ?string $expectedDeliveryDate = null, ?string $comment = null): int {

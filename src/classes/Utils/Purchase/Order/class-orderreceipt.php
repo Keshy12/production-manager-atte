@@ -4,8 +4,7 @@ namespace Atte\Utils\Purchase\Order;
 use Atte\DB\MsaDB;
 
 class OrderReceipt {
-    private $MsaDB;
-    public int $id;
+        public int $id;
     public int $poId;
     public ?string $documentNumber;
     public int $receivedBy;
@@ -15,9 +14,7 @@ class OrderReceipt {
     public ?string $vendorName;
     public ?string $receivedByName;
 
-    public function __construct(MsaDB $MsaDB, array $row){
-        $this->MsaDB = $MsaDB;
-        $this->id = (int)$row['id'];
+    public function __construct(array $row){        $this->id = (int)$row['id'];
         $this->poId = (int)$row['poId'];
         $this->documentNumber = $row['documentNumber'] ?? null;
         $this->receivedBy = (int)$row['receivedBy'];

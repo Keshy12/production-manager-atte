@@ -18,7 +18,7 @@ class ProducerRepository {
         $stmt = $MsaDB->db->prepare($sql);
         $stmt->execute([$id]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-        return $row === false ? null : new Producer($MsaDB, $row);
+        return $row === false ? null : new Producer($row);
     }
 
     public function getAll(bool $onlyActive = false): array {
@@ -33,7 +33,7 @@ class ProducerRepository {
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
         $result = [];
         foreach ($rows as $row) {
-            $result[] = new Producer($MsaDB, $row);
+            $result[] = new Producer($row);
         }
         return $result;
     }
@@ -46,7 +46,7 @@ class ProducerRepository {
         $stmt = $MsaDB->db->prepare($sql);
         $stmt->execute([$name]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-        return $row === false ? null : new Producer($MsaDB, $row);
+        return $row === false ? null : new Producer($row);
     }
 
     public function create(string $name, ?string $comment = null): int {

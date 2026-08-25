@@ -32,7 +32,7 @@ class OrderReceiptRepository {
         $stmt = $MsaDB->db->prepare($sql);
         $stmt->execute([$id]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-        return $row === false ? null : new OrderReceipt($MsaDB, $row);
+        return $row === false ? null : new OrderReceipt($row);
     }
 
     public function getAll(bool $onlyActive = false): array {
@@ -46,7 +46,7 @@ class OrderReceiptRepository {
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
         $result = [];
         foreach ($rows as $row) {
-            $result[] = new OrderReceipt($MsaDB, $row);
+            $result[] = new OrderReceipt($row);
         }
         return $result;
     }
@@ -61,7 +61,7 @@ class OrderReceiptRepository {
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
         $result = [];
         foreach ($rows as $row) {
-            $result[] = new OrderReceipt($MsaDB, $row);
+            $result[] = new OrderReceipt($row);
         }
         return $result;
     }
@@ -76,7 +76,7 @@ class OrderReceiptRepository {
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
         $result = [];
         foreach ($rows as $row) {
-            $result[] = new OrderReceipt($MsaDB, $row);
+            $result[] = new OrderReceipt($row);
         }
         return $result;
     }

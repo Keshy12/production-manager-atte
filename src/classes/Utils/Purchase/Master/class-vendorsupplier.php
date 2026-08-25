@@ -4,8 +4,7 @@ namespace Atte\Utils\Purchase\Master;
 use Atte\DB\MsaDB;
 
 class VendorSupplier {
-    private $MsaDB;
-    public int $id;
+        public int $id;
     public int $vendorId;
     public string $name;
     public ?string $jobTitle;
@@ -14,9 +13,7 @@ class VendorSupplier {
     public bool $isActive;
     public ?string $comment;
 
-    public function __construct(MsaDB $MsaDB, array $row){
-        $this->MsaDB = $MsaDB;
-        $this->id = (int)$row['id'];
+    public function __construct(array $row){        $this->id = (int)$row['id'];
         $this->vendorId = (int)$row['vendorId'];
         $this->name = (string)$row['name'];
         $this->jobTitle = $row['jobTitle'] ?? null;

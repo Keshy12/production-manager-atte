@@ -32,7 +32,7 @@ class RFQRepository {
         $stmt = $MsaDB->db->prepare($sql);
         $stmt->execute([$id]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-        return $row === false ? null : new RFQ($MsaDB, $row);
+        return $row === false ? null : new RFQ($row);
     }
 
     public function getAll(bool $onlyActive = false): array {
@@ -44,7 +44,7 @@ class RFQRepository {
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
         $result = [];
         foreach ($rows as $row) {
-            $result[] = new RFQ($MsaDB, $row);
+            $result[] = new RFQ($row);
         }
         return $result;
     }
@@ -57,7 +57,7 @@ class RFQRepository {
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
         $result = [];
         foreach ($rows as $row) {
-            $result[] = new RFQ($MsaDB, $row);
+            $result[] = new RFQ($row);
         }
         return $result;
     }
@@ -70,7 +70,7 @@ class RFQRepository {
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
         $result = [];
         foreach ($rows as $row) {
-            $result[] = new RFQ($MsaDB, $row);
+            $result[] = new RFQ($row);
         }
         return $result;
     }

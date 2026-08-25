@@ -25,7 +25,7 @@ class VendorSupplierRepository {
         $stmt = $MsaDB->db->prepare($sql);
         $stmt->execute([$id]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-        return $row === false ? null : new VendorSupplier($MsaDB, $row);
+        return $row === false ? null : new VendorSupplier($row);
     }
 
     public function getByVendor(int $vendorId, bool $onlyActive = false): array {
@@ -47,7 +47,7 @@ class VendorSupplierRepository {
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
         $result = [];
         foreach ($rows as $row) {
-            $result[] = new VendorSupplier($MsaDB, $row);
+            $result[] = new VendorSupplier($row);
         }
         return $result;
     }

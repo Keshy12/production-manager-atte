@@ -4,8 +4,7 @@ namespace Atte\Utils\Purchase\Order;
 use Atte\DB\MsaDB;
 
 class RFQItem {
-    private $MsaDB;
-    public int $id;
+        public int $id;
     public int $rfqId;
     public int $vendorPartId;
     public float $quantity;
@@ -19,9 +18,7 @@ class RFQItem {
     public ?string $unitName;
     public ?string $vendorPartNo;
 
-    public function __construct(MsaDB $MsaDB, array $row){
-        $this->MsaDB = $MsaDB;
-        $this->id = (int)$row['id'];
+    public function __construct(array $row){        $this->id = (int)$row['id'];
         $this->rfqId = (int)$row['rfqId'];
         $this->vendorPartId = (int)$row['vendorPartId'];
         $this->quantity = (float)$row['quantity'];
