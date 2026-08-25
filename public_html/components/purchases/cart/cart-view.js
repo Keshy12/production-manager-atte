@@ -712,10 +712,10 @@
                 let pn = item.producer_part_no || '';
                 let partCell = escapeHtml(item.part_name);
                 if (vn && pn && vn === pn) {
-                    partCell += '<div><small class="text-muted">Nr dost./prod.: ' + escapeHtml(vn) + '</small></div>';
+                    partCell += '<div><small class="text-muted font-weight-bold">Nr dost./prod.: ' + escapeHtml(vn) + '</small></div>';
                 } else {
-                    if (vn) partCell += '<div><small class="text-muted">Nr dost.: ' + escapeHtml(vn) + '</small></div>';
-                    if (pn) partCell += '<div><small class="text-muted">Nr prod.: ' + escapeHtml(pn) + '</small></div>';
+                    if (vn) partCell += '<div><small class="text-muted font-weight-bold">Nr dost.: ' + escapeHtml(vn) + '</small></div>';
+                    if (pn) partCell += '<div><small class="text-muted font-weight-bold">Nr prod.: ' + escapeHtml(pn) + '</small></div>';
                 }
                 if (item.description) {
                     partCell += '<div><small class="text-muted">' + escapeHtml(item.description) + '</small></div>';
