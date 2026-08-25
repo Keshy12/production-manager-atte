@@ -171,22 +171,23 @@ Six scripts. All use `Atte\Utils\Locker`
 - **JavaScript declarations:** always use `let` (or `const` for values
   that are never reassigned) — **never `var`**, in any new or edited
   JS, including inline `<script>` blocks in component PHP files.
-- **bootstrap-select `data-width` + `data-container`:** always use a
-  **fixed CSS width** (`100%` to fill the parent, or a `px` value) —
-  never the bootstrap-select built-ins `fit` / `auto`. `fit` sizes to
-  the trigger's intrinsic width (breaks inside flex children — the
-  picker collapses to its content width); `auto` sizes to the widest
-  option (overlaps adjacent inputs). For the menu to stay inside the
-  column bounds, set `data-container` to a **specific parent
-  selector** (a column id, e.g. `data-container="#vendorCell"`)
-  rather than the generic `"body"` — that way the menu is appended
-  inside the parent and inherits its width + stacking context, with
-  no overflow into adjacent columns. The chosen pattern is
-  documented at
-  [developer.snapappointments.com/bootstrap-select/options](https://developer.snapappointments.com/bootstrap-select/options/)
-  if you need to revisit, but for this project: **`data-width="100%"` +
-  a sized container div + `data-container="#<parent-id>"` is the answer
-  to every picker-width issue.**
+- **bootstrap-select `width` option:** for a picker that must
+  stay inside a narrow column even with long option text, set a
+  **fixed CSS width** via `data-width` (e.g. `data-width="200px"`
+  for `col-md-4`, `data-width="400px"` for `col-md-6`). This is
+  the canonical bootstrap-select-native fix: the plugin applies
+  its built-in `overflow: hidden; text-overflow: ellipsis` to the
+  trigger button, so long option text gets clipped to the trigger
+  width instead of stretching the column or overlapping adjacent
+  inputs. Never use the built-in `fit` (sizes to trigger intrinsic
+  width — still stretches on long options) or `auto` (sizes to
+  the widest option — overlaps adjacent inputs). Pair with
+  `data-container="#<parent-id>"` so the menu also stays inside
+  the column. The full docs:
+  [options](https://developer.snapappointments.com/bootstrap-select/options/),
+  [methods](https://developer.snapappointments.com/bootstrap-select/methods/).
+  For this project: **`data-width="<px>"` + a sized container div +
+  `data-container="#<parent-id>"` is the answer to every picker-width issue.**
 
 ---
 
