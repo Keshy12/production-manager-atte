@@ -612,12 +612,12 @@
 
             html += '<div class="vendor-group mb-4" data-vendor-id="' + vid + '">' +
                 '<div class="d-flex justify-content-between align-items-center mb-2">' +
-                '<h6 class="mb-0">' + escapeHtml(group.name) +
+                '<h6 class="mb-0">' +
+                    '<a href="#" class="text-muted select-vendor-link select-vendor-btn mr-1" data-vendor-id="' + vid + '" title="Wybierz tego dostawcę w selektorze, aby dodać kolejne pozycje"><i class="bi bi-plus-circle"></i></a>' +
+                    escapeHtml(group.name) +
                     ' <small class="text-muted">(' + group.items.length + ' poz. · łącznie ' + formatPrice(groupValue) + ')</small>' +
-                    '</h6>' +
+                '</h6>' +
                 '<div>' +
-                    '<button type="button" class="btn btn-sm btn-outline-primary mr-1 select-vendor-btn" data-vendor-id="' + vid + '" title="Wybierz tego dostawcę w selektorze, aby dodać kolejne pozycje">' +
-                        '<i class="bi bi-plus-circle"></i></button>' +
                     '<button type="button" class="btn btn-sm btn-outline-danger clear-vendor-items-btn" data-vendor-id="' + vid + '" title="Usuń wszystkie pozycje tego dostawcy z koszyka">' +
                         '<i class="bi bi-trash"></i></button>' +
                 '</div>' +
@@ -914,7 +914,8 @@
     });
 
     // Select this vendor in the picker so more items can be queued.
-    $cartBody.on('click', '.select-vendor-btn', function () {
+    $cartBody.on('click', '.select-vendor-btn', function (e) {
+        e.preventDefault();
         var vid = parseInt($(this).data('vendor-id'), 10) || null;
         if (!vid) return;
         $vendorSelect.val(vid);

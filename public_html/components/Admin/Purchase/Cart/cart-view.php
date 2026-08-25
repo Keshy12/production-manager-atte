@@ -197,6 +197,9 @@ foreach ($vpRows as $r) {
             text-decoration: none;
         }
         .clear-picker-link:hover { color: #dc3545 !important; text-decoration: none; }
+        /* Inline "select this vendor" icon next to the group name */
+        .select-vendor-link { font-size: 1.1rem; text-decoration: none; }
+        .select-vendor-link:hover { color: #007bff !important; text-decoration: none; }
         /* Non-blocking warning: qty doesn't match whole packages */
         .packages-uneven {
             border-color: #ffc107;
