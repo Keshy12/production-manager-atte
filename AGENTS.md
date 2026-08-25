@@ -171,14 +171,19 @@ Six scripts. All use `Atte\Utils\Locker`
 - **JavaScript declarations:** always use `let` (or `const` for values
   that are never reassigned) — **never `var`**, in any new or edited
   JS, including inline `<script>` blocks in component PHP files.
-- **bootstrap-select:** before reaching for custom CSS (max-width,
-  z-index, etc.) to fix a picker menu, check the official docs:
-  [options](https://developer.snapappointments.com/bootstrap-select/options/)
-  and [methods](https://developer.snapappointments.com/bootstrap-select/methods/).
-  The most common trap is a "menu overlaps the next input" — fixed
-  by `data-width="fit"` (menu sized to the trigger, not the widest
-  option) plus `data-container="body"` (menu floats to `<body>`).
-  Re-doing these by hand is almost always wrong.
+- **bootstrap-select `data-width`:** always use a **fixed CSS width**
+  (`100%` to fill the parent, or a `px` value) — never the bootstrap-select
+  built-ins `fit` / `auto`. `fit` sizes to the trigger's intrinsic width
+  (breaks inside flex children — the picker collapses to its content
+  width); `auto` sizes to the widest option (overlaps adjacent inputs).
+  For a picker that should fill its container: ensure it's wrapped in a
+  div with the desired width, then `data-width="100%"`. Also keep
+  `data-container="body"` so the menu isn't clipped by ancestor
+  `overflow` rules. The chosen pattern is documented at
+  [developer.snapappointments.com/bootstrap-select/options](https://developer.snapappointments.com/bootstrap-select/options/)
+  if you need to revisit, but for this project: **`data-width="100%"` +
+  a sized container div + `data-container="body"` is the answer to
+  every picker-width issue.**
 
 ---
 
