@@ -146,12 +146,12 @@ foreach ($vpRows as $r) {
             </div>
             <div class="row mt-2" id="variantInfoRow" style="display:none">
                 <div class="col-md-8">
-                    <small id="variantCommentDisplay" class="text-muted">
+                    <span id="variantCommentDisplay" class="text-muted">
                         <i class="bi bi-journal-text"></i>
                         <em id="variantCommentText">Brak komentarza</em>
                         <a href="#" id="variantCommentEdit" class="text-muted ml-1"
                            title="Edytuj komentarz — zapisze się od razu na karcie artykułu"><i class="bi bi-pencil"></i></a>
-                    </small>
+                    </span>
                     <span id="variantCommentEditBox" style="display:none">
                         <input type="text" id="variantCommentInput" class="form-control form-control-sm d-inline-block align-middle"
                                style="width:70%" maxlength="255" placeholder="Komentarz tylko dla nas — nie trafi do dostawcy">
