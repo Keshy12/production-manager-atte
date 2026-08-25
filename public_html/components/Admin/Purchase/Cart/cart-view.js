@@ -17,6 +17,8 @@
 //   5. Each vendor group in the cart has its own "Utwórz zapytanie"
 //      / "Utwórz zamówienie" buttons — submits only that group's
 //      items to POST /cart-action.php.
+//   6. The cart persists across page refreshes via localStorage
+//      (7-day expiry, cleared on submit and on "Wyczyść koszyk").
 
 (function () {
     'use strict';
@@ -56,6 +58,41 @@
     var lastResolvedVpId = null;   // variant id the amount inputs belong to
     // Last fetched strip payload: { options: [vp,…], docs: {vpId: [doc,…]} }
     var selectionDocsCache   = { options: [], docs: {} };
+
+    // ---- cart persistence (localStorage, survives refresh) ----
+    var CART_STORAGE_KEY = 'atte_purchase_cart_v1';
+    var CART_MAX_AGE_MS  = 7 * 24 * 60 * 60 * 1000;   // 7 days
+
+    function saveCart() {
+        try {
+            window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify({
+                savedAt: Date.now(),
+                items: cart.items
+            }));
+        } catch (e) { /* storage unavailable — in-memory only */ }
+    }
+
+    function clearSavedCart() {
+        try { window.localStorage.removeItem(CART_STORAGE_KEY); } catch (e) { /* noop */ }
+    }
+
+    function loadSavedCart() {
+        try {
+            var raw = window.localStorage.getItem(CART_STORAGE_KEY);
+            if (!raw) return;
+            var data = JSON.parse(raw);
+            if (!data || !Array.isArray(data.items)) return;
+            if (!data.savedAt || (Date.now() - data.savedAt) > CART_MAX_AGE_MS) {
+                clearSavedCart();
+                return;
+            }
+            // Light sanity filter — drop malformed entries.
+            cart.items = data.items.filter(function (i) {
+                return i && (parseInt(i.vendor_part_id, 10) || 0) > 0
+                    && (parseFloat(i.quantity) || 0) > 0;
+            });
+        } catch (e) { /* corrupt/unavailable — start empty */ }
+    }
 
     // ---- helpers ----
 
@@ -720,6 +757,7 @@
         loadSelectionDocs();
         renderCart();
         loadActiveDocs();
+        saveCart();
         setAlert('Dodano pozycję do koszyka.', 'success');
     }
 
@@ -755,6 +793,7 @@
         }).done(function (response) {
             if (response && response.success) {
                 setAlert('Utworzono dokument. Przekierowuję...', 'success');
+                clearSavedCart();   // submitted — don't restore these items
                 window.location.href = response.redirect;
             } else {
                 setAlert('Błąd: ' + (response && response.error ? response.error : 'nieznany'), 'danger');
@@ -864,6 +903,7 @@
         cart.items.splice(idx, 1);
         renderCart();
         loadActiveDocs();
+        saveCart();
         setAlert('Usunięto pozycję.', 'info');
     });
 
@@ -879,6 +919,7 @@
         if (!window.confirm('Wyczyścić koszyk? ' + cart.items.length + ' pozycji zostanie usuniętych.')) { return; }
         cart.items = [];
         cart.activeDocs = {};
+        clearSavedCart();
         renderCart();
         setAlert('Koszyk wyczyszczony.', 'info');
     });
@@ -887,7 +928,9 @@
     // ready handler has initialized the selectpickers. A refresh() called
     // pre-init is swallowed, leaving the vp picker's menu stale.
     $(function () {
+        loadSavedCart();
         renderCart();
         refreshVendorPartRow();
+        loadActiveDocs();   // badges for restored items
     });
 })();
