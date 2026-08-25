@@ -12,7 +12,7 @@ class ProducerRepository {
 
     public function getById(int $id): ?Producer {
         $MsaDB = $this->MsaDB;
-        $sql = "SELECT id, name, is_active AS isActive, comment
+        $sql = "SELECT id, name, is_active, comment
                 FROM `list__producer`
                 WHERE id = ?";
         $stmt = $MsaDB->db->prepare($sql);
@@ -24,7 +24,7 @@ class ProducerRepository {
     public function getAll(bool $onlyActive = false): array {
         $MsaDB = $this->MsaDB;
         $where = $onlyActive ? "WHERE is_active = 1" : "";
-        $sql = "SELECT id, name, is_active AS isActive, comment
+        $sql = "SELECT id, name, is_active, comment
                 FROM `list__producer`
                 {$where}
                 ORDER BY name ASC";
@@ -40,7 +40,7 @@ class ProducerRepository {
 
     public function getByName(string $name): ?Producer {
         $MsaDB = $this->MsaDB;
-        $sql = "SELECT id, name, is_active AS isActive, comment
+        $sql = "SELECT id, name, is_active, comment
                 FROM `list__producer`
                 WHERE name = ?";
         $stmt = $MsaDB->db->prepare($sql);

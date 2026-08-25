@@ -18,7 +18,7 @@ class VendorSupplierRepository {
                        job_title AS jobTitle,
                        phone,
                        email,
-                       is_active AS isActive,
+                       is_active,
                        comment
                 FROM `list__vendor_supplier`
                 WHERE id = ?";
@@ -37,7 +37,7 @@ class VendorSupplierRepository {
                        job_title AS jobTitle,
                        phone,
                        email,
-                       is_active AS isActive,
+                       is_active,
                        comment
                 FROM `list__vendor_supplier`
                 {$where}

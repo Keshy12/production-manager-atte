@@ -17,7 +17,7 @@ class VendorRepository {
                        address,
                        additional_data AS additionalData,
                        lead_time_days AS leadTimeDays,
-                       is_active AS isActive,
+                       is_active,
                        comment,
                        created_at AS createdAt,
                        updated_at AS updatedAt
@@ -37,7 +37,7 @@ class VendorRepository {
                        address,
                        additional_data AS additionalData,
                        lead_time_days AS leadTimeDays,
-                       is_active AS isActive,
+                       is_active,
                        comment,
                        created_at AS createdAt,
                        updated_at AS updatedAt

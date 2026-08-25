@@ -12,8 +12,8 @@ $MsaDB = MsaDB::getInstance();
 $vendorsWithParts = $MsaDB->query(
     "SELECT v.id, v.name, GROUP_CONCAT(vp.parts_id) AS parts_ids
        FROM `list__vendor` v
-       LEFT JOIN `list__vendor_part` vp ON vp.vendor_id = v.id AND vp.is_active = 1
-      WHERE v.is_active = 1
+       LEFT JOIN `list__vendor_part` vp ON vp.vendor_id = v.id AND vp.isActive = 1
+      WHERE v.isActive = 1
       GROUP BY v.id, v.name
       ORDER BY v.name ASC"
 );
@@ -22,7 +22,7 @@ $vendorsWithParts = $MsaDB->query(
 $partsWithVendors = $MsaDB->query(
     "SELECT p.id, p.name, p.description, GROUP_CONCAT(vp.vendor_id) AS vendors_ids
        FROM `list__parts` p
-       LEFT JOIN `list__vendor_part` vp ON vp.parts_id = p.id AND vp.is_active = 1
+       LEFT JOIN `list__vendor_part` vp ON vp.parts_id = p.id AND vp.isActive = 1
       WHERE p.isActive = 1
       GROUP BY p.id, p.name, p.description
       ORDER BY p.name ASC"
@@ -41,7 +41,7 @@ $vpRows = $MsaDB->query(
        JOIN `part__unit`    u ON vp.vendor_jm_id = u.id
        JOIN `list__parts`   p ON vp.parts_id = p.id
        LEFT JOIN `list__producer` pr ON pr.id = vp.producer_id
-      WHERE vp.is_active = 1 AND v.is_active = 1"
+      WHERE vp.isActive = 1 AND v.isActive = 1"
 );
 $vendorPartsIndex = [];
 foreach ($vpRows as $r) {

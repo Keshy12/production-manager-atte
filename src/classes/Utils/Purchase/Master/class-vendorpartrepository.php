@@ -19,7 +19,7 @@ class VendorPartRepository {
                        vp.producer_part_no AS producerPartNo,
                        vp.vendor_jm_id AS vendorJmId,
                        vp.full_pack_quantity AS fullPackQuantity,
-                       vp.is_active AS isActive,
+                       vp.is_active,
                        vp.comment,
                        vp.created_at AS createdAt,
                        vp.updated_at AS updatedAt,
