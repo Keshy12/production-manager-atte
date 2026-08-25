@@ -741,7 +741,8 @@
                     '<td>' + qtyCell + '</td>' +
                     '<td>' + (item.unit_price === null || item.unit_price === undefined
                         ? '<span class="text-muted">—</span>'
-                        : formatPrice(item.unit_price) + escapeHtml(item.currency) + '/' + escapeHtml(item.unit_name)) + '</td>' +
+                        : formatPrice(item.unit_price) +
+                          '<div><small class="text-muted">' + escapeHtml(item.currency) + '/' + escapeHtml(item.unit_name) + '</small></div>') + '</td>' +
                     '<td>' + formatPrice(lineTotal) + '</td>' +
                     '<td style="white-space: nowrap;">' + docBadges + '</td>' +
                     '<td style="white-space: nowrap;">' +
