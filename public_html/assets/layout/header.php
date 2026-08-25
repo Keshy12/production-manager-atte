@@ -119,9 +119,9 @@ if(!isset($_SESSION['user_id']) && !isset($skip))
                         Zamówienia komponentów
                     </a>
                     <div class="dropdown-menu" aria-labelledby="navbarOrdersDropdown">
-                        <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/purchase/cart"><i class="bi bi-cart3"></i> Koszyk</a>
-                        <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/purchase/receipts"><i class="bi bi-box-arrow-in-down"></i> Przyjęcia</a>
-                        <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/purchase/documents"><i class="bi bi-file-earmark-text"></i> Zapytania i zamówienia</a>
+                        <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/purchase/cart"><i class="bi bi-cart3"></i> Koszyk</a>
+                        <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/purchase/receipts"><i class="bi bi-box-arrow-in-down"></i> Przyjęcia</a>
+                        <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/purchase/documents"><i class="bi bi-file-earmark-text"></i> Zapytania i zamówienia</a>
                     </div>
                 </li>
             <?php endif; ?>

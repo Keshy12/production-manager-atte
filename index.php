@@ -139,17 +139,17 @@ switch ($request) {
         includeWithVariables($headerDir, array('title' => 'Artykuły u dostawców'));
         require $componentsDir . '/Admin/Purchase/VendorParts/vendor-parts-view.php';
         break;
-    case 'admin/purchase/cart':
+    case 'purchase/cart':
         requireAdmin();
         includeWithVariables($headerDir, array('title' => 'Koszyk zakupowy'));
         require $componentsDir . '/purchases/cart/cart-view.php';
         break;
-    case 'admin/purchase/receipts':
+    case 'purchase/receipts':
         requireAdmin();
         includeWithVariables($headerDir, array('title' => 'Przyjęcia'));
         require $componentsDir . '/purchases/receipts/receipts-view.php';
         break;
-    case 'admin/purchase/documents':
+    case 'purchase/documents':
         requireAdmin();
         includeWithVariables($headerDir, array('title' => 'Zapytania i zamówienia'));
         require $componentsDir . '/purchases/documents/documents-view.php';

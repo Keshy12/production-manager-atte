@@ -132,7 +132,7 @@ try {
         'doc_type' => $docType,
         // RFQ/PO edit pages were removed with the old list pages; route
         // to the combined documents placeholder until it exists.
-        'redirect' => '/admin/purchase/documents',
+        'redirect' => '/purchase/documents',
     ]);
 } catch (\Throwable $e) {
     if ($MsaDB->db->inTransaction()) {
