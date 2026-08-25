@@ -166,7 +166,7 @@
 - Sheets sync exports: warehouse data, BOM_FLAT, BOM_FLAT_SKU, warehouse comparison
 - Import orders from Sheets creates commissions and transfers
 
-#### Admin/Purchase/ — Procurement Module — Master Data (P1) (34 files)
+#### Admin/Purchase/ — Procurement Module — Master Data (P1) (33 files)
 
 **Purpose:** Manage vendors (dostawcy), their contact persons, producers (producenci), and the per-(vendor × producer × part) catalog row. This is Phase 1 of the procurement module — RFQ/PO/receipt flows come in later phases (see `docs/procurement/PLAN.md`).
 
@@ -277,6 +277,36 @@
 **Notable behaviors:**
 - `createDocument('po')` and `order-add.php` follow the same strict-signature / follow-up-update pattern as P2's RFQ path — date/comment are applied via a separate `update(...)` call rather than atomic inside `createDocument`
 - `order-send.php` enforces a non-empty PO before transitioning to `'sent'` (mirrors `sendRfq`)
+
+> **Note (v1.6, 2026-08-22):** the `Admin/Purchase/Rfqs/`, `Admin/Purchase/Orders/`, `Admin/Purchase/Orders/Edit/`, and `Admin/Purchase/Orders/Receive/` subdirectories were **removed** in the file-system restructure. The RFQ/PO creation still happens — but the entry point is now the **Koszyk** (`purchases/cart/`) which groups queued items per vendor and calls `PurchaseActionHandler::createDocument('rfq')` or `createDocument('po')` directly on submit. The per-document edit pages (RFQ edit, PO edit, Receive form) are currently unreachable from the navbar but their data layer (`purchase__rfq*`, `purchase__order*`, `PurchaseActionHandler`) is intact and used by the cart flow. The combined RFQ+PO list with filtration is the future placeholder at `purchases/documents/`. Receive still works via the "Przyjmij towar" button reachable from a PO's edit page; the standalone `/admin/purchase/receipts` page exists for browsing receipts only.
+> The file/URL table below documents what **currently exists** in the repo as of v1.6.
+
+#### `purchases/` — Procurement User-Facing UX Surfaces (v1.6) (12 files)
+
+The new lowercase-plural top-level folder under `public_html/components/` holds the pages an admin actually clicks through. Pairs with the master-data CRUD under `Admin/Purchase/`. Endpoints here are called by **real component path** via `COMPONENTS_PATH` (e.g. `COMPONENTS_PATH + '/purchases/cart/cart-action.php'`) — same convention as `Warehouse/`, `Production/`, `Commissions/`. The `index.php` pre-switch translator handles only the legacy single-location admin AJAX fallback for `Admin/`.
+
+**Key files (`purchases/cart/`, 7 files):**
+- `cart-view.php` — the Koszyk. Three cascading pickers: Dostawca → Część → Numer u dostawcy (scoped by current pick). "Opak." + "Ilość" + "Cena/Szt." + "Waluta" + "Dodaj" row, per-vendor cart group with per-vendor "Wybierz dostawcę" link (green confirmation pulse) and per-vendor "Usuń" clear button, inline private-comment editor (pen icon → immediate save to `list__vendor_part.comment`), 7-day localStorage persistence.
+- `cart-view.js` — picker cascade, scoped variant dropdown grouped by producer, two-way Opak.↔Ilość sync with yellow uneven-pack warning, per-vendor clear/vendor-select buttons, vendor comment save, AJAX submit to `cart-action.php`.
+- `cart-action.php` — handles RFQ vs PO submit: validates cart, calls `PurchaseActionHandler::createDocument('rfq' | 'po', $vendorId, $userId)`, then `$itemRepo->create(...)` for each cart line (per-item quantity + unit_price + currency).
+- `cart-active-docs.php` — per-VendorPart active-documents lookup (RFQ/PO with `state IN ('draft','sent','responded' | 'confirmed','partially_received')`), drives the yellow warning strip in the cart row.
+- `vendor-part-search.php` — LIKE-search over `list__vendor_part` joined with vendor + part + unit; backs the search modal.
+- `vendor-part-comment.php` — immediate save of the private comment (`list__vendor_part.comment`).
+
+**Key files (`purchases/receipts/`, 5 files):**
+- `receipts-view.php` — list of receipts (one row per delivery note), state badges, "Nowe przyjęcie" form.
+- `receipts-view.js` — table filter / sort.
+- `receipt-get.php` — per-receipt detail (AJAX; populates the "Szczegóły przyjęcia" modal).
+- `modals.php` — receive-goods form modal, lines, sub-magazine picker, document-number (PZ/WZ) field.
+- `table-row-template.php` — jQuery row template for the AJAX list.
+
+**Key files (`purchases/documents/`, 1 file):**
+- `documents-view.php` — **placeholder** for the future combined RFQ+PO list with filtration (filters: typ dokumentu / dostawca / status / numer / data). The "Shipped v1.6" plan documents the combined table as the next deliverable; until then it just renders an admin-gated "w przygotowaniu" notice with a link back to the Koszyk flow.
+
+**Notable behaviors (purchases/ in general):**
+- 7-day localStorage cart persistence so a refresh doesn't lose queued items (intentionally short-lived; not a shared cart).
+- AJAX endpoints use `COMPONETS_PATH + '/purchases/...'` (real paths), NOT the virtual `/admin/purchase/*.php` URLs — matches the pattern in `Warehouse/`, `Commissions/`, `Production/`.
+- `assets/layout/purchases.css` — extracted from the cart's original inline `<style>` (B19 audit cleanup) for the picker-specific rules (chevron rotation, clear-picker-link, select-vendor-link, flashSelected animation, packages-uneven warning).
 - `order-confirm.php` requires `vendor_po_number` (non-empty, trimmed) as part of the confirm step
 - RFQ→PO conversion requires `window.confirm()` in JS (not a styled modal — keeps the destructive irreversible action explicit)
 - `computeLastKnownPrice` filters out zero prices so "free" items don't pollute the price hint
