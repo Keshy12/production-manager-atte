@@ -172,21 +172,18 @@ Six scripts. All use `Atte\Utils\Locker`
   that are never reassigned) — **never `var`**, in any new or edited
   JS, including inline `<script>` blocks in component PHP files.
 - **bootstrap-select `width` option:** for a picker that must
-  stay inside a narrow column even with long option text, set a
-  **fixed CSS width** via `data-width` (e.g. `data-width="200px"`
-  for `col-md-4`, `data-width="400px"` for `col-md-6`). This is
-  the canonical bootstrap-select-native fix: the plugin applies
-  its built-in `overflow: hidden; text-overflow: ellipsis` to the
-  trigger button, so long option text gets clipped to the trigger
-  width instead of stretching the column or overlapping adjacent
-  inputs. Never use the built-in `fit` (sizes to trigger intrinsic
-  width — still stretches on long options) or `auto` (sizes to
-  the widest option — overlaps adjacent inputs). Pair with
+  fill its parent and stay responsive, set `data-width="100%"` —
+  the picker becomes exactly the parent's width and the plugin
+  applies its built-in `overflow: hidden; text-overflow: ellipsis`
+  to the trigger button so long option text clips to that width
+  instead of stretching the column. Pair with
   `data-container="#<parent-id>"` so the menu also stays inside
-  the column. The full docs:
+  the column. This is the canonical bootstrap-select-native fix
+  for the responsive "fill parent + handle long options" case —
+  no pixel values, no JS workaround. The full docs:
   [options](https://developer.snapappointments.com/bootstrap-select/options/),
   [methods](https://developer.snapappointments.com/bootstrap-select/methods/).
-  For this project: **`data-width="<px>"` + a sized container div +
+  For this project: **`data-width="100%"` + a sized container div +
   `data-container="#<parent-id>"` is the answer to every picker-width issue.**
 
 ---
