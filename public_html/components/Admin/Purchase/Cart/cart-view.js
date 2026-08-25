@@ -615,6 +615,12 @@
                 '<h6 class="mb-0">' + escapeHtml(group.name) +
                     ' <small class="text-muted">(' + group.items.length + ' poz. · łącznie ' + formatPrice(groupValue) + ')</small>' +
                     '</h6>' +
+                '<div>' +
+                    '<button type="button" class="btn btn-sm btn-outline-primary mr-1 select-vendor-btn" data-vendor-id="' + vid + '" title="Wybierz tego dostawcę w selektorze, aby dodać kolejne pozycje">' +
+                        '<i class="bi bi-plus-circle"></i></button>' +
+                    '<button type="button" class="btn btn-sm btn-outline-danger clear-vendor-items-btn" data-vendor-id="' + vid + '" title="Usuń wszystkie pozycje tego dostawcy z koszyka">' +
+                        '<i class="bi bi-trash"></i></button>' +
+                '</div>' +
                 '</div>' +
                 '<div class="table-responsive">' +
                 '<table class="table table-sm table-striped">' +
@@ -905,6 +911,37 @@
         loadActiveDocs();
         saveCart();
         setAlert('Usunięto pozycję.', 'info');
+    });
+
+    // Select this vendor in the picker so more items can be queued.
+    $cartBody.on('click', '.select-vendor-btn', function () {
+        var vid = parseInt($(this).data('vendor-id'), 10) || null;
+        if (!vid) return;
+        $vendorSelect.val(vid);
+        refreshSelectpicker($vendorSelect);
+        applyVendorFilter();       // scope parts to this vendor
+        refreshVendorPartRow();
+        loadSelectionDocs();
+        var card = document.getElementById('vendorPartRow');
+        if (card) { card.closest('.card').scrollIntoView({ behavior: 'smooth' }); }
+    });
+
+    // Remove all cart items of one vendor (with confirmation).
+    $cartBody.on('click', '.clear-vendor-items-btn', function () {
+        var vid = parseInt($(this).data('vendor-id'), 10) || null;
+        if (!vid) return;
+        var count = cart.items.filter(function (i) { return parseInt(i.vendor_id, 10) === vid; }).length;
+        if (count === 0) return;
+        var name = '';
+        for (var i = 0; i < cart.items.length; i++) {
+            if (parseInt(cart.items[i].vendor_id, 10) === vid) { name = cart.items[i].vendor_name; break; }
+        }
+        if (!window.confirm('Usunąć ' + count + ' poz. dostawcy ' + name + ' z koszyka?')) return;
+        cart.items = cart.items.filter(function (i) { return parseInt(i.vendor_id, 10) !== vid; });
+        renderCart();
+        loadActiveDocs();
+        saveCart();
+        setAlert('Usunięto pozycje dostawcy ' + name + '.', 'info');
     });
 
     // Per-vendor-group create buttons
