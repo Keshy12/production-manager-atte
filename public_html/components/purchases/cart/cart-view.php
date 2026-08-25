@@ -196,7 +196,40 @@ foreach ($vpRows as $r) {
         </div>
     </div>
 
-    <!-- ===== Aktywne dokumenty dla wybranej pozycji ===== -->
+    <!-- ===== Quick edit modal for a single cart line ===== -->
+    <div class="modal fade" id="editItemModal" tabindex="-1" role="dialog" aria-hidden="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title"><i class="bi bi-pencil"></i> Edytuj pozycję</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Zamknij"><span>&times;</span></button>
+                </div>
+                <div class="modal-body">
+                    <div id="editItemHeader" class="text-muted small mb-3"></div>
+                    <div class="form-group mb-3">
+                        <label for="editItemQty">Ilość:</label>
+                        <input type="number" id="editItemQty" class="form-control" min="0.0001" step="0.0001">
+                    </div>
+                    <div class="form-group mb-3">
+                        <label for="editItemPrice">Cena/Szt.:</label>
+                        <input type="number" id="editItemPrice" class="form-control" min="0" step="0.0001" placeholder="cena jednostkowa">
+                    </div>
+                    <div class="form-group mb-3">
+                        <label for="editItemCurrency">Waluta:</label>
+                        <select id="editItemCurrency" class="form-control">
+                            <option value="PLN">PLN</option>
+                            <option value="EUR">EUR</option>
+                            <option value="USD">USD</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Anuluj</button>
+                    <button type="button" class="btn btn-success" id="editItemSave">Zapisz</button>
+                </div>
+            </div>
+        </div>
+    </div>
     <link rel="stylesheet" href="<?= asset('public_html/assets/layout/purchases.css') ?>">
     <div class="card mb-3" id="selectionDocsCard" style="display:none">
         <div class="card-header py-2" id="selectionDocsHeader" role="button" data-toggle="collapse"

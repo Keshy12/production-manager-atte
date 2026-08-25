@@ -45,6 +45,12 @@
     let $variantCommentEdit  = $('#variantCommentEdit');
     let $variantCommentEditBox = $('#variantCommentEditBox');
     let $variantCommentInput = $('#variantCommentInput');
+    let $editItemModal       = $('#editItemModal');
+    let $editItemHeader      = $('#editItemHeader');
+    let $editItemQty         = $('#editItemQty');
+    let $editItemPrice       = $('#editItemPrice');
+    let $editItemCurrency    = $('#editItemCurrency');
+    let $editItemSave        = $('#editItemSave');
     let $addToCartBtn        = $('#addToCartBtn');
     let $cartCard            = $('#cartCard');
     let $cartBody            = $('#cartBody');
@@ -726,8 +732,11 @@
                     '<td>' + escapeHtml(item.currency) + '</td>' +
                     '<td>' + formatPrice(lineTotal) + '</td>' +
                     '<td style="white-space: nowrap;">' + docBadges + '</td>' +
-                    '<td><button type="button" class="btn btn-sm btn-danger remove-item-btn" data-idx="' + x.idx + '">' +
-                        '<i class="bi bi-trash"></i></button></td>' +
+                    '<td style="white-space: nowrap;">' +
+                        '<button type="button" class="btn btn-sm btn-outline-primary edit-item-btn mr-1" data-idx="' + x.idx + '" title="Edytuj ilość / cenę / walutę"><i class="bi bi-pencil"></i></button>' +
+                        '<button type="button" class="btn btn-sm btn-danger remove-item-btn" data-idx="' + x.idx + '" title="Usuń pozycję">' +
+                            '<i class="bi bi-trash"></i></button>' +
+                    '</td>' +
                     '</tr>';
             });
 
@@ -1003,6 +1012,50 @@
         saveCart();
         setAlert('Usunięto pozycję.', 'info');
     });
+
+    // Open the quick-edit modal pre-filled with the current line values.
+    $cartBody.on('click', '.edit-item-btn', function () {
+        let idx = parseInt($(this).data('idx'), 10);
+        let item = cart.items[idx];
+        if (!item) return;
+        $editItemHeader.text((item.vendor_name || '') + ' — ' + (item.vendor_part_no || '') +
+            (item.producer_part_no ? ' (prod: ' + item.producer_part_no + ')' : ''));
+        $editItemQty.val(item.quantity || '');
+        $editItemPrice.val(item.unit_price === null || item.unit_price === undefined ? '' : item.unit_price);
+        $editItemCurrency.val(item.currency || 'PLN');
+        $editItemModal.data('edit-idx', idx);
+        $editItemModal.modal('show');
+    });
+
+    // Save the edited values back into the cart, persist, re-render.
+    $editItemSave.on('click', function () {
+        let idx = $editItemModal.data('edit-idx');
+        if (typeof idx !== 'number') idx = parseInt(idx, 10);
+        let item = cart.items[idx];
+        if (!item) { $editItemModal.modal('hide'); return; }
+        let qty = parseFloat($editItemQty.val());
+        let priceRaw = $editItemPrice.val() === '' ? NaN : parseFloat($editItemPrice.val());
+        let price = (!isNaN(priceRaw) && priceRaw >= 0) ? priceRaw : null;
+        if (isNaN(qty) || qty <= 0) {
+            setAlert('Ilość musi być większa od zera.', 'warning'); return;
+        }
+        if (price === null) {
+            setAlert('Cena/Szt. jest wymagana (wprowadź wartość).', 'warning'); return;
+        }
+        item.quantity = qty;
+        item.unit_price = price;
+        item.currency = $editItemCurrency.val() || 'PLN';
+        $editItemModal.modal('hide');
+        renderCart();
+        loadActiveDocs();
+        saveCart();
+        setAlert('Pozycja zaktualizowana.', 'success');
+    });
+
+    // Remove the Enter-key submit binding on the qty/price inputs —
+    // pressing Enter inside a modal input can dismiss the modal via
+    // Bootstrap's default keyhandler; the user clicks the Zapisz button
+    // explicitly.
 
     // Select this vendor in the picker so more items can be queued.
     $cartBody.on('click', '.select-vendor-btn', function (e) {
