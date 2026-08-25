@@ -171,19 +171,22 @@ Six scripts. All use `Atte\Utils\Locker`
 - **JavaScript declarations:** always use `let` (or `const` for values
   that are never reassigned) — **never `var`**, in any new or edited
   JS, including inline `<script>` blocks in component PHP files.
-- **bootstrap-select `data-width`:** always use a **fixed CSS width**
-  (`100%` to fill the parent, or a `px` value) — never the bootstrap-select
-  built-ins `fit` / `auto`. `fit` sizes to the trigger's intrinsic width
-  (breaks inside flex children — the picker collapses to its content
-  width); `auto` sizes to the widest option (overlaps adjacent inputs).
-  For a picker that should fill its container: ensure it's wrapped in a
-  div with the desired width, then `data-width="100%"`. Also keep
-  `data-container="body"` so the menu isn't clipped by ancestor
-  `overflow` rules. The chosen pattern is documented at
+- **bootstrap-select `data-width` + `data-container`:** always use a
+  **fixed CSS width** (`100%` to fill the parent, or a `px` value) —
+  never the bootstrap-select built-ins `fit` / `auto`. `fit` sizes to
+  the trigger's intrinsic width (breaks inside flex children — the
+  picker collapses to its content width); `auto` sizes to the widest
+  option (overlaps adjacent inputs). For the menu to stay inside the
+  column bounds, set `data-container` to a **specific parent
+  selector** (a column id, e.g. `data-container="#vendorCell"`)
+  rather than the generic `"body"` — that way the menu is appended
+  inside the parent and inherits its width + stacking context, with
+  no overflow into adjacent columns. The chosen pattern is
+  documented at
   [developer.snapappointments.com/bootstrap-select/options](https://developer.snapappointments.com/bootstrap-select/options/)
   if you need to revisit, but for this project: **`data-width="100%"` +
-  a sized container div + `data-container="body"` is the answer to
-  every picker-width issue.**
+  a sized container div + `data-container="#<parent-id>"` is the answer
+  to every picker-width issue.**
 
 ---
 

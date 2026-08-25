@@ -84,9 +84,9 @@ foreach ($vpRows as $r) {
         <div class="card-header"><h5 class="mb-0">Wybierz dostawcę i część</h5></div>
         <div class="card-body">
             <div class="row">
-                <div class="col-md-6">
+                <div class="col-md-6" id="vendorCell">
                     <label for="vendorSelect">Dostawca:</label>
-                    <select id="vendorSelect" class="selectpicker form-control" data-live-search="true" data-width="100%" data-container="body" title="Wybierz dostawcę...">
+                    <select id="vendorSelect" class="selectpicker form-control" data-live-search="true" data-width="100%" data-container="#vendorCell" title="Wybierz dostawcę...">
                         <?php foreach ($vendorsWithParts as $v): ?>
                             <option value="<?= (int)$v['id'] ?>"
                                     data-name="<?= htmlspecialchars($v['name']) ?>"
@@ -96,9 +96,9 @@ foreach ($vpRows as $r) {
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <div class="col-md-6">
+                <div class="col-md-6" id="partCell">
                     <label for="partSelect">Część:</label>
-                    <select id="partSelect" class="selectpicker form-control" data-live-search="true" data-width="100%" data-container="body" title="Wybierz część...">
+                    <select id="partSelect" class="selectpicker form-control" data-live-search="true" data-width="100%" data-container="#partCell" title="Wybierz część...">
                         <?php foreach ($partsWithVendors as $p): ?>
                             <option value="<?= (int)$p['id'] ?>"
                                     data-name="<?= htmlspecialchars($p['name']) ?>"
@@ -111,11 +111,11 @@ foreach ($vpRows as $r) {
                 </div>
             </div>
             <div class="row mt-3" id="vendorPartRow">
-                <div class="col-md-4">
+                <div class="col-md-4" id="vendorPartCell">
                     <label for="vendorPartNoSelect">Numer u dostawcy:</label>
                     <div class="d-flex align-items-start">
                         <div class="flex-grow-1 mr-1">
-                            <select id="vendorPartNoSelect" class="selectpicker form-control" data-live-search="true" data-width="100%" data-container="body" title="Wybierz numer u dostawcy...">
+                            <select id="vendorPartNoSelect" class="selectpicker form-control" data-live-search="true" data-width="100%" data-container="#vendorPartCell" title="Wybierz numer u dostawcy...">
                                 <!-- populated by JS once vendor and/or part are picked;
                                      catalog-wide lookup lives in the search modal -->
                             </select>
