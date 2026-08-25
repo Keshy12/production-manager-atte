@@ -81,12 +81,48 @@ No framework. No ORM. No router library. Pure PHP with a single switch-statement
 
 | Layer | Path |
 |-------|------|
-| Presentation | `public_html/components/<area>/<feature>-view.php` |
+| Presentation | `public_html/components/<area>/<feature>-view.php` (master data under `<area>=Admin/Purchase`; user-facing UX surfaces under `<area>=purchases` — see §3a) |
 | Routing | `index.php` |
 | Domain | `src/classes/Utils/<Domain>/class-*.php` |
 | Persistence | `src/classes/DB/class-*.php` |
 | External APIs | `src/classes/Api/class-*.php` |
 | Scheduled jobs | `src/cron/*.php` |
+
+### 3a. Procurement Module — substructure (v1.6)
+
+The procurement domain (`Atte\Utils\Purchase\`) is the only multi-subnamespace area in the codebase. It splits the layered pattern above by concern rather than by entity, because the transactional state (RFQ / PO / receipts) depends on a critical mass of reference data (vendor / producer / VendorPart catalog) — and that reference data lives on a different lifecycle (rarely changing, no state machine) than the transactional state (short-lived, with state machines and audit timestamps).
+
+```
+src/classes/Utils/Purchase/
+├── Master/                        ← reference data (no state machines)
+│   ├── Vendor / VendorSupplier / Producer / VendorPart  (entities)
+│   └── *Repository                                       (CRUD)
+└── Order/                         ← transactional state (with state machines)
+    ├── RFQ / RFQItem / PurchaseOrder / PurchaseOrderItem / OrderReceipt  (entities)
+    ├── *Repository                                      (CRUD + state setters)
+    └── PurchaseActionHandler                             (orchestrator, ~460 lines)
+```
+
+**Why two sub-namespaces, not one** — `PurchaseActionHandler` (in `Order/`) orchestrates multi-step operations that span RFQ + PO + receipts (`createDocument`, `createPoFromRfq`, `createReceipt`). Putting the handler under `Master/` would be wrong because the handler doesn't write to Master tables — it only *reads* them (to resolve vendor_id / producer_id when creating documents). Putting it under `Order/` reflects what it actually does.
+
+**Pattern deviation from other domains** — most other domains in `src/classes/Utils/` (Magazine, Bom, Commission) use a single flat namespace with one or two entities + one repository + one action handler. Procurement is the only domain big enough to warrant the split; the procurement PLAN §9.1 decision log records the rationale.
+
+**Layered design within the namespace**:
+- The 9 entity classes (`Vendor`, `VendorSupplier`, `Producer`, `VendorPart`, `RFQ`, `RFQItem`, `PurchaseOrder`, `PurchaseOrderItem`, `OrderReceipt`) are pure data — constructor takes `array $row` only, holds no DB handle (B6 audit cleanup 2026-08-25). All DB access lives in the repositories.
+- The 8 repositories (`*Repository`) own the MsaDB singleton and the prepared-statement queries. They are hand-rolled `FETCH_ASSOC` + manual `new Entity($row)` hydration, not `PDO::FETCH_CLASS`, because the entity constructors take a single `array $row` arg.
+- `PurchaseActionHandler` is the single orchestrator for cross-entity multi-step operations. It is instantiated per-request (no singleton, no state held between requests) and dependencies are constructed in its constructor.
+
+**Presentation split** — the procurement module's pages follow the same Admin / user-facing split that the codebase uses elsewhere (master-data CRUD under `<area>=Admin`, user flows under their own top-level area):
+- `public_html/components/Admin/Purchase/{Vendors,Producers,VendorParts}/` — master data CRUD (capital `Admin/` per `AGENTS.md`).
+- `public_html/components/purchases/{cart,receipts,documents}/` — user-facing UX surfaces (lowercase plural, the convention for "shipped, user-visible" flows).
+
+This split keeps the navigation header uncluttered: master data lives under "Admin → Dostawy", while the user-visible "Zamówienia komponentów" top-level dropdown holds the cart, receipts, and the future combined RFQ+PO list (currently a placeholder at `purchases/documents/`).
+
+**Soft-delete invariant** — every `isActive` (formerly `is_active`; P6 rename) flag in the procurement tables is the deactivation channel. There are no hard `DELETE` statements on `list__vendor*` / `list__producer` / `list__vendor_part` rows once they are referenced by an RFQ item, PO item, or receipt item. The `(vendor_id, vendor_part_no)` UNIQUE index in `list__vendor_part` plus the `ON DELETE RESTRICT` clauses on `purchase__*_item.vendor_part_id` FKs enforce this at the DB level; the repositories and `PurchaseActionHandler` never issue a hard delete against referenced rows. This is consistent with the rest of the app's soft-delete convention (`isActive` on `list__parts`, `isActive` on `list__smd`/`list__tht`/`list__sku`, etc.).
+
+**Cross-cutting integration points**:
+- `PurchaseActionHandler::createReceipt()` reuses the existing `TransferGroupManager` to create a `transfer_group` of type `purchase_receipt`, then writes positive `qty` to `inventory__parts` — so the warehouse and low-stock tables get the receipt automatically without procurement needing its own inventory code.
+- The Google Sheets importer (`src/cron/import-vendors-from-gsheet.php`, see `docs/operations/CRON.md` Job 7) deliberately bypasses `config-google-sheets.php` (which eagerly calls `session_start()` and breaks under CLI) and hits the Sheets API directly via `\Google_Client` with its own 401 → refresh → retry loop.
 
 ---
 
