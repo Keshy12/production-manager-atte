@@ -143,6 +143,13 @@ foreach ($vpRows as $r) {
                     </select>
                 </div>
             </div>
+            <div class="row mt-2" id="variantInfoRow" style="display:none">
+                <div class="col-md-8">
+                    <label for="variantComment">Prywatny komentarz (wewnętrzny):</label>
+                    <input type="text" id="variantComment" class="form-control" maxlength="255"
+                           placeholder="Komentarz tylko dla nas — nie trafi do dostawcy">
+                </div>
+            </div>
             <div class="row mt-2">
                 <div class="col-12 text-right">
                     <button type="button" id="clearSelectionBtn" class="btn btn-danger mr-1" title="Wyczyść wybór dostawcy i części">

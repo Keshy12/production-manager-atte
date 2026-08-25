@@ -104,7 +104,10 @@ try {
                 isset($item['unit_price']) && $item['unit_price'] !== ''
                     ? (float)$item['unit_price']
                     : null,
-                $item['currency'] ?? 'PLN'
+                $item['currency'] ?? 'PLN',
+                isset($item['comment']) && trim((string)$item['comment']) !== ''
+                    ? trim((string)$item['comment'])
+                    : null
             );
         }
     } else {
@@ -123,7 +126,10 @@ try {
                 isset($item['unit_price']) && $item['unit_price'] !== ''
                     ? (float)$item['unit_price']
                     : 0,
-                $item['currency'] ?? 'PLN'
+                $item['currency'] ?? 'PLN',
+                isset($item['comment']) && trim((string)$item['comment']) !== ''
+                    ? trim((string)$item['comment'])
+                    : null
             );
         }
     }

@@ -39,6 +39,8 @@
     var $cartQty             = $('#cartQty');
     var $cartPrice           = $('#cartPrice');
     var $cartCurrency        = $('#cartCurrency');
+    var $variantInfoRow      = $('#variantInfoRow');
+    var $variantComment      = $('#variantComment');
     var $addToCartBtn        = $('#addToCartBtn');
     var $cartCard            = $('#cartCard');
     var $cartBody            = $('#cartBody');
@@ -287,6 +289,10 @@
             $cartQty.val('');
             $cartPrice.val('');
             $cartPackages.val('').prop('disabled', true).removeClass('packages-uneven');
+            $variantComment.val('');
+            $variantInfoRow.hide();
+        } else {
+            $variantInfoRow.show();
         }
         syncQtyPlaceholder();
     }
@@ -417,6 +423,7 @@
         if (resolvedId !== lastResolvedVpId) {
             $cartQty.val('');
             $cartPrice.val('');
+            $variantComment.val('');
             resetPackagesInput();
             lastResolvedVpId = resolvedId;
         } else {
@@ -666,6 +673,9 @@
                 if (item.description) {
                     partCell += '<div><small class="text-muted">' + escapeHtml(item.description) + '</small></div>';
                 }
+                if (item.comment) {
+                    partCell += '<div><small class="text-muted"><i class="bi bi-journal-text"></i> Komentarz: ' + escapeHtml(item.comment) + '</small></div>';
+                }
                 // Ilość cell carries the package count as a sub-line
                 // (yellow when qty doesn't match whole packages).
                 var qtyCell = formatQty(item.quantity);
@@ -712,6 +722,7 @@
         var priceRaw = $cartPrice.val() === '' ? NaN : parseFloat($cartPrice.val());
         var unitPrice = (!isNaN(priceRaw) && priceRaw >= 0) ? priceRaw : null;
         var currency = $cartCurrency.val() || 'PLN';
+        var commentVal = $.trim($variantComment.val()) || null;
         if (!vendorId || !partId || !vendorPartId || isNaN(qty) || qty <= 0) {
             setAlert('Podaj prawidłową ilość.', 'warning');
             return;
@@ -748,7 +759,8 @@
                 full_pack_quantity: parseFloat($opt.attr('data-full-pack-quantity')) || null,
                 quantity          : qty,
                 unit_price        : unitPrice,
-                currency          : currency
+                currency          : currency,
+                comment           : commentVal
             });
         }
         // Reset qty + price, clear the part picker (vendor stays selected
@@ -778,7 +790,8 @@
                     vendor_part_id : i.vendor_part_id,
                     quantity       : i.quantity,
                     unit_price     : i.unit_price === null ? '' : i.unit_price,
-                    currency       : i.currency
+                    currency       : i.currency,
+                    comment        : i.comment || ''
                 };
             }))
         };
