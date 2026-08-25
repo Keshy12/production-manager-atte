@@ -923,6 +923,17 @@
         applyVendorFilter();       // scope parts to this vendor
         refreshVendorPartRow();
         loadSelectionDocs();
+        // Small visual confirmation on the picker button.
+        try {
+            var sp = $vendorSelect.data('selectpicker');
+            var $btn = (sp && sp.$newElement) ? sp.$newElement.find('button.dropdown-toggle').first() : $();
+            if ($btn.length) {
+                $btn.removeClass('flash-selected');
+                void $btn[0].offsetWidth;   // restart animation if mid-flight
+                $btn.addClass('flash-selected');
+                $btn.one('animationend', function () { $(this).removeClass('flash-selected'); });
+            }
+        } catch (err) { /* cosmetic only */ }
         var card = document.getElementById('vendorPartRow');
         if (card) { card.closest('.card').scrollIntoView({ behavior: 'smooth' }); }
     });

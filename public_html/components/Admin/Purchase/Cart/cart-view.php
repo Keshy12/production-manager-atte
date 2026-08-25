@@ -200,6 +200,12 @@ foreach ($vpRows as $r) {
         /* Inline "select this vendor" icon next to the group name */
         .select-vendor-link { font-size: 1.1rem; text-decoration: none; }
         .select-vendor-link:hover { color: #007bff !important; text-decoration: none; }
+        /* Brief green pulse confirming auto-selection of the vendor */
+        @keyframes flashSelected {
+            0%   { box-shadow: 0 0 0 .3rem rgba(25,135,84,.45); border-color: #198754; }
+            100% { box-shadow: 0 0 0 rgba(25,135,84,0); }
+        }
+        .flash-selected { animation: flashSelected 1s ease-out 2; }
         /* Non-blocking warning: qty doesn't match whole packages */
         .packages-uneven {
             border-color: #ffc107;
