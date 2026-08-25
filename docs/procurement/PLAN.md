@@ -713,6 +713,13 @@ Additional polish captured during v1.6 cleanup (not in the original
 - **Inline edit of the variant's private comment** (pen icon on the
   picker row → immediate save to `list__vendor_part.comment` via
   `vendor-part-comment.php`).
+- **Per-row quick-edit modal** (pencil icon in the cart table →
+  modal with Opak. / Ilość / Cena/Szt. / Waluta). Opak.↔Ilość
+  two-way sync mirrors the picker row; packages is derived from the
+  item's stored `full_pack_quantity` (never persisted per line).
+  Merge rule: same vendor-part merges only when price AND currency
+  also match — different price = separate line. Cart persists via
+  localStorage (7-day expiry, cleared on submit).
 
 ---
 

@@ -47,6 +47,7 @@
     let $variantCommentInput = $('#variantCommentInput');
     let $editItemModal       = $('#editItemModal');
     let $editItemHeader      = $('#editItemHeader');
+    let $editItemPackages    = $('#editItemPackages');
     let $editItemQty         = $('#editItemQty');
     let $editItemPrice       = $('#editItemPrice');
     let $editItemCurrency    = $('#editItemCurrency');
@@ -249,6 +250,15 @@
     function selectedFullPackQty() {
         let raw = $vendorPartNoSelect.find('option:selected').attr('data-full-pack-quantity');
         let v = parseFloat(raw);
+        return (!isNaN(v) && v > 0) ? v : null;
+    }
+
+    // Full-pack quantity stored on a cart item (null when unusable).
+    // Modal-safe counterpart of selectedFullPackQty() — the edit modal
+    // operates on an arbitrary cart line, not the picker row's selection.
+    function itemFullPackQty(item) {
+        if (!item || item.full_pack_quantity === null || item.full_pack_quantity === undefined) return null;
+        let v = parseFloat(item.full_pack_quantity);
         return (!isNaN(v) && v > 0) ? v : null;
     }
 
@@ -1024,9 +1034,57 @@
         $editItemQty.val(item.quantity || '');
         $editItemPrice.val(item.unit_price === null || item.unit_price === undefined ? '' : item.unit_price);
         $editItemCurrency.val(item.currency || 'PLN');
+        // Opak. pre-fill: derived from the stored quantity; disabled when
+        // the variant has no usable full_pack_quantity.
+        let fpq = itemFullPackQty(item);
+        $editItemPackages.prop('disabled', fpq === null).removeClass('packages-uneven');
+        if (fpq !== null) {
+            let pkgs = (parseFloat(item.quantity) || 0) / fpq;
+            $editItemPackages.val(parseFloat(pkgs.toFixed(2)));
+            $editItemPackages.toggleClass('packages-uneven', Math.abs(pkgs - Math.round(pkgs)) >= 1e-9);
+        } else {
+            $editItemPackages.val('');
+        }
         $editItemModal.data('edit-idx', idx);
         $editItemModal.modal('show');
     });
+
+    // Modal two-way sync, mirroring the picker row's Opak.↔Ilość pair:
+    //   Opak. input → Ilość = packages × full_pack_quantity
+    //   Ilość input → Opak. = quantity / full_pack_quantity
+    // Fractional package counts flag the Opak. field yellow — non-blocking.
+    function editItemPackagesFromQty() {
+        let item = cart.items[$editItemModal.data('edit-idx')];
+        let fpq = itemFullPackQty(item);
+        let qty = parseFloat($editItemQty.val());
+        if (fpq === null || isNaN(qty) || qty < 0) {
+            $editItemPackages.removeClass('packages-uneven');
+            return;
+        }
+        let pkgs = qty / fpq;
+        let even = Math.abs(pkgs - Math.round(pkgs)) < 1e-9;
+        $editItemPackages.val(parseFloat(pkgs.toFixed(2)));
+        $editItemPackages.toggleClass('packages-uneven', !even);
+        $editItemPackages.attr('title', even ? 'Ilość = opakowania × ilość w opakowaniu'
+                                             : 'Uwaga: ilość nie odpowiada pełnej liczbie opakowań');
+    }
+
+    $editItemPackages.on('input', function () {
+        let item = cart.items[$editItemModal.data('edit-idx')];
+        let fpq = itemFullPackQty(item);
+        let pkgs = parseFloat($(this).val());
+        if (fpq === null || isNaN(pkgs) || pkgs < 0) {
+            $(this).removeClass('packages-uneven');
+            return;
+        }
+        $editItemQty.val(parseFloat((pkgs * fpq).toFixed(6)));
+        let even = Math.abs(pkgs - Math.round(pkgs)) < 1e-9;
+        $(this).toggleClass('packages-uneven', !even);
+        $(this).attr('title', even ? 'Ilość = opakowania × ilość w opakowaniu'
+                                   : 'Uwaga: ilość nie odpowiada pełnej liczbie opakowań');
+    });
+
+    $editItemQty.on('input', editItemPackagesFromQty);
 
     // Save the edited values back into the cart, persist, re-render.
     $editItemSave.on('click', function () {

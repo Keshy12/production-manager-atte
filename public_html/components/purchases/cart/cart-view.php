@@ -210,6 +210,11 @@ foreach ($vpRows as $r) {
                 <div class="modal-body">
                     <div id="editItemHeader" class="text-muted small mb-3"></div>
                     <div class="form-group mb-3">
+                        <label for="editItemPackages">Opak.:</label>
+                        <input type="number" id="editItemPackages" class="form-control" min="0" step="1" placeholder="opak."
+                               title="Ilość = opakowania × ilość w opakowaniu">
+                    </div>
+                    <div class="form-group mb-3">
                         <label for="editItemQty">Ilość:</label>
                         <input type="number" id="editItemQty" class="form-control" min="0.0001" step="0.0001">
                     </div>
