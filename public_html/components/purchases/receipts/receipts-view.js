@@ -1,5 +1,5 @@
 $(document).ready(function() {
-    const ajaxBase = COMPONENTS_PATH + "/Admin/Purchase/Receipts/";
+    const ajaxBase = COMPONENTS_PATH + "/purchases/receipts/";
 
     function esc(str) {
         return $('<div>').text(str == null ? '' : String(str)).html();

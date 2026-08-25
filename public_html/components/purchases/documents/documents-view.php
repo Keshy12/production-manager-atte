@@ -15,8 +15,7 @@
     </div>
     <div class="alert alert-info">
         <i class="bi bi-info-circle"></i>
-        W międzyczasie korzystaj z dotychczasowych list:
-        <a href="http://<?=BASEURL?>/admin/purchase/rfqs">Zapytania ofertowe</a> oraz
-        <a href="http://<?=BASEURL?>/admin/purchase/orders">Zamówienia</a>.
+        Koszyk tworzy dokumenty — będą pojawiać się tutaj po wdrożeniu
+        wspólnej tabeli.
     </div>
 </div>

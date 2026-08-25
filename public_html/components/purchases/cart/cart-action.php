@@ -104,10 +104,7 @@ try {
                 isset($item['unit_price']) && $item['unit_price'] !== ''
                     ? (float)$item['unit_price']
                     : null,
-                $item['currency'] ?? 'PLN',
-                isset($item['comment']) && trim((string)$item['comment']) !== ''
-                    ? trim((string)$item['comment'])
-                    : null
+                $item['currency'] ?? 'PLN'
             );
         }
     } else {
@@ -126,10 +123,7 @@ try {
                 isset($item['unit_price']) && $item['unit_price'] !== ''
                     ? (float)$item['unit_price']
                     : 0,
-                $item['currency'] ?? 'PLN',
-                isset($item['comment']) && trim((string)$item['comment']) !== ''
-                    ? trim((string)$item['comment'])
-                    : null
+                $item['currency'] ?? 'PLN'
             );
         }
     }
@@ -140,9 +134,9 @@ try {
         'success'  => true,
         'doc_id'   => $docId,
         'doc_type' => $docType,
-        'redirect' => $docType === 'rfq'
-            ? '/admin/purchase/rfqs/edit?id=' . $docId
-            : '/admin/purchase/orders/edit?id=' . $docId,
+        // RFQ/PO edit pages were removed with the old list pages; route
+        // to the combined documents placeholder until it exists.
+        'redirect' => '/admin/purchase/documents',
     ]);
 } catch (\Throwable $e) {
     if ($MsaDB->db->inTransaction()) {

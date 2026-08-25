@@ -103,14 +103,9 @@ default:
 | `admin/purchase/vendors` | Dostawcy | `public_html/components/Admin/Purchase/Vendors/vendors-view.php` | Admin route. Procurement module (P1). `Admin/` capitalized. |
 | `admin/purchase/producers` | Producenci | `public_html/components/Admin/Purchase/Producers/producers-view.php` | Admin route. Procurement module (P1). |
 | `admin/purchase/vendor-parts` | Artykuły u dostawców | `public_html/components/Admin/Purchase/VendorParts/vendor-parts-view.php` | Admin route. Procurement module (P1). |
-| `admin/purchase/rfqs` | Zapytania ofertowe | `public_html/components/Admin/Purchase/Rfqs/rfqs-view.php` | Admin route. Procurement module (P2). |
-| `admin/purchase/rfqs/edit` | Edycja zapytania | `public_html/components/Admin/Purchase/Rfqs/Edit/edit-rfq-view.php` | Admin route. Procurement module (P2). |
-| `admin/purchase/orders` | Zamówienia | `public_html/components/Admin/Purchase/Orders/orders-view.php` | Admin route. Procurement module (P3). |
-| `admin/purchase/orders/edit` | Edycja zamówienia | `public_html/components/Admin/Purchase/Orders/Edit/edit-order-view.php` | Admin route. Procurement module (P3). |
-| `admin/purchase/cart` | Koszyk zakupowy | `public_html/components/Admin/Purchase/Cart/cart-view.php` | Admin route. Procurement UX: cart-style entry point for creating new RFQ/PO documents (vendor pick → items → RFQ or PO). |
-| `admin/purchase/receipts` | Przyjęcia | `public_html/components/Admin/Purchase/Receipts/receipts-view.php` | Admin route. Procurement module (P4): goods-receipt list with per-receipt line-item detail modal. |
-| `admin/purchase/orders/receive` | Przyjmij towar | `public_html/components/Admin/Purchase/Orders/Receive/receive-view.php` | Admin route. Procurement module (P4): per-PO receive form that closes the loop into the inventory ledger. |
-| `admin/purchase/documents` | Zapytania i zamówienia | `public_html/components/Admin/Purchase/Documents/documents-view.php` | Admin route. **Placeholder** — future combined RFQ+PO table with filtration. Linked from top-nav "Zamówienia komponentów". |
+| `admin/purchase/cart` | Koszyk zakupowy | `public_html/components/purchases/cart/cart-view.php` | Admin route. Procurement UX: cart-style entry point for creating new RFQ/PO documents. Lives under `components/purchases/`; AJAX endpoints are called by real path via `COMPONENTS_PATH`. |
+| `admin/purchase/receipts` | Przyjęcia | `public_html/components/purchases/receipts/receipts-view.php` | Admin route. Procurement module (P4): goods-receipt list with per-receipt line-item detail modal. Under `components/purchases/`. |
+| `admin/purchase/documents` | Zapytania i zamówienia | `public_html/components/purchases/documents/documents-view.php` | Admin route. **Placeholder** — future combined RFQ+PO table with filtration. Linked from top-nav "Zamówienia komponentów". |
 | `admin/synchronization/flowpin` | Flowpin - Status Aktualizacji | `public_html/components/Admin/Synchronization/flowpin/flowpin-status-view.php` | **Note:** `Admin/` directory is capitalized. |
 | `admin/synchronization/sheets` | Flowpin - Arkusze | `public_html/components/Admin/Synchronization/sheets/flowpin-sheets-view.php` | **Note:** `Admin/` directory is capitalized. |
 | `test` | — | `public_html/components/tests/test1.php` | Dev/test only. **No header included** (`index.php:108–110`). |

@@ -139,45 +139,20 @@ switch ($request) {
         includeWithVariables($headerDir, array('title' => 'Artykuły u dostawców'));
         require $componentsDir . '/Admin/Purchase/VendorParts/vendor-parts-view.php';
         break;
-    case 'admin/purchase/rfqs':
-        requireAdmin();
-        includeWithVariables($headerDir, array('title' => 'Zapytania ofertowe'));
-        require $componentsDir . '/Admin/Purchase/Rfqs/rfqs-view.php';
-        break;
-    case 'admin/purchase/rfqs/edit':
-        requireAdmin();
-        includeWithVariables($headerDir, array('title' => 'Edycja zapytania'));
-        require $componentsDir . '/Admin/Purchase/Rfqs/Edit/edit-rfq-view.php';
-        break;
-    case 'admin/purchase/orders':
-        requireAdmin();
-        includeWithVariables($headerDir, array('title' => 'Zamówienia'));
-        require $componentsDir . '/Admin/Purchase/Orders/orders-view.php';
-        break;
-    case 'admin/purchase/orders/edit':
-        requireAdmin();
-        includeWithVariables($headerDir, array('title' => 'Edycja zamówienia'));
-        require $componentsDir . '/Admin/Purchase/Orders/Edit/edit-order-view.php';
-        break;
     case 'admin/purchase/cart':
         requireAdmin();
         includeWithVariables($headerDir, array('title' => 'Koszyk zakupowy'));
-        require $componentsDir . '/Admin/Purchase/Cart/cart-view.php';
+        require $componentsDir . '/purchases/cart/cart-view.php';
         break;
     case 'admin/purchase/receipts':
         requireAdmin();
         includeWithVariables($headerDir, array('title' => 'Przyjęcia'));
-        require $componentsDir . '/Admin/Purchase/Receipts/receipts-view.php';
+        require $componentsDir . '/purchases/receipts/receipts-view.php';
         break;
     case 'admin/purchase/documents':
         requireAdmin();
         includeWithVariables($headerDir, array('title' => 'Zapytania i zamówienia'));
-        require $componentsDir . '/Admin/Purchase/Documents/documents-view.php';
-        break;
-    case 'admin/purchase/orders/receive':
-        requireAdmin();
-        includeWithVariables($headerDir, array('title' => 'Przyjmij towar'));
-        require $componentsDir . '/Admin/Purchase/Orders/Receive/receive-view.php';
+        require $componentsDir . '/purchases/documents/documents-view.php';
         break;
 
     case 'admin/synchronization/flowpin':

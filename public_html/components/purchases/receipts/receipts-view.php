@@ -123,4 +123,4 @@ include('table-row-template.php');
     </div>
 </div>
 
-<script src="<?= asset('public_html/components/Admin/Purchase/Receipts/receipts-view.js') ?>"></script>
+<script src="<?= asset('public_html/components/purchases/receipts/receipts-view.js') ?>"></script>

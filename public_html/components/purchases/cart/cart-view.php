@@ -261,10 +261,6 @@ foreach ($vpRows as $r) {
 </div>
 
 <script>
-    const PURCHASE_CART_BASE = <?php echo json_encode(
-        (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http')
-        . '://' . BASEURL . '/admin/purchase/cart'
-    ); ?>;
     const VENDOR_PARTS_INDEX = <?= json_encode($vendorPartsIndex, JSON_UNESCAPED_UNICODE) ?>;
 </script>
-<script src="<?= asset('public_html/components/Admin/Purchase/Cart/cart-view.js') ?>"></script>
+<script src="<?= asset('public_html/components/purchases/cart/cart-view.js') ?>"></script>

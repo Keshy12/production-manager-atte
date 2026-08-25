@@ -496,7 +496,7 @@
         }
         $vpSearchStatus.removeClass('text-danger').text('Szukam…').show();
         $.ajax({
-            url: PURCHASE_CART_BASE + '/vendor-part-search.php?q=' + encodeURIComponent(q),
+            url: COMPONENTS_PATH + '/purchases/cart//vendor-part-search.php?q=' + encodeURIComponent(q),
             method: 'GET',
             dataType: 'json'
         }).done(function (rows) {
@@ -550,7 +550,7 @@
             return;
         }
         $.ajax({
-            url: PURCHASE_CART_BASE + '/cart-active-docs.php',
+            url: COMPONENTS_PATH + '/purchases/cart//cart-active-docs.php',
             method: 'POST',
             contentType: 'application/json',
             data: JSON.stringify(vpIds),
@@ -609,7 +609,7 @@
         }
         let vpIds = cart.items.map(function (i) { return i.vendor_part_id; });
         $.ajax({
-            url: PURCHASE_CART_BASE + '/cart-active-docs.php',
+            url: COMPONENTS_PATH + '/purchases/cart//cart-active-docs.php',
             method: 'POST',
             contentType: 'application/json',
             data: JSON.stringify(vpIds),
@@ -835,7 +835,7 @@
         if (items.length === 0) { setAlert('Brak pozycji dla tego dostawcy.', 'warning'); return; }
         $btn.prop('disabled', true).text('Tworzę...');
         $.ajax({
-            url: PURCHASE_CART_BASE + '/cart-action.php',
+            url: COMPONENTS_PATH + '/purchases/cart//cart-action.php',
             method: 'POST',
             data: buildPayload(docType, vendorId, items),
             dataType: 'json'
@@ -959,7 +959,7 @@
         if (!vp) { cancelVariantCommentEdit(); return; }
         let val = $.trim($variantCommentInput.val());
         $.ajax({
-            url: PURCHASE_CART_BASE + '/vendor-part-comment.php',
+            url: COMPONENTS_PATH + '/purchases/cart//vendor-part-comment.php',
             method: 'POST',
             data: { vp_id: vp.id, comment: val },
             dataType: 'json'
