@@ -229,6 +229,13 @@
                                          : 'Uwaga: ilość nie odpowiada pełnej liczbie opakowań');
     }
 
+    // Qty placeholder mirrors the selected variant's unit (JM) from DB.
+    function syncQtyPlaceholder() {
+        var $sel = $vendorPartNoSelect.find('option:selected');
+        var unit = ($sel.length > 0 ? $sel.attr('data-unit-name') : '') || 'szt.';
+        $cartQty.attr('placeholder', unit);
+    }
+
     // Ilość/Cena/Waluta are editable only once a concrete variant is
     // selected; while ambiguous they're disabled and qty/price cleared.
     function syncAmountsInputs() {
@@ -244,6 +251,7 @@
             $cartPrice.val('');
             $cartPackages.val('').prop('disabled', true).removeClass('packages-uneven');
         }
+        syncQtyPlaceholder();
     }
 
     function getScopedVpOptions(vendorId, partId) {

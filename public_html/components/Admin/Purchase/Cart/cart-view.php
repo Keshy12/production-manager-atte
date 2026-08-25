@@ -131,7 +131,7 @@ foreach ($vpRows as $r) {
                     <input type="number" id="cartQty" class="form-control" min="0.0001" step="0.0001" placeholder="szt.">
                 </div>
                 <div class="col-md-2">
-                    <label for="cartPrice">Cena:</label>
+                    <label for="cartPrice">Cena/Szt.:</label>
                     <input type="number" id="cartPrice" class="form-control" min="0" step="0.0001" placeholder="opcjonalna">
                 </div>
                 <div class="col-md-2">
