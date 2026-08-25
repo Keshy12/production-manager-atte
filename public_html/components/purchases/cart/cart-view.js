@@ -683,10 +683,8 @@
                 '<thead class="thead-light">' +
                 '<tr>' +
                     '<th>Część</th>' +
-                    '<th>JM</th>' +
                     '<th>Ilość</th>' +
                     '<th>Cena</th>' +
-                    '<th>Waluta</th>' +
                     '<th>Wartość</th>' +
                     '<th>Aktywne dok.</th>' +
                     '<th>Akcje</th>' +
@@ -740,10 +738,10 @@
                 }
                 html += '<tr>' +
                     '<td>' + partCell + '</td>' +
-                    '<td>' + escapeHtml(item.unit_name) + '</td>' +
                     '<td>' + qtyCell + '</td>' +
-                    '<td>' + formatPrice(item.unit_price) + '</td>' +
-                    '<td>' + escapeHtml(item.currency) + '</td>' +
+                    '<td>' + (item.unit_price === null || item.unit_price === undefined
+                        ? '<span class="text-muted">—</span>'
+                        : formatPrice(item.unit_price) + escapeHtml(item.currency) + '/' + escapeHtml(item.unit_name)) + '</td>' +
                     '<td>' + formatPrice(lineTotal) + '</td>' +
                     '<td style="white-space: nowrap;">' + docBadges + '</td>' +
                     '<td style="white-space: nowrap;">' +
