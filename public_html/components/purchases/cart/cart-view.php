@@ -122,6 +122,21 @@ foreach ($vpRows as $r) {
                         </div>
                         <a href="#" id="vpSearchBtn" class="text-muted clear-picker-link ml-1" title="Szukaj po numerze dostawcy / producenta / części"><i class="bi bi-search"></i></a>
                     </div>
+                    <div id="variantInfoRow" class="mt-1" style="display:none">
+                        <span id="variantCommentDisplay" class="text-muted small">
+                            <i class="bi bi-journal-text"></i>
+                            <strong>Komentarz wewnętrzny:</strong>
+                            <em id="variantCommentText" class="ml-1">Brak komentarza</em>
+                            <a href="#" id="variantCommentEdit" class="text-muted ml-1"
+                               title="Edytuj komentarz — zapisze się od razu na karcie artykułu"><i class="bi bi-pencil"></i></a>
+                        </span>
+                        <span id="variantCommentEditBox" style="display:none" class="mt-1">
+                            <input type="text" id="variantCommentInput" class="form-control form-control-sm d-inline-block align-middle"
+                                   style="width:70%" maxlength="255" placeholder="Komentarz tylko dla nas — nie trafi do dostawcy">
+                            <button type="button" id="variantCommentSave" class="btn btn-sm btn-success ml-1" title="Zapisz"><i class="bi bi-check"></i></button>
+                            <button type="button" id="variantCommentCancel" class="btn btn-sm btn-secondary ml-1" title="Anuluj (Esc)"><i class="bi bi-x"></i></button>
+                        </span>
+                    </div>
                 </div>
                 <div class="col-md-2">
                     <label for="cartPackages">Opak.:</label>
@@ -142,22 +157,6 @@ foreach ($vpRows as $r) {
                         <option value="EUR">EUR</option>
                         <option value="USD">USD</option>
                     </select>
-                </div>
-            </div>
-            <div class="row mt-2" id="variantInfoRow" style="display:none">
-                <div class="col-md-8">
-                    <span id="variantCommentDisplay" class="text-muted">
-                        <i class="bi bi-journal-text"></i>
-                        <em id="variantCommentText">Brak komentarza</em>
-                        <a href="#" id="variantCommentEdit" class="text-muted ml-1"
-                           title="Edytuj komentarz — zapisze się od razu na karcie artykułu"><i class="bi bi-pencil"></i></a>
-                    </span>
-                    <span id="variantCommentEditBox" style="display:none">
-                        <input type="text" id="variantCommentInput" class="form-control form-control-sm d-inline-block align-middle"
-                               style="width:70%" maxlength="255" placeholder="Komentarz tylko dla nas — nie trafi do dostawcy">
-                        <button type="button" id="variantCommentSave" class="btn btn-sm btn-success ml-1" title="Zapisz"><i class="bi bi-check"></i></button>
-                        <button type="button" id="variantCommentCancel" class="btn btn-sm btn-secondary ml-1" title="Anuluj (Esc)"><i class="bi bi-x"></i></button>
-                    </span>
                 </div>
             </div>
             <div class="row mt-2">
