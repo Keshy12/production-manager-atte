@@ -35,7 +35,10 @@ try {
     $MsaDB = MsaDB::getInstance();
     $repo  = new VendorPartRepository($MsaDB);
 
-    // Uniqueness check: vendor_id + vendor_part_no must be unique (excluding self).
+    // Friendly pre-check: vendor_id + vendor_part_no must be unique
+    // (excluding self). The real race guard is the UNIQUE constraint +
+    // SQLSTATE 23000 catch below — if two admins edit simultaneously
+    // both can pass this check, but only one will commit.
     if($repo->existsForVendorAndPartNo($vendorId, $vendorPartNo)) {
         $existing = $MsaDB->db->prepare('SELECT id FROM `list__vendor_part` WHERE vendor_id = ? AND vendor_part_no = ? LIMIT 1');
         $existing->execute([$vendorId, $vendorPartNo]);
@@ -50,6 +53,16 @@ try {
     echo json_encode(['success' => true, 'message' => 'Artykuł zaktualizowany pomyślnie']);
 } catch (\InvalidArgumentException $e) {
     echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+} catch (\PDOException $e) {
+    // MySQL duplicate-entry: SQLSTATE 23000, error code 1062. The
+    // (vendor_id, vendor_part_no) UNIQUE constraint caught a race the
+    // pre-check above didn't.
+    if($e->getCode() === '23000' || (isset($e->errorInfo[1]) && (int)$e->errorInfo[1] === 1062)) {
+        echo json_encode(['success' => false, 'error' => 'Vendor part no już istnieje dla tego dostawcy']);
+    } else {
+        error_log('vp-update error: ' . $e->getMessage());
+        echo json_encode(['success' => false, 'error' => 'Wystąpił błąd podczas aktualizacji artykułu']);
+    }
 } catch (\Throwable $e) {
     error_log('vp-update error: ' . $e->getMessage());
     echo json_encode(['success' => false, 'error' => 'Wystąpił błąd podczas aktualizacji artykułu']);

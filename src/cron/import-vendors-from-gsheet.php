@@ -47,8 +47,23 @@
 require_once __DIR__ . '/../../config/config.php';
 
 use Atte\DB\MsaDB;
+use Atte\Utils\Locker;
 
 set_time_limit(0);
+
+// Single-instance guard. Matches the pattern used by the other 6
+// cron scripts (bom-flat-sku-gs-upload.php, warehouse-data-gs-upload.php,
+// etc.) — cheap insurance against double-triggers even though
+// per-row dedup would also catch a duplicate write.
+$locker = new Locker('vendor_import_gsheet.lock');
+if ($locker->isLocked()) {
+    fwrite(STDERR, "Process is already running.\n");
+    exit(1);
+}
+$locker->lock();
+register_shutdown_function(function () use ($locker) {
+    if ($locker->isLocked()) { $locker->unlock(); }
+});
 
 $dryRun = in_array('--dry-run', $argv ?? [], true);
 $updateExisting = in_array('--update-existing', $argv ?? [], true);

@@ -395,7 +395,7 @@ $(document).ready(function() {
             showAlert('Producent, part i jednostka są wymagane', 'warning'); return;
         }
         if(!data.vendor_part_no) { showAlert('Vendor part no jest wymagany', 'warning'); return; }
-        postAjax('vendor-part-add.php', data)
+        postAjax('VendorParts/vp-add.php', data)
             .done(function(r) {
                 if(r.success) {
                     $('#addVendorPartModal').modal('hide');
