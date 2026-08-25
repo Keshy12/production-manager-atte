@@ -198,41 +198,7 @@ foreach ($vpRows as $r) {
     </div>
 
     <!-- ===== Aktywne dokumenty dla wybranej pozycji ===== -->
-    <style>
-        #selectionDocsHeader { cursor: pointer; user-select: none; }
-        #selectionDocsHeader:hover { background-color: rgba(0,0,0,.04); }
-        /* <i> is inline by default — transform needs inline-block to apply */
-        #selectionDocsHeader .bi-chevron-right {
-            display: inline-block;
-            transition: transform .15s ease;
-        }
-        #selectionDocsHeader[aria-expanded="true"] .bi-chevron-right,
-        #selectionDocsHeader.is-open .bi-chevron-right { transform: rotate(90deg); }
-        .clear-picker-link {
-            font-size: 1.3rem;
-            line-height: 38px;
-            text-decoration: none;
-        }
-        .clear-picker-link:hover { color: #dc3545 !important; text-decoration: none; }
-        /* Inline "select this vendor" icon next to the group name */
-        .select-vendor-link { font-size: 1.1rem; text-decoration: none; }
-        .select-vendor-link:hover { color: #007bff !important; text-decoration: none; }
-        /* Brief green pulse confirming auto-selection of the vendor */
-        @keyframes flashSelected {
-            0%   { box-shadow: 0 0 0 .3rem rgba(25,135,84,.45); border-color: #198754; }
-            100% { box-shadow: 0 0 0 rgba(25,135,84,0); }
-        }
-        .flash-selected { animation: flashSelected 1s ease-out 1; }
-        /* Non-blocking warning: qty doesn't match whole packages */
-        .packages-uneven {
-            border-color: #ffc107;
-            background-color: #fff8e1;
-        }
-        .packages-uneven:focus {
-            border-color: #ffb300;
-            box-shadow: 0 0 0 .2rem rgba(255,193,7,.25);
-        }
-    </style>
+    <link rel="stylesheet" href="<?= asset('public_html/assets/layout/purchases.css') ?>">
     <div class="card mb-3" id="selectionDocsCard" style="display:none">
         <div class="card-header py-2" id="selectionDocsHeader" role="button" data-toggle="collapse"
                 data-target="#selectionDocsBody" aria-expanded="false" aria-controls="selectionDocsBody">
