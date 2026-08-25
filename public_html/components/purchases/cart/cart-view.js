@@ -308,9 +308,15 @@
         if (!resolved) {
             $cartQty.val('');
             $cartPrice.val('');
-            $cartPackages.val('').prop('disabled', true).removeClass('packages-uneven');
+            $cartPackages.val('').prop('disabled', true).removeClass('packages-uneven')
+                .attr('placeholder', 'opak.');
             $variantInfoRow.hide();
         } else {
+            // Informative placeholder: how many units one package holds.
+            let fpq = selectedFullPackQty();
+            let unit = ($sel.attr('data-unit-name') || '') || 'szt.';
+            $cartPackages.attr('placeholder',
+                fpq !== null ? 'opak. (' + formatQty(fpq) + ' ' + unit + ')' : 'opak.');
             $variantInfoRow.show();
             renderVariantComment();
         }
@@ -1042,8 +1048,10 @@
             let pkgs = (parseFloat(item.quantity) || 0) / fpq;
             $editItemPackages.val(parseFloat(pkgs.toFixed(2)));
             $editItemPackages.toggleClass('packages-uneven', Math.abs(pkgs - Math.round(pkgs)) >= 1e-9);
+            $editItemPackages.attr('placeholder',
+                'opak. (' + formatQty(fpq) + ' ' + (item.unit_name || 'szt.') + ')');
         } else {
-            $editItemPackages.val('');
+            $editItemPackages.val('').attr('placeholder', 'opak.');
         }
         $editItemModal.data('edit-idx', idx);
         $editItemModal.modal('show');
