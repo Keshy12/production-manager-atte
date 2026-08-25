@@ -17,7 +17,8 @@ index.php                         ← single entry point
     ├─ str_replace('/atte_ms_new/', '', ...)   remove prefix
     │
     ▼
-switch ($request)                 ← match against 25 cases
+switch ($request)                 ← match against 33 cases
+                                                (see §4 for the full list)
     │
     ├─ includeWithVariables($headerDir, ['title' => ...])
     │       │
@@ -111,7 +112,7 @@ default:
 | `test` | — | `public_html/components/tests/test1.php` | Dev/test only. **No header included** (`index.php:108–110`). |
 | `flowpin/test` | Flowpin Warehouse State | `public_html/components/tests/warehouse_state_view.php` | Dev/test only. **⚠ File not found** in `public_html/components/tests/` — likely broken path or missing file. |
 
-**Total routes: 26** (25 switch cases + 1 shared component for both production types).
+**Total routes: 33** (25 page cases + 2 redirect-only + 2 dev/test + 4 misc legacy; see §4 for the full table).
 
 ---
 
