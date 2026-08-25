@@ -35,7 +35,7 @@ $vpRows = $MsaDB->query(
     "SELECT vp.id, vp.vendor_id, vp.parts_id, vp.vendor_part_no,
             vp.producer_part_no, vp.vendor_jm_id, vp.full_pack_quantity,
             v.name AS vendor_name, u.name AS unit_name, p.name AS part_name,
-            pr.name AS producer_name
+            pr.name AS producer_name, vp.comment AS private_comment
        FROM `list__vendor_part` vp
        JOIN `list__vendor` v ON vp.vendor_id = v.id
        JOIN `part__unit`    u ON vp.vendor_jm_id = u.id
@@ -52,6 +52,7 @@ foreach ($vpRows as $r) {
         'vendor_part_no'     => $r['vendor_part_no'],
         'producer_part_no'   => $r['producer_part_no'],
         'producer_name'      => $r['producer_name'],
+        'private_comment'    => $r['private_comment'],
         'vendor_jm_id'       => (int)$r['vendor_jm_id'],
         'unit_name'          => $r['unit_name'],
         'full_pack_quantity' => (float)$r['full_pack_quantity'],
@@ -145,9 +146,18 @@ foreach ($vpRows as $r) {
             </div>
             <div class="row mt-2" id="variantInfoRow" style="display:none">
                 <div class="col-md-8">
-                    <label for="variantComment">Prywatny komentarz (wewnętrzny):</label>
-                    <input type="text" id="variantComment" class="form-control" maxlength="255"
-                           placeholder="Komentarz tylko dla nas — nie trafi do dostawcy">
+                    <small id="variantCommentDisplay" class="text-muted">
+                        <i class="bi bi-journal-text"></i>
+                        <em id="variantCommentText">Brak komentarza</em>
+                        <a href="#" id="variantCommentEdit" class="text-muted ml-1"
+                           title="Edytuj komentarz — zapisze się od razu na karcie artykułu"><i class="bi bi-pencil"></i></a>
+                    </small>
+                    <span id="variantCommentEditBox" style="display:none">
+                        <input type="text" id="variantCommentInput" class="form-control form-control-sm d-inline-block align-middle"
+                               style="width:70%" maxlength="255" placeholder="Komentarz tylko dla nas — nie trafi do dostawcy">
+                        <button type="button" id="variantCommentSave" class="btn btn-sm btn-success ml-1" title="Zapisz"><i class="bi bi-check"></i></button>
+                        <button type="button" id="variantCommentCancel" class="btn btn-sm btn-secondary ml-1" title="Anuluj (Esc)"><i class="bi bi-x"></i></button>
+                    </span>
                 </div>
             </div>
             <div class="row mt-2">
@@ -251,10 +261,10 @@ foreach ($vpRows as $r) {
 </div>
 
 <script>
-    var PURCHASE_CART_BASE = <?php echo json_encode(
+    const PURCHASE_CART_BASE = <?php echo json_encode(
         (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http')
         . '://' . BASEURL . '/admin/purchase/cart'
     ); ?>;
-    var VENDOR_PARTS_INDEX = <?= json_encode($vendorPartsIndex, JSON_UNESCAPED_UNICODE) ?>;
+    const VENDOR_PARTS_INDEX = <?= json_encode($vendorPartsIndex, JSON_UNESCAPED_UNICODE) ?>;
 </script>
 <script src="<?= asset('public_html/components/Admin/Purchase/Cart/cart-view.js') ?>"></script>

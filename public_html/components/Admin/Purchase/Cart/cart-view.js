@@ -23,7 +23,7 @@
 (function () {
     'use strict';
 
-    var cart = {
+    let cart = {
         items:       [],     // {vendor_part_id, vendor_id, vendor_name, vendor_part_no,
                              //  producer_part_no, part_name, producer_name, unit_name,
                              //  vendor_jm_id, full_pack_quantity, quantity, unit_price,
@@ -32,38 +32,42 @@
     };
 
     // DOM refs
-    var $vendorSelect        = $('#vendorSelect');
-    var $partSelect          = $('#partSelect');
-    var $vendorPartNoSelect  = $('#vendorPartNoSelect');
-    var $cartPackages        = $('#cartPackages');
-    var $cartQty             = $('#cartQty');
-    var $cartPrice           = $('#cartPrice');
-    var $cartCurrency        = $('#cartCurrency');
-    var $variantInfoRow      = $('#variantInfoRow');
-    var $variantComment      = $('#variantComment');
-    var $addToCartBtn        = $('#addToCartBtn');
-    var $cartCard            = $('#cartCard');
-    var $cartBody            = $('#cartBody');
-    var $cartCount           = $('#cartCount');
-    var $clearBtn            = $('#clearCartBtn');
-    var $selectionDocsCard   = $('#selectionDocsCard');
-    var $selectionDocsHeader = $('#selectionDocsHeader');
-    var $selectionDocsBody   = $('#selectionDocsBody');
-    var $selectionDocsContent = $('#selectionDocsContent');
-    var $selectionDocsCount  = $('#selectionDocsCount');
-    var $vpSearchModal  = $('#vpSearchModal');
-    var $vpSearchInput  = $('#vpSearchInput');
-    var $vpSearchStatus = $('#vpSearchStatus');
-    var $vpSearchResults = $('#vpSearchResults');
-    var vpSearchRows = [];  // last endpoint response, indexed for row buttons
-    var vpSearchTimer = null;
-    var lastResolvedVpId = null;   // variant id the amount inputs belong to
+    let $vendorSelect        = $('#vendorSelect');
+    let $partSelect          = $('#partSelect');
+    let $vendorPartNoSelect  = $('#vendorPartNoSelect');
+    let $cartPackages        = $('#cartPackages');
+    let $cartQty             = $('#cartQty');
+    let $cartPrice           = $('#cartPrice');
+    let $cartCurrency        = $('#cartCurrency');
+    let $variantInfoRow      = $('#variantInfoRow');
+    let $variantCommentDisplay = $('#variantCommentDisplay');
+    let $variantCommentText  = $('#variantCommentText');
+    let $variantCommentEdit  = $('#variantCommentEdit');
+    let $variantCommentEditBox = $('#variantCommentEditBox');
+    let $variantCommentInput = $('#variantCommentInput');
+    let $addToCartBtn        = $('#addToCartBtn');
+    let $cartCard            = $('#cartCard');
+    let $cartBody            = $('#cartBody');
+    let $cartCount           = $('#cartCount');
+    let $clearBtn            = $('#clearCartBtn');
+    let $selectionDocsCard   = $('#selectionDocsCard');
+    let $selectionDocsHeader = $('#selectionDocsHeader');
+    let $selectionDocsBody   = $('#selectionDocsBody');
+    let $selectionDocsContent = $('#selectionDocsContent');
+    let $selectionDocsCount  = $('#selectionDocsCount');
+    let $vpSearchModal  = $('#vpSearchModal');
+    let $vpSearchInput  = $('#vpSearchInput');
+    let $vpSearchStatus = $('#vpSearchStatus');
+    let $vpSearchResults = $('#vpSearchResults');
+    let vpSearchRows = [];  // last endpoint response, indexed for row buttons
+    let vpSearchTimer = null;
+    let lastResolvedVpId = null;   // variant id the amount inputs belong to
     // Last fetched strip payload: { options: [vp,…], docs: {vpId: [doc,…]} }
-    var selectionDocsCache   = { options: [], docs: {} };
+    let selectionDocsCache   = { options: [], docs: {} };
 
     // ---- cart persistence (localStorage, survives refresh) ----
-    var CART_STORAGE_KEY = 'atte_purchase_cart_v1';
-    var CART_MAX_AGE_MS  = 7 * 24 * 60 * 60 * 1000;   // 7 days
+    let CART_STORAGE_KEY = 'atte_purchase_cart_v1';
+    let CART_MAX_AGE_MS  = 7 * 24 * 60 * 60 * 1000;   // 7 days
 
     function saveCart() {
         try {
@@ -80,9 +84,9 @@
 
     function loadSavedCart() {
         try {
-            var raw = window.localStorage.getItem(CART_STORAGE_KEY);
+            let raw = window.localStorage.getItem(CART_STORAGE_KEY);
             if (!raw) return;
-            var data = JSON.parse(raw);
+            let data = JSON.parse(raw);
             if (!data || !Array.isArray(data.items)) return;
             if (!data.savedAt || (Date.now() - data.savedAt) > CART_MAX_AGE_MS) {
                 clearSavedCart();
@@ -105,7 +109,7 @@
     }
 
     function setAlert(msg, kind) {
-        var $box = $('#alertContainer');
+        let $box = $('#alertContainer');
         if (!msg) { $box.empty(); return; }
         $box.html(
             '<div class="alert alert-' + (kind || 'info') + ' alert-dismissible fade show" role="alert">' +
@@ -122,14 +126,14 @@
     }
 
     function formatQty(n) {
-        var v = parseFloat(n);
+        let v = parseFloat(n);
         if (isNaN(v)) return '';
         return v.toString();
     }
 
     function formatPrice(n) {
         if (n === null || n === undefined || n === '') return '—';
-        var v = parseFloat(n);
+        let v = parseFloat(n);
         if (isNaN(v)) return '—';
         return v.toFixed(4).replace(/\.?0+$/, '');
     }
@@ -162,7 +166,7 @@
     function safeJsonArray(raw) {
         if (!raw) return [];
         try {
-            var v = JSON.parse(raw);
+            let v = JSON.parse(raw);
             // Defensive: GROUP_CONCAT output double-encoded as a JSON string
             // ("1,2,3") parses to a string, not an array — split it.
             if (typeof v === 'string') {
@@ -175,18 +179,18 @@
     // ---- cascading-filter logic ----
 
     function applyVendorFilter() {
-        var vendorId = parseInt($vendorSelect.val(), 10) || null;
-        var partsIds = [];
+        let vendorId = parseInt($vendorSelect.val(), 10) || null;
+        let partsIds = [];
         if (vendorId) {
-            var $opt = $vendorSelect.find('option:selected');
+            let $opt = $vendorSelect.find('option:selected');
             partsIds = safeJsonArray($opt.attr('data-parts'));
         }
-        var partId = parseInt($partSelect.val(), 10) || null;
+        let partId = parseInt($partSelect.val(), 10) || null;
 
         $partSelect.find('option').each(function () {
-            var id = parseInt($(this).val(), 10) || 0;
+            let id = parseInt($(this).val(), 10) || 0;
             if (id === 0) return; // skip the placeholder
-            var hide = !!(vendorId && partsIds.indexOf(id) === -1);
+            let hide = !!(vendorId && partsIds.indexOf(id) === -1);
             $(this).prop('hidden', hide);
         });
         refreshSelectpicker($partSelect);
@@ -198,18 +202,18 @@
     }
 
     function applyPartFilter() {
-        var partId = parseInt($partSelect.val(), 10) || null;
-        var vendorsIds = [];
+        let partId = parseInt($partSelect.val(), 10) || null;
+        let vendorsIds = [];
         if (partId) {
-            var $opt = $partSelect.find('option:selected');
+            let $opt = $partSelect.find('option:selected');
             vendorsIds = safeJsonArray($opt.attr('data-vendors'));
         }
-        var vendorId = parseInt($vendorSelect.val(), 10) || null;
+        let vendorId = parseInt($vendorSelect.val(), 10) || null;
 
         $vendorSelect.find('option').each(function () {
-            var id = parseInt($(this).val(), 10) || 0;
+            let id = parseInt($(this).val(), 10) || 0;
             if (id === 0) return;
-            var hide = !!(partId && vendorsIds.indexOf(id) === -1);
+            let hide = !!(partId && vendorsIds.indexOf(id) === -1);
             $(this).prop('hidden', hide);
         });
         refreshSelectpicker($vendorSelect);
@@ -227,8 +231,8 @@
     // the search modal.
 
     function updateAddBtnState() {
-        var $sel = $vendorPartNoSelect.find('option:selected');
-        var ok = $sel.length > 0
+        let $sel = $vendorPartNoSelect.find('option:selected');
+        let ok = $sel.length > 0
             && !$sel.prop('hidden')
             && (parseInt($sel.attr('data-vp-id'), 10) || 0) > 0;
         $addToCartBtn.prop('disabled', !ok);
@@ -237,15 +241,15 @@
     // Full-pack quantity of the currently selected variant (null when the
     // variant has no usable pack size or nothing is selected).
     function selectedFullPackQty() {
-        var raw = $vendorPartNoSelect.find('option:selected').attr('data-full-pack-quantity');
-        var v = parseFloat(raw);
+        let raw = $vendorPartNoSelect.find('option:selected').attr('data-full-pack-quantity');
+        let v = parseFloat(raw);
         return (!isNaN(v) && v > 0) ? v : null;
     }
 
     // Clears the packages input and enables it only when the selected
     // variant has a usable full_pack_quantity.
     function resetPackagesInput() {
-        var fpq = selectedFullPackQty();
+        let fpq = selectedFullPackQty();
         $cartPackages.val('');
         $cartPackages.removeClass('packages-uneven');
         $cartPackages.prop('disabled', fpq === null);
@@ -254,14 +258,14 @@
     // Recomputes the Opak. field from Ilość (qty / full pack quantity)
     // and flags fractional package counts in yellow — non-blocking.
     function updatePackagesDisplay() {
-        var fpq = selectedFullPackQty();
-        var qty = parseFloat($cartQty.val());
+        let fpq = selectedFullPackQty();
+        let qty = parseFloat($cartQty.val());
         if (fpq === null || isNaN(qty) || qty < 0) {
             $cartPackages.removeClass('packages-uneven');
             return;
         }
-        var pkgs = qty / fpq;
-        var even = Math.abs(pkgs - Math.round(pkgs)) < 1e-9;
+        let pkgs = qty / fpq;
+        let even = Math.abs(pkgs - Math.round(pkgs)) < 1e-9;
         $cartPackages.val(parseFloat(pkgs.toFixed(2)));
         $cartPackages.toggleClass('packages-uneven', !even);
         $cartPackages.attr('title', even ? 'Ilość = opakowania × ilość w opakowaniu'
@@ -270,16 +274,16 @@
 
     // Qty placeholder mirrors the selected variant's unit (JM) from DB.
     function syncQtyPlaceholder() {
-        var $sel = $vendorPartNoSelect.find('option:selected');
-        var unit = ($sel.length > 0 ? $sel.attr('data-unit-name') : '') || 'szt.';
+        let $sel = $vendorPartNoSelect.find('option:selected');
+        let unit = ($sel.length > 0 ? $sel.attr('data-unit-name') : '') || 'szt.';
         $cartQty.attr('placeholder', unit);
     }
 
     // Ilość/Cena/Waluta are editable only once a concrete variant is
     // selected; while ambiguous they're disabled and qty/price cleared.
     function syncAmountsInputs() {
-        var $sel = $vendorPartNoSelect.find('option:selected');
-        var resolved = $sel.length > 0
+        let $sel = $vendorPartNoSelect.find('option:selected');
+        let resolved = $sel.length > 0
             && !$sel.prop('hidden')
             && (parseInt($sel.attr('data-vp-id'), 10) || 0) > 0;
         $cartQty.prop('disabled', !resolved);
@@ -289,20 +293,20 @@
             $cartQty.val('');
             $cartPrice.val('');
             $cartPackages.val('').prop('disabled', true).removeClass('packages-uneven');
-            $variantComment.val('');
             $variantInfoRow.hide();
         } else {
             $variantInfoRow.show();
+            renderVariantComment();
         }
         syncQtyPlaceholder();
     }
 
     function getScopedVpOptions(vendorId, partId) {
-        var out = [];
+        let out = [];
         Object.keys(VENDOR_PARTS_INDEX).forEach(function (key) {
-            var parts = key.split(':');
-            var vid = parseInt(parts[0], 10);
-            var pid = parseInt(parts[1], 10);
+            let parts = key.split(':');
+            let vid = parseInt(parts[0], 10);
+            let pid = parseInt(parts[1], 10);
             if (vendorId && vid !== vendorId) return;
             if (partId && pid !== partId) return;
             VENDOR_PARTS_INDEX[key].forEach(function (vp) { out.push(vp); });
@@ -310,18 +314,44 @@
         return out;
     }
 
+    // Live lookup of a VendorPart entry by id (comment edits update the
+    // index in place, so cart rows re-render fresh).
+    function getVpById(vpId) {
+        let found = null;
+        Object.keys(VENDOR_PARTS_INDEX).forEach(function (key) {
+            if (found) return;
+            VENDOR_PARTS_INDEX[key].forEach(function (vp) { if (vp.id === vpId) found = vp; });
+        });
+        return found;
+    }
+
+    function selectedVpEntry() {
+        let $sel = $vendorPartNoSelect.find('option:selected');
+        let vpId = parseInt($sel.attr('data-vp-id'), 10) || null;
+        return vpId !== null ? getVpById(vpId) : null;
+    }
+
+    // Read-only private comment line for the selected variant.
+    function renderVariantComment() {
+        let vp = selectedVpEntry();
+        let cmt = vp ? (vp.private_comment || '') : '';
+        $variantCommentText.text(cmt !== '' ? cmt : 'Brak komentarza');
+        $variantCommentDisplay.show();
+        $variantCommentEditBox.hide();
+    }
+
     // Reads the currently selected variant option and auto-fills whichever
     // of vendor/part is still unset or mismatched. Returns true when the
     // combo changed; the variant list then narrows via a deferred rebuild.
     function completeComboFromSelection() {
-        var $opt = $vendorPartNoSelect.find('option:selected');
+        let $opt = $vendorPartNoSelect.find('option:selected');
         if ($opt.length === 0) return false;
-        var vid = parseInt($opt.attr('data-vendor-id'), 10) || null;
-        var pid = parseInt($opt.attr('data-part-id'), 10) || null;
-        var vpid = parseInt($opt.attr('data-vp-id'), 10) || null;
-        var curVid = parseInt($vendorSelect.val(), 10) || null;
-        var curPid = parseInt($partSelect.val(), 10) || null;
-        var changed = false;
+        let vid = parseInt($opt.attr('data-vendor-id'), 10) || null;
+        let pid = parseInt($opt.attr('data-part-id'), 10) || null;
+        let vpid = parseInt($opt.attr('data-vp-id'), 10) || null;
+        let curVid = parseInt($vendorSelect.val(), 10) || null;
+        let curPid = parseInt($partSelect.val(), 10) || null;
+        let changed = false;
         if (vid && vid !== curVid) {
             $vendorSelect.val(vid);
             refreshSelectpicker($vendorSelect);
@@ -344,8 +374,8 @@
     }
 
     function refreshVendorPartRow(preferredVpId) {
-        var vendorId = parseInt($vendorSelect.val(), 10) || null;
-        var partId = parseInt($partSelect.val(), 10) || null;
+        let vendorId = parseInt($vendorSelect.val(), 10) || null;
+        let partId = parseInt($partSelect.val(), 10) || null;
         // Nothing constrained → keep the picker empty.
         if (!vendorId && !partId) {
             $vendorPartNoSelect.empty();
@@ -355,7 +385,7 @@
             $addToCartBtn.prop('disabled', true);
             return;
         }
-        var options = getScopedVpOptions(vendorId, partId);
+        let options = getScopedVpOptions(vendorId, partId);
         if (options.length === 0) {
             $vendorPartNoSelect.empty();
             refreshSelectpicker($vendorPartNoSelect);
@@ -366,20 +396,20 @@
         }
         // Group by producer (bootstrap-select renders optgroup headers),
         // preserving first-seen order.
-        var groups = {};
-        var groupOrder = [];
+        let groups = {};
+        let groupOrder = [];
         options.forEach(function (vp) {
-            var g = vp.producer_name || 'Bez producenta';
+            let g = vp.producer_name || 'Bez producenta';
             if (!groups[g]) { groups[g] = []; groupOrder.push(g); }
             groups[g].push(vp);
         });
-        var html = '';
+        let html = '';
         groupOrder.forEach(function (g) {
             html += '<optgroup label="' + escapeHtml(g) + '">';
             groups[g].forEach(function (vp) {
                 // Producer part no rides as subtext (searchable) unless
                 // identical to the vendor part no.
-                var subtext = (vp.producer_part_no && vp.producer_part_no !== vp.vendor_part_no)
+                let subtext = (vp.producer_part_no && vp.producer_part_no !== vp.vendor_part_no)
                     ? ' data-subtext="' + escapeHtml(vp.producer_part_no) + '"'
                     : '';
                 html += '<option value="' + vp.id + '"' +
@@ -400,11 +430,11 @@
         $vendorPartNoSelect.html(html);
         // Pre-select ONLY on an explicit hand-off (search modal) or when
         // exactly one option exists — otherwise the user chooses.
-        var preferred = null;
+        let preferred = null;
         if (preferredVpId) {
             options.forEach(function (vp) { if (vp.id === preferredVpId) preferred = vp.id; });
         }
-        var targetId = null;
+        let targetId = null;
         if (preferred !== null) {
             targetId = String(preferred);
         } else if (options.length === 1) {
@@ -419,11 +449,10 @@
         }
         // Amount inputs belong to a concrete device — clear them when it
         // changed, keep them otherwise.
-        var resolvedId = targetId !== null ? parseInt(targetId, 10) : null;
+        let resolvedId = targetId !== null ? parseInt(targetId, 10) : null;
         if (resolvedId !== lastResolvedVpId) {
             $cartQty.val('');
             $cartPrice.val('');
-            $variantComment.val('');
             resetPackagesInput();
             lastResolvedVpId = resolvedId;
         } else {
@@ -443,7 +472,7 @@
 
     function renderVpSearchResults(rows) {
         vpSearchRows = rows || [];
-        var html = '';
+        let html = '';
         vpSearchRows.forEach(function (r, i) {
             html += '<tr>' +
                 '<td>' + escapeHtml(r.vendor_part_no) + '</td>' +
@@ -459,7 +488,7 @@
     }
 
     function runVpSearch() {
-        var q = $.trim($vpSearchInput.val());
+        let q = $.trim($vpSearchInput.val());
         if (q.length < 2) {
             $vpSearchStatus.removeClass('text-danger').text('Wpisz co najmniej 2 znaki…').show();
             renderVpSearchResults([]);
@@ -505,8 +534,8 @@
     // in the strip card above the cart as soon as both pickers hold a
     // value (no need to add anything to the cart first).
     function loadSelectionDocs() {
-        var vendorId = parseInt($vendorSelect.val(), 10) || null;
-        var partId = parseInt($partSelect.val(), 10) || null;
+        let vendorId = parseInt($vendorSelect.val(), 10) || null;
+        let partId = parseInt($partSelect.val(), 10) || null;
         if (!vendorId || !partId) {
             $selectionDocsCard.hide();
             $selectionDocsBody.collapse('hide');
@@ -514,8 +543,8 @@
             selectionDocsCache = { options: [], docs: {} };
             return;
         }
-        var options = VENDOR_PARTS_INDEX[vendorId + ':' + partId] || [];
-        var vpIds = options.map(function (vp) { return vp.id; });
+        let options = VENDOR_PARTS_INDEX[vendorId + ':' + partId] || [];
+        let vpIds = options.map(function (vp) { return vp.id; });
         if (vpIds.length === 0) {
             $selectionDocsCard.hide();
             return;
@@ -535,10 +564,10 @@
 
     function renderSelectionDocs(options, docs) {
         selectionDocsCache = { options: options, docs: docs };
-        var html = '';
-        var total = 0;
+        let html = '';
+        let total = 0;
         options.forEach(function (vp) {
-            var list = docs[vp.id] || [];
+            let list = docs[vp.id] || [];
             if (list.length === 0) return;
             total += list.length;
             html += '<div class="mb-1"><strong>' + escapeHtml(vp.vendor_part_no) + '</strong>' +
@@ -562,9 +591,9 @@
     // Header badge reflects the *specific* VendorPart currently picked
     // in "Numer u dostawcy" — not the combo-wide total.
     function updateSelectionDocsBadge() {
-        var $opt = $vendorPartNoSelect.find('option:selected');
-        var vpId = parseInt($opt.attr('data-vp-id'), 10) || null;
-        var list = (vpId !== null && selectionDocsCache.docs[vpId]) ? selectionDocsCache.docs[vpId] : [];
+        let $opt = $vendorPartNoSelect.find('option:selected');
+        let vpId = parseInt($opt.attr('data-vp-id'), 10) || null;
+        let list = (vpId !== null && selectionDocsCache.docs[vpId]) ? selectionDocsCache.docs[vpId] : [];
         if (list.length > 0) {
             $selectionDocsCount.text(list.length).show();
         } else {
@@ -578,7 +607,7 @@
             renderCart();
             return;
         }
-        var vpIds = cart.items.map(function (i) { return i.vendor_part_id; });
+        let vpIds = cart.items.map(function (i) { return i.vendor_part_id; });
         $.ajax({
             url: PURCHASE_CART_BASE + '/cart-active-docs.php',
             method: 'POST',
@@ -602,7 +631,7 @@
         $cartCard.show();
         $cartCount.text(cart.items.length);
 
-        var byVendor = {};
+        let byVendor = {};
         cart.items.forEach(function (item, idx) {
             if (!byVendor[item.vendor_id]) {
                 byVendor[item.vendor_id] = { name: item.vendor_name, items: [] };
@@ -610,10 +639,10 @@
             byVendor[item.vendor_id].items.push({ item: item, idx: idx });
         });
 
-        var html = '';
+        let html = '';
         Object.keys(byVendor).forEach(function (vid) {
-            var group = byVendor[vid];
-            var groupValue = group.items.reduce(function (sum, x) {
+            let group = byVendor[vid];
+            let groupValue = group.items.reduce(function (sum, x) {
                 return sum + (x.item.unit_price ? x.item.unit_price * x.item.quantity : 0);
             }, 0);
 
@@ -645,10 +674,10 @@
                 '</thead><tbody>';
 
             group.items.forEach(function (x) {
-                var item = x.item;
-                var lineTotal = (item.unit_price ? item.unit_price * item.quantity : 0);
-                var docs = cart.activeDocs[item.vendor_part_id] || [];
-                var docBadges = '';
+                let item = x.item;
+                let lineTotal = (item.unit_price ? item.unit_price * item.quantity : 0);
+                let docs = cart.activeDocs[item.vendor_part_id] || [];
+                let docBadges = '';
                 docs.forEach(function (d) {
                     docBadges += '<span class="badge ' + stateBadgeClass(d.state) + ' mr-1" title="' +
                         stateBadgeLabel(d.state) + ' · ' + formatQty(d.quantity) + ' · ' + formatPrice(d.unit_price) + '">' +
@@ -661,9 +690,9 @@
 
                 // Część cell carries prefixed sub-lines: vendor/producer
                 // numbers (merged when identical) and the description.
-                var vn = item.vendor_part_no || '';
-                var pn = item.producer_part_no || '';
-                var partCell = escapeHtml(item.part_name);
+                let vn = item.vendor_part_no || '';
+                let pn = item.producer_part_no || '';
+                let partCell = escapeHtml(item.part_name);
                 if (vn && pn && vn === pn) {
                     partCell += '<div><small class="text-muted">Nr dost./prod.: ' + escapeHtml(vn) + '</small></div>';
                 } else {
@@ -673,15 +702,19 @@
                 if (item.description) {
                     partCell += '<div><small class="text-muted">' + escapeHtml(item.description) + '</small></div>';
                 }
-                if (item.comment) {
-                    partCell += '<div><small class="text-muted"><i class="bi bi-journal-text"></i> Komentarz: ' + escapeHtml(item.comment) + '</small></div>';
+                // Comment is variant-level — read live so pen-edits show up
+                // in cart rows immediately.
+                let vpLive = getVpById(item.vendor_part_id);
+                let liveCmt = vpLive ? (vpLive.private_comment || '') : '';
+                if (liveCmt) {
+                    partCell += '<div><small class="text-muted"><i class="bi bi-journal-text"></i> Komentarz: ' + escapeHtml(liveCmt) + '</small></div>';
                 }
                 // Ilość cell carries the package count as a sub-line
                 // (yellow when qty doesn't match whole packages).
-                var qtyCell = formatQty(item.quantity);
+                let qtyCell = formatQty(item.quantity);
                 if (item.full_pack_quantity && item.full_pack_quantity > 0) {
-                    var pkgs = item.quantity / item.full_pack_quantity;
-                    var evenPkgs = Math.abs(pkgs - Math.round(pkgs)) < 1e-9;
+                    let pkgs = item.quantity / item.full_pack_quantity;
+                    let evenPkgs = Math.abs(pkgs - Math.round(pkgs)) < 1e-9;
                     qtyCell += '<div><small class="' + (evenPkgs ? 'text-muted' : 'text-warning') + '">' +
                         parseFloat(pkgs.toFixed(2)) + ' opak.</small></div>';
                 }
@@ -712,17 +745,16 @@
 
     function addCurrentSelectionToCart() {
         if ($addToCartBtn.prop('disabled')) return;
-        var vendorId = parseInt($vendorSelect.val(), 10) || null;
-        var partId = parseInt($partSelect.val(), 10) || null;
-        var $opt = $vendorPartNoSelect.find('option:selected');
-        var vendorPartId = parseInt($opt.attr('data-vp-id'), 10) || null;
-        var vendorPartNo = $opt.attr('data-vendor-part-no') || '';
-        var producerPartNo = $opt.attr('data-producer-part-no') || null;
-        var qty = parseFloat($cartQty.val());
-        var priceRaw = $cartPrice.val() === '' ? NaN : parseFloat($cartPrice.val());
-        var unitPrice = (!isNaN(priceRaw) && priceRaw >= 0) ? priceRaw : null;
-        var currency = $cartCurrency.val() || 'PLN';
-        var commentVal = $.trim($variantComment.val()) || null;
+        let vendorId = parseInt($vendorSelect.val(), 10) || null;
+        let partId = parseInt($partSelect.val(), 10) || null;
+        let $opt = $vendorPartNoSelect.find('option:selected');
+        let vendorPartId = parseInt($opt.attr('data-vp-id'), 10) || null;
+        let vendorPartNo = $opt.attr('data-vendor-part-no') || '';
+        let producerPartNo = $opt.attr('data-producer-part-no') || null;
+        let qty = parseFloat($cartQty.val());
+        let priceRaw = $cartPrice.val() === '' ? NaN : parseFloat($cartPrice.val());
+        let unitPrice = (!isNaN(priceRaw) && priceRaw >= 0) ? priceRaw : null;
+        let currency = $cartCurrency.val() || 'PLN';
         if (!vendorId || !partId || !vendorPartId || isNaN(qty) || qty <= 0) {
             setAlert('Podaj prawidłową ilość.', 'warning');
             return;
@@ -731,9 +763,9 @@
             setAlert('Cena nie może być ujemna.', 'warning');
             return;
         }
-        var $vendorOpt = $vendorSelect.find('option:selected');
-        var $partOpt = $partSelect.find('option:selected');
-        var existing = cart.items.find(function (i) {
+        let $vendorOpt = $vendorSelect.find('option:selected');
+        let $partOpt = $partSelect.find('option:selected');
+        let existing = cart.items.find(function (i) {
             return i.vendor_part_id === vendorPartId;
         });
         if (existing) {
@@ -759,8 +791,7 @@
                 full_pack_quantity: parseFloat($opt.attr('data-full-pack-quantity')) || null,
                 quantity          : qty,
                 unit_price        : unitPrice,
-                currency          : currency,
-                comment           : commentVal
+                currency          : currency
             });
         }
         // Reset qty + price, clear the part picker (vendor stays selected
@@ -790,18 +821,17 @@
                     vendor_part_id : i.vendor_part_id,
                     quantity       : i.quantity,
                     unit_price     : i.unit_price === null ? '' : i.unit_price,
-                    currency       : i.currency,
-                    comment        : i.comment || ''
+                    currency       : i.currency
                 };
             }))
         };
     }
 
     function submit(docType, btn) {
-        var $btn = $(btn);
-        var vendorId = parseInt($btn.data('vendor-id'), 10);
+        let $btn = $(btn);
+        let vendorId = parseInt($btn.data('vendor-id'), 10);
         if (!vendorId) { setAlert('Brak identyfikatora dostawcy.', 'danger'); return; }
-        var items = cart.items.filter(function (i) { return i.vendor_id === vendorId; });
+        let items = cart.items.filter(function (i) { return i.vendor_id === vendorId; });
         if (items.length === 0) { setAlert('Brak pozycji dla tego dostawcy.', 'warning'); return; }
         $btn.prop('disabled', true).text('Tworzę...');
         $.ajax({
@@ -865,8 +895,8 @@
     });
 
     $vpSearchResults.on('click', '.vp-pick-btn', function () {
-        var idx = parseInt($(this).data('idx'), 10);
-        var row = vpSearchRows[idx];
+        let idx = parseInt($(this).data('idx'), 10);
+        let row = vpSearchRows[idx];
         if (!row) return;
         pickVp(row);
     });
@@ -894,17 +924,64 @@
 
     // Opak. → Ilość: qty = packages × full pack quantity.
     $cartPackages.on('input', function () {
-        var fpq = selectedFullPackQty();
-        var pkgs = parseFloat($(this).val());
+        let fpq = selectedFullPackQty();
+        let pkgs = parseFloat($(this).val());
         if (fpq === null || isNaN(pkgs) || pkgs < 0) {
             $(this).removeClass('packages-uneven');
             return;
         }
         $cartQty.val(parseFloat((pkgs * fpq).toFixed(6)));
-        var even = Math.abs(pkgs - Math.round(pkgs)) < 1e-9;
+        let even = Math.abs(pkgs - Math.round(pkgs)) < 1e-9;
         $(this).toggleClass('packages-uneven', !even);
         $(this).attr('title', even ? 'Ilość = opakowania × ilość w opakowaniu'
                                    : 'Uwaga: ilość nie odpowiada pełnej liczbie opakowań');
+    });
+
+    // Inline edit of the variant's private comment — saves immediately
+    // to list__vendor_part.comment via vendor-part-comment.php.
+    $variantCommentEdit.on('click', function (e) {
+        e.preventDefault();
+        let vp = selectedVpEntry();
+        if (!vp) return;
+        $variantCommentDisplay.hide();
+        $variantCommentInput.val(vp.private_comment || '');
+        $variantCommentEditBox.show();
+        $variantCommentInput.trigger('focus');
+    });
+
+    function cancelVariantCommentEdit() {
+        $variantCommentEditBox.hide();
+        $variantCommentDisplay.show();
+    }
+
+    function saveVariantComment() {
+        let vp = selectedVpEntry();
+        if (!vp) { cancelVariantCommentEdit(); return; }
+        let val = $.trim($variantCommentInput.val());
+        $.ajax({
+            url: PURCHASE_CART_BASE + '/vendor-part-comment.php',
+            method: 'POST',
+            data: { vp_id: vp.id, comment: val },
+            dataType: 'json'
+        }).done(function (resp) {
+            if (resp && resp.success) {
+                vp.private_comment = (val === '' ? null : val);   // cache in place
+                renderCart();                                     // refresh table sub-line
+                setAlert('Komentarz zapisany.', 'success');
+            } else {
+                setAlert('Błąd zapisu komentarza: ' + (resp && resp.error ? resp.error : 'nieznany'), 'danger');
+            }
+        }).fail(function () {
+            setAlert('Błąd zapisu komentarza.', 'danger');
+        });
+        cancelVariantCommentEdit();
+    }
+
+    $('#variantCommentSave').on('click', saveVariantComment);
+    $('#variantCommentCancel').on('click', cancelVariantCommentEdit);
+    $variantCommentInput.on('keydown', function (ev) {
+        if (ev.key === 'Enter') { ev.preventDefault(); saveVariantComment(); }
+        else if (ev.key === 'Escape') { cancelVariantCommentEdit(); }
     });
 
     // Ilość → Opak.: packages = qty / full pack quantity.
@@ -918,7 +995,7 @@
 
     // Remove cart item
     $cartBody.on('click', '.remove-item-btn', function () {
-        var idx = parseInt($(this).data('idx'), 10);
+        let idx = parseInt($(this).data('idx'), 10);
         cart.items.splice(idx, 1);
         renderCart();
         loadActiveDocs();
@@ -929,7 +1006,7 @@
     // Select this vendor in the picker so more items can be queued.
     $cartBody.on('click', '.select-vendor-btn', function (e) {
         e.preventDefault();
-        var vid = parseInt($(this).data('vendor-id'), 10) || null;
+        let vid = parseInt($(this).data('vendor-id'), 10) || null;
         if (!vid) return;
         $vendorSelect.val(vid);
         refreshSelectpicker($vendorSelect);
@@ -938,8 +1015,8 @@
         loadSelectionDocs();
         // Small visual confirmation on the picker button.
         try {
-            var sp = $vendorSelect.data('selectpicker');
-            var $btn = (sp && sp.$newElement) ? sp.$newElement.find('button.dropdown-toggle').first() : $();
+            let sp = $vendorSelect.data('selectpicker');
+            let $btn = (sp && sp.$newElement) ? sp.$newElement.find('button.dropdown-toggle').first() : $();
             if ($btn.length) {
                 $btn.removeClass('flash-selected');
                 void $btn[0].offsetWidth;   // restart animation if mid-flight
@@ -947,18 +1024,18 @@
                 $btn.one('animationend', function () { $(this).removeClass('flash-selected'); });
             }
         } catch (err) { /* cosmetic only */ }
-        var card = document.getElementById('vendorPartRow');
+        let card = document.getElementById('vendorPartRow');
         if (card) { card.closest('.card').scrollIntoView({ behavior: 'smooth' }); }
     });
 
     // Remove all cart items of one vendor (with confirmation).
     $cartBody.on('click', '.clear-vendor-items-btn', function () {
-        var vid = parseInt($(this).data('vendor-id'), 10) || null;
+        let vid = parseInt($(this).data('vendor-id'), 10) || null;
         if (!vid) return;
-        var count = cart.items.filter(function (i) { return parseInt(i.vendor_id, 10) === vid; }).length;
+        let count = cart.items.filter(function (i) { return parseInt(i.vendor_id, 10) === vid; }).length;
         if (count === 0) return;
-        var name = '';
-        for (var i = 0; i < cart.items.length; i++) {
+        let name = '';
+        for (let i = 0; i < cart.items.length; i++) {
             if (parseInt(cart.items[i].vendor_id, 10) === vid) { name = cart.items[i].vendor_name; break; }
         }
         if (!window.confirm('Usunąć ' + count + ' poz. dostawcy ' + name + ' z koszyka?')) return;
@@ -971,7 +1048,7 @@
 
     // Per-vendor-group create buttons
     $cartBody.on('click', '.create-rfq-btn, .create-po-btn', function () {
-        var docType = $(this).hasClass('create-rfq-btn') ? 'rfq' : 'po';
+        let docType = $(this).hasClass('create-rfq-btn') ? 'rfq' : 'po';
         submit(docType, this);
     });
 
