@@ -789,6 +789,7 @@
             setAlert('Dodano ' + qty + ' do istniejącej pozycji (id ' + vendorPartId + ').', 'success');
         } else {
             cart.items.push({
+                vendor_part_id    : vendorPartId,
                 vendor_id         : vendorId,
                 vendor_name       : $vendorOpt.attr('data-name') || '',
                 vendor_part_no    : vendorPartNo,
