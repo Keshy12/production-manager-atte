@@ -205,7 +205,7 @@ foreach ($vpRows as $r) {
             0%   { box-shadow: 0 0 0 .3rem rgba(25,135,84,.45); border-color: #198754; }
             100% { box-shadow: 0 0 0 rgba(25,135,84,0); }
         }
-        .flash-selected { animation: flashSelected 1s ease-out 2; }
+        .flash-selected { animation: flashSelected 1s ease-out 1; }
         /* Non-blocking warning: qty doesn't match whole packages */
         .packages-uneven {
             border-color: #ffc107;
