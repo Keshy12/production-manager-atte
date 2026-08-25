@@ -238,7 +238,7 @@ foreach ($vpRows as $r) {
             </div>
         </div>
     </div>
-    <link rel="stylesheet" href="<?= asset('public_html/assets/layout/purchases.css') ?>">
+    <link rel="stylesheet" href="<?= asset('public_html/components/purchases/cart/purchases.css') ?>">
     <div class="card mb-3" id="selectionDocsCard" style="display:none">
         <div class="card-header py-2" id="selectionDocsHeader" role="button" data-toggle="collapse"
                 data-target="#selectionDocsBody" aria-expanded="false" aria-controls="selectionDocsBody">
