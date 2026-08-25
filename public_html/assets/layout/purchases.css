@@ -44,3 +44,16 @@
     border-color: #ffb300;
     box-shadow: 0 0 0 .2rem rgba(255,193,7,.25);
 }
+
+/* Cart picker dropdown menus — keep them readable, not column-width.
+   The pickers have data-container="body" so the menu is appended
+   to <body> and floats above the form (no column-clipping). We cap
+   the menu width so a long vendor-part-no doesn't stretch the menu
+   to absurd widths and push the page layout sideways; the menu text
+   wraps inside the cap. Also keep the menu's vertical bounds
+   predictable on short screens. */
+.bootstrap-select .dropdown-menu {
+    max-width: 32rem;
+    max-height: 50vh;
+    overflow-y: auto;
+}
