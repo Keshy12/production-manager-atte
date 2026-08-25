@@ -17,11 +17,12 @@ Read these documents in order to ramp up efficiently:
 3. [ARCHITECTURE.md](./system/ARCHITECTURE.md) — High-level system design; how the pieces fit together
 4. [ROUTING.md](./system/ROUTING.md) — How HTTP requests are routed; adding new pages
 5. [DATABASE.md](./data/DATABASE.md) — MySQL schema reference; all tables and relationships
-6. [MODULES.md](./code/MODULES.md) — Per-module guide; what's in each of the 19 module directories
+6. [MODULES.md](./code/MODULES.md) — Per-module guide; what's in each of the 20 module directories (19 user/admin + 1 `purchases/` for the procurement UX)
 7. [CLASSES.md](./code/CLASSES.md) — Domain class reference; core business logic classes
-8. [INTEGRATIONS.md](./operations/INTEGRATIONS.md) — Google Sheets sync and FlowPin integration details
-9. [CRON.md](./operations/CRON.md) — Scheduled jobs; what runs automatically and when
-10. [STACK.md](./reference/STACK.md) — Technology stack; PHP 8.0+, MySQL 5.7+, dependencies
+8. [procurement/PLAN.md](./procurement/PLAN.md) — **Procurement module** status, P1–P6 changelog, and historical design record. Read first if you need to understand the procurement domain.
+9. [INTEGRATIONS.md](./operations/INTEGRATIONS.md) — Google Sheets sync and FlowPin integration details
+10. [CRON.md](./operations/CRON.md) — Scheduled jobs; what runs automatically and when
+11. [STACK.md](./reference/STACK.md) — Technology stack; PHP 8.0+, MySQL 5.7+, dependencies
 
 ---
 
@@ -36,8 +37,9 @@ Read these documents in order to ramp up efficiently:
 | [DATABASE.md](./data/DATABASE.md) | MySQL schema — tables, columns, indexes, foreign keys, triggers | Fifth — before touching any data layer |
 | [MODULES.md](./code/MODULES.md) | Each module's purpose, responsibilities, and key files | Sixth — when working on a specific feature area |
 | [CLASSES.md](./code/CLASSES.md) | Domain classes (Api, DB, Utils, etc.) — purpose and usage | Seventh — when writing business logic |
+| [procurement/PLAN.md](./procurement/PLAN.md) | **Procurement module** — vendor / producer / RFQ / PO / receipt domain, schema, class structure, P1–P6 changelog, deferred items | When working on the procurement domain (master data or transaction flow) |
 | [INTEGRATIONS.md](./operations/INTEGRATIONS.md) | Google Sheets export/import, FlowPin data ingestion | Eighth — when working on external integrations |
-| [CRON.md](./operations/CRON.md) | All scheduled jobs (6 scripts), intervals, what they do | Ninth — before modifying or adding cron jobs |
+| [CRON.md](./operations/CRON.md) | All scheduled jobs (7 scripts — the 6 historic + `import-vendors-from-gsheet`), intervals, what they do | Ninth — before modifying or adding cron jobs |
 | [STACK.md](./reference/STACK.md) | PHP 8.0+, MySQL 5.7+, required extensions, tooling | Tenth — environment setup and dependency questions |
 
 ---
@@ -85,7 +87,10 @@ docs/
 → See [CLASSES.md](./code/CLASSES.md) — domain class map with purpose and key methods for each class under `src/classes/`.
 
 **Q: Where do I find module X?**
-→ See [MODULES.md](./code/MODULES.md) — directory listing of all 19 module folders under `public_html/components/`.
+→ See [MODULES.md](./code/MODULES.md) — directory listing of all 20 module folders under `public_html/components/`.
+
+**Q: How do I work on the procurement module?**
+→ Read [procurement/PLAN.md](./procurement/PLAN.md) first — it has the v1.6 status, the domain model, the `Master\` / `Order\` substructure, and the P1–P6 changelog. Then [docs/code/CLASSES.md](./code/CLASSES.md) § Procurement for the 9 entities + 8 repositories + `PurchaseActionHandler`, [docs/code/MODULES.md](./code/MODULES.md) for the file map (Admin/Purchase/{Vendors,Producers,VendorParts} for master data, `purchases/{cart,receipts,documents}` for user-facing UX), and [docs/system/ARCHITECTURE.md](./system/ARCHITECTURE.md) §3a for the layered substructure. To add data → [DATABASE.md](./data/DATABASE.md) §4j (`purchase__*`) and §4b (`list__vendor*`). To add an endpoint or cron → [CRON.md](./operations/CRON.md) Job 7 (`import-vendors-from-gsheet` is the reference template for the Sheets-via-CLI pattern).
 
 ---
 
