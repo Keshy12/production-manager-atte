@@ -5,5 +5,7 @@ composer.phar
 /public_html/assets/img/items
 /.vscode
 /public_html/var/locks
+/public_html/var/logs
+/public_html/components/tests/*.backup
 /.idea
 /src/cron/logs/
