@@ -765,20 +765,21 @@
         }
         let $vendorOpt = $vendorSelect.find('option:selected');
         let $partOpt = $partSelect.find('option:selected');
+        // Merge rule: same vendor-part, same currency, same unit price
+        // (including both unpriced). A different price OR currency means
+        // the user intends a separate line — do NOT silently overwrite
+        // the previous line's price, just push a new row.
         let existing = cart.items.find(function (i) {
-            return i.vendor_part_id === vendorPartId;
+            return i.vendor_part_id === vendorPartId
+                && i.currency === currency
+                && (i.unit_price === unitPrice ||
+                    (i.unit_price === null && unitPrice === null));
         });
         if (existing) {
             existing.quantity += qty;
-            // A price entered on the repeat add refreshes the item's
-            // price/currency; empty price keeps the previous one.
-            if (unitPrice !== null) {
-                existing.unit_price = unitPrice;
-                existing.currency = currency;
-            }
+            setAlert('Dodano ' + qty + ' do istniejącej pozycji (id ' + vendorPartId + ').', 'success');
         } else {
             cart.items.push({
-                vendor_part_id    : vendorPartId,
                 vendor_id         : vendorId,
                 vendor_name       : $vendorOpt.attr('data-name') || '',
                 vendor_part_no    : vendorPartNo,
@@ -793,6 +794,7 @@
                 unit_price        : unitPrice,
                 currency          : currency
             });
+            setAlert('Dodano pozycję do koszyka.', 'success');
         }
         // Reset qty + price, clear the part picker (vendor stays selected
         // so the user can queue the next part from the same vendor).
@@ -807,7 +809,6 @@
         renderCart();
         loadActiveDocs();
         saveCart();
-        setAlert('Dodano pozycję do koszyka.', 'success');
     }
 
     function buildPayload(docType, vendorId, items) {
