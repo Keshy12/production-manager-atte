@@ -171,6 +171,14 @@ Six scripts. All use `Atte\Utils\Locker`
 - **JavaScript declarations:** always use `let` (or `const` for values
   that are never reassigned) — **never `var`**, in any new or edited
   JS, including inline `<script>` blocks in component PHP files.
+- **bootstrap-select:** before reaching for custom CSS (max-width,
+  z-index, etc.) to fix a picker menu, check the official docs:
+  [options](https://developer.snapappointments.com/bootstrap-select/options/)
+  and [methods](https://developer.snapappointments.com/bootstrap-select/methods/).
+  The most common trap is a "menu overlaps the next input" — fixed
+  by `data-width="fit"` (menu sized to the trigger, not the widest
+  option) plus `data-container="body"` (menu floats to `<body>`).
+  Re-doing these by hand is almost always wrong.
 
 ---
 
