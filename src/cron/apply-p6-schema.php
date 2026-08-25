@@ -51,14 +51,14 @@ $raw = preg_replace('/^\s*DELIMITER\s+.*$/mi', '', $raw);
 $raw = str_replace('$$', ';', $raw);
 
 // The CREATE PROCEDURE block spans from `DROP PROCEDURE` through the
-// matching `END $$`. We don't have a real SQL parser, so we slice on
-// the `$` marker and trim. Everything before the procedure becomes
-// the "prefix" (currently empty for P6) and everything after becomes
-// the "suffix" (the CALL + DROP PROCEDURE).
-$marker = 'END $$';
+// matching `END ;` (post-replacement). We don't have a real SQL parser,
+// so we slice on the `END ;` marker. Everything before the procedure
+// becomes the "prefix" (currently empty for P6) and everything after
+// becomes the "suffix" (the CALL + DROP PROCEDURE).
+$marker = 'END ;';
 $endPos = strpos($raw, $marker);
 if ($endPos === false) {
-    fwrite(STDERR, "Could not find `END $$` marker in P6-schema.sql — file format changed?\n");
+    fwrite(STDERR, "Could not find `END ;` marker in P6-schema.sql — file format changed?\n");
     exit(1);
 }
 $procStmt = substr($raw, 0, $endPos + strlen($marker));
