@@ -475,7 +475,10 @@ Repositories expose standard CRUD plus the few specialised queries above.
 All write paths go through prepared statements (see `BomRepository` for
 the safest pattern in this codebase).
 
-After adding the files: `composer dump-autoload`.
+After adding the files: `composer dump-autoload`. Required because
+`composer.json` uses `"autoload": {"classmap": ["src/classes"]}` — without
+dumping, `use Atte\Utils\Purchase\Master\VendorRepository;` will fail with
+"class not found". One-shot per merge, not per request.
 
 ---
 

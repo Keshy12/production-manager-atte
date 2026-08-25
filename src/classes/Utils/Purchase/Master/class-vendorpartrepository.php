@@ -10,7 +10,7 @@ class VendorPartRepository {
         $this->MsaDB = $MsaDB;
     }
 
-    private function buildSelectJoins(): string {
+    private function buildSelectJoin(): string {
         return "SELECT vp.id,
                        vp.vendor_id AS vendorId,
                        vp.producer_id AS producerId,
@@ -36,7 +36,7 @@ class VendorPartRepository {
 
     public function getById(int $id): ?VendorPart {
         $MsaDB = $this->MsaDB;
-        $sql = $this->buildSelectJoins() . " WHERE vp.id = ?";
+        $sql = $this->buildSelectJoin() . " WHERE vp.id = ?";
         $stmt = $MsaDB->db->prepare($sql);
         $stmt->execute([$id]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -46,7 +46,7 @@ class VendorPartRepository {
     public function getAll(bool $onlyActive = false): array {
         $MsaDB = $this->MsaDB;
         $where = $onlyActive ? "WHERE vp.is_active = 1" : "";
-        $sql = $this->buildSelectJoins() . " {$where} ORDER BY vp.id DESC";
+        $sql = $this->buildSelectJoin() . " {$where} ORDER BY vp.id DESC";
         $stmt = $MsaDB->db->prepare($sql);
         $stmt->execute();
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
@@ -62,7 +62,7 @@ class VendorPartRepository {
         $where = $onlyActive
             ? "WHERE vp.vendor_id = ? AND vp.is_active = 1"
             : "WHERE vp.vendor_id = ?";
-        $sql = $this->buildSelectJoins() . " {$where} ORDER BY vp.id DESC";
+        $sql = $this->buildSelectJoin() . " {$where} ORDER BY vp.id DESC";
         $stmt = $MsaDB->db->prepare($sql);
         $stmt->execute([$vendorId]);
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
@@ -78,7 +78,7 @@ class VendorPartRepository {
         $where = $onlyActive
             ? "WHERE vp.producer_id = ? AND vp.is_active = 1"
             : "WHERE vp.producer_id = ?";
-        $sql = $this->buildSelectJoins() . " {$where} ORDER BY vp.id DESC";
+        $sql = $this->buildSelectJoin() . " {$where} ORDER BY vp.id DESC";
         $stmt = $MsaDB->db->prepare($sql);
         $stmt->execute([$producerId]);
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
@@ -94,7 +94,7 @@ class VendorPartRepository {
         $where = $onlyActive
             ? "WHERE vp.parts_id = ? AND vp.is_active = 1"
             : "WHERE vp.parts_id = ?";
-        $sql = $this->buildSelectJoins() . " {$where} ORDER BY vp.id DESC";
+        $sql = $this->buildSelectJoin() . " {$where} ORDER BY vp.id DESC";
         $stmt = $MsaDB->db->prepare($sql);
         $stmt->execute([$partsId]);
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);

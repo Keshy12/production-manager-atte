@@ -65,7 +65,7 @@ if (!defined('GOOGLE_CLIENT_SECRET')) {
 }
 
 $logDir  = ROOT_DIRECTORY . '/public_html/var/logs';
-if (!is_dir($logDir)) { @mkdir($logDir, 0777, true); }
+if (!is_dir($logDir)) { @mkdir($logDir, 0755, true); }
 $logFile = $logDir . '/vendor-import-' . date('Y-m-d') . '.log';
 
 function logLine(string $msg) {

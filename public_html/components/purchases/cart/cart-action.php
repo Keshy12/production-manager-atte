@@ -15,12 +15,8 @@ if(!isset($_SESSION['isAdmin']) || $_SESSION['isAdmin'] !== true) {
 
 header('Content-Type: application/json; charset=utf-8');
 
-$rawInput = file_get_contents('php://input');
-parse_str($rawInput, $payload);
-// Fallback for non-FormData-style callers
-if (empty($payload)) {
-    $payload = $_POST;
-}
+// JS posts standard form-encoded data; $_POST is the right reader.
+$payload = $_POST;
 
 $docType  = $payload['doc_type']  ?? '';
 $vendorId = (int)($payload['vendor_id'] ?? 0);

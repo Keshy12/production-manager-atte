@@ -1,6 +1,10 @@
 <?php
 // Placeholder — the combined RFQ + PO table with filtration will live
 // here. For now this page only points at the existing separate lists.
+if(!isset($_SESSION['isAdmin']) || $_SESSION['isAdmin'] !== true) {
+    header("Location: http://".BASEURL."/");
+    exit();
+}
 ?>
 <div class="container-fluid w-75 mt-3">
     <div class="row">
