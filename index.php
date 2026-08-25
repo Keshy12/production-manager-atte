@@ -169,6 +169,11 @@ switch ($request) {
         includeWithVariables($headerDir, array('title' => 'Przyjęcia'));
         require $componentsDir . '/Admin/Purchase/Receipts/receipts-view.php';
         break;
+    case 'admin/purchase/documents':
+        requireAdmin();
+        includeWithVariables($headerDir, array('title' => 'Zapytania i zamówienia'));
+        require $componentsDir . '/Admin/Purchase/Documents/documents-view.php';
+        break;
     case 'admin/purchase/orders/receive':
         requireAdmin();
         includeWithVariables($headerDir, array('title' => 'Przyjmij towar'));

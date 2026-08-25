@@ -113,6 +113,18 @@ if(!isset($_SESSION['user_id']) && !isset($skip))
             <li class="nav-item">
                 <a class="nav-link btn btn-light skip" href="http://<?=BASEURL?>/warehouse">Magazyn</a>
             </li>
+            <?php if(isset($_SESSION['isAdmin']) && $_SESSION['isAdmin'] === true) :?>
+                <li class="nav-item dropdown dropdown-button">
+                    <a class="nav-link dropdown-toggle btn btn-light skip" href="#" id="navbarOrdersDropdown" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                        Zamówienia komponentów
+                    </a>
+                    <div class="dropdown-menu" aria-labelledby="navbarOrdersDropdown">
+                        <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/purchase/cart"><i class="bi bi-cart3"></i> Koszyk</a>
+                        <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/purchase/receipts"><i class="bi bi-box-arrow-in-down"></i> Przyjęcia</a>
+                        <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/purchase/documents"><i class="bi bi-file-earmark-text"></i> Zapytania i zamówienia</a>
+                    </div>
+                </li>
+            <?php endif; ?>
         </ul>
         <ul class="navbar-nav ml-auto">
             <?php if(isset($_SESSION['isAdmin']) && $_SESSION['isAdmin'] === true) :?>
@@ -156,15 +168,11 @@ if(!isset($_SESSION['user_id']) && !isset($skip))
                             </div>
                         </div>
                         <div class="dropdown-submenu dropdown-submenu-left">
-                            <a class="dropdown-item dropdown-arrow sub-dropdown" href="#">Zakupy</a>
+                            <a class="dropdown-item dropdown-arrow sub-dropdown" href="#">Dostawy</a>
                             <div class="dropdown-menu bg-light" style="right: 100%" aria-labelledby="submenu">
-                                <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/purchase/cart"><i class="bi bi-cart3"></i> Koszyk</a>
                                 <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/purchase/vendors">Dostawcy</a>
                                 <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/purchase/producers">Producenci</a>
                                 <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/purchase/vendor-parts">Artykuły u dostawców</a>
-                                <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/purchase/rfqs">Zapytania ofertowe</a>
-                                <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/purchase/orders">Zamówienia</a>
-                                <a class="dropdown-item bg-light" href="http://<?=BASEURL?>/admin/purchase/receipts"><i class="bi bi-box-arrow-in-down"></i> Przyjęcia</a>
                             </div>
                         </div>
                         <div class="dropdown-divider"></div>

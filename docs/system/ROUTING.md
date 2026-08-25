@@ -110,6 +110,7 @@ default:
 | `admin/purchase/cart` | Koszyk zakupowy | `public_html/components/Admin/Purchase/Cart/cart-view.php` | Admin route. Procurement UX: cart-style entry point for creating new RFQ/PO documents (vendor pick → items → RFQ or PO). |
 | `admin/purchase/receipts` | Przyjęcia | `public_html/components/Admin/Purchase/Receipts/receipts-view.php` | Admin route. Procurement module (P4): goods-receipt list with per-receipt line-item detail modal. |
 | `admin/purchase/orders/receive` | Przyjmij towar | `public_html/components/Admin/Purchase/Orders/Receive/receive-view.php` | Admin route. Procurement module (P4): per-PO receive form that closes the loop into the inventory ledger. |
+| `admin/purchase/documents` | Zapytania i zamówienia | `public_html/components/Admin/Purchase/Documents/documents-view.php` | Admin route. **Placeholder** — future combined RFQ+PO table with filtration. Linked from top-nav "Zamówienia komponentów". |
 | `admin/synchronization/flowpin` | Flowpin - Status Aktualizacji | `public_html/components/Admin/Synchronization/flowpin/flowpin-status-view.php` | **Note:** `Admin/` directory is capitalized. |
 | `admin/synchronization/sheets` | Flowpin - Arkusze | `public_html/components/Admin/Synchronization/sheets/flowpin-sheets-view.php` | **Note:** `Admin/` directory is capitalized. |
 | `test` | — | `public_html/components/tests/test1.php` | Dev/test only. **No header included** (`index.php:108–110`). |
