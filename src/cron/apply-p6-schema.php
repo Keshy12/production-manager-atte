@@ -43,6 +43,13 @@ $raw = preg_replace('/^\s*--.*$/m', '', $raw);
 // Strip the DELIMITER directives — they're mysql-client-side, not SQL.
 $raw = preg_replace('/^\s*DELIMITER\s+.*$/mi', '', $raw);
 
+// Normalize the `$$` delimiter markers that wrap statements inside
+// the procedure body. `$$` is a mysql-client feature; PDO sends
+// plain SQL and chokes on it. Replace with `;` (the real PDO
+// statement terminator). The trailing `END $$` becomes `END ;`,
+// the DROP-procedure `$$` becomes `;` — both valid.
+$raw = str_replace('$$', ';', $raw);
+
 // The CREATE PROCEDURE block spans from `DROP PROCEDURE` through the
 // matching `END $$`. We don't have a real SQL parser, so we slice on
 // the `$` marker and trim. Everything before the procedure becomes
