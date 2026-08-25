@@ -318,6 +318,168 @@ public function __construct(MsaDB $MsaDB)
 
 ---
 
+## Procurement
+
+Vendor / producer / RFQ / PO / receipt domain — added in v1.6 (`feature/component-procurement`). Two sub-namespaces: `Master\` for reference data and `Order\` for transactional state. Entity constructors take `array $row` only (no `MsaDB` — repositories own the DB); repositories are hand-rolled `FETCH_ASSOC` + manual `new Entity($row)` hydration (B6 audit decision 2026-08-25). `PurchaseActionHandler` is the single orchestrator for multi-step operations spanning RFQ + PO + receipt.
+
+### Master
+
+#### Vendor
+**File:** `src/classes/Utils/Purchase/Master/class-vendor.php` — represents a supplier we buy components from.
+
+- Constructor: `__construct(array $row)` — hydrates from a `list__vendor` row.
+- Public typed properties: `id`, `name`, `address`, `additionalData`, `leadTimeDays`, `isActive`, `comment`, `createdAt`, `updatedAt`, `supplierCount`, `vendorPartCount` (last two populated by the vendor-list join in `VendorRepository::getAll()`).
+- No methods — pure data; the repository handles lookups.
+
+#### VendorRepository
+**File:** `src/classes/Utils/Purchase/Master/class-vendorrepository.php` — CRUD over `list__vendor`.
+
+- `getById(int $id): ?Vendor` — single-row lookup.
+- `getAll(bool $onlyActive = false, bool $withCounts = true): array` — left-joins `list__vendor_supplier` and `list__vendor_part` for `COUNT(*)` per vendor (single query, no N+1); `withCounts=false` skips the join for callers that don't need it.
+- `create(...)` / `update(...)` / `toggleActive(int $id, bool $isActive): bool` — standard CRUD with validation (`name` non-empty, `leadTimeDays` ≥ 0, etc.) that throws `\InvalidArgumentException` on bad input.
+- `countSuppliers(int $vendorId): int` / `countVendorParts(int $vendorId): int` — exposed for callers that want the count without the full list.
+
+**Used by:** `Vendors` admin view (`Admin/Purchase/Vendors/vendors-view.php`); `PurchaseActionHandler::createDocument()` (resolves vendor_id for the new RFQ/PO); `VendorSupplierRepository` (FK target); `VendorPartRepository` (FK target).
+
+#### VendorSupplier
+**File:** `src/classes/Utils/Purchase/Master/class-vendorsupplier.php` — vendor contact person (1-to-many → `list__vendor`).
+
+- Constructor: `__construct(array $row)` from `list__vendor_supplier`.
+- Public typed properties: `id`, `vendorId`, `name`, `jobTitle`, `phone`, `email`, `isActive`, `comment`.
+- No methods — pure data.
+
+#### VendorSupplierRepository
+**File:** `src/classes/Utils/Purchase/Master/class-vendorsupplierrepository.php` — CRUD over `list__vendor_supplier`.
+
+- `getById`, `getByVendor(int $vendorId, bool $onlyActive = false): array` — main lookup for the vendor-detail page.
+- `create(...)` / `update(...)` / `toggleActive(...)` — standard.
+
+**Used by:** `Vendors` admin view (vendor-detail tab).
+
+#### Producer
+**File:** `src/classes/Utils/Purchase/Master/class-producer.php` — component manufacturer.
+
+- Constructor: `__construct(array $row)`.
+- Public typed properties: `id`, `name`, `isActive`, `comment`.
+- No methods — pure data.
+
+#### ProducerRepository
+**File:** `src/classes/Utils/Purchase/Master/class-producerrepository.php` — CRUD over `list__producer`.
+
+- `getById`, `getAll(bool $onlyActive = false)`, `getByName(string $name): ?Producer` (used by the Sheets importer to dedup by business key).
+- `create(...)` / `update(...)` / `toggleActive(...)` — standard.
+
+**Used by:** `Producers` admin view; `import-vendors-from-gsheet.php` (creates producers on first sight); `VendorPart` (FK target).
+
+#### VendorPart
+**File:** `src/classes/Utils/Purchase/Master/class-vendorpart.php` — the (vendor × producer × part) catalog row, known internally as the "OrderVariant".
+
+- Constructor: `__construct(array $row)` from `list__vendor_part` (which carries the P5 `producer_part_no` column and the P6-renamed `isActive` flag).
+- Public typed properties: `id`, `vendorId`, `producerId`, `partsId`, `vendorPartNo`, `producerPartNo` (nullable), `producerName` (nullable, populated by joins), `privateComment`, `vendorJmId`, `fullPackQuantity`, `isActive`, `createdAt`, `updatedAt`, plus joined `vendorName`, `partName`, `unitName`.
+- No methods — pure data; the `PurchaseActionHandler::computeLastKnownPrice()` and `vendor-part-comment.php` AJAX endpoint are the only writers to its `comment` column (the private-comment inline-edit feature).
+
+#### VendorPartRepository
+**File:** `src/classes/Utils/Purchase/Master/class-vendorpartrepository.php` — CRUD over `list__vendor_part`; the most-used repo (drives the Koszyk picker's variant list, the search modal, the vendor-parts admin view).
+
+- `getById`, `getAll(bool $onlyActive = false)`, `getByVendor(int $vendorId, bool $onlyActive = false)`, `getByProducer(int $producerId, bool $onlyActive = false)`, `getByPart(int $partsId, bool $onlyActive = false)` — the four "by-X" lookups used by the admin views.
+- `create(...)` / `update(...)` / `toggleActive(...)` — standard with `name` + JM + full-pack validation.
+- `existsForVendorAndPartNo(int $vendorId, string $vendorPartNo): bool` — uniqueness pre-check for the create flow; the `vp-update.php` endpoint also relies on the `(vendor_id, vendor_part_no)` UNIQUE index in DB as the real race guard.
+- `buildSelectJoin(): string` — shared SELECT clause used by every read.
+
+**Used by:** `VendorParts` admin view; `purchases/cart/cart-view.php` (variant options, VENDOR_PARTS_INDEX, scoped options, comment display); `purchases/cart/vendor-part-search.php` and `purchases/cart/vendor-part-comment.php` (search modal + comment save); `purchases/receipts/receipt-get.php`; `import-vendors-from-gsheet.php`; `PurchaseActionHandler`.
+
+### Order
+
+#### RFQ
+**File:** `src/classes/Utils/Purchase/Order/class-rfq.php` — Request For Quote header (state machine: `draft → sent → responded | cancelled | converted`).
+
+- Constructor: `__construct(array $row)`.
+- Public typed properties: `id`, `vendorId`, `state`, `rfqNumber`, `expectedReplyDate`, `sentAt`, `createdBy`, `comment`, `createdAt`, `updatedAt`.
+- No methods — state transitions live in `PurchaseActionHandler::setSentAt()`, `setRfqNumber()`, etc. (repository-only, no entity methods).
+
+#### RFQRepository
+**File:** `src/classes/Utils/Purchase/Order/class-rfqrepository.php` — CRUD over `purchase__rfq`.
+
+- `getById`, `getAll(bool $onlyActive = false)`, `getByVendor(int $vendorId)`, `getByState(string $state)`.
+- `create(...)` / `update(...)` / `toggleActive(...)`.
+- State setters: `setSentAt(int $id, ?\DateTime $at)`, `setRfqNumber(int $id, ?string $number)`.
+
+**Used by:** `PurchaseActionHandler`.
+
+#### RFQItem
+**File:** `src/classes/Utils/Purchase/Order/class-rfqitem.php` — RFQ line item.
+
+- Constructor: `__construct(array $row)`.
+- Public typed properties: `id`, `rfqId`, `vendorPartId`, `quantity`, `quantityUnitId`, `unitPrice` (nullable), `currency`, `comment`.
+- No methods — pure data.
+
+#### RFQItemRepository
+**File:** `src/classes/Utils/Purchase/Order/class-rfqitemrepository.php` — CRUD over `purchase__rfq_item`.
+
+- `getById`, `getByRfq(int $rfqId): array` — main lookup for the (future) RFQ edit page.
+- `create(...)` / `update(...)` / `delete(int $id)`.
+
+**Used by:** `PurchaseActionHandler::createDocument()`, `createPoFromRfQ()`.
+
+#### PurchaseOrder
+**File:** `src/classes/Utils/Purchase/Order/class-purchaseorder.php` — Purchase Order header (state machine: `draft → sent → confirmed → partially_received → received`, plus terminal `cancelled`).
+
+- Constructor: `__construct(array $row)`.
+- Public typed properties: `id`, `vendorId`, `state`, `poNumber`, `vendorPoNumber`, `convertedFromRfqId`, `expectedDeliveryDate`, `sentAt`, `confirmedAt`, `createdBy`, `comment`, `createdAt`, `updatedAt`.
+- No methods — state transitions live in the repository setters.
+
+#### PurchaseOrderRepository
+**File:** `src/classes/Utils/Purchase/Order/class-purchaseorderrepository.php` — CRUD over `purchase__order`.
+
+- `getById`, `getAll`, `getByVendor`, `getByState`, `getByRfq(int $rfqId): ?PurchaseOrder` — finds the PO created from an RFQ.
+- `create(...)` / `update(...)` / `toggleActive(...)`.
+- State setters: `setPoNumber`, `setVendorPoNumber`, `setConfirmedAt`, `setSentAt`.
+
+**Used by:** `PurchaseActionHandler`.
+
+#### PurchaseOrderItem
+**File:** `src/classes/Utils/Purchase/Order/class-purchaseorderitem.php` — PO line item.
+
+- Constructor: `__construct(array $row)`.
+- Public typed properties: `id`, `poId`, `vendorPartId`, `quantity`, `quantityUnitId`, `unitPrice`, `currency`, `quantityReceived`, `comment`.
+- No methods — pure data; `quantityReceived` is updated by `PurchaseActionHandler::createReceipt()`.
+
+#### PurchaseOrderItemRepository
+**File:** `src/classes/Utils/Purchase/Order/class-purchaseorderitemrepository.php` — CRUD over `purchase__order_item`.
+
+- `getById`, `getByPo(int $poId): array` — main lookup.
+- `create(...)` / `update(...)` / `delete(int $id)`.
+
+**Used by:** `PurchaseActionHandler::createReceipt()`.
+
+#### OrderReceipt
+**File:** `src/classes/Utils/Purchase/Order/class-orderreceipt.php` — Goods-receipt header (one row per delivery note / PZ-WZ).
+
+- Constructor: `__construct(array $row)`.
+- Public typed properties: `id`, `poId`, `documentNumber`, `receivedBy`, `receivedAt`, `comment`.
+- No methods — pure data.
+
+#### OrderReceiptRepository
+**File:** `src/classes/Utils/Purchase/Order/class-orderreceiptrepository.php` — CRUD over `purchase__order_receipt`.
+
+- `getById`, `getByPo(int $poId): array`.
+- `create(...)` / `update(...)` / `delete(int $id)`.
+
+**Used by:** `purchases/receipts/receipt-get.php`; `PurchaseActionHandler::createReceipt()`.
+
+#### PurchaseActionHandler
+**File:** `src/classes/Utils/Purchase/Order/class-purchaseactionhandler.php` (~460 lines) — the single orchestrator for all multi-step procurement operations. Instantiated per-request (holds no state); constructors injects the four transactional repos (`RFQRepository`, `RFQItemRepository`, `PurchaseOrderRepository`, `PurchaseOrderItemRepository`) plus the four master repos it needs to look up vendors / parts. Uses `MsaDB->db->beginTransaction()` for atomic writes and reuses the existing `TransferGroupManager` for the `inventory__parts` writes that close the receiving loop into the warehouse.
+
+- `createDocument(string $type, int $vendorId, int $userId): int` — creates an RFQ (`type='rfq'`) or PO (`type='po'`) in `state='draft'`. Auto-allocates the next number via `allocateDocumentNumber()`; admin can override before sending.
+- `allocateDocumentNumber(string $type, int $year): string` — `SELECT ... FOR UPDATE` on `purchase__number_counter`, returns `PO/YYYY/NNNN` or `RFQ/YYYY/NNNN`.
+- `createPoFromRfQ(int $rfqId, int $userId): int` — converts an RFQ + items into a PO, copies `vendor_part_id`, `quantity`, `quantity_unit_id`, copies `unit_price` from the RFQ item as the starting point for negotiation.
+- `createReceipt(int $poId, array $items, int $userId): int` — validates `quantity_received ≤ quantity × 1.10` per line (lenient per §9.2), opens a `TransferGroupManager::createTransferGroup(..., 'purchase_receipt')`, inserts `inventory__parts` rows with positive `qty`, updates `purchase__order_item.quantity_received`, and (if everything received) transitions the PO to `'received'` (or `'partially_received'`).
+- `computeLastKnownPrice(int $vendorPartId, ?string $currency = null): ?float` — single-purpose helper for the "last known price" hint shown greyed-out in the RFQ/PO draft UI. Runs a query against `purchase__order_item` history for the given `vendor_part_id` (optionally filtered by `currency`) and returns the most recent non-null `unit_price`. **Never persisted** — always computed at read time.
+
+**Used by:** the Koszyk cart's `createDocument` (RFQ or PO at submit); `purchases/receipts/receipt-get.php` (`createReceipt`); the RFQ→PO conversion (in the Koszyk post-submit flow before the placeholder page).
+
+---
+
 ## Production
 
 Production workflow orchestration for SMD/THT (via `ProductionManager`) and SKU (via `SkuProductionProcessor`).
