@@ -57,3 +57,16 @@
     max-height: 50vh;
     overflow-y: auto;
 }
+
+/* z-index: the open menu is appended to <body> (data-container="body")
+   so it should float above everything, but it still competes with
+   subsequent Bootstrap 4 components that create their own stacking
+   contexts — most notably the bootstrap-select menu defaults to
+   z-index: 1000, but other elements (modals at 1050, .btn-group
+   dropdowns, focused .form-control inputs) can sit higher. Bump the
+   open menu well above so a long option list never paints under the
+   next input below. The .show class is what bootstrap-select adds
+   when the menu is open. */
+.bootstrap-select.show .dropdown-menu {
+    z-index: 9999;
+}
