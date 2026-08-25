@@ -1,14 +1,35 @@
 # Plan — Procurement Module (Zakupy / Dostawcy)
 
-**Status:** Draft v1.5 — **Phase 4 complete and merged into `feature/component-procurement`**. Goods receiving is live under `Admin → Zakupy → Przyjęcia` (list) and `Przyjmij towar` button on each confirmed PO. Receiving closes the loop into the inventory ledger via positive `inventory__parts` rows inside a `purchase_receipt` transfer group. The procurement workflow is now end-to-end: Koszyk → RFQ → PO → confirm → receive → stock appears in `/warehouse` and `/archive`.
+**Status:** Shipped v1.6 — `feature/component-procurement` carries the
+working end-to-end procurement flow (P1–P4 from §10): vendor /
+producer / VendorPart master data, RFQ + PO lifecycle, goods
+receipts wired into the inventory ledger. The Koszyk (cart) UX
+on `/admin/purchase/cart` is the entry point — it queues items per
+vendor and either creates an RFQ or a PO at submit.
+
 **Branch:** `feature/component-procurement`
 **Owner:** TBD
+**Last cleanup:** 2026-08-25 — v1.6 reflects the cart-style entry
+point (not the original plan's "Reorder" screen), the 2026-08-22
+file-system restructure (cart/Receipts/Documents moved under
+`components/purchases/`; Rfqs/Orders list + Edit + Receive pages
+removed — combined RFQ+PO table is the future placeholder at
+`/admin/purchase/documents`), the P6 `is_active` → `isActive`
+column rename, and the audit-driven refactor (drop unused
+`$MsaDB` from 9 entities; unify duplicate `vp-add` endpoints;
+race-safe `vp-update`; Locker on the Sheets importer; inline styles
+extracted to `purchases.css`).
 
-This is the working plan for the new procurement module. It collects the
-domain model, schema, class structure, routing, and process flow so we can
-keep track during implementation. Update in place as decisions are made;
-move finished sections into the regular docs (`docs/code/MODULES.md`,
-`docs/data/DATABASE.md`, etc.) once the module is stable.
+The next time you change something here, also update:
+- `docs/data/DATABASE.md` for schema,
+- `docs/code/MODULES.md` for file map,
+- `docs/code/CLASSES.md` for the new `Atte\Utils\Purchase\…` classes,
+- `docs/operations/CRON.md` for `import-vendors-from-gsheet.php`,
+- `docs/system/ROUTING.md` for route changes,
+- `docs/system/ARCHITECTURE.md` for the Master/Order/ActionHandler split.
+
+The §10 phase breakdown at the bottom is **historical** — see the
+files above for the current state.
 
 ---
 
@@ -484,36 +505,63 @@ dumping, `use Atte\Utils\Purchase\Master\VendorRepository;` will fail with
 
 ## 6. UI / Routing
 
-Add cases to `index.php` (each with `requireAdmin()` before
-`includeWithVariables(...)`):
+**As built (v1.6).** Procurement routes live in two filesystem
+locations by intent:
+
+- **Master data CRUD** under `public_html/components/Admin/Purchase/`
+  (capital `Admin/` follows the existing app convention for admin-only
+  reference data; see `AGENTS.md` and `docs/code/CODEBASE_MAP.md`):
+  `Vendors/`, `Producers/`, `VendorParts/`.
+- **User-facing UX surfaces** under
+  `public_html/components/purchases/` (lowercase, plural — the
+  "shipped, user-visible flows" convention):
+  `cart/`, `receipts/`, `documents/`.
+
+Nav layout in `public_html/assets/layout/header.php` (top level,
+next to "Magazyn"):
+
+- **Admin → Dostawy** dropdown: Dostawcy, Producenci, Artykuły u
+  dostawców (the three master-data CRUD pages).
+- **Zamówienia komponentów** dropdown: Koszyk, Przyjęcia, Zapytania
+  i zamówienia (the latter is a placeholder for the future combined
+  RFQ+PO list with filtration).
+
+`index.php` switch (each route calls `requireAdmin()` first):
 
 | Route | Title (PL) | Component |
 |---|---|---|
-| `admin/purchase/vendors` | Dostawcy | `public_html/components/Admin/Purchase/Vendors/vendors-view.php` |
-| `admin/purchase/producers` | Producenci | `…/Producers/producers-view.php` |
-| `admin/purchase/vendor-parts` | Artykuły u dostawców | `…/VendorParts/vendor-parts-view.php` |
-| `admin/purchase/rfqs` | Zapytania ofertowe | `…/Rfqs/rfqs-view.php` |
-| `admin/purchase/rfqs/edit` | Edycja zapytania | `…/Rfqs/Edit/edit-rfq-view.php` |
-| `admin/purchase/orders` | Zamówienia | `…/Orders/orders-view.php` |
-| `admin/purchase/orders/edit` | Edycja zamówienia | `…/Orders/Edit/edit-order-view.php` |
-| `admin/purchase/orders/receive` | Przyjęcie towaru | `…/Orders/Receive/receive-order-view.php` |
-| `admin/purchase/reorder` | Uzupełnij stany | `…/Reorder/reorder-view.php` |
+| `admin/purchase/vendors` | Dostawcy | `components/Admin/Purchase/Vendors/vendors-view.php` |
+| `admin/purchase/producers` | Producenci | `components/Admin/Purchase/Producers/producers-view.php` |
+| `admin/purchase/vendor-parts` | Artykuły u dostawców | `components/Admin/Purchase/VendorParts/vendor-parts-view.php` |
+| `admin/purchase/cart` | Koszyk zakupowy | `components/purchases/cart/cart-view.php` |
+| `admin/purchase/receipts` | Przyjęcia | `components/purchases/receipts/receipts-view.php` |
+| `admin/purchase/documents` | Zapytania i zamówienia | `components/purchases/documents/documents-view.php` |
 
-Each module directory follows the existing convention:
+AJAX endpoints in the same folders are called by **real component
+path** via `COMPONENTS_PATH` (`header.js` defines
+`COMPONENTS_PATH = '/atte_ms_new/public_html/components'`) — e.g. the
+Koszyk calls `COMPONENTS_PATH + '/purchases/cart/cart-action.php'`.
+This matches the convention used by warehouse / commissions / production
+modules. The index.php pre-switch translator handles only the legacy
+`/admin/<rest>.php` virtual URL form for any non-moved admin AJAX
+endpoints (single fallback location under `components/Admin/`).
 
-```
-public_html/components/Admin/Purchase/<Feature>/
-├── <feature>-view.php        # main page (HTML + JS bootstrap)
-├── modals.php                # shared Bootstrap modals
-├── <feature>-<verb>.php      # AJAX endpoint (echo JSON, exit)
-└── table-row-template.php    # jQuery row template for AJAX lists
-```
+The original v1.5 plan of separate **RFQ list / RFQ edit / Order list /
+Order edit / Receive / Reorder** pages was **not** built. Instead the
+Koszyk entry point queues items per vendor and the cart's
+"Utwórz zapytanie / Utwórz zamówienie" buttons (grouped per vendor)
+jump straight to the document creation flow. The separate list pages
+were removed during the 2026-08-22 restructure; the combined RFQ+PO
+list with filtration is the future `/admin/purchase/documents`
+placeholder. Receive goods lives in `/admin/purchase/receipts` (the
+per-PO receive form is invoked by a button inside the PO edit page,
+which itself is reachable from the placeholder's per-doc links once
+that list exists).
 
-Reusable assets live under `public_html/components/Admin/Purchase/shared/`
-(e.g. `vendor-select.js`, `vendor-part-picker.js`).
-
-Add an **Admin → Zakupy** dropdown to `public_html/assets/layout/header.php`
-mirroring the existing Admin menu structure (see lines 125–163).
+For per-folder file conventions, see the relevant `docs/code/MODULES.md`
+entries for the `Admin/Purchase/Vendors`, `Admin/Purchase/Producers`,
+`Admin/Purchase/VendorParts`, `purchases/cart`, `purchases/receipts`,
+and `purchases/documents` sections.
 
 ---
 
@@ -632,38 +680,73 @@ When the vendor replies to an RFQ:
 ### 9.2 Deferred UX polish (P5+, not blocking P1–P4)
 
 1. **Multi-line batch add** — One-by-one is fine for v1; revisit when we
-   see actual usage patterns.
+   see actual usage patterns. **Still open (v1.6).**
 2. **Dedicated price history view** — Inline "last price" hint is enough
    for v1; a per-VendorPart timeline screen can be added later.
+   **Still open (v1.6).**
 3. **Preferred vendor per part** — YAGNI for v1; the part picker already
-   shows all available vendors for a given part.
+   shows all available vendors for a given part. **Still open (v1.6).**
 4. **Depletion forecast on reorder screen** — Deferred; current picker is
-   a generic search over `list__parts`.
-5. **Producer's own PartNo per part** — The producer's catalog name for
-   each part (distinct from ours and from the vendor's). Not stored on
-   v1; add `producer_part_no` to `list__vendor_part` if/when needed.
+   a generic search over `list__parts`. **Still open (v1.6).**
+5. **Producer's own PartNo per part** — Distinct from our internal part
+   name and from the vendor's reference. **Shipped in P5** — column
+   `list__vendor_part.producer_part_no` added (see
+   `docs/procurement/sql/P5-schema.sql`); surfaced in the Koszyk
+   picker option subtext and the cart table sub-line.
+
+Additional polish captured during v1.6 cleanup (not in the original
+§9.2 list):
+
+- Soft-delete of referenced rows is correctly prevented by
+  `ON DELETE RESTRICT` (P2–P4) — the `is_active` (now `isActive`,
+  see `docs/procurement/sql/P6-schema.sql`) flag is the deactivation
+  channel.
+- **Inline create-vendor-part flow** was built but the Koszyk page
+  evolved away from the original "Reorder" screen into a vendor-first
+  cascading picker instead. The `createOrFindVendorPart()` helper is
+  still available in `PurchaseActionHandler` for future callers.
+- **Cart persistence** (so an admin can refresh without losing queued
+  items): 7-day localStorage (intentionally short-lived — not a shared
+  cart; for shared / multi-device carts, persist server-side later).
+- **Per-vendor clear** + **per-vendor "select vendor" link** with a
+  green confirmation pulse on the picker.
+- **Inline edit of the variant's private comment** (pen icon on the
+  picker row → immediate save to `list__vendor_part.comment` via
+  `vendor-part-comment.php`).
 
 ---
 
-## 10. Implementation Phases (proposed)
+## 10. Implementation Phases (historical — shipped)
 
-Once §9 is resolved, suggest delivering in this order so the module is
-usable from day one and we can show progress in the running app:
+The v1.5 plan delivered P1–P4 in the order proposed below. P1–P4 are
+**shipped** in `feature/component-procurement` as of 2026-08-22; the
+Koszyk UX on `/admin/purchase/cart` (not the original "Reorder"
+screen) is the de-facto entry point. The detailed per-phase scope
+notes below are preserved as the **historical record of how the
+module was built**. For the current state, see:
 
-| Phase | Scope | Roughly self-contained? |
+- File map: `docs/code/MODULES.md` — procurement subdirs.
+- Class map: `docs/code/CLASSES.md` — `Atte\Utils\Purchase\…` namespace.
+- Schema: `docs/data/DATABASE.md` — `list__vendor*`, `list__producer`,
+  `purchase__*` tables.
+- Routes: `docs/system/ROUTING.md` — 6 procurement routes.
+- Cron: `docs/operations/CRON.md` — `import-vendors-from-gsheet.php`.
+- Architecture: `docs/system/ARCHITECTURE.md` — Master / Order /
+  ActionHandler split.
+
+| Phase | Scope (as built) | Status |
 |---|---|---|
-| **P1 — Schema + master data** | Tables 4.1.x, vendor/supplier/producer/vendor-part CRUD, header.php nav entry, basic CSS in shared/ | yes — vendors/producers usable but no orders yet |
-| **P2 — RFQ lifecycle** | Tables 4.2, RFQ list/edit, "add to RFQ" from reorder screen, last-known-price hint | yes — can create and send RFQs |
-| **P3 — PO lifecycle + RFQ→PO conversion** | Table 4.3, PO list/edit, conversion, sending, `unit_price` capture | yes — can manage the full pre-receipt lifecycle |
-| **P4 — Receiving + inventory integration** | Tables 4.4, 4.5, `ref__transfer_group_types` row, `inventory__*` writes, state transitions | yes — closes the loop into the warehouse |
-| **P5 — Polish + low-stock reorder view** | `/admin/purchase/reorder` screen, filter UX, copy review | nice-to-have, after the core works |
+| **P1 — Schema + master data** | Tables `list__vendor`, `list__vendor_supplier`, `list__producer`, `list__vendor_part` (with `is_active` later renamed to `isActive` in P6); vendor / supplier / producer / VendorPart CRUD; header.php nav entry; vendor-detail page with linked suppliers + VendorParts. | **Shipped** |
+| **P2 — RFQ lifecycle** | Tables `purchase__rfq`, `purchase__rfq_item`, `purchase__number_counter`; RFQ creation via Koszyk "Utwórz zapytanie" (no standalone list page — the combined table is the future placeholder); `state` machine; `createDocument` + `allocateDocumentNumber` (FOR UPDATE) in `PurchaseActionHandler`. | **Shipped** (no standalone list page) |
+| **P3 — PO lifecycle + RFQ→PO conversion** | Tables `purchase__order`, `purchase__order_item`; PO creation via Koszyk "Utwórz zamówienie"; `createPoFromRfQ`; `vendor_po_number` capture; `unit_price` capture per line. | **Shipped** (no standalone list page) |
+| **P4 — Receiving + inventory integration** | Tables `purchase__order_receipt`, `purchase__order_receipt_item`; `ref__transfer_group_types` row `slug='purchase_receipt'`; `TransferGroupManager` + positive `inventory__parts` writes; lenient 110% over-delivery per line; state transitions to `partially_received` / `received`. | **Shipped** (receive form reachable from PO edit; no standalone list — `/admin/purchase/receipts` exists for browsing) |
+| **P5 — Reorder screen + polish** | **Replaced** by the Koszyk UX (cascading vendor / part / variant pickers, 7-day localStorage cart, per-vendor clear + vendor-select link, packages-input with uneven-pack warning, inline private-comment edit). Producer's own PartNo (`producer_part_no` column) added. Inline styles extracted to `purchases.css`. | **Shipped (different shape)** |
 
-Each phase ends with: schema dump appended to `atte_ms_struct.sql`, doc
-sections promoted into `docs/data/DATABASE.md`, `docs/code/MODULES.md`,
-`docs/system/ROUTING.md` (or the relevant file), and a working smoke test
-on the local XAMPP stack.
+Original v1.5 P5 per-phase detail follows as historical reference.
+The "Reorder" screen note is no longer applicable; the corresponding
+route (`/admin/purchase/reorder`) does **not** exist in v1.6.
 
-### P1 detail — Schema + master data
+### P1 detail — Schema + master data (shipped)
 
 Tables to add in this phase: `list__vendor`, `list__vendor_supplier`,
 `list__producer`, `list__vendor_part`. No transactional data yet.
