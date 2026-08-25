@@ -86,7 +86,7 @@ foreach ($vpRows as $r) {
             <div class="row">
                 <div class="col-md-6">
                     <label for="vendorSelect">Dostawca:</label>
-                    <select id="vendorSelect" class="selectpicker form-control" data-live-search="true" data-width="100%" data-container="body" title="Wybierz dostawcę...">
+                    <select id="vendorSelect" class="selectpicker form-control" data-live-search="true" data-width="fit" data-container="body" title="Wybierz dostawcę...">
                         <?php foreach ($vendorsWithParts as $v): ?>
                             <option value="<?= (int)$v['id'] ?>"
                                     data-name="<?= htmlspecialchars($v['name']) ?>"
@@ -98,7 +98,7 @@ foreach ($vpRows as $r) {
                 </div>
                 <div class="col-md-6">
                     <label for="partSelect">Część:</label>
-                    <select id="partSelect" class="selectpicker form-control" data-live-search="true" data-width="100%" data-container="body" title="Wybierz część...">
+                    <select id="partSelect" class="selectpicker form-control" data-live-search="true" data-width="fit" data-container="body" title="Wybierz część...">
                         <?php foreach ($partsWithVendors as $p): ?>
                             <option value="<?= (int)$p['id'] ?>"
                                     data-name="<?= htmlspecialchars($p['name']) ?>"
@@ -115,7 +115,7 @@ foreach ($vpRows as $r) {
                     <label for="vendorPartNoSelect">Numer u dostawcy:</label>
                     <div class="d-flex align-items-start">
                         <div class="flex-grow-1 mr-1">
-                            <select id="vendorPartNoSelect" class="selectpicker form-control" data-live-search="true" data-width="100%" data-container="body" title="Wybierz numer u dostawcy...">
+                            <select id="vendorPartNoSelect" class="selectpicker form-control" data-live-search="true" data-width="fit" data-container="body" title="Wybierz numer u dostawcy...">
                                 <!-- populated by JS once vendor and/or part are picked;
                                      catalog-wide lookup lives in the search modal -->
                             </select>
