@@ -178,13 +178,19 @@ Six scripts. All use `Atte\Utils\Locker`
   to the trigger button so long option text clips to that width
   instead of stretching the column. Pair with
   `data-container="#<parent-id>"` so the menu also stays inside
-  the column. This is the canonical bootstrap-select-native fix
-  for the responsive "fill parent + handle long options" case —
-  no pixel values, no JS workaround. The full docs:
+  the column. **If the picker sits inside a `.flex-grow-1`
+  wrapper (or any flex item), add `min-width: 0` to that wrapper
+  (and to `.bootstrap-select`) — otherwise the flex item's
+  intrinsic min-width (= longest option's text width) expands past
+  the column and breaks the `100%` cap.** This is the canonical
+  bootstrap-select-native fix for the responsive "fill parent +
+  handle long options" case — no pixel values, no JS workaround.
+  The full docs:
   [options](https://developer.snapappointments.com/bootstrap-select/options/),
   [methods](https://developer.snapappointments.com/bootstrap-select/methods/).
   For this project: **`data-width="100%"` + a sized container div +
-  `data-container="#<parent-id>"` is the answer to every picker-width issue.**
+  `data-container="#<parent-id>"` + `min-width: 0` on the flex
+  wrapper is the answer to every picker-width issue.**
 
 ---
 

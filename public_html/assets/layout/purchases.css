@@ -44,3 +44,14 @@
     border-color: #ffb300;
     box-shadow: 0 0 0 .2rem rgba(255,193,7,.25);
 }
+
+/* Flex children default to min-width: auto (= content size), which
+   lets the .flex-grow-1 wrapper around vendorPartNoSelect expand to
+   the longest option's intrinsic width — pushing past the column
+   and breaking data-width="100%" (the picker's CSS width has nothing
+   to clip against when the parent keeps stretching). Set min-width:0
+   on both the flex wrapper and the .bootstrap-select wrapper so they
+   can actually shrink below content size and the picker's built-in
+   text-overflow: ellipsis can do its job. Without this rule, the
+   picker override reported in 506e213 / d2b2bc6 returns. */
+.flex-grow-1, .bootstrap-select { min-width: 0; }
