@@ -27,7 +27,10 @@ config/
   config.php                    ← autoloads vendor, loads .env, defines
                                   ROOT_DIRECTORY & BASEURL, starts session,
                                   helpers: includeWithVariables(), asset()
-  config-google-sheets.php      ← HybridAuth Google adapter (lazy-instantiated)
+  config-google-sheets.php      ← HybridAuth Google adapter (web flow only;
+                                  triggers session_start() — do NOT require
+                                  from CLI cron scripts; the Api classes
+                                  define their own constants from $_ENV)
 public_html/                    ← web root (Apache doc-root in prod via .htaccess)
   assets/{img,js,layout}/       ← static assets, header.php layout
   components/<Module>/          ← one folder per UI module (Production, Admin,

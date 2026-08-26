@@ -16,9 +16,9 @@ The OAuth handshake is managed by [Hybridauth](https://hybridauth.github.io/) (a
 
 | Class | File | Responsibility |
 |---|---|---|
-| `Hybridauth\Provider\Google` | `config/config-google-sheets.php` | Handles the authorization redirect and token exchange |
-| `Atte\Api\GoogleOAuth` | `src/classes/Api/class-googleoauth.php` | Stores/retrieves tokens in the MSA database (`google_oauth` table) and triggers token refresh |
-| `Atte\Api\GoogleSheets` | `src/classes/Api/class-googlesheets.php` | Provides high-level methods (`readSheet`, `writeToSheet`, `appendToSheet`) wrapping the Google Sheets API v4 |
+| `Hybridauth\Provider\Google` | `config/config-google-sheets.php` | Handles the authorization redirect and token exchange (web flow only — `session_start()` makes this file unsafe to load from CLI after stdout output) |
+| `Atte\Api\GoogleOAuth` | `src/classes/Api/class-googleoauth.php` | Stores/retrieves tokens in the MSA database (`google_oauth` table) and triggers token refresh. CLI-safe: `regenerateToken()` defines `GOOGLE_CLIENT_ID/SECRET` from `$_ENV` lazily, only when a refresh is needed |
+| `Atte\Api\GoogleSheets` | `src/classes/Api/class-googlesheets.php` | Provides high-level methods (`readSheet`, `writeToSheet`, `appendToSheet`) wrapping the Google Sheets API v4. CLI-safe: the class no longer requires `config-google-sheets.php`. On HTTP 401 it refreshes the token via `GoogleOAuth` and rebuilds the `Google_Client` (avoids the bearer-token cache leak in `ScopedAccessTokenMiddleware`'s `MemoryCacheItemPool`) |
 
 **Authorization callback** — after the user approves access, Google redirects to:
 

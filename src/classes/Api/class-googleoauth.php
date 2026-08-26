@@ -1,7 +1,5 @@
-<?php 
-namespace Atte\Api; 
-
-require_once ROOT_DIRECTORY."/config/config-google-sheets.php";
+<?php
+namespace Atte\Api;
 
 class GoogleOAuth
 {
@@ -12,6 +10,18 @@ class GoogleOAuth
     }
 
     public function regenerateToken(){
+        // The original config-google-sheets.php eagerly instantiates
+        // Hybridauth\Provider\Google which calls session_start() — that
+        // breaks CLI after any stdout output. The Google OAuth refresh
+        // endpoint only needs the client_id/secret, so we read them from
+        // $_ENV (Dotenv has already loaded them by the time we get here).
+        if (!defined('GOOGLE_CLIENT_ID')) {
+            define('GOOGLE_CLIENT_ID', $_ENV['GOOGLE_CLIENT_ID'] ?? '');
+        }
+        if (!defined('GOOGLE_CLIENT_SECRET')) {
+            define('GOOGLE_CLIENT_SECRET', $_ENV['GOOGLE_CLIENT_SECRET'] ?? '');
+        }
+
         $refresh_token = $this->get_refresh_token();
         $client = new \GuzzleHttp\Client(['base_uri' => 'https://accounts.google.com']);
 

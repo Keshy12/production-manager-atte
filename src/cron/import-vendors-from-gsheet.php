@@ -45,11 +45,16 @@
  *   - config.php is required explicitly because Apache's .htaccess prepend
  *     only runs under HTTP. It defines ROOT_DIRECTORY, loads autoload, and
  *     loads .env.
- *   - We deliberately do NOT load config-google-sheets.php, because that file
- *     eagerly instantiates Hybridauth\Provider\Google, which calls
- *     session_start() and breaks under CLI after stdout output.
- *   - Instead we hit the Google Sheets API directly via \Google_Client and
- *     implement our own 401-retry with token refresh.
+ *   - Sheet reads go through Atte\Api\GoogleSheets. That class used to
+ *     eagerly load config-google-sheets.php (which instantiates Hybridauth
+ *     and calls session_start() — breaks CLI after stdout output). The
+ *     require was removed; GoogleOAuth::regenerateToken() defines
+ *     GOOGLE_CLIENT_ID/SECRET from $_ENV lazily, only when a 401 forces
+ *     a refresh. No Hybridauth, no session_start, safe to use after
+ *     logLine() output.
+ *   - 401 → refresh → retry is handled inside GoogleSheets::readSheet()
+ *     by rebuilding the Google_Client (which gives a fresh empty
+ *     MemoryCacheItemPool, dodging the bearer-token cache leak).
  */
 
 // CLI bootstrap.
@@ -57,6 +62,7 @@ require_once __DIR__ . '/../../config/config.php';
 
 use Atte\DB\MsaDB;
 use Atte\Utils\Locker;
+use Atte\Api\GoogleSheets;
 
 set_time_limit(0);
 
@@ -78,15 +84,6 @@ $dryRun = in_array('--dry-run', $argv ?? [], true);
 $updateExisting = in_array('--update-existing', $argv ?? [], true);
 
 $spreadsheetId = '1OowYceg8hWtuCmnqPiqCyg5N3rVaAngEvmnGRhjeOew';
-
-// .env was already loaded by config.php; ensure credentials are available as
-// constants so we don't depend on config-google-sheets.php.
-if (!defined('GOOGLE_CLIENT_ID')) {
-    define('GOOGLE_CLIENT_ID', $_ENV['GOOGLE_CLIENT_ID'] ?? '');
-}
-if (!defined('GOOGLE_CLIENT_SECRET')) {
-    define('GOOGLE_CLIENT_SECRET', $_ENV['GOOGLE_CLIENT_SECRET'] ?? '');
-}
 
 $logDir  = ROOT_DIRECTORY . '/public_html/var/logs';
 if (!is_dir($logDir)) { @mkdir($logDir, 0755, true); }
@@ -174,93 +171,26 @@ function getPartIdByName(MsaDB $db, string $partNo): ?int {
 }
 
 // ---------------------------------------------------------------
-// Google Sheets client (CLI-safe wrapper around \Google_Client)
+// Google Sheets client (CLI-safe; uses Atte\Api\GoogleSheets which
+// no longer loads config-google-sheets.php — see Api class docblocks).
+// 401 → refresh → retry is handled inside GoogleSheets::readSheet()
+// by rebuilding the Google_Client, which avoids the bearer-token
+// cache leak that hit the previous hand-rolled flow.
 // ---------------------------------------------------------------
+$sheets = new GoogleSheets();
 
 /**
- * Read values from a sheet range. Auto-refreshes the access token on HTTP 401
- * (mirrors GoogleSheets::readSheet but works in CLI).
- *
- * @return array|false 2D array of rows, or false on hard failure.
+ * CLI-flavoured wrapper around GoogleSheets::readSheet() that funnels
+ * success / failure through logLine() and hard-exits on hard failure
+ * (matches the previous behaviour of readSheetCli).
  */
-function readSheetCli(string $spreadsheetId, string $sheetName, string $range, MsaDB $db) {
-    $client = buildGoogleClient($db);
-
-    try {
-        $service = new \Google_Service_Sheets($client);
-        $response = $service->spreadsheets_values->get($spreadsheetId, $sheetName . '!' . $range);
-        return $response->getValues();
-    } catch (\Exception $e) {
-        if ((int)$e->getCode() === 401) {
-            logLine('Access token expired, refreshing...');
-            refreshAccessToken($client, $db);
-            try {
-                $service = new \Google_Service_Sheets($client);
-                $response = $service->spreadsheets_values->get($spreadsheetId, $sheetName . '!' . $range);
-                return $response->getValues();
-            } catch (\Exception $e2) {
-                logLine('Sheet read failed after refresh: ' . $e2->getMessage());
-                return false;
-            }
-        }
-        logLine('Sheet read failed: ' . $e->getMessage());
-        return false;
+function readSheet(string $label, string $spreadsheetId, string $sheetName, string $range, GoogleSheets $sheets): array {
+    $values = $sheets->readSheet($spreadsheetId, $sheetName, $range);
+    if ($values === false) {
+        logLine("Arkusz $label pusty lub nieczytelny.");
+        exit(1);
     }
-}
-
-function buildGoogleClient(MsaDB $db): \Google_Client {
-    $token = loadStoredToken($db);
-    if (!$token || empty($token['access_token'])) {
-        throw new \RuntimeException('Brak tokena Google OAuth w bazie. Uruchom OAuth flow przez /admin/synchronization/sheets.');
-    }
-    $client = new \Google_Client();
-    $client->setClientId(GOOGLE_CLIENT_ID);
-    $client->setClientSecret(GOOGLE_CLIENT_SECRET);
-    $client->setAccessToken([
-        'access_token' => $token['access_token'],
-        'expires_in'   => $token['expires_in'] ?? 3600,
-    ]);
-    return $client;
-}
-
-function loadStoredToken(MsaDB $db): ?array {
-    $rows = $db->query("SELECT provider_value FROM google_oauth WHERE provider = 'google'");
-    if (!$rows || count($rows) === 0) return null;
-    $decoded = json_decode($rows[0]['provider_value'], true);
-    return is_array($decoded) ? $decoded : null;
-}
-
-function refreshAccessToken(\Google_Client $client, MsaDB $db): array {
-    $token = loadStoredToken($db);
-    $refresh = $token['refresh_token'] ?? null;
-    if (!$refresh) {
-        throw new \RuntimeException('Brak refresh_token w bazie. Uruchom ponownie OAuth flow.');
-    }
-    $newToken = $client->fetchAccessTokenWithRefreshToken($refresh);
-    if (!is_array($newToken)) {
-        throw new \RuntimeException('Refresh response is not an array: ' . var_export($newToken, true));
-    }
-    if (isset($newToken['error'])) {
-        throw new \RuntimeException('Refresh failed: ' . ($newToken['error_description'] ?? $newToken['error']));
-    }
-    if (empty($newToken['access_token'])) {
-        throw new \RuntimeException('Refresh response missing access_token: ' . json_encode($newToken));
-    }
-    // CRITICAL: this version of google/apiclient does NOT call setAccessToken()
-    // inside fetchAccessTokenWithRefreshToken(). Without the explicit call below
-    // the next request still carries the old bearer header.
-    $client->setAccessToken($newToken);
-    // fetchAccessTokenWithRefreshToken never returns a fresh refresh_token;
-    // preserve the existing one so the DB row stays usable.
-    $newToken['refresh_token'] = $refresh;
-    $db->update(
-        'google_oauth',
-        ['provider_value' => json_encode($newToken)],
-        'provider',
-        'google'
-    );
-    logLine('Token refreshed (expires_in=' . ($newToken['expires_in'] ?? '?') . 's)');
-    return $newToken;
+    return $values;
 }
 
 // ---------------------------------------------------------------
@@ -268,7 +198,7 @@ function refreshAccessToken(\Google_Client $client, MsaDB $db): array {
 //    Cols: A=ID, B=Name, J=Notes, K=LT
 // ---------------------------------------------------------------
 logLine('--- Vendors (dane_dostawcy) ---');
-$rawVendorValues = readSheetCli($spreadsheetId, 'dane_dostawcy', 'A:L', $MsaDB);
+$rawVendorValues = readSheet('dane_dostawcy', $spreadsheetId, 'dane_dostawcy', 'A:L', $sheets);
 if (!$rawVendorValues || count($rawVendorValues) < 2) {
     logLine('Arkusz dane_dostawcy pusty lub nieczytelny.');
     exit(1);
@@ -322,7 +252,7 @@ logLine("Vendors summary: total={$vendorStats['total']} inserted={$vendorStats['
 //    Cols: A=Vendor ID, B=Vendor Name, C-F=person 1, G-J=person 2
 // ---------------------------------------------------------------
 logLine('--- Vendor contacts (dane_dostawcy_kontakty) ---');
-$rawContactValues = readSheetCli($spreadsheetId, 'dane_dostawcy_kontakty', 'A:J', $MsaDB);
+$rawContactValues = readSheet('dane_dostawcy_kontakty', $spreadsheetId, 'dane_dostawcy_kontakty', 'A:J', $sheets);
 if (!$rawContactValues || count($rawContactValues) < 2) {
     logLine('Arkusz dane_dostawcy_kontakty pusty lub nieczytelny.');
     exit(1);
@@ -392,7 +322,7 @@ logLine("Suppliers summary: rows={$supplierStats['rows']} contacts_attempted={$s
 //    Local index:   0  1       2          3        4         5               6            7             8         9                    10                 11
 // ---------------------------------------------------------------
 logLine('--- Vendor parts (ref_order_variants) ---');
-$rawVariantValues = readSheetCli($spreadsheetId, 'ref_order_variants', 'H:S', $MsaDB);
+$rawVariantValues = readSheet('ref_order_variants', $spreadsheetId, 'ref_order_variants', 'H:S', $sheets);
 if (!$rawVariantValues || count($rawVariantValues) < 2) {
     logLine('Arkusz ref_order_variants pusty lub nieczytelny.');
     exit(1);

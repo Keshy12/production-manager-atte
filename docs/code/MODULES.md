@@ -202,7 +202,7 @@
 - `list__vendor_part` — catalog row for (vendor × producer × part) triple; unique on `(vendor_id, vendor_part_no)`
 
 **One-time import helper:**
-- `src/cron/import-vendors-from-gsheet.php` — CLI importer that pulls vendor / contact / VendorPart data from the Google Sheets spreadsheet shared with `update-part-prices.php`. Idempotent, supports `--dry-run`. CLI bootstrap pattern (`require_once config.php`, bypass `config-google-sheets.php` because Hybridauth breaks under CLI) documented in the script header.
+- `src/cron/import-vendors-from-gsheet.php` — CLI importer that pulls vendor / contact / VendorPart data from the Google Sheets spreadsheet shared with `update-part-prices.php`. Idempotent, supports `--dry-run`. Sheet reads go through `Atte\Api\GoogleSheets::readSheet()`; the Api class is CLI-safe (no Hybridauth / `session_start()` load). CLI bootstrap pattern (`require_once config.php`) documented in the script header.
 
 **Notable behaviors:**
 - Soft-delete via `is_active` flag — never hard-delete referenced rows

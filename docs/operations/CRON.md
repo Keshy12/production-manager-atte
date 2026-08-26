@@ -359,7 +359,7 @@ Anonymous function `$flattenBom` (lines 40–93) — recursive closure with path
 
 ## Job 7 — `import-vendors-from-gsheet.php`
 
-**File:** `src/cron/import-vendors-from-gsheet.php` (494 lines)
+**File:** `src/cron/import-vendors-from-gsheet.php` (461 lines)
 
 ### Purpose
 One-shot Google Sheets → MSA importer for procurement master data (Phase 1). Reads three sheets from the same spreadsheet that `update-part-prices.php` uses, and populates the four procurement tables: `list__vendor`, `list__vendor_supplier`, `list__producer` (created on demand), and `list__vendor_part` (including the optional `producer_part_no` column added in P5). Idempotent — re-runs are safe; existing rows are skipped, matched by business key (vendor name, vendor+supplier name, vendor+vendor_part_no, producer name). Producer is created on first sight; vendor JM unit is created in `part__unit` on first sight. `producer_part_no` (P5 column 5 of `order_variants`) is imported when present and non-empty. Vendor 'Notes' (vendor `comment`) and lead time (`lead_time_days` in days) are also captured. `PartNo` not found in `list__parts.name` → row skipped + logged.
@@ -404,9 +404,7 @@ CLI args are read from `$argv`. The `--update-existing` flag backfills `producer
 |---|---|---|
 | `MsaDB` | `Atte\DB` | `getInstance()` for all DB access (insert + select; rows passed assoc to the `Vendor*` / `Producer*` / `VendorPart*` repositories through the file-local `dbInsertAssoc` / `dbFetchOne` helpers) |
 | `Locker` | `Atte\Utils` | `vendor_import_gsheet.lock` concurrent-run guard |
-| `\Google_Client` + `\Google_Service_Sheets` | `google/apiclient` | Direct Google Sheets API v4 read (deliberately bypasses `Hybridauth` / `config-google-sheets.php` — that file eagerly calls `session_start()` which breaks under CLI; the importer implements its own 401 → refresh → retry flow via `\Google_Client::fetchAccessTokenWithRefreshToken()`) |
-
-This file deliberately **does not** load `config-google-sheets.php` (commented in lines 35–43 of the source) and **does not** use the `Atte\Api\GoogleSheets` helper (different need: a one-shot Sheets reader, not a long-lived OAuth client).
+| `GoogleSheets::readSheet()` | `Atte\Api` | Sheet read with built-in 401 → refresh → retry flow. The Api class no longer loads `config-google-sheets.php` (that file eagerly instantiates `Hybridauth\Provider\Google`, which calls `session_start()` and breaks CLI after stdout output); `GoogleOAuth::regenerateToken()` lazily defines `GOOGLE_CLIENT_ID/SECRET` from `$_ENV` only when a refresh is actually needed. |
 
 ### Side Effects
 - **DB writes** to `list__vendor`, `list__vendor_supplier`, `list__producer`, `list__vendor_part`, `part__unit` — idempotent, all rows are `INSERT IGNORE` / dedup-then-insert under the hood.

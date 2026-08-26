@@ -122,7 +122,7 @@ This split keeps the navigation header uncluttered: master data lives under "Adm
 
 **Cross-cutting integration points**:
 - `PurchaseActionHandler::createReceipt()` reuses the existing `TransferGroupManager` to create a `transfer_group` of type `purchase_receipt`, then writes positive `qty` to `inventory__parts` — so the warehouse and low-stock tables get the receipt automatically without procurement needing its own inventory code.
-- The Google Sheets importer (`src/cron/import-vendors-from-gsheet.php`, see `docs/operations/CRON.md` Job 7) deliberately bypasses `config-google-sheets.php` (which eagerly calls `session_start()` and breaks under CLI) and hits the Sheets API directly via `\Google_Client` with its own 401 → refresh → retry loop.
+- The Google Sheets importer (`src/cron/import-vendors-from-gsheet.php`, see `docs/operations/CRON.md` Job 7) uses `Atte\Api\GoogleSheets::readSheet()` for sheet reads. The Api class no longer loads `config-google-sheets.php` (which eagerly calls `session_start()` and breaks under CLI after stdout output); `GoogleOAuth::regenerateToken()` defines `GOOGLE_CLIENT_ID/SECRET` from `$_ENV` lazily. The 401 → refresh → retry loop is owned by `GoogleSheets` (rebuilds the `Google_Client` on retry, avoiding the bearer-token cache leak in `ScopedAccessTokenMiddleware`'s `MemoryCacheItemPool`).
 
 ---
 
