@@ -1712,14 +1712,18 @@
         let vp = selectedVpEntry();
         if (!vp) return;
         // Pencil: hide the stepper + pencil, show the inline edit box.
+        // The edit box uses Bootstrap's d-none / d-flex toggle rather
+        // than jQuery's `.show()` because the static markup has
+        // `class="d-none …"` and `.d-none { display: none !important }`
+        // would otherwise block `.show()` from taking effect.
         $cartPackSizeStepper.hide();
         $cartPackSizeAdd.hide();
-        $cartPackSizeEditBox.show();
+        $cartPackSizeEditBox.removeClass('d-none').addClass('d-flex');
         $cartPackSizeInput.val('').trigger('focus');
     });
     $cartPackSizeCancel.on('click', function (e) {
         e.preventDefault();
-        $cartPackSizeEditBox.hide();
+        $cartPackSizeEditBox.removeClass('d-flex').addClass('d-none');
         $cartPackSizeInput.val('');
         $cartPackSizeStepper.show();
         $cartPackSizeAdd.show();
@@ -1753,7 +1757,7 @@
             // Refresh in-memory catalog entry and re-render the stepper.
             vp.pack_quantities = Array.isArray(r.pack_quantities) ? r.pack_quantities.slice() : [];
             cartAfterPackChange(qty);
-            $cartPackSizeEditBox.hide();
+            $cartPackSizeEditBox.removeClass('d-flex').addClass('d-none');
             $cartPackSizeInput.val('');
             $cartPackSizeStepper.show();
             $cartPackSizeAdd.show();
@@ -2011,12 +2015,12 @@
         // Pencil: hide the stepper + pencil, show the inline edit box.
         $editItemPackSizeStepper.hide();
         $editItemPackSizeAdd.hide();
-        $editItemPackSizeEditBox.show();
+        $editItemPackSizeEditBox.removeClass('d-none').addClass('d-flex');
         $editItemPackSizeInput.val('').trigger('focus');
     });
     $editItemPackSizeCancel.on('click', function (e) {
         e.preventDefault();
-        $editItemPackSizeEditBox.hide();
+        $editItemPackSizeEditBox.removeClass('d-flex').addClass('d-none');
         $editItemPackSizeInput.val('');
         $editItemPackSizeStepper.show();
         $editItemPackSizeAdd.show();
@@ -2056,7 +2060,7 @@
             let vp = getVpById(item.vendor_part_id);
             if (vp) vp.pack_quantities = newPacks;
             editModalAfterPackChange(qty, newPacks);
-            $editItemPackSizeEditBox.hide();
+            $editItemPackSizeEditBox.removeClass('d-flex').addClass('d-none');
             $editItemPackSizeInput.val('');
             $editItemPackSizeStepper.show();
             $editItemPackSizeAdd.show();

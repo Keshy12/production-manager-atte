@@ -208,7 +208,13 @@ $units = $MsaDB->query(
                                 <button type="button" class="btn btn-outline-secondary" id="cartPackSizeNext" title="Następna wielkość" style="padding:.1rem .45rem">+</button>
                             </span>
                             <button type="button" class="btn btn-sm btn-outline-secondary ml-1" id="cartPackSizeAdd" title="Dodaj nową wielkość opakowania" style="padding:.1rem .4rem"><i class="bi bi-pencil"></i></button>
-                            <span id="cartPackSizeEditBox" style="display:none" class="d-flex align-items-center flex-wrap">
+                            <!-- Edit box starts hidden via Bootstrap's
+                                 `d-none` utility. Toggling between
+                                 `d-none` and `d-flex` keeps the element
+                                 either fully hidden or in flex layout
+                                 without relying on inline-style priority
+                                 fights with `d-flex !important`. -->
+                            <span id="cartPackSizeEditBox" class="d-none align-items-center flex-wrap">
                                 <input type="number" id="cartPackSizeInput" class="form-control form-control-sm" style="width:6em" min="0.0001" step="0.0001" placeholder="np. 2500">
                                 <button type="button" id="cartPackSizeSave" class="btn btn-sm btn-success ml-1" title="Zapisz" style="padding:.15rem .4rem"><i class="bi bi-check"></i></button>
                                 <button type="button" id="cartPackSizeCancel" class="btn btn-sm btn-secondary ml-1" title="Anuluj (Esc)" style="padding:.15rem .4rem"><i class="bi bi-x"></i></button>
@@ -364,7 +370,7 @@ $units = $MsaDB->query(
                                     <button type="button" class="btn btn-outline-secondary" id="editItemPackSizeNext" title="Następna wielkość" style="padding:.1rem .45rem">+</button>
                                 </span>
                                 <button type="button" class="btn btn-sm btn-outline-secondary ml-1" id="editItemPackSizeAdd" title="Dodaj nową wielkość opakowania" style="padding:.1rem .4rem"><i class="bi bi-pencil"></i></button>
-                                <span id="editItemPackSizeEditBox" style="display:none" class="d-flex align-items-center flex-wrap">
+                                <span id="editItemPackSizeEditBox" class="d-none align-items-center flex-wrap">
                                     <input type="number" id="editItemPackSizeInput" class="form-control form-control-sm" style="width:6em" min="0.0001" step="0.0001" placeholder="np. 2500">
                                     <button type="button" id="editItemPackSizeSave" class="btn btn-sm btn-success ml-1" title="Zapisz" style="padding:.15rem .4rem"><i class="bi bi-check"></i></button>
                                     <button type="button" id="editItemPackSizeCancel" class="btn btn-sm btn-secondary ml-1" title="Anuluj (Esc)" style="padding:.15rem .4rem"><i class="bi bi-x"></i></button>
