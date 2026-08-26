@@ -356,16 +356,19 @@
                     '</option>';
             });
             $vendorSelect.html(vendorHtml);
-            // Use the plugin API (selectpicker('val', x)) rather than
-            // jQuery's .val() — the wrapper caches its own state and
-            // refresh() alone doesn't reliably re-read .val() changes
-            // after .html(). Mirrors the working pattern in
-            // refreshVendorPartRow.
+            // Canonical refresh -> val -> refresh sequence (matches
+            // refreshVendorPartRow's working pattern). The widget keeps
+            // its own option cache that becomes stale immediately after
+            // .html(); calling selectpicker('val', x) against that stale
+            // cache silently no-ops, leaving the picker empty. Sync the
+            // widget to the new options first so val() finds its target,
+            // then re-sync after to push the new display value through.
+            refreshSelectpicker($vendorSelect);
             if (prevVendorId) {
                 try { $vendorSelect.selectpicker('val', prevVendorId); } catch (e) { /* noop */ }
             }
             refreshSelectpicker($vendorSelect);
-            // Build part option list.
+            // Build part option list (same pattern).
             let partHtml = '';
             data.parts.forEach(function (p) {
                 let subtext = p.description
@@ -379,6 +382,7 @@
                     '</option>';
             });
             $partSelect.html(partHtml);
+            refreshSelectpicker($partSelect);
             if (prevPartId) {
                 try { $partSelect.selectpicker('val', prevPartId); } catch (e) { /* noop */ }
             }
