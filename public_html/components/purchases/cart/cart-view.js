@@ -53,8 +53,10 @@
     let $editItemCurrency    = $('#editItemCurrency');
     let $editItemSave        = $('#editItemSave');
     let $addToCartBtn        = $('#addToCartBtn');
-    let $toggleAddVariantBtn = $('#toggleAddVariantBtn');
-    let $clearSelectionBtn   = $('#clearSelectionBtn');
+    let $toggleAddVariantBtn       = $('#toggleAddVariantBtn');
+    let $addVariantHelpModal       = $('#addVariantHelpModal');
+    let $addVariantHelpContinue    = $('#addVariantHelpContinue');
+    let $clearSelectionBtn         = $('#clearSelectionBtn');
     let $pickVariantRow      = $('#pickVariantRow');
     let $addVariantRow1      = $('#addVariantRow1');
     let $addVariantRow2      = $('#addVariantRow2');
@@ -149,7 +151,7 @@
             $addVariantCommentRow.hide();
             $toggleAddVariantBtn
                 .removeClass('btn-outline-warning').addClass('btn-outline-info')
-                .html('<i class="bi bi-plus-square"></i> + Artykuł')
+                .html('<i class="bi bi-plus-square"></i> Artykuł')
                 .attr('title', 'Dodaj nowy artykuł dostawcy do katalogu');
             $addToCartBtn
                 .html('<i class="bi bi-plus-circle"></i> Dodaj')
@@ -1310,8 +1312,10 @@
         loadSelectionDocs();
     });
 
-    // Toggle "+ Artykuł" / "Anuluj" — flips the picker card between
-    // pick and add modes. Enabled only when a vendor is picked.
+    // Toggle "Artykuł" / "Anuluj" — flips the picker card between
+    // pick and add modes. On the pick→add transition we first show a
+    // short help modal explaining the two-step flow (catalog first,
+    // then cart line); the Continue button does the actual transition.
     $toggleAddVariantBtn.on('click', function () {
         if (pickerMode === 'add') {
             if (isAddModeDirty() && !window.confirm('Odrzucić wprowadzone dane nowego artykułu?')) {
@@ -1320,12 +1324,22 @@
             resetAddModeFields();
             setPickerMode('pick');
         } else {
-            // Vendor isn't required to enter add mode — the user may pick
-            // it inside the add-mode form. Save validation in updateAddBtnState
-            // and createNewVariant() still rejects if vendor is empty.
-            prefillAddModeFromSelection();
-            setPickerMode('add');
+            // Show the explanation modal — user dismisses / continues
+            // from inside it. Vendor isn't required to enter add mode
+            // (the user can pick it inside the form); Save validation in
+            // updateAddBtnState and createNewVariant() still rejects
+            // if vendor is empty.
+            $addVariantHelpModal.modal('show');
         }
+    });
+
+    // "Rozumiem, kontynuuj" inside the help modal — does the actual
+    // pick → add transition that the toggle button would have done
+    // directly if the modal weren't there.
+    $addVariantHelpContinue.on('click', function () {
+        $addVariantHelpModal.modal('hide');
+        prefillAddModeFromSelection();
+        setPickerMode('add');
     });
 
     // Track add-mode dirtiness so Anuluj can warn before discarding, and

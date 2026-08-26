@@ -228,11 +228,12 @@ $units = $MsaDB->query(
                     </span>
                 </div>
             </div>
-            <div class="row mt-2 align-items-center">
+            <hr class="my-3">
+            <div class="row align-items-center">
                 <div class="col-6 text-left">
                     <button type="button" id="toggleAddVariantBtn" class="btn btn-outline-info"
                             title="Dodaj nowy artykuł dostawcy do katalogu">
-                        <i class="bi bi-plus-square"></i> + Artykuł
+                        <i class="bi bi-plus-square"></i> Artykuł
                     </button>
                 </div>
                 <div class="col-6 text-right">
@@ -306,6 +307,32 @@ $units = $MsaDB->query(
                 <div class="modal-footer py-2">
                     <button type="button" class="btn btn-secondary" data-dismiss="modal">Anuluj</button>
                     <button type="button" class="btn btn-success" id="editItemSave">Zapisz</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== Help modal: shown when the user clicks "+ Artykuł" ===== -->
+    <div class="modal fade" id="addVariantHelpModal" tabindex="-1" role="dialog" aria-hidden="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title"><i class="bi bi-info-circle"></i> Dodawanie nowego artykułu</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Zamknij"><span>&times;</span></button>
+                </div>
+                <div class="modal-body">
+                    <p>Tworzenie nowego artykułu u dostawcy przebiega w dwóch krokach:</p>
+                    <ol>
+                        <li><strong>Dodaj artykuł do katalogu</strong> &mdash; uzupełnij producenta, jednostkę (JM), numer u&nbsp;dostawcy i&nbsp;pełne opakowanie (oraz opcjonalnie numer u&nbsp;producenta i&nbsp;komentarz). Kliknij <strong>Zapisz</strong> &mdash; artykuł zostanie dodany do katalogu.</li>
+                        <li><strong>Dodaj do koszyka</strong> &mdash; wrócisz do normalnego widoku koszyka z&nbsp;nowym artykułem już wybranym. Wpisz ilość, cenę i&nbsp;walutę, kliknij <strong>Dodaj</strong>.</li>
+                    </ol>
+                    <p class="text-muted small mb-0">
+                        <i class="bi bi-info-circle"></i> Cena i&nbsp;ilość są specyficzne dla konkretnego zamówienia &mdash; dlatego najpierw zapisujemy artykuł w&nbsp;katalogu, a&nbsp;dopiero potem dodajemy do koszyka.
+                    </p>
+                </div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Anuluj</button>
+                    <button type="button" class="btn btn-primary" id="addVariantHelpContinue">Rozumiem, kontynuuj</button>
                 </div>
             </div>
         </div>
