@@ -46,8 +46,8 @@ $sql = "
       JOIN `list__parts`  p ON p.id = vp.parts_id
       LEFT JOIN `list__producer` pr ON pr.id = vp.producer_id
       JOIN `part__unit`   u ON u.id = vp.vendor_jm_id
-     WHERE vp.is_active = 1
-       AND v.is_active  = 1
+      WHERE vp.isActive = 1
+        AND v.isActive  = 1
        AND (vp.vendor_part_no LIKE ?
         OR vp.producer_part_no LIKE ?
         OR p.name LIKE ?
