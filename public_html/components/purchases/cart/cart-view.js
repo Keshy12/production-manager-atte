@@ -339,7 +339,7 @@
     function loadVendorAndPartOptions(callback) {
         $.ajax({
             url: COMPONENTS_PATH + '/purchases/cart/cart-vendors-refresh.php',
-            type: 'GET',
+            type: 'POST',
             dataType: 'json'
         }).done(function (data) {
             if (!data || !Array.isArray(data.vendors) || !Array.isArray(data.parts)) {

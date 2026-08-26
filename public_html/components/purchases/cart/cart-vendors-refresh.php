@@ -23,6 +23,12 @@ if(!isset($_SESSION['isAdmin']) || $_SESSION['isAdmin'] !== true) {
     exit();
 }
 
+if($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    echo json_encode(['error' => 'Metoda nieobsługiwana']);
+    exit();
+}
+
 $MsaDB = MsaDB::getInstance();
 
 $vendorRows = $MsaDB->query(
