@@ -80,7 +80,7 @@ $(document).ready(function() {
         const isActive = $(this).data('is-active') == 1;
         const name = $(this).data('name');
         $('#toggle_producer_id').val(id);
-        $('#toggle_producer_is_active').val(isActive ? '1' : '0');
+        $('#toggle_producerIsActive').val(isActive ? '1' : '0');
         const verb = isActive ? 'wyłączyć' : 'włączyć';
         $('#toggle_producer_body').html(
             'Czy na pewno chcesz <b>' + verb + '</b> producenta <b>'
@@ -92,8 +92,8 @@ $(document).ready(function() {
     // Confirm toggle
     $('#confirmToggleProducer').on('click', function() {
         const id = parseInt($('#toggle_producer_id').val(), 10);
-        const isActive = $('#toggle_producer_is_active').val() === '1';
-        postAjax('producer-toggle-active.php', { id: id, is_active: isActive ? 1 : 0 })
+        const isActive = $('#toggle_producerIsActive').val() === '1';
+        postAjax('producer-toggle-active.php', { id: id, isActive: isActive ? 1 : 0 })
             .done(function(r) {
                 if(r.success) {
                     $('#toggleProducerModal').modal('hide');

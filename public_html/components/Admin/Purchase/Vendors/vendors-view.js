@@ -101,7 +101,7 @@ $(document).ready(function() {
         const name = $(this).data('name');
         const hasParts = $(this).data('has-parts') == 1;
         $('#toggle_vendor_id').val(id);
-        $('#toggle_vendor_is_active').val(isActive ? '1' : '0');
+        $('#toggle_vendorIsActive').val(isActive ? '1' : '0');
         const verb = isActive ? 'wyłączyć' : 'włączyć';
         let body = 'Czy na pewno chcesz <b>' + verb + '</b> dostawcę <b>' + esc(name) + '</b>?';
         if(isActive && hasParts) {
@@ -113,8 +113,8 @@ $(document).ready(function() {
 
     $('#confirmToggleVendor').on('click', function() {
         const id = parseInt($('#toggle_vendor_id').val(), 10);
-        const isActive = $('#toggle_vendor_is_active').val() === '1';
-        postAjax('vendor-toggle-active.php', { id: id, is_active: isActive ? 1 : 0 })
+        const isActive = $('#toggle_vendorIsActive').val() === '1';
+        postAjax('vendor-toggle-active.php', { id: id, isActive: isActive ? 1 : 0 })
             .done(function(r) {
                 if(r.success) {
                     $('#toggleVendorModal').modal('hide');
@@ -295,7 +295,7 @@ $(document).ready(function() {
         const isActive = $(this).data('is-active') == 1;
         const name = $(this).data('name');
         $('#toggle_supplier_id').val(id);
-        $('#toggle_supplier_is_active').val(isActive ? '1' : '0');
+        $('#toggle_supplierIsActive').val(isActive ? '1' : '0');
         const verb = isActive ? 'wyłączyć' : 'włączyć';
         $('#toggle_supplier_body').html(
             'Czy na pewno chcesz <b>' + verb + '</b> osobę <b>' + esc(name) + '</b>?'
@@ -305,8 +305,8 @@ $(document).ready(function() {
 
     $('#confirmToggleSupplier').on('click', function() {
         const id = parseInt($('#toggle_supplier_id').val(), 10);
-        const isActive = $('#toggle_supplier_is_active').val() === '1';
-        postAjax('supplier-toggle-active.php', { id: id, is_active: isActive ? 1 : 0 })
+        const isActive = $('#toggle_supplierIsActive').val() === '1';
+        postAjax('supplier-toggle-active.php', { id: id, isActive: isActive ? 1 : 0 })
             .done(function(r) {
                 if(r.success) {
                     $('#toggleSupplierModal').modal('hide');
@@ -411,7 +411,7 @@ $(document).ready(function() {
         const id = parseInt($(this).data('id'), 10);
         const isActive = $(this).data('is-active') == 1;
         $('#toggle_vp_id').val(id);
-        $('#toggle_vp_is_active').val(isActive ? '1' : '0');
+        $('#toggle_vpIsActive').val(isActive ? '1' : '0');
         const verb = isActive ? 'wyłączyć' : 'włączyć';
         $('#toggle_vp_body').html('Czy na pewno chcesz <b>' + verb + '</b> ten artykuł?');
         $('#toggleVendorPartModal').modal('show');
@@ -419,8 +419,8 @@ $(document).ready(function() {
 
     $('#confirmToggleVendorPart').on('click', function() {
         const id = parseInt($('#toggle_vp_id').val(), 10);
-        const isActive = $('#toggle_vp_is_active').val() === '1';
-        postAjax('vendor-part-toggle-active.php', { id: id, is_active: isActive ? 1 : 0 })
+        const isActive = $('#toggle_vpIsActive').val() === '1';
+        postAjax('vendor-part-toggle-active.php', { id: id, isActive: isActive ? 1 : 0 })
             .done(function(r) {
                 if(r.success) {
                     $('#toggleVendorPartModal').modal('hide');

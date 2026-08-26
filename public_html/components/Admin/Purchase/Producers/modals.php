@@ -36,7 +36,7 @@
     <div class="modal-dialog" role="document">
         <div class="modal-content">
             <input type="hidden" id="toggle_producer_id">
-            <input type="hidden" id="toggle_producer_is_active">
+            <input type="hidden" id="toggle_producerIsActive">
             <div class="modal-header">
                 <h5 class="modal-title"><i class="bi bi-exclamation-triangle"></i> Potwierdź</h5>
                 <button type="button" class="close" data-dismiss="modal"><span aria-hidden="true">&times;</span></button>

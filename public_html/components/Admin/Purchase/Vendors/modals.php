@@ -54,7 +54,7 @@
     <div class="modal-dialog" role="document">
         <div class="modal-content">
             <input type="hidden" id="toggle_vendor_id">
-            <input type="hidden" id="toggle_vendor_is_active">
+            <input type="hidden" id="toggle_vendorIsActive">
             <div class="modal-header">
                 <h5 class="modal-title"><i class="bi bi-exclamation-triangle"></i> Potwierdź</h5>
                 <button type="button" class="close" data-dismiss="modal"><span aria-hidden="true">&times;</span></button>
@@ -196,7 +196,7 @@
     <div class="modal-dialog" role="document">
         <div class="modal-content">
             <input type="hidden" id="toggle_supplier_id">
-            <input type="hidden" id="toggle_supplier_is_active">
+            <input type="hidden" id="toggle_supplierIsActive">
             <div class="modal-header">
                 <h5 class="modal-title">Potwierdź</h5>
                 <button type="button" class="close" data-dismiss="modal"><span aria-hidden="true">&times;</span></button>
@@ -281,7 +281,7 @@
     <div class="modal-dialog" role="document">
         <div class="modal-content">
             <input type="hidden" id="toggle_vp_id">
-            <input type="hidden" id="toggle_vp_is_active">
+            <input type="hidden" id="toggle_vpIsActive">
             <div class="modal-header">
                 <h5 class="modal-title">Potwierdź</h5>
                 <button type="button" class="close" data-dismiss="modal"><span aria-hidden="true">&times;</span></button>

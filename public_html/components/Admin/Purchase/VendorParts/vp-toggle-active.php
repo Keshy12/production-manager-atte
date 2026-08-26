@@ -17,7 +17,7 @@ if($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 $id       = (int)($_POST['id'] ?? 0);
-$isActive = isset($_POST['is_active']) && in_array((string)$_POST['is_active'], ['1', 'true', 'on'], true);
+$isActive = isset($_POST['isActive']) && in_array((string)$_POST['isActive'], ['1', 'true', 'on'], true);
 
 if($id <= 0) {
     echo json_encode(['success' => false, 'error' => 'Nieprawidłowe ID artykułu']);
@@ -29,7 +29,7 @@ try {
     $repo  = new VendorPartRepository($MsaDB);
     $repo->toggleActive($id, $isActive);
     $msg = $isActive ? 'Artykuł włączony' : 'Artykuł wyłączony';
-    echo json_encode(['success' => true, 'is_active' => $isActive, 'message' => $msg]);
+    echo json_encode(['success' => true, 'isActive' => $isActive, 'message' => $msg]);
 } catch (\Throwable $e) {
     error_log('vp-toggle-active error: ' . $e->getMessage());
     echo json_encode(['success' => false, 'error' => 'Wystąpił błąd podczas zmiany statusu']);

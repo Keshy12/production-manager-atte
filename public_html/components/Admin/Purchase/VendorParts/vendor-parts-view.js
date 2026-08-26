@@ -177,7 +177,7 @@ $(document).ready(function() {
         const id = parseInt($(this).data('id'), 10);
         const isActive = $(this).data('is-active') == 1;
         $('#toggle_vp_id').val(id);
-        $('#toggle_vp_is_active').val(isActive ? '1' : '0');
+        $('#toggle_vpIsActive').val(isActive ? '1' : '0');
         const verb = isActive ? 'wyłączyć' : 'włączyć';
         $('#toggle_vp_body').html('Czy na pewno chcesz <b>' + verb + '</b> ten artykuł?');
         $('#toggleVpModal').modal('show');
@@ -185,8 +185,8 @@ $(document).ready(function() {
 
     $('#confirmToggleVp').on('click', function() {
         const id = parseInt($('#toggle_vp_id').val(), 10);
-        const isActive = $('#toggle_vp_is_active').val() === '1';
-        postAjax('vp-toggle-active.php', { id: id, is_active: isActive ? 1 : 0 })
+        const isActive = $('#toggle_vpIsActive').val() === '1';
+        postAjax('vp-toggle-active.php', { id: id, isActive: isActive ? 1 : 0 })
             .done(function(r) {
                 if(r.success) {
                     $('#toggleVpModal').modal('hide');
