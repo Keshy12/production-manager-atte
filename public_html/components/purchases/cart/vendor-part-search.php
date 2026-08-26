@@ -2,26 +2,36 @@
 /**
  * AJAX: global LIKE-search over active VendorParts (any vendor).
  *
- * GET params:
+ * POST params:
  *   q (string) — partial match on vendor_part_no / producer_part_no /
  *                part name / vendor name (min. 2 chars after trim)
  *
  * Response: [{id, vendor_id, parts_id, vendor_part_no, producer_part_no,
  *             vendor_jm_id, full_pack_quantity, vendor_name, part_name,
  *             producer_name, unit_name}, …]
+ *
+ * Note: POST-only because the .htaccess catch-all only routes POSTs
+ * to existing component files (the index.php rewrite bypass). GETs
+ * to .php files under /components/ are dropped by the POST rule.
  */
 use Atte\DB\MsaDB;
 
+header('Content-Type: application/json; charset=utf-8');
+
 if(!isset($_SESSION['isAdmin']) || $_SESSION['isAdmin'] !== true) {
-    header('Content-Type: application/json; charset=utf-8');
     echo json_encode(['error' => 'Brak uprawnień.']);
     exit;
 }
 
-$q = trim((string)($_GET['q'] ?? ''));
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    echo json_encode(['error' => 'Metoda nieobsługiwana']);
+    exit;
+}
+
+$q = trim((string)($_POST['q'] ?? ''));
 
 if (strlen($q) < 2) {
-    header('Content-Type: application/json; charset=utf-8');
     echo json_encode([]);
     exit;
 }

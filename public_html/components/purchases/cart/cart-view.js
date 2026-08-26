@@ -782,8 +782,9 @@
         }
         $vpSearchStatus.removeClass('text-danger').text('Szukam…').show();
         $.ajax({
-            url: COMPONENTS_PATH + '/purchases/cart//vendor-part-search.php?q=' + encodeURIComponent(q),
-            method: 'GET',
+            url: COMPONENTS_PATH + '/purchases/cart/vendor-part-search.php',
+            method: 'POST',
+            data: { q: q },
             dataType: 'json'
         }).done(function (rows) {
             rows = rows || [];
