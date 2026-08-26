@@ -238,6 +238,24 @@
         }
     }
 
+    // Force a clean rebuild of a bootstrap-select widget — needed when
+    // options change wholesale (e.g. after refreshVendorPartRow rebuilds
+    // vendorPartNoSelect, or after a mode swap toggles part-picker
+    // filter state). Calling refresh() alone can leave the dropdown
+    // menu rendering stale entries briefly; destroy+reinit tears the
+    // wrapper down and recreates it with the current select state.
+    // The select's event handlers and data-* options survive (they're
+    // on the underlying <select>, not on the wrapper divs).
+    function destroyAndReinitSelectpicker($el) {
+        if ($el.length === 0 || !$el.hasClass('selectpicker')) return;
+        let val = $el.val();
+        try { $el.selectpicker('destroy'); } catch (e) { /* noop */ }
+        $el.selectpicker();
+        if (val !== null && val !== '') {
+            try { $el.selectpicker('val', val); } catch (e) { /* noop */ }
+        }
+    }
+
     function setAlert(msg, kind) {
         let $box = $('#alertContainer');
         if (!msg) { $box.empty(); return; }
@@ -605,9 +623,11 @@
         } else if (options.length === 1) {
             targetId = String(options[0].id);
         }
-        // Explicit selectpicker('val') + double refresh — plain .val()
-        // alone proved unreliable on freshly-built option lists.
-        refreshSelectpicker($vendorPartNoSelect);
+        // Wholesale option replacement + clean widget rebuild. Refresh()
+        // alone leaves the dropdown menu rendering stale entries briefly
+        // (flicker after adding a new VP); destroy+reinit forces a fresh
+        // widget state from the new <option> list.
+        destroyAndReinitSelectpicker($vendorPartNoSelect);
         if (targetId !== null && typeof $vendorPartNoSelect.selectpicker === 'function') {
             try { $vendorPartNoSelect.selectpicker('val', targetId); } catch (e) { /* noop */ }
             refreshSelectpicker($vendorPartNoSelect);
@@ -1066,6 +1086,14 @@
             // refreshVendorPartRow then rebuilds the variant picker with
             // the new entry pre-selected.
             setPickerMode('pick');
+            // The mode swap toggles the part picker's filter state (add
+            // mode un-filtered all options, pick mode re-filters by the
+            // vendor). Refresh() alone leaves the bootstrap-select menu
+            // rendering the pre-swap state briefly — destroy+reinit
+            // forces a clean widget rebuild so the dropdown matches the
+            // current filter state.
+            destroyAndReinitSelectpicker($partSelect);
+            destroyAndReinitSelectpicker($vendorSelect);
             refreshVendorPartRow(newId);
             // Focus qty so the user can type immediately without reaching
             // for the mouse.
