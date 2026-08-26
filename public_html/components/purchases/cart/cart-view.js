@@ -64,13 +64,14 @@
     let $addProducerPartNo   = $('#addProducerPartNo');
     let $addFullPackQuantity = $('#addFullPackQuantity');
     let $addComment          = $('#addComment');
-    // Cart-add input wrappers — move between #pickVariantRow (pick mode,
-    // inline with vendorPartCell) and #cartAddRow (add mode, own row).
+    // Cart-add input wrappers — live inside #pickVariantRow next to
+    // vendorPartCell in pick mode and are simply hidden along with that
+    // row in add mode. They never move between rows anymore (the add
+    // flow no longer shows Opak./Ilość/Cena/Waluta).
     let $cartPackagesWrap    = $('#cartPackagesWrap');
     let $cartQtyWrap         = $('#cartQtyWrap');
     let $cartPriceWrap       = $('#cartPriceWrap');
     let $cartCurrencyWrap    = $('#cartCurrencyWrap');
-    let $cartAddRow          = $('#cartAddRow');
     let $cartCard            = $('#cartCard');
     let $cartBody            = $('#cartBody');
     let $cartCount           = $('#cartCount');
@@ -105,33 +106,18 @@
     // dirtiness so the Anuluj button can warn before discarding.
     let addModeDirty = false;
 
-    // Move the four cart-add wrappers (Opak./Ilość/Cena/Szt./Waluta)
-    // either into #cartAddRow (own row, used in add mode — col-md-3 each,
-    // 4×3=12 fits) or back into #pickVariantRow right after vendorPartCell
-    // (inline with the Numer u dostawcy selectpicker, used in pick mode —
-    // col-md-4 + 4×col-md-2 = 12 fits). Their input/select IDs stay the
-    // same so event handlers and VENDOR_PARTS_INDEX state are unaffected.
-    function moveCartAddWrappersTo($target, mode) {
-        let colClass = mode === 'add' ? 'col-md-3' : 'col-md-2';
-        let otherClass = mode === 'add' ? 'col-md-2' : 'col-md-3';
-        [$cartPackagesWrap, $cartQtyWrap, $cartPriceWrap, $cartCurrencyWrap].forEach(function ($w) {
-            $w.removeClass(otherClass).addClass(colClass).appendTo($target);
-        });
-    }
-
     function setPickerMode(mode) {
         pickerMode = mode === 'add' ? 'add' : 'pick';
         // Visual hint on the picker card body.
         let $card = $pickVariantRow.closest('.card');
         $card.toggleClass('picker-add-mode', pickerMode === 'add');
         if (pickerMode === 'add') {
-            // Move the four cart-add wrappers out of pickVariantRow so the
-            // "Numer u dostawcy" selectpicker can be replaced visually by
-            // the add-mode fields above. They land in cartAddRow which we
-            // show below addVariantRow1.
-            moveCartAddWrappersTo($cartAddRow, 'add');
+            // The cart-add wrappers stay inside #pickVariantRow (where the
+            // HTML places them next to vendorPartCell) — hiding the whole
+            // row also hides Opak./Ilość/Cena/Szt./Waluta. The add flow
+            // only edits catalog fields; the user fills qty/price/currency
+            // AFTER save, in pick mode.
             $pickVariantRow.hide();
-            $cartAddRow.show();
             $addVariantRow1.show();
             $addVariantRow2.show();
             $addVariantCommentRow.show();
@@ -139,6 +125,12 @@
                 .removeClass('btn-outline-info').addClass('btn-outline-warning')
                 .html('<i class="bi bi-x-square"></i> Anuluj')
                 .attr('title', 'Anuluj dodawanie nowego artykułu');
+            // The Dodaj button becomes "Zapisz" — it only creates the new
+            // VendorPart; the cart line is added afterwards in pick mode.
+            $addToCartBtn
+                .html('<i class="bi bi-check-lg"></i> Zapisz')
+                .attr('title', 'Zapisz nowy artykuł do katalogu')
+                .removeClass('btn-success').addClass('btn-primary');
             // Un-filter the Part picker so any active part is selectable.
             $partSelect.find('option').each(function () {
                 let id = parseInt($(this).val(), 10) || 0;
@@ -147,11 +139,7 @@
             });
             refreshSelectpicker($partSelect);
         } else {
-            // Move the four cart-add wrappers back next to vendorPartCell
-            // so the original inline pick-mode layout returns.
-            moveCartAddWrappersTo($pickVariantRow, 'pick');
             $pickVariantRow.show();
-            $cartAddRow.hide();
             $addVariantRow1.hide();
             $addVariantRow2.hide();
             $addVariantCommentRow.hide();
@@ -159,6 +147,10 @@
                 .removeClass('btn-outline-warning').addClass('btn-outline-info')
                 .html('<i class="bi bi-plus-square"></i> + Artykuł')
                 .attr('title', 'Dodaj nowy artykuł dostawcy do katalogu');
+            $addToCartBtn
+                .html('<i class="bi bi-plus-circle"></i> Dodaj')
+                .removeAttr('title')
+                .removeClass('btn-primary').addClass('btn-success');
             // Re-apply the pick-mode vendor/part filter that we skipped
             // while in add mode.
             applyVendorFilter();
@@ -369,11 +361,25 @@
     // the search modal.
 
     function updateAddBtnState() {
-        let $sel = $vendorPartNoSelect.find('option:selected');
-        let ok = $sel.length > 0
-            && !$sel.prop('hidden')
-            && (parseInt($sel.attr('data-vp-id'), 10) || 0) > 0;
-        $addToCartBtn.prop('disabled', !ok);
+        if (pickerMode === 'add') {
+            // Save button — enable only when every required catalog field
+            // is valid. Qty/price/currency belong to the next step.
+            let fpq = parseFloat(($addFullPackQuantity.val() || '').toString().replace(',', '.'));
+            let ok = (parseInt($vendorSelect.val(), 10) || 0) > 0
+                && (parseInt($partSelect.val(), 10) || 0) > 0
+                && (parseInt($addProducerSelect.val(), 10) || 0) > 0
+                && (parseInt($addUnitSelect.val(), 10) || 0) > 0
+                && $addVendorPartNo.val().trim() !== ''
+                && !isNaN(fpq) && fpq > 0;
+            $addToCartBtn.prop('disabled', !ok);
+        } else {
+            // Pick mode — enable when a concrete variant is selected.
+            let $sel = $vendorPartNoSelect.find('option:selected');
+            let ok = $sel.length > 0
+                && !$sel.prop('hidden')
+                && (parseInt($sel.attr('data-vp-id'), 10) || 0) > 0;
+            $addToCartBtn.prop('disabled', !ok);
+        }
     }
 
     // Q7: the "+ Artykuł" button enables once a vendor is picked.
@@ -979,8 +985,15 @@
     // then on success pushes the new variant into VENDOR_PARTS_INDEX in
     // memory so it shows up in the "Numer u dostawcy" picker the next
     // time the user re-picks the same vendor+part.
-    function addNewVariantToCart() {
-        // ---- validate add-mode fields ----
+    // Two-step flow:
+    //   1. User enters add mode, fills catalog fields, clicks Save →
+    //      this function creates the new VendorPart only.
+    //   2. Control snaps back to pick mode with the new variant
+    //      pre-selected in "Numer u dostawcy"; the user then enters
+    //      qty/price/currency and clicks Dodaj.
+    // No cart push happens here — that's the next step.
+    function createNewVariant() {
+        // ---- validate catalog fields ----
         let vendorId   = parseInt($vendorSelect.val(), 10) || 0;
         let partsId    = parseInt($partSelect.val(), 10) || 0;
         let producerId = parseInt($addProducerSelect.val(), 10) || 0;
@@ -997,13 +1010,6 @@
         if (!unitId)             { setAlert('Wybierz jednostkę (JM).', 'warning'); return; }
         if (!vendorPartNo)       { setAlert('Numer u dostawcy jest wymagany.', 'warning'); return; }
         if (isNaN(fpq) || fpq <= 0) { setAlert('Pełne opakowanie musi być > 0.', 'warning'); return; }
-
-        // cart-add fields are shared with pick mode
-        let qty        = parseFloat($cartQty.val());
-        let priceRaw   = $cartPrice.val() === '' ? NaN : parseFloat($cartPrice.val());
-        let unitPrice  = (!isNaN(priceRaw) && priceRaw >= 0) ? priceRaw : null;
-        let currency   = $cartCurrency.val() || 'PLN';
-        if (isNaN(qty) || qty <= 0)  { setAlert('Podaj prawidłową ilość.', 'warning'); return; }
 
         // ---- POST vp-add.php ----
         $.ajax({
@@ -1051,48 +1057,21 @@
             if (!VENDOR_PARTS_INDEX[key]) VENDOR_PARTS_INDEX[key] = [];
             VENDOR_PARTS_INDEX[key].push(entry);
 
-            // ---- add to cart (same shape as the pick-mode path) ----
-            let existing = cart.items.find(function (i) {
-                return i.vendor_part_id === newId
-                    && i.currency === currency
-                    && (i.unit_price === unitPrice ||
-                        (i.unit_price === null && unitPrice === null));
-            });
-            if (existing) {
-                existing.quantity += qty;
-                setAlert('Dodano ' + qty + ' do istniejącej pozycji.', 'success');
-            } else {
-                cart.items.push({
-                    vendor_part_id    : newId,
-                    vendor_id         : vendorId,
-                    vendor_name       : entry.vendor_name,
-                    vendor_part_no    : vendorPartNo,
-                    producer_part_no  : producerPartNo,
-                    part_name         : entry.part_name,
-                    description       : $partOpt.attr('data-subtext') || '',
-                    producer_name     : entry.producer_name,
-                    unit_name         : entry.unit_name,
-                    vendor_jm_id      : unitId,
-                    full_pack_quantity: fpq,
-                    quantity          : qty,
-                    unit_price        : unitPrice,
-                    currency          : currency
-                });
-                setAlert('Dodano nowy artykuł do koszyka.', 'success');
-            }
-
-            // ---- snap back to pick mode + reset ----
+            // Reset qty/price so the user starts fresh in the cart step.
             $cartQty.val('');
             $cartPrice.val('');
             $cartPackages.val('').removeClass('packages-uneven');
             resetAddModeFields();
+            // Snap back to pick mode. Order matters: setPickerMode first
+            // re-applies the vendor/part filter that add mode bypassed;
+            // refreshVendorPartRow then rebuilds the variant picker with
+            // the new entry pre-selected.
             setPickerMode('pick');
-            // Refresh the cascaded picker so the new variant is reachable
-            // in pick mode without a page reload (Q3 = B).
             refreshVendorPartRow(newId);
-            renderCart();
-            loadActiveDocs();
-            saveCart();
+            // Focus qty so the user can type immediately without reaching
+            // for the mouse.
+            $cartQty.trigger('focus');
+            setAlert('Artykuł dodany do katalogu — uzupełnij ilość i kliknij Dodaj.', 'success');
         }).fail(function () {
             setAlert('Błąd komunikacji z serwerem.', 'danger');
         });
@@ -1231,13 +1210,15 @@
         }
     });
 
-    // Track add-mode dirtiness so Anuluj can warn before discarding.
-    $addProducerSelect.on('change', function () { addModeDirty = true; });
-    $addUnitSelect.on('change', function () { addModeDirty = true; });
-    $addVendorPartNo.on('input', function () { addModeDirty = true; });
-    $addProducerPartNo.on('input', function () { addModeDirty = true; });
-    $addFullPackQuantity.on('input', function () { addModeDirty = true; });
-    $addComment.on('input', function () { addModeDirty = true; });
+    // Track add-mode dirtiness so Anuluj can warn before discarding, and
+    // re-evaluate the Save button's enabled state on every catalog field
+    // change.
+    $addProducerSelect.on('change', function () { addModeDirty = true; updateAddBtnState(); });
+    $addUnitSelect.on('change',     function () { addModeDirty = true; updateAddBtnState(); });
+    $addVendorPartNo.on('input',    function () { addModeDirty = true; updateAddBtnState(); });
+    $addProducerPartNo.on('input',  function () { addModeDirty = true; });
+    $addFullPackQuantity.on('input',function () { addModeDirty = true; updateAddBtnState(); });
+    $addComment.on('input',         function () { addModeDirty = true; });
 
     // Re-evaluate the toggle button's enabled state every time the
     // vendor picker changes — it should only be available once a vendor
@@ -1313,7 +1294,7 @@
 
     $addToCartBtn.on('click', function () {
         if (pickerMode === 'add') {
-            addNewVariantToCart();
+            createNewVariant();
         } else {
             addCurrentSelectionToCart();
         }

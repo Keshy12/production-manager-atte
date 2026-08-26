@@ -204,10 +204,6 @@ $units = $MsaDB->query(
                 </div>
             </div>
 
-            <!-- Empty container in pick mode; receives the cart-add wrappers
-                 via .appendTo() when entering add mode. -->
-            <div class="row mt-2" id="cartAddRow" style="display:none"></div>
-
             <div class="row mt-2" id="addVariantCommentRow" style="display:none">
                 <div class="col-md-12">
                     <label for="addComment">Komentarz (opcjonalnie):</label>
