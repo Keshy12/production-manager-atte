@@ -336,7 +336,7 @@
     // (their ids still exist in the new options). The callback runs
     // after both pickers are refreshed — use it to trigger downstream
     // updates like refreshVendorPartRow().
-    function loadVendorAndPartOptions(callback) {
+    function loadVendorAndPartOptions(callback, prevVendorId, prevPartId) {
         $.ajax({
             url: COMPONENTS_PATH + '/purchases/cart/cart-vendors-refresh.php',
             type: 'POST',
@@ -355,9 +355,15 @@
                     escapeHtml(v.name) +
                     '</option>';
             });
-            let prevVendorId = $vendorSelect.val();
             $vendorSelect.html(vendorHtml);
-            if (prevVendorId) $vendorSelect.val(prevVendorId);
+            // Use the plugin API (selectpicker('val', x)) rather than
+            // jQuery's .val() — the wrapper caches its own state and
+            // refresh() alone doesn't reliably re-read .val() changes
+            // after .html(). Mirrors the working pattern in
+            // refreshVendorPartRow.
+            if (prevVendorId) {
+                try { $vendorSelect.selectpicker('val', prevVendorId); } catch (e) { /* noop */ }
+            }
             refreshSelectpicker($vendorSelect);
             // Build part option list.
             let partHtml = '';
@@ -372,9 +378,10 @@
                     escapeHtml(p.name) +
                     '</option>';
             });
-            let prevPartId = $partSelect.val();
             $partSelect.html(partHtml);
-            if (prevPartId) $partSelect.val(prevPartId);
+            if (prevPartId) {
+                try { $partSelect.selectpicker('val', prevPartId); } catch (e) { /* noop */ }
+            }
             refreshSelectpicker($partSelect);
             if (typeof callback === 'function') callback();
         }).fail(function () {
@@ -1149,6 +1156,15 @@
             if (!VENDOR_PARTS_INDEX[key]) VENDOR_PARTS_INDEX[key] = [];
             VENDOR_PARTS_INDEX[key].push(entry);
 
+            // Capture picker state BEFORE the mode swap. setPickerMode('pick')
+            // calls applyVendorFilter which can clear the part picker if
+            // the new (vendorId, partsId) pair isn't in the page-load
+            // data-parts (the new VP hasn't been pushed to the server's
+            // view yet). If we captured AFTER, the prev part id would
+            // already be empty and the AJAX refresh wouldn't restore it.
+            let prevVendorId = $vendorSelect.val();
+            let prevPartId   = $partSelect.val();
+
             // Reset qty/price so the user starts fresh in the cart step.
             $cartQty.val('');
             $cartPrice.val('');
@@ -1165,13 +1181,13 @@
             // .selectpicker('refresh') flow works without destroy/reinit
             // races. After the fetch, refreshVendorPartRow rebuilds the
             // variant picker with the new VP pre-selected (via the
-            // `selected` attribute on its <option> in the HTML string).
+            // canonical refresh -> val -> refresh sequence).
             loadVendorAndPartOptions(function () {
                 refreshVendorPartRow(newId);
                 // Focus qty so the user can type immediately without
                 // reaching for the mouse.
                 $cartQty.trigger('focus');
-            });
+            }, prevVendorId, prevPartId);
             setAlert('Artykuł dodany do katalogu — uzupełnij ilość i kliknij Dodaj.', 'success');
         }).fail(function () {
             setAlert('Błąd komunikacji z serwerem.', 'danger');
