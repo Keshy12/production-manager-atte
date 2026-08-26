@@ -692,9 +692,19 @@
             html += '</optgroup>';
         });
         $vendorPartNoSelect.html(html);
-        // Refresh is enough — the `selected` attribute set during the
-        // .html() parse above already established the initial value.
+        // The `selected` HTML attribute on the target option is parsed
+        // by the browser during .html(), but bootstrap-select's widget
+        // caches its own value/display state and refresh() alone doesn't
+        // reliably re-read it (auto-select silently dropped after the
+        // AJAX-rebuild path). The canonical fix is refresh → val →
+        // refresh: re-sync the wrapper, explicitly set the value
+        // through the plugin API, then re-sync again so the button text
+        // and dropdown menu both reflect the new selection.
         refreshSelectpicker($vendorPartNoSelect);
+        if (targetId !== null && typeof $vendorPartNoSelect.selectpicker === 'function') {
+            try { $vendorPartNoSelect.selectpicker('val', targetId); } catch (e) { /* noop */ }
+            refreshSelectpicker($vendorPartNoSelect);
+        }
         // Amount inputs belong to a concrete device — clear them when it
         // changed, keep them otherwise.
         let resolvedId = targetId !== null ? parseInt(targetId, 10) : null;
