@@ -189,28 +189,15 @@
             || $addComment.val().trim());
     }
 
-    // Pre-fill add-mode fields from the currently selected pick-mode
-    // variant (if any) so the user can adjust instead of retyping.
+    // Entering add mode keeps the row-1 Vendor and Part pickers as-is
+    // (their DOM values carry over from pick mode). We intentionally do
+    // NOT auto-fill Producent / JM / Pełne opakowanie / Numer u producenta
+    // from the selected pick-mode variant — the user is the source of
+    // truth when creating a new VP, even if the variant they had picked
+    // happens to share producer / JM with the new one. Just ensure the
+    // free-text inputs start blank and the dirty flag is fresh.
     function prefillAddModeFromSelection() {
-        let vp = selectedVpEntry();
-        if (vp) {
-            if (vp.producer_name) {
-                // Find producer option by name (no producerId stored on entry)
-                let match = null;
-                $addProducerSelect.find('option').each(function () {
-                    if ($(this).attr('data-name') === vp.producer_name) match = $(this).val();
-                });
-                if (match) {
-                    $addProducerSelect.val(match);
-                    refreshSelectpicker($addProducerSelect);
-                }
-            }
-            $addUnitSelect.val(String(vp.vendor_jm_id));
-            refreshSelectpicker($addUnitSelect);
-            $addFullPackQuantity.val(vp.full_pack_quantity || 1);
-            $addProducerPartNo.val(vp.producer_part_no || '');
-        }
-        $addVendorPartNo.val('');   // fresh part-no always
+        $addVendorPartNo.val('');
         $addComment.val('');
         addModeDirty = false;
     }
