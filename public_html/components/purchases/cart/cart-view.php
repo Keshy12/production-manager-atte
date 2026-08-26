@@ -61,6 +61,20 @@ foreach ($vpRows as $r) {
     ];
     $vendorPartsIndex[$r['vendor_id'] . ':' . $r['parts_id']][] = $entry;
 }
+
+// Producers and units (add-mode pickers) — populated server-side so the
+// user can pick an existing Producer / JM when adding a new VendorPart
+// on the fly. (Adding new Producers or Units themselves is out of scope
+// here — that lives under /admin/purchase/.)
+$producers = $MsaDB->query(
+    "SELECT id, name FROM `list__producer`
+      WHERE isActive = 1
+      ORDER BY name ASC"
+);
+$units = $MsaDB->query(
+    "SELECT id, name FROM `part__unit`
+      ORDER BY name ASC"
+);
 ?>
 
 <div class="container-fluid w-75 mt-3">
@@ -110,7 +124,7 @@ foreach ($vpRows as $r) {
                     </select>
                 </div>
             </div>
-            <div class="row mt-3" id="vendorPartRow">
+            <div class="row mt-3" id="pickVariantRow">
                 <div class="col-md-4" id="vendorPartCell">
                     <label for="vendorPartNoSelect">Numer u dostawcy:</label>
                     <div class="d-flex align-items-start">
@@ -123,25 +137,75 @@ foreach ($vpRows as $r) {
                         <a href="#" id="vpSearchBtn" class="text-muted clear-picker-link ml-1" title="Szukaj po numerze dostawcy / producenta / części"><i class="bi bi-search"></i></a>
                     </div>
                 </div>
-                <div class="col-md-2">
+            </div>
+
+            <div class="row mt-2" id="addVariantRow1" style="display:none">
+                <div class="col-md-3">
+                    <label for="addProducerSelect">Producent:</label>
+                    <select id="addProducerSelect" class="selectpicker form-control" data-live-search="true" data-width="100%" title="Wybierz producenta...">
+                        <?php foreach ($producers as $pr): ?>
+                            <option value="<?= (int)$pr['id'] ?>"
+                                    data-name="<?= htmlspecialchars($pr['name']) ?>">
+                                <?= htmlspecialchars($pr['name']) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="addUnitSelect">JM:</label>
+                    <select id="addUnitSelect" class="selectpicker form-control" data-live-search="true" data-width="100%" title="Wybierz jednostkę...">
+                        <?php foreach ($units as $u): ?>
+                            <option value="<?= (int)$u['id'] ?>"
+                                    data-name="<?= htmlspecialchars($u['name']) ?>">
+                                <?= htmlspecialchars($u['name']) ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="addVendorPartNo">Numer u dostawcy:</label>
+                    <input type="text" id="addVendorPartNo" class="form-control" maxlength="100" placeholder="np. ABC-1234">
+                </div>
+                <div class="col-md-3">
+                    <label for="addFullPackQuantity">Pełne opakowanie:</label>
+                    <input type="number" id="addFullPackQuantity" class="form-control" min="0.0001" step="0.0001" value="1">
+                </div>
+            </div>
+
+            <div class="row mt-2" id="addVariantRow2" style="display:none">
+                <div class="col-md-12">
+                    <label for="addProducerPartNo">Numer części u producenta (opcjonalnie):</label>
+                    <input type="text" id="addProducerPartNo" class="form-control" maxlength="100" placeholder="np. MFR-5678 (opcjonalnie)">
+                </div>
+            </div>
+
+            <div class="row mt-2" id="cartAddRow">
+                <div class="col-md-3">
                     <label for="cartPackages">Opak.:</label>
                     <input type="number" id="cartPackages" class="form-control" min="0" step="1" placeholder="opak." title="Ilość = opakowania × ilość w opakowaniu">
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-3">
                     <label for="cartQty">Ilość:</label>
                     <input type="number" id="cartQty" class="form-control" min="0.0001" step="0.0001" placeholder="szt.">
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-3">
                     <label for="cartPrice">Cena/Szt.:</label>
                     <input type="number" id="cartPrice" class="form-control" min="0" step="0.0001" placeholder="opcjonalna">
                 </div>
-                <div class="col-md-2">
+                <div class="col-md-3">
                     <label for="cartCurrency">Waluta:</label>
                     <select id="cartCurrency" class="form-control">
                         <option value="PLN" selected>PLN</option>
                         <option value="EUR">EUR</option>
                         <option value="USD">USD</option>
                     </select>
+                </div>
+            </div>
+
+            <div class="row mt-2" id="addVariantCommentRow" style="display:none">
+                <div class="col-md-12">
+                    <label for="addComment">Komentarz (opcjonalnie):</label>
+                    <input type="text" id="addComment" class="form-control" maxlength="255" placeholder="Komentarz tylko dla nas — nie trafi do dostawcy">
                 </div>
             </div>
 
@@ -164,6 +228,10 @@ foreach ($vpRows as $r) {
             </div>
             <div class="row mt-2">
                 <div class="col-12 text-right">
+                    <button type="button" id="toggleAddVariantBtn" class="btn btn-outline-info mr-3" disabled
+                            title="Dodaj nowy artykuł dostawcy do katalogu">
+                        <i class="bi bi-plus-square"></i> + Artykuł
+                    </button>
                     <button type="button" id="clearSelectionBtn" class="btn btn-danger mr-1" title="Wyczyść wybór dostawcy i części">
                         Wyczyść
                     </button>

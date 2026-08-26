@@ -713,6 +713,15 @@ Additional polish captured during v1.6 cleanup (not in the original
 - **Inline edit of the variant's private comment** (pen icon on the
   picker row → immediate save to `list__vendor_part.comment` via
   `vendor-part-comment.php`).
+- **In-cart variant creation** — `+ Artykuł` button toggles the picker
+  card into add mode (Producent / JM / Numer u dostawcy / Pełne
+  opakowanie + optional Numer u producenta + Komentarz). "Dodaj i
+  utwórz" POSTs `vp-add.php`, then on success adds the just-created
+  line to the cart in one click; the new variant lands in
+  `VENDOR_PARTS_INDEX` in memory so it's reachable in the picker
+  immediately. No page reload (Q3), no separate modal. Producent and
+  JM are required pickers from existing entities; creating new
+  Producer/Unit itself stays under `/admin/purchase/`.
 - **Per-row quick-edit modal** (pencil icon in the cart table →
   modal with Opak. / Ilość / Cena/Szt. / Waluta). Opak.↔Ilość
   two-way sync mirrors the picker row; packages is derived from the

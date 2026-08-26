@@ -55,3 +55,12 @@
    text-overflow: ellipsis can do its job. Without this rule, the
    picker override reported in 506e213 / d2b2bc6 returns. */
 .flex-grow-1, .bootstrap-select { min-width: 0; }
+
+/* Add-mode hint: when the picker card is in "add new variant" mode,
+   a left border + soft tint signals the form is creating rather than
+   picking. Removed (set back to default) by setPickerMode('pick'). */
+.picker-add-mode {
+    border-left: .25rem solid #17a2b8;
+    background-color: rgba(23,162,184,.03);
+    padding-left: .75rem;
+}

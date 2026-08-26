@@ -53,6 +53,17 @@
     let $editItemCurrency    = $('#editItemCurrency');
     let $editItemSave        = $('#editItemSave');
     let $addToCartBtn        = $('#addToCartBtn');
+    let $toggleAddVariantBtn = $('#toggleAddVariantBtn');
+    let $pickVariantRow      = $('#pickVariantRow');
+    let $addVariantRow1      = $('#addVariantRow1');
+    let $addVariantRow2      = $('#addVariantRow2');
+    let $addVariantCommentRow= $('#addVariantCommentRow');
+    let $addProducerSelect   = $('#addProducerSelect');
+    let $addUnitSelect       = $('#addUnitSelect');
+    let $addVendorPartNo     = $('#addVendorPartNo');
+    let $addProducerPartNo   = $('#addProducerPartNo');
+    let $addFullPackQuantity = $('#addFullPackQuantity');
+    let $addComment          = $('#addComment');
     let $cartCard            = $('#cartCard');
     let $cartBody            = $('#cartBody');
     let $cartCount           = $('#cartCount');
@@ -75,6 +86,105 @@
     // ---- cart persistence (localStorage, survives refresh) ----
     let CART_STORAGE_KEY = 'atte_purchase_cart_v1';
     let CART_MAX_AGE_MS  = 7 * 24 * 60 * 60 * 1000;   // 7 days
+
+    // ---- picker mode (pick | add) ----
+    // 'pick' (default): user picks an EXISTING VendorPart and adds to cart.
+    // 'add':  the form reshapes — Producent / JM / free-text Numer / opak.
+    //         become visible and editable. "Dodaj" creates the new
+    //         VendorPart AND adds the line to the cart in one click.
+    let pickerMode = 'pick';
+
+    // Add-mode field values may have been entered by the user; track
+    // dirtiness so the Anuluj button can warn before discarding.
+    let addModeDirty = false;
+
+    function setPickerMode(mode) {
+        pickerMode = mode === 'add' ? 'add' : 'pick';
+        // Visual hint on the picker card body.
+        let $card = $('#pickVariantRow').closest('.card');
+        $card.toggleClass('picker-add-mode', pickerMode === 'add');
+        if (pickerMode === 'add') {
+            $pickVariantRow.hide();
+            $addVariantRow1.show();
+            $addVariantRow2.show();
+            $addVariantCommentRow.show();
+            $toggleAddVariantBtn
+                .removeClass('btn-outline-info').addClass('btn-outline-warning')
+                .html('<i class="bi bi-x-square"></i> Anuluj')
+                .attr('title', 'Anuluj dodawanie nowego artykułu');
+            // In add mode the "Numer u dostawcy" picker is irrelevant —
+            // hide its sibling so the row reads cleanly.
+            // Also un-filter the Part picker so any active part is selectable.
+            $partSelect.find('option').each(function () {
+                let id = parseInt($(this).val(), 10) || 0;
+                if (id === 0) return;
+                $(this).prop('hidden', false);
+            });
+            refreshSelectpicker($partSelect);
+        } else {
+            $pickVariantRow.show();
+            $addVariantRow1.hide();
+            $addVariantRow2.hide();
+            $addVariantCommentRow.hide();
+            $toggleAddVariantBtn
+                .removeClass('btn-outline-warning').addClass('btn-outline-info')
+                .html('<i class="bi bi-plus-square"></i> + Artykuł')
+                .attr('title', 'Dodaj nowy artykuł dostawcy do katalogu');
+            // Re-apply the pick-mode vendor/part filter that we skipped
+            // while in add mode.
+            applyVendorFilter();
+            applyPartFilter();
+        }
+        updateAddBtnState();
+    }
+
+    function resetAddModeFields() {
+        $addProducerSelect.val('');
+        refreshSelectpicker($addProducerSelect);
+        $addUnitSelect.val('');
+        refreshSelectpicker($addUnitSelect);
+        $addVendorPartNo.val('');
+        $addProducerPartNo.val('');
+        $addFullPackQuantity.val('1');
+        $addComment.val('');
+        addModeDirty = false;
+    }
+
+    function isAddModeDirty() {
+        if (!addModeDirty) return false;
+        return ($addProducerSelect.val()
+            || $addUnitSelect.val()
+            || $addVendorPartNo.val().trim()
+            || $addProducerPartNo.val().trim()
+            || parseFloat($addFullPackQuantity.val()) !== 1
+            || $addComment.val().trim());
+    }
+
+    // Pre-fill add-mode fields from the currently selected pick-mode
+    // variant (if any) so the user can adjust instead of retyping.
+    function prefillAddModeFromSelection() {
+        let vp = selectedVpEntry();
+        if (vp) {
+            if (vp.producer_name) {
+                // Find producer option by name (no producerId stored on entry)
+                let match = null;
+                $addProducerSelect.find('option').each(function () {
+                    if ($(this).attr('data-name') === vp.producer_name) match = $(this).val();
+                });
+                if (match) {
+                    $addProducerSelect.val(match);
+                    refreshSelectpicker($addProducerSelect);
+                }
+            }
+            $addUnitSelect.val(String(vp.vendor_jm_id));
+            refreshSelectpicker($addUnitSelect);
+            $addFullPackQuantity.val(vp.full_pack_quantity || 1);
+            $addProducerPartNo.val(vp.producer_part_no || '');
+        }
+        $addVendorPartNo.val('');   // fresh part-no always
+        $addComment.val('');
+        addModeDirty = false;
+    }
 
     function saveCart() {
         try {
@@ -186,6 +296,9 @@
     // ---- cascading-filter logic ----
 
     function applyVendorFilter() {
+        // In add mode the part picker must stay un-filtered so the user
+        // can pick ANY active part for the new VendorPart.
+        if (pickerMode === 'add') return;
         let vendorId = parseInt($vendorSelect.val(), 10) || null;
         let partsIds = [];
         if (vendorId) {
@@ -209,6 +322,8 @@
     }
 
     function applyPartFilter() {
+        // Same as above — skip while in add mode.
+        if (pickerMode === 'add') return;
         let partId = parseInt($partSelect.val(), 10) || null;
         let vendorsIds = [];
         if (partId) {
@@ -243,6 +358,12 @@
             && !$sel.prop('hidden')
             && (parseInt($sel.attr('data-vp-id'), 10) || 0) > 0;
         $addToCartBtn.prop('disabled', !ok);
+    }
+
+    // Q7: the "+ Artykuł" button enables once a vendor is picked.
+    function updateToggleAddBtnState() {
+        let vendorId = parseInt($vendorSelect.val(), 10) || null;
+        $toggleAddVariantBtn.prop('disabled', !vendorId);
     }
 
     // Full-pack quantity of the currently selected variant (null when the
@@ -394,6 +515,9 @@
     }
 
     function refreshVendorPartRow(preferredVpId) {
+        // In add mode there's no existing variant to pick — skip the
+        // pick-mode rebuild entirely.
+        if (pickerMode === 'add') return;
         let vendorId = parseInt($vendorSelect.val(), 10) || null;
         let partId = parseInt($partSelect.val(), 10) || null;
         // Nothing constrained → keep the picker empty.
@@ -834,6 +958,130 @@
         saveCart();
     }
 
+    // Q4 = B: in add mode, "Dodaj" creates a new VendorPart AND adds it
+    // to the cart in one click. Validates add fields, POSTs vp-add.php,
+    // then on success pushes the new variant into VENDOR_PARTS_INDEX in
+    // memory so it shows up in the "Numer u dostawcy" picker the next
+    // time the user re-picks the same vendor+part.
+    function addNewVariantToCart() {
+        // ---- validate add-mode fields ----
+        let vendorId   = parseInt($vendorSelect.val(), 10) || 0;
+        let partsId    = parseInt($partSelect.val(), 10) || 0;
+        let producerId = parseInt($addProducerSelect.val(), 10) || 0;
+        let unitId     = parseInt($addUnitSelect.val(), 10) || 0;
+        let vendorPartNo   = $addVendorPartNo.val().trim();
+        let producerPartNo = $addProducerPartNo.val().trim() || null;
+        let fpqRaw      = $addFullPackQuantity.val().toString().replace(',', '.');
+        let fpq         = parseFloat(fpqRaw);
+        let comment     = $addComment.val().trim() || null;
+
+        if (!vendorId)           { setAlert('Wybierz dostawcę.', 'warning'); return; }
+        if (!partsId)            { setAlert('Wybierz część.', 'warning'); return; }
+        if (!producerId)         { setAlert('Wybierz producenta.', 'warning'); return; }
+        if (!unitId)             { setAlert('Wybierz jednostkę (JM).', 'warning'); return; }
+        if (!vendorPartNo)       { setAlert('Numer u dostawcy jest wymagany.', 'warning'); return; }
+        if (isNaN(fpq) || fpq <= 0) { setAlert('Pełne opakowanie musi być > 0.', 'warning'); return; }
+
+        // cart-add fields are shared with pick mode
+        let qty        = parseFloat($cartQty.val());
+        let priceRaw   = $cartPrice.val() === '' ? NaN : parseFloat($cartPrice.val());
+        let unitPrice  = (!isNaN(priceRaw) && priceRaw >= 0) ? priceRaw : null;
+        let currency   = $cartCurrency.val() || 'PLN';
+        if (isNaN(qty) || qty <= 0)  { setAlert('Podaj prawidłową ilość.', 'warning'); return; }
+
+        // ---- POST vp-add.php ----
+        $.ajax({
+            url: COMPONENTS_PATH + '/Admin/Purchase/VendorParts/vp-add.php',
+            type: 'POST',
+            dataType: 'json',
+            data: {
+                vendor_id:          vendorId,
+                producer_id:        producerId,
+                parts_id:           partsId,
+                vendor_part_no:     vendorPartNo,
+                producer_part_no:   producerPartNo || '',
+                vendor_jm_id:       unitId,
+                full_pack_quantity: fpq,
+                comment:            comment || ''
+            }
+        }).done(function (r) {
+            if (!r || !r.success) {
+                setAlert(r && r.error ? r.error : 'Błąd dodawania artykułu.', 'danger');
+                return;   // stay in add mode with all fields intact (Q8)
+            }
+            let newId = r.id;
+
+            // Build a VENDOR_PARTS_INDEX entry from the submitted data +
+            // names pulled from the selected option labels.
+            let $vendorOpt = $vendorSelect.find('option:selected');
+            let $partOpt   = $partSelect.find('option:selected');
+            let $prodOpt   = $addProducerSelect.find('option:selected');
+            let $unitOpt   = $addUnitSelect.find('option:selected');
+            let entry = {
+                id                 : newId,
+                vendor_id          : vendorId,
+                parts_id           : partsId,
+                vendor_part_no     : vendorPartNo,
+                producer_part_no   : producerPartNo,
+                producer_name      : $prodOpt.attr('data-name') || '',
+                private_comment    : comment || '',
+                vendor_jm_id       : unitId,
+                unit_name          : $unitOpt.attr('data-name') || '',
+                full_pack_quantity : fpq,
+                vendor_name        : $vendorOpt.attr('data-name') || '',
+                part_name          : $partOpt.attr('data-name') || ''
+            };
+            let key = vendorId + ':' + partsId;
+            if (!VENDOR_PARTS_INDEX[key]) VENDOR_PARTS_INDEX[key] = [];
+            VENDOR_PARTS_INDEX[key].push(entry);
+
+            // ---- add to cart (same shape as the pick-mode path) ----
+            let existing = cart.items.find(function (i) {
+                return i.vendor_part_id === newId
+                    && i.currency === currency
+                    && (i.unit_price === unitPrice ||
+                        (i.unit_price === null && unitPrice === null));
+            });
+            if (existing) {
+                existing.quantity += qty;
+                setAlert('Dodano ' + qty + ' do istniejącej pozycji.', 'success');
+            } else {
+                cart.items.push({
+                    vendor_part_id    : newId,
+                    vendor_id         : vendorId,
+                    vendor_name       : entry.vendor_name,
+                    vendor_part_no    : vendorPartNo,
+                    producer_part_no  : producerPartNo,
+                    part_name         : entry.part_name,
+                    description       : $partOpt.attr('data-subtext') || '',
+                    producer_name     : entry.producer_name,
+                    unit_name         : entry.unit_name,
+                    vendor_jm_id      : unitId,
+                    full_pack_quantity: fpq,
+                    quantity          : qty,
+                    unit_price        : unitPrice,
+                    currency          : currency
+                });
+                setAlert('Dodano nowy artykuł do koszyka.', 'success');
+            }
+
+            // ---- snap back to pick mode + reset ----
+            $cartQty.val('');
+            $cartPrice.val('');
+            $cartPackages.val('').removeClass('packages-uneven');
+            resetAddModeFields();
+            setPickerMode('pick');
+            // Refresh the cascaded picker so the new variant is reachable
+            // in pick mode without a page reload (Q3 = B).
+            refreshVendorPartRow(newId);
+            renderCart();
+            loadActiveDocs();
+            saveCart();
+        }).fail(function () {
+            setAlert('Błąd komunikacji z serwerem.', 'danger');
+        });
+    }
+
     function buildPayload(docType, vendorId, items) {
         return {
             doc_type  : docType,
@@ -946,6 +1194,40 @@
         loadSelectionDocs();
     });
 
+    // Toggle "+ Artykuł" / "Anuluj" — flips the picker card between
+    // pick and add modes. Enabled only when a vendor is picked.
+    $toggleAddVariantBtn.on('click', function () {
+        if (pickerMode === 'add') {
+            if (isAddModeDirty() && !window.confirm('Odrzucić wprowadzone dane nowego artykułu?')) {
+                return;
+            }
+            resetAddModeFields();
+            setPickerMode('pick');
+        } else {
+            // Q7: only the vendor is required; parts/jm/producer are picked in-add-mode.
+            let vendorId = parseInt($vendorSelect.val(), 10) || null;
+            if (!vendorId) {
+                setAlert('Wybierz najpierw dostawcę.', 'warning');
+                return;
+            }
+            prefillAddModeFromSelection();
+            setPickerMode('add');
+        }
+    });
+
+    // Track add-mode dirtiness so Anuluj can warn before discarding.
+    $addProducerSelect.on('change', function () { addModeDirty = true; });
+    $addUnitSelect.on('change', function () { addModeDirty = true; });
+    $addVendorPartNo.on('input', function () { addModeDirty = true; });
+    $addProducerPartNo.on('input', function () { addModeDirty = true; });
+    $addFullPackQuantity.on('input', function () { addModeDirty = true; });
+    $addComment.on('input', function () { addModeDirty = true; });
+
+    // Re-evaluate the toggle button's enabled state every time the
+    // vendor picker changes — it should only be available once a vendor
+    // is selected (Q7).
+    $vendorSelect.on('change', updateToggleAddBtnState);
+
     // Opak. → Ilość: qty = packages × full pack quantity.
     $cartPackages.on('input', function () {
         let fpq = selectedFullPackQty();
@@ -1014,7 +1296,11 @@
     });
 
     $addToCartBtn.on('click', function () {
-        addCurrentSelectionToCart();
+        if (pickerMode === 'add') {
+            addNewVariantToCart();
+        } else {
+            addCurrentSelectionToCart();
+        }
     });
 
     // Remove cart item
@@ -1188,5 +1474,6 @@
         renderCart();
         refreshVendorPartRow();
         loadActiveDocs();   // badges for restored items
+        updateToggleAddBtnState();
     });
 })();
