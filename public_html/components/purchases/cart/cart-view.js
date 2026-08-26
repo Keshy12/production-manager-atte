@@ -54,6 +54,7 @@
     let $editItemSave        = $('#editItemSave');
     let $addToCartBtn        = $('#addToCartBtn');
     let $toggleAddVariantBtn = $('#toggleAddVariantBtn');
+    let $clearSelectionBtn   = $('#clearSelectionBtn');
     let $pickVariantRow      = $('#pickVariantRow');
     let $addVariantRow1      = $('#addVariantRow1');
     let $addVariantRow2      = $('#addVariantRow2');
@@ -131,6 +132,9 @@
                 .html('<i class="bi bi-check-lg"></i> Zapisz')
                 .attr('title', 'Zapisz nowy artykuł do katalogu')
                 .removeClass('btn-success').addClass('btn-primary');
+            // Wyczyść has no meaningful target in add mode — the user is
+            // filling a fresh form, not clearing a pick-mode selection.
+            $clearSelectionBtn.hide();
             // Un-filter the Part picker so any active part is selectable.
             $partSelect.find('option').each(function () {
                 let id = parseInt($(this).val(), 10) || 0;
@@ -151,6 +155,7 @@
                 .html('<i class="bi bi-plus-circle"></i> Dodaj')
                 .removeAttr('title')
                 .removeClass('btn-primary').addClass('btn-success');
+            $clearSelectionBtn.show();
             // Re-apply the pick-mode vendor/part filter that we skipped
             // while in add mode.
             applyVendorFilter();
@@ -1172,7 +1177,7 @@
 
     // "Wyczysc" (next to Dodaj) clears the whole selection; the variant
     // picker empties and both pickers' full option lists are restored.
-    $('#clearSelectionBtn').on('click', function () {
+    $clearSelectionBtn.on('click', function () {
         $vendorSelect.val('');
         refreshSelectpicker($vendorSelect);
         $partSelect.val('');
