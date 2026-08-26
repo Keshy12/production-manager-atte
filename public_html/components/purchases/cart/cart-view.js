@@ -327,31 +327,60 @@
     // After creating a new VendorPart, the cascade filters (vendor's
     // data-parts / part's data-vendors) are stale — they were computed
     // at page load and don't include the new (vendorId, partsId) pair.
-    // applyVendorFilter / applyPartFilter would re-hide the part for
-    // this vendor (and vice versa) on the next mode swap, dropping the
-    // user's selection. Update the relevant option attributes in place
-    // so the next filter pass keeps the new combination visible.
-    function updateVendorAndPartCarriedSets(vendorId, partsId) {
-        if (vendorId > 0) {
-            let $vendorOpt = $vendorSelect.find('option[value="' + vendorId + '"]');
-            if ($vendorOpt.length > 0) {
-                let partsIds = safeJsonArray($vendorOpt.attr('data-parts'));
-                if (partsIds.indexOf(partsId) === -1) {
-                    partsIds.push(partsId);
-                    $vendorOpt.attr('data-parts', JSON.stringify(partsIds));
-                }
+    // Re-fetch vendor+part options from the server and rebuild the
+    // two pickers via the standard bootstrap-select flow (.html() +
+    // .selectpicker('refresh')). No destroy+reinit tricks, no manual
+    // data-attribute updates: the server is the single source of truth.
+    //
+    // Preserves the currently selected vendor / part across the swap
+    // (their ids still exist in the new options). The callback runs
+    // after both pickers are refreshed — use it to trigger downstream
+    // updates like refreshVendorPartRow().
+    function loadVendorAndPartOptions(callback) {
+        $.ajax({
+            url: COMPONENTS_PATH + '/purchases/cart/cart-vendors-refresh.php',
+            type: 'GET',
+            dataType: 'json'
+        }).done(function (data) {
+            if (!data || !Array.isArray(data.vendors) || !Array.isArray(data.parts)) {
+                if (typeof callback === 'function') callback();
+                return;
             }
-        }
-        if (partsId > 0) {
-            let $partOpt = $partSelect.find('option[value="' + partsId + '"]');
-            if ($partOpt.length > 0) {
-                let vendorsIds = safeJsonArray($partOpt.attr('data-vendors'));
-                if (vendorsIds.indexOf(vendorId) === -1) {
-                    vendorsIds.push(vendorId);
-                    $partOpt.attr('data-vendors', JSON.stringify(vendorsIds));
-                }
-            }
-        }
+            // Build vendor option list.
+            let vendorHtml = '';
+            data.vendors.forEach(function (v) {
+                vendorHtml += '<option value="' + v.id + '"' +
+                    ' data-name="' + escapeHtml(v.name) + '"' +
+                    ' data-parts=\'' + JSON.stringify(v.parts_ids || []) + '\'>' +
+                    escapeHtml(v.name) +
+                    '</option>';
+            });
+            let prevVendorId = $vendorSelect.val();
+            $vendorSelect.html(vendorHtml);
+            if (prevVendorId) $vendorSelect.val(prevVendorId);
+            refreshSelectpicker($vendorSelect);
+            // Build part option list.
+            let partHtml = '';
+            data.parts.forEach(function (p) {
+                let subtext = p.description
+                    ? ' data-subtext="' + escapeHtml(p.description) + '"'
+                    : '';
+                partHtml += '<option value="' + p.id + '"' +
+                    ' data-name="' + escapeHtml(p.name) + '"' +
+                    subtext +
+                    ' data-vendors=\'' + JSON.stringify(p.vendors_ids || []) + '\'>' +
+                    escapeHtml(p.name) +
+                    '</option>';
+            });
+            let prevPartId = $partSelect.val();
+            $partSelect.html(partHtml);
+            if (prevPartId) $partSelect.val(prevPartId);
+            refreshSelectpicker($partSelect);
+            if (typeof callback === 'function') callback();
+        }).fail(function () {
+            setAlert('Błąd ładowania listy dostawców/części.', 'danger');
+            if (typeof callback === 'function') callback();
+        });
     }
 
     // ---- cascading-filter logic ----
@@ -1110,13 +1139,6 @@
             if (!VENDOR_PARTS_INDEX[key]) VENDOR_PARTS_INDEX[key] = [];
             VENDOR_PARTS_INDEX[key].push(entry);
 
-            // Refresh the vendor's data-parts and the part's data-vendors
-            // in place — both were computed at page load and don't include
-            // the new (vendorId, partsId) pair yet. Without this, the
-            // mode swap's applyVendorFilter / applyPartFilter would
-            // re-hide the new combination and clear the selection.
-            updateVendorAndPartCarriedSets(vendorId, partsId);
-
             // Reset qty/price so the user starts fresh in the cart step.
             $cartQty.val('');
             $cartPrice.val('');
@@ -1125,23 +1147,21 @@
             // Snap back to pick mode. setPickerMode re-applies the
             // vendor/part filter that add mode bypassed.
             setPickerMode('pick');
-            // Force a clean rebuild of the part picker — add mode
-            // un-filtered all parts, pick mode re-filters by vendor, and
-            // refresh() alone lets the menu render the pre-swap state
-            // briefly. destroy+reinit tears down the wrapper and rebuilds
-            // it with the current option set.
-            destroyAndReinitSelectpicker($partSelect);
-            // Defer the variant picker rebuild so the mode-swap DOM has
-            // a chance to settle before we swap in the new <option> list
-            // with the freshly-added variant pre-selected (via the
-            // `selected` attribute set during refreshVendorPartRow's
-            // .html() parse).
-            setTimeout(function () {
+            // Re-fetch vendor+part picker options from the server so the
+            // cascade data (data-parts / data-vendors) reflects the new
+            // VP. This is the AJAX path that replaces the previous
+            // attribute-update + destroy+reinit combo — the server is
+            // the single source of truth and the standard .html() +
+            // .selectpicker('refresh') flow works without destroy/reinit
+            // races. After the fetch, refreshVendorPartRow rebuilds the
+            // variant picker with the new VP pre-selected (via the
+            // `selected` attribute on its <option> in the HTML string).
+            loadVendorAndPartOptions(function () {
                 refreshVendorPartRow(newId);
                 // Focus qty so the user can type immediately without
                 // reaching for the mouse.
                 $cartQty.trigger('focus');
-            }, 0);
+            });
             setAlert('Artykuł dodany do katalogu — uzupełnij ilość i kliknij Dodaj.', 'success');
         }).fail(function () {
             setAlert('Błąd komunikacji z serwerem.', 'danger');
