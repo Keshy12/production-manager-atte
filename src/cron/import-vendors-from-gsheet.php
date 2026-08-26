@@ -30,8 +30,10 @@
  *     decimal point (Polish locale), duplicates collapsed.
  *   - Inactive flag: column S of `ref_order_variants` is treated as
  *     boolean (TRUE = inactive). On re-import the sheet is the source of
- *     truth: existing rows are marked isActive=1 if S is empty/false,
- *     isActive=0 if S is true. New rows with S=true are not inserted.
+ *     truth: existing rows are flipped to isActive=1 if S is empty/false
+ *     or to isActive=0 if S is true. New rows are inserted with the
+ *     matching isActive value (the sheet decides whether a row lands in
+ *     the DB active or inactive — there is no automatic skipping).
  *   - PartNo not found in `list__parts.name` => row skipped + logged.
  *   - Empty cells in vendor 'Notes' leave `comment` as NULL.
  *   - Lead time column is interpreted as DAYS (per spec).
@@ -328,11 +330,12 @@ if (!$rawVariantValues || count($rawVariantValues) < 2) {
     exit(1);
 }
 
-$partStats = ['total' => 0, 'inserted' => 0, 'skipped_existing' => 0,
+$partStats = ['total' => 0, 'inserted' => 0, 'inserted_inactive' => 0,
+              'skipped_existing' => 0,
               'skipped_no_part' => 0, 'skipped_no_vendor' => 0,
               'skipped_no_producer' => 0, 'skipped_no_unit' => 0,
-              'skipped_inactive' => 0, 'marked_inactive' => 0,
-              'marked_active' => 0, 'packs_inserted' => 0,
+              'marked_inactive' => 0, 'marked_active' => 0,
+              'packs_inserted' => 0,
               'backfilled' => 0, 'skipped_already_set' => 0];
 
 /**
@@ -418,29 +421,23 @@ for ($i = 1; $i < count($rawVariantValues); $i++) {
         [$vendorId, $vendorPartNo]
     );
 
-    // --- Sheet says INACTIVE ---
-    if ($isInactive) {
-        if ($existing) {
-            if ((int)$existing['isActive'] !== 0 && !$dryRun) {
-                $MsaDB->update('list__vendor_part', ['isActive' => 0], 'id', $existing['id']);
-            }
-            $partStats['marked_inactive']++;
-            logLine("  [vp] marked INACTIVE (S=true) vendor=$vendorNm part=$partNo vendorPartNo=$vendorPartNo");
-        } else {
-            $partStats['skipped_inactive']++;
-            logLine("  [vp] SKIP inactive in sheet (S=true) vendor=$vendorNm part=$partNo vendorPartNo=$vendorPartNo");
-        }
-        continue;
-    }
-
-    // --- Sheet says ACTIVE (or empty) ---
+    // The sheet decides isActive. For existing rows we flip them when
+    // needed; for new rows we insert with the sheet's value (no longer
+    // skip on S=true — see commit "insert inactive rows from sheet").
+    $desiredActive = $isInactive ? 0 : 1;
 
     if ($existing) {
-        // Re-activate if sheet says active but DB says inactive.
-        if ((int)$existing['isActive'] !== 1 && !$dryRun) {
-            $MsaDB->update('list__vendor_part', ['isActive' => 1], 'id', $existing['id']);
-            $partStats['marked_active']++;
-            logLine("  [vp] marked ACTIVE vendor=$vendorNm part=$partNo vendorPartNo=$vendorPartNo");
+        if ((int)$existing['isActive'] !== $desiredActive) {
+            if (!$dryRun) {
+                $MsaDB->update('list__vendor_part', ['isActive' => $desiredActive], 'id', $existing['id']);
+            }
+            if ($desiredActive === 0) {
+                $partStats['marked_inactive']++;
+                logLine("  [vp] marked INACTIVE (S=true) vendor=$vendorNm part=$partNo vendorPartNo=$vendorPartNo");
+            } else {
+                $partStats['marked_active']++;
+                logLine("  [vp] marked ACTIVE (S=false/empty) vendor=$vendorNm part=$partNo vendorPartNo=$vendorPartNo");
+            }
         }
         // Backfill producer_part_no (preserved old behaviour, opt-in).
         if ($updateExisting && $existing['producerPartNo'] === null && $producerPartNo) {
@@ -468,7 +465,8 @@ for ($i = 1; $i < count($rawVariantValues); $i++) {
         continue;
     }
 
-    // New active row: insert header (no full_pack_quantity column) + pack rows.
+    // New row: insert header (no full_pack_quantity column) + pack rows.
+    // isActive is decided by the sheet (S column): 0 if S=true, 1 otherwise.
     $data = [
         'vendor_id'        => $vendorId,
         'producer_id'      => $producerId > 0 ? $producerId : 0,
@@ -477,17 +475,21 @@ for ($i = 1; $i < count($rawVariantValues); $i++) {
         'producer_part_no' => $producerPartNo,
         'vendor_jm_id'     => $unitId > 0 ? $unitId : 0,
         'comment'          => $comment,
+        'isActive'         => $desiredActive,
     ];
 
+    $activeTag = $desiredActive === 0 ? ' INACTIVE' : '';
     if ($dryRun) {
         $partStats['inserted']++;
+        if ($desiredActive === 0) $partStats['inserted_inactive']++;
         $pPartLog = $producerPartNo ? " producerPartNo=$producerPartNo" : '';
-        logLine("  [vp] would create vendor=$vendorNm producer=$producerNm part=$partNo vendorPartNo=$vendorPartNo$pPartLog unit=$vendorJM$packLog");
+        logLine("  [vp] would create$activeTag vendor=$vendorNm producer=$producerNm part=$partNo vendorPartNo=$vendorPartNo$pPartLog unit=$vendorJM$packLog");
         continue;
     }
     $newId = dbInsertAssoc($MsaDB, 'list__vendor_part', $data);
     insertPackRows($MsaDB, $newId, $packList);
     $partStats['inserted']++;
+    if ($desiredActive === 0) $partStats['inserted_inactive']++;
     $partStats['packs_inserted'] += count($packList);
     $pPartLog = $producerPartNo ? " producerPartNo=$producerPartNo" : '';
     logLine("  [vp] created vendor=$vendorNm producer=$producerId part=$partNo vendorPartNo=$vendorPartNo$pPartLog$packLog");
@@ -509,7 +511,7 @@ function insertPackRows(MsaDB $db, int $vendorPartId, array $packList): void {
     }
 }
 
-logLine("VendorParts summary: total={$partStats['total']} inserted={$partStats['inserted']} skipped_existing={$partStats['skipped_existing']} skipped_no_part={$partStats['skipped_no_part']} skipped_no_vendor={$partStats['skipped_no_vendor']} skipped_no_producer={$partStats['skipped_no_producer']} skipped_no_unit={$partStats['skipped_no_unit']} skipped_inactive={$partStats['skipped_inactive']} marked_inactive={$partStats['marked_inactive']} marked_active={$partStats['marked_active']} packs_inserted={$partStats['packs_inserted']} backfilled={$partStats['backfilled']} skipped_already_set={$partStats['skipped_already_set']}");
+logLine("VendorParts summary: total={$partStats['total']} inserted={$partStats['inserted']} inserted_inactive={$partStats['inserted_inactive']} skipped_existing={$partStats['skipped_existing']} skipped_no_part={$partStats['skipped_no_part']} skipped_no_vendor={$partStats['skipped_no_vendor']} skipped_no_producer={$partStats['skipped_no_producer']} skipped_no_unit={$partStats['skipped_no_unit']} marked_inactive={$partStats['marked_inactive']} marked_active={$partStats['marked_active']} packs_inserted={$partStats['packs_inserted']} backfilled={$partStats['backfilled']} skipped_already_set={$partStats['skipped_already_set']}");
 
 logLine('=== Vendor import complete ===');
 logLine("Log file: $logFile");
