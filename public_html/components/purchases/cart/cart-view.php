@@ -160,21 +160,56 @@ $units = $MsaDB->query(
                         </div>
                         <a href="#" id="vpSearchBtn" class="text-muted clear-picker-link ml-1" title="Szukaj po numerze dostawcy / producenta / części"><i class="bi bi-search"></i></a>
                     </div>
+                    <!-- Sits directly underneath the vendor-part picker (per
+                         current UX). Hidden until a variant is selected;
+                         shown by JS in syncAmountsInputs. -->
+                    <div id="variantInfoRow" class="mt-1" style="display:none">
+                        <span id="variantCommentDisplay" class="text-muted small">
+                            <i class="bi bi-journal-text"></i>
+                            <strong>Komentarz wewnętrzny:</strong>
+                            <em id="variantCommentText" class="ml-1">Brak komentarza</em>
+                            <a href="#" id="variantCommentEdit" class="text-muted ml-1"
+                               title="Edytuj komentarz — zapisze się od razu na karcie artykułu"><i class="bi bi-pencil"></i></a>
+                        </span>
+                        <span id="variantCommentEditBox" style="display:none" class="mt-1">
+                            <input type="text" id="variantCommentInput" class="form-control form-control-sm d-inline-block align-middle"
+                                   style="width:70%" maxlength="255" placeholder="Komentarz tylko dla nas — nie trafi do dostawcy">
+                            <button type="button" id="variantCommentSave" class="btn btn-sm btn-success ml-1" title="Zapisz"><i class="bi bi-check"></i></button>
+                            <button type="button" id="variantCommentCancel" class="btn btn-sm btn-secondary ml-1" title="Anuluj (Esc)"><i class="bi bi-x"></i></button>
+                        </span>
+                    </div>
                 </div>
-                <!-- The four cart-add wrappers below live in pickVariantRow
-                     next to vendorPartCell in pick mode (inline layout), and
-                     get moved into #cartAddRow in add mode via .appendTo().
-                     Their col-md class is swapped (2 <-> 3) on the move so
-                     both row layouts use 12 columns exactly. -->
-                <div class="col-md-2" id="cartPackagesWrap">
+                <!-- The cart-add wrappers below live in pickVariantRow next to
+                     vendorPartCell in pick mode (inline layout). Cena/Szt.
+                     and Waluta live in a separate #cartPriceRow that is
+                     shown only after a variant is selected (they have no
+                     meaning against an ambiguous pick). #cartPackSizeWrap
+                     and #cartPackagesWrap are hidden until the selected
+                     variant has a usable pack-size definition (single-tier
+                     variants skip the picker; pack-less variants skip both). -->
+                <div class="col-md-2" id="cartPackSizeWrap" style="display:none">
+                    <label for="cartPackSize">Opak. (wielkość):</label>
+                    <select id="cartPackSize" class="selectpicker form-control" data-width="100%" data-container="#cartPackSizeWrap" title="wielkość opakowania">
+                        <option value="">-- wybierz --</option>
+                    </select>
+                </div>
+                <div class="col-md-2" id="cartPackagesWrap" style="display:none">
                     <label for="cartPackages">Opak.:</label>
-                    <input type="number" id="cartPackages" class="form-control" min="0" step="1" placeholder="opak." title="Ilość = opakowania × ilość w opakowaniu">
+                    <input type="number" id="cartPackages" class="form-control" min="0" step="1" placeholder="opak." title="Ilość = N × opak.">
                 </div>
                 <div class="col-md-2" id="cartQtyWrap">
                     <label for="cartQty">Ilość:</label>
-                    <input type="number" id="cartQty" class="form-control" min="0.0001" step="0.0001" placeholder="szt.">
+                    <div class="input-group">
+                        <input type="number" id="cartQty" class="form-control" min="0.0001" step="0.0001">
+                        <div class="input-group-append">
+                            <span class="input-group-text" id="cartQtyUnit">szt.</span>
+                        </div>
+                    </div>
                 </div>
-                <div class="col-md-2" id="cartPriceWrap">
+            </div>
+
+            <div class="row mt-2" id="cartPriceRow" style="display:none">
+                <div class="col-md-3" id="cartPriceWrap">
                     <label for="cartPrice">Cena/Szt.:</label>
                     <input type="number" id="cartPrice" class="form-control" min="0" step="0.0001" placeholder="opcjonalna">
                 </div>
@@ -217,7 +252,8 @@ $units = $MsaDB->query(
                 </div>
                 <div class="col-md-3">
                     <label for="addFullPackQuantity">Pełne opakowanie:</label>
-                    <input type="number" id="addFullPackQuantity" class="form-control" min="0.0001" step="0.0001" value="1">
+                    <input type="text" id="addFullPackQuantity" class="form-control" value="1">
+                    <small class="form-text text-muted">Wielkości opakowań oddzielone `/`, np. 100/1000/5000. Puste = domyślnie 1.</small>
                 </div>
             </div>
 
@@ -235,23 +271,6 @@ $units = $MsaDB->query(
                 </div>
             </div>
 
-            <div class="row mt-1" id="variantInfoRow" style="display:none">
-                <div class="col-12">
-                    <span id="variantCommentDisplay" class="text-muted small">
-                        <i class="bi bi-journal-text"></i>
-                        <strong>Komentarz wewnętrzny:</strong>
-                        <em id="variantCommentText" class="ml-1">Brak komentarza</em>
-                        <a href="#" id="variantCommentEdit" class="text-muted ml-1"
-                           title="Edytuj komentarz — zapisze się od razu na karcie artykułu"><i class="bi bi-pencil"></i></a>
-                    </span>
-                    <span id="variantCommentEditBox" style="display:none" class="mt-1">
-                        <input type="text" id="variantCommentInput" class="form-control form-control-sm d-inline-block align-middle"
-                               style="width:70%" maxlength="255" placeholder="Komentarz tylko dla nas — nie trafi do dostawcy">
-                        <button type="button" id="variantCommentSave" class="btn btn-sm btn-success ml-1" title="Zapisz"><i class="bi bi-check"></i></button>
-                        <button type="button" id="variantCommentCancel" class="btn btn-sm btn-secondary ml-1" title="Anuluj (Esc)"><i class="bi bi-x"></i></button>
-                    </span>
-                </div>
-            </div>
             <div class="row mt-4 align-items-center">
                 <div class="col-6 text-left">
                     <button type="button" id="toggleAddVariantBtn" class="btn btn-outline-info"
@@ -305,14 +324,29 @@ $units = $MsaDB->query(
                 </div>
                 <div class="modal-body">
                     <div id="editItemHeader" class="text-muted small mb-3"></div>
-                    <div class="form-group mb-3">
+                    <!-- #editItemPackSizeWrap and #editItemPackagesWrap mirror
+                         the picker's visibility rules: pack-size only when
+                         more than one tier, packages-count only when a pack
+                         size is defined. #editItemQty always shows. -->
+                    <div class="form-group mb-3" id="editItemPackSizeWrap" style="display:none">
+                        <label for="editItemPackSize">Opak. (wielkość):</label>
+                        <select id="editItemPackSize" class="selectpicker form-control" data-width="100%" data-container="#editItemPackSizeWrap" title="wielkość opakowania">
+                            <option value="">-- wybierz --</option>
+                        </select>
+                    </div>
+                    <div class="form-group mb-3" id="editItemPackagesWrap" style="display:none">
                         <label for="editItemPackages">Opak.:</label>
                         <input type="number" id="editItemPackages" class="form-control" min="0" step="1" placeholder="opak."
-                               title="Ilość = opakowania × ilość w opakowaniu">
+                               title="Ilość = N × opak.">
                     </div>
                     <div class="form-group mb-3">
                         <label for="editItemQty">Ilość:</label>
-                        <input type="number" id="editItemQty" class="form-control" min="0.0001" step="0.0001">
+                        <div class="input-group">
+                            <input type="number" id="editItemQty" class="form-control" min="0.0001" step="0.0001">
+                            <div class="input-group-append">
+                                <span class="input-group-text" id="editItemQtyUnit">szt.</span>
+                            </div>
+                        </div>
                     </div>
                     <div class="form-group mb-3">
                         <label for="editItemPrice">Cena/Szt.:</label>

@@ -28,19 +28,52 @@
     let cart = {
         items:       [],     // {vendor_part_id, vendor_id, vendor_name, vendor_part_no,
                              //  producer_part_no, part_name, producer_name, unit_name,
-                             //  vendor_jm_id, full_pack_quantity, quantity, unit_price,
-                             //  currency}
+                             //  vendor_jm_id, full_pack_quantity, pack_quantities,
+                             //  picked_pack_size, quantity, unit_price, currency}
         activeDocs:  {},     // vendor_part_id (string) → [doc, …]
+    };
+
+    // ---- picker-mode state ----
+    // Picked pack size (the variant's chosen pack size for the current
+    // pick-mode form / edit modal / new cart line). `null` when no usable
+    // pack size is selected. `full_pack_quantity` (the smallest pack)
+    // remains the default — set in syncAmountsInputs / on edit-modal open.
+    let state = {
+        pickedPackSize: null,
+        // { packages, pack } when the cartQty value was auto-derived from
+        // (cartPackages × pickedPackSize); null after the user types into
+        // cartQty directly (or before any quantity has been entered).
+        // Drives the picker-change handler: re-derive quantity only when
+        // we know it came from packages×pack; otherwise the user wrote a
+        // raw quantity and changing pack only re-evaluates the warning.
+        lastDerived: null,
+        // Last-edited input between $cartPackages and $cartQty — receives
+        // the `packages-uneven` warning class when qty is uneven vs the
+        // chosen pack size. Set in the respective input handlers.
+        lastEdited: null
+    };
+
+    // Edit-modal pick-mode mirror. The modal opens for an arbitrary cart
+    // line and runs its own Opak./Ilość pair against the line's chosen
+    // pack — kept separate from `state` so opening the modal doesn't
+    // clobber whatever the picker row has selected.
+    let editModalState = {
+        pickedPackSize: null,
+        lastDerived: null,
+        lastEdited: null
     };
 
     // DOM refs
     let $vendorSelect        = $('#vendorSelect');
     let $partSelect          = $('#partSelect');
     let $vendorPartNoSelect  = $('#vendorPartNoSelect');
+    let $cartPackSize        = $('#cartPackSize');
+    let $cartPackSizeWrap    = $('#cartPackSizeWrap');
     let $cartPackages        = $('#cartPackages');
     let $cartQty             = $('#cartQty');
     let $cartPrice           = $('#cartPrice');
     let $cartCurrency        = $('#cartCurrency');
+    let $cartPriceRow        = $('#cartPriceRow');
     let $variantInfoRow      = $('#variantInfoRow');
     let $variantCommentDisplay = $('#variantCommentDisplay');
     let $variantCommentText  = $('#variantCommentText');
@@ -49,6 +82,7 @@
     let $variantCommentInput = $('#variantCommentInput');
     let $editItemModal       = $('#editItemModal');
     let $editItemHeader      = $('#editItemHeader');
+    let $editItemPackSize    = $('#editItemPackSize');
     let $editItemPackages    = $('#editItemPackages');
     let $editItemQty         = $('#editItemQty');
     let $editItemPrice       = $('#editItemPrice');
@@ -72,7 +106,9 @@
     // Cart-add input wrappers — live inside #pickVariantRow next to
     // vendorPartCell in pick mode and are simply hidden along with that
     // row in add mode. They never move between rows anymore (the add
-    // flow no longer shows Opak./Ilość/Cena/Waluta).
+    // flow no longer shows Opak./Ilość/Cena/Waluta). Cena/Szt. and
+    // Waluta live in a separate #cartPriceRow that becomes visible only
+    // once a concrete variant is resolved.
     let $cartPackagesWrap    = $('#cartPackagesWrap');
     let $cartQtyWrap         = $('#cartQtyWrap');
     let $cartPriceWrap       = $('#cartPriceWrap');
@@ -121,8 +157,11 @@
             // HTML places them next to vendorPartCell) — hiding the whole
             // row also hides Opak./Ilość/Cena/Szt./Waluta. The add flow
             // only edits catalog fields; the user fills qty/price/currency
-            // AFTER save, in pick mode.
+            // AFTER save, in pick mode. Cena/Waluta live in their own
+            // #cartPriceRow outside pickVariantRow, so we hide it here
+            // explicitly — it's not meaningful during catalog creation.
             $pickVariantRow.hide();
+            $cartPriceRow.hide();
             $addVariantRow1.show();
             $addVariantRow2.show();
             $addVariantCommentRow.show();
@@ -164,6 +203,12 @@
             // while in add mode.
             applyVendorFilter();
             applyPartFilter();
+            // syncAmountsInputs re-evaluates cartPriceRow visibility and
+            // repopulates the pack-size picker against the (still or now)
+            // selected variant. Called here so transitioning add → pick
+            // restores the picker / price row to a consistent state
+            // without waiting for the next variant change.
+            syncAmountsInputs();
         }
         updateAddBtnState();
     }
@@ -182,11 +227,17 @@
 
     function isAddModeDirty() {
         if (!addModeDirty) return false;
+        // pack input is free-text now ("100/1000/5000"); anything other
+        // than the default "1" counts as dirty. Defaulted-empty input
+        // parses to [1], same as the placeholder string.
+        let packs = parsePackInput($addFullPackQuantity.val());
+        let packDirty = !(packs.length === 1 && packs[0] === 1)
+            && !($addFullPackQuantity.val().toString().trim() === '1');
         return ($addProducerSelect.val()
             || $addUnitSelect.val()
             || $addVendorPartNo.val().trim()
             || $addProducerPartNo.val().trim()
-            || parseFloat($addFullPackQuantity.val()) !== 1
+            || packDirty
             || $addComment.val().trim());
     }
 
@@ -242,6 +293,16 @@
             cart.items = data.items.filter(function (i) {
                 return i && (parseInt(i.vendor_part_id, 10) || 0) > 0
                     && (parseFloat(i.quantity) || 0) > 0;
+            });
+            // Migrate legacy items: pre-pick-pack-size carts didn't carry
+            // `picked_pack_size` at all. Fall back to the variant's
+            // full_pack_quantity (smallest pack) so the row badge and
+            // even-pack math work without a re-edit.
+            cart.items.forEach(function (item) {
+                if (item.picked_pack_size === undefined || item.picked_pack_size === null) {
+                    let fpq = parseFloat(item.full_pack_quantity);
+                    item.picked_pack_size = (!isNaN(fpq) && fpq > 0) ? fpq : null;
+                }
             });
         } catch (e) { /* corrupt/unavailable — start empty */ }
     }
@@ -301,6 +362,117 @@
         if (isNaN(v)) return '—';
         return v.toFixed(4).replace(/\.?0+$/, '');
     }
+
+    // True when `qty` divides evenly by `pack` (within float epsilon).
+    // Short-circuits to true for missing/zero/NaN — that's "nothing
+    // entered yet" or "no usable pack size", not "user wrote a bad
+    // value". The packages-uneven warning is non-blocking.
+    function isEven(qty, pack) {
+        if (!pack || pack <= 0 || qty == null || isNaN(qty)) return true;
+        return Math.abs(qty / pack - Math.round(qty / pack)) < 1e-9;
+    }
+
+    // Parse the add-mode "Pełne opakowanie" free-text field into a list
+    // of positive floats. Splits on `/`, trims each segment, parses each
+    // as a float, dedupes, drops non-positive entries. Empty input →
+    // [1] (the legacy single-pack default). Used to derive both
+    // `full_pack_quantity` (smallest) and `pack_quantities` for the new
+    // VendorPart.
+    function parsePackInput(raw) {
+        if (raw === null || raw === undefined) return [1];
+        let s = String(raw).trim();
+        if (s === '') return [1];
+        let out = [];
+        s.split('/').forEach(function (part) {
+            let v = parseFloat(String(part).trim().replace(',', '.'));
+            if (!isNaN(v) && v > 0) {
+                // Dedup via stringified float — avoids 1.0 vs 1 confusion.
+                let key = v.toString();
+                if (!out.some(function (x) { return x.toString() === key; })) {
+                    out.push(v);
+                }
+            }
+        });
+        return out;
+    }
+
+    // Build the option list for a pack-size picker (variant picker row
+    // OR edit modal) from the variant's `pack_quantities` array. Sorts
+    // ascending. Disabled when the variant has no usable pack sizes —
+    // the placeholder is shown and any selection becomes `--`.
+    // The `suppressRef` parameter is a 1-element array used as a
+    // mutable boolean — bootstrap-select dispatches `changed.bs.select`
+    // asynchronously after .val(), so the suppress flag must be held
+    // for the duration of the dispatch. Each picker has its own flag
+    // (cart vs edit modal) so they don't interfere with each other.
+    function populatePackSizePicker($picker, packQuantities, defaultValue, suppressRef) {
+        let packs = Array.isArray(packQuantities) ? packQuantities.slice() : [];
+        packs.sort(function (a, b) { return parseFloat(a) - parseFloat(b); });
+        let opts = '<option value="">-- wybierz --</option>';
+        packs.forEach(function (p) {
+            opts += '<option value="' + p + '">' + formatQty(p) + '</option>';
+        });
+        $picker.html(opts);
+        $picker.prop('disabled', packs.length === 0);
+        refreshSelectpicker($picker);
+        let target = null;
+        if (suppressRef) suppressRef[0] = true;
+        try {
+            if (packs.length === 0) {
+                $picker.selectpicker('val', '');
+            } else {
+                let dv = parseFloat(defaultValue);
+                target = (!isNaN(dv) && dv > 0 && packs.indexOf(dv) !== -1) ? dv
+                       : parseFloat(packs[0]);
+                $picker.selectpicker('val', String(target));
+            }
+        } finally {
+            // Release on the next tick so the dispatched changed.bs.select
+            // event sees suppressRef[0] === true.
+            if (suppressRef) {
+                setTimeout(function () { suppressRef[0] = false; }, 0);
+            }
+        }
+        return target;
+    }
+
+    // Apply or remove the `packages-uneven` warning class + title on the
+    // last-edited input between the two amount fields. `lastEdited` is a
+    // jQuery object ($cartPackages or $cartQty); the OTHER field's class
+    // is cleared first so only the most recently typed field flags. When
+    // `even === true` both fields are left clean.
+    function applyEvenWarning(lastEdited, qty, pack) {
+        // Always clear both — last-edited wins; the other stays clean.
+        $cartPackages.removeClass('packages-uneven').removeAttr('title');
+        $cartQty.removeClass('packages-uneven').removeAttr('title');
+        let even = isEven(qty, pack);
+        if (even) return;
+        if (!lastEdited || !lastEdited.length) return;
+        lastEdited.addClass('packages-uneven');
+        lastEdited.attr('title',
+            'Uwaga: ilość nie odpowiada pełnej liczbie opakowań (wielkość: ' + formatQty(pack) + ')');
+    }
+
+    // Edit-modal twin of applyEvenWarning — operates on the modal's
+    // $editItemPackages / $editItemQty fields. Same semantics: lastEdited
+    // flags; the other stays clean.
+    function applyEvenWarningEdit(lastEdited, qty, pack) {
+        $editItemPackages.removeClass('packages-uneven').removeAttr('title');
+        $editItemQty.removeClass('packages-uneven').removeAttr('title');
+        let even = isEven(qty, pack);
+        if (even) return;
+        if (!lastEdited || !lastEdited.length) return;
+        lastEdited.addClass('packages-uneven');
+        lastEdited.attr('title',
+            'Uwaga: ilość nie odpowiada pełnej liczbie opakowań (wielkość: ' + formatQty(pack) + ')');
+    }
+
+    // Suppression flags for the two pickers' changed.bs.select handlers.
+    // Initialized to mutable single-element arrays so populatePackSizePicker
+    // can hold the suppression for one tick (bootstrap-select dispatches
+    // the change event asynchronously after a programmatic .val()).
+    let suppressPickerChange    = [false];
+    let suppressEditPickerChange = [false];
 
     function stateBadgeClass(state) {
         switch (state) {
@@ -474,13 +646,15 @@
         if (pickerMode === 'add') {
             // Save button — enable only when every required catalog field
             // is valid. Qty/price/currency belong to the next step.
-            let fpq = parseFloat(($addFullPackQuantity.val() || '').toString().replace(',', '.'));
+            // Pack input is free-text "100/1000/5000"; we just need ≥1
+            // positive value to record pack_quantities server-side.
+            let packs = parsePackInput($addFullPackQuantity.val());
             let ok = (parseInt($vendorSelect.val(), 10) || 0) > 0
                 && (parseInt($partSelect.val(), 10) || 0) > 0
                 && (parseInt($addProducerSelect.val(), 10) || 0) > 0
                 && (parseInt($addUnitSelect.val(), 10) || 0) > 0
                 && $addVendorPartNo.val().trim() !== ''
-                && !isNaN(fpq) && fpq > 0;
+                && packs.length > 0;
             $addToCartBtn.prop('disabled', !ok);
         } else {
             // Pick mode — enable when a concrete variant is selected.
@@ -493,7 +667,9 @@
     }
 
     // Full-pack quantity of the currently selected variant (null when the
-    // variant has no usable pack size or nothing is selected).
+    // variant has no usable pack size or nothing is selected). Kept as
+    // the "smallest pack" anchor for the cart row's "X opak." sub-line
+    // and for backwards-compatibility with add-mode defaults.
     function selectedFullPackQty() {
         let raw = $vendorPartNoSelect.find('option:selected').attr('data-full-pack-quantity');
         let v = parseFloat(raw);
@@ -509,59 +685,104 @@
         return (!isNaN(v) && v > 0) ? v : null;
     }
 
+    // Picked pack size of the currently selected variant — null when no
+    // pack is selectable. Tracks `state.pickedPackSize` after a picker
+    // selection; for callers that just need a hint of what's currently
+    // active (e.g. cart row render), `state.pickedPackSize` is the truth.
+    function selectedPickedPackSize() {
+        let v = parseFloat($cartPackSize.val());
+        return (!isNaN(v) && v > 0) ? v : state.pickedPackSize;
+    }
+
+    // Picked pack size stored on a cart item (modal-safe counterpart).
+    function itemPickedPackSize(item) {
+        if (!item) return null;
+        let v = parseFloat(item.picked_pack_size);
+        return (!isNaN(v) && v > 0) ? v : itemFullPackQty(item);
+    }
+
     // Clears the packages input and enables it only when the selected
-    // variant has a usable full_pack_quantity.
+    // variant has a usable picked pack size.
     function resetPackagesInput() {
-        let fpq = selectedFullPackQty();
+        let pack = selectedPickedPackSize();
         $cartPackages.val('');
         $cartPackages.removeClass('packages-uneven');
-        $cartPackages.prop('disabled', fpq === null);
+        $cartPackages.prop('disabled', pack === null);
     }
 
-    // Recomputes the Opak. field from Ilość (qty / full pack quantity)
-    // and flags fractional package counts in yellow — non-blocking.
-    function updatePackagesDisplay() {
-        let fpq = selectedFullPackQty();
-        let qty = parseFloat($cartQty.val());
-        if (fpq === null || isNaN(qty) || qty < 0) {
-            $cartPackages.removeClass('packages-uneven');
-            return;
-        }
-        let pkgs = qty / fpq;
-        let even = Math.abs(pkgs - Math.round(pkgs)) < 1e-9;
-        $cartPackages.val(parseFloat(pkgs.toFixed(2)));
-        $cartPackages.toggleClass('packages-uneven', !even);
-        $cartPackages.attr('title', even ? 'Ilość = opakowania × ilość w opakowaniu'
-                                         : 'Uwaga: ilość nie odpowiada pełnej liczbie opakowań');
-    }
-
-    // Qty placeholder mirrors the selected variant's unit (JM) from DB.
+    // Qty unit label + placeholder mirror the selected variant's unit
+    // (JM) from DB. The label is shown as a fixed append to the input
+    // (visible text); the placeholder is no longer used (kept for
+    // back-compat with non-bootstrap-selectpicker themes).
+    let $cartQtyUnit = $('#cartQtyUnit');
+    let $editItemQtyUnit = $('#editItemQtyUnit');
     function syncQtyPlaceholder() {
         let $sel = $vendorPartNoSelect.find('option:selected');
         let unit = ($sel.length > 0 ? $sel.attr('data-unit-name') : '') || 'szt.';
         $cartQty.attr('placeholder', unit);
+        $cartQtyUnit.text(unit || 'szt.');
+    }
+    function syncEditQtyUnit(item) {
+        let unit = (item && item.unit_name) ? item.unit_name : 'szt.';
+        $editItemQty.attr('placeholder', unit);
+        $editItemQtyUnit.text(unit || 'szt.');
     }
 
     // Ilość/Cena/Waluta are editable only once a concrete variant is
     // selected; while ambiguous they're disabled and qty/price cleared.
+    // The pack-size picker, the price/currency row, and the picker-row
+    // state are all wired up here — this is the single source of truth
+    // for "is the pick mode form actually usable?".
     function syncAmountsInputs() {
         let $sel = $vendorPartNoSelect.find('option:selected');
         let resolved = $sel.length > 0
             && !$sel.prop('hidden')
             && (parseInt($sel.attr('data-vp-id'), 10) || 0) > 0;
+        let vp = resolved ? getVpById(parseInt($sel.attr('data-vp-id'), 10)) : null;
+
         $cartQty.prop('disabled', !resolved);
         $cartPrice.prop('disabled', !resolved);
         $cartCurrency.prop('disabled', !resolved);
+
         if (!resolved) {
             $cartQty.val('');
             $cartPrice.val('');
             $cartPackages.val('').prop('disabled', true).removeClass('packages-uneven')
                 .attr('placeholder', 'opak.');
+            // Pack-size picker: empty + disabled, no selection carried
+            // over. Price/currency row hides. populatePackSizePicker
+            // returns null for an empty pack list (the picker is then
+            // disabled and shows the placeholder).
+            populatePackSizePicker($cartPackSize, [], null, suppressPickerChange);
+            $cartPriceRow.hide();
+            $cartPackSizeWrap.hide();
+            $cartPackagesWrap.hide();
+            // Clear pick-mode picker state — a future variant shouldn't
+            // inherit the previous one's chosen pack.
+            state.pickedPackSize = null;
+            state.lastDerived = null;
+            state.lastEdited = null;
             $variantInfoRow.hide();
         } else {
-            // Informative placeholder: how many units one package holds.
+            // Informative placeholder: how many units one picked pack holds.
             let fpq = selectedFullPackQty();
             $cartPackages.attr('placeholder', fpq !== null ? formatQty(fpq) + '/opak.' : 'opak.');
+            // Populate the pack-size picker from the variant's
+            // pack_quantities; default to its full_pack_quantity
+            // (smallest pack). The picker is enabled iff the variant has
+            // at least one usable pack size.
+            let packQuantities = vp ? (vp.pack_quantities || []) : [];
+            let picked = populatePackSizePicker($cartPackSize, packQuantities, fpq, suppressPickerChange);
+            state.pickedPackSize = picked;
+            state.lastDerived = null;
+            state.lastEdited = null;
+            $cartPriceRow.show();
+            // Pack-size picker is only useful when the variant has more
+            // than one tier — single-tier variants skip it. The
+            // packages-count input is only useful when a pack size is
+            // actually defined; pack-less variants skip it as well.
+            $cartPackSizeWrap.toggle(packQuantities.length > 1);
+            $cartPackagesWrap.toggle(picked !== null);
             $variantInfoRow.show();
             renderVariantComment();
         }
@@ -999,13 +1220,21 @@
                     partCell += '<div><small class="text-muted"><i class="bi bi-journal-text"></i> Komentarz: ' + escapeHtml(liveCmt) + '</small></div>';
                 }
                 // Ilość cell carries the package count as a sub-line
-                // (yellow when qty doesn't match whole packages).
+                // (yellow when qty doesn't match whole packages) plus
+                // the badge showing the chosen pack size for this line.
                 let qtyCell = formatQty(item.quantity);
+                let pickedPack = itemPickedPackSize(item);
                 if (item.full_pack_quantity && item.full_pack_quantity > 0) {
                     let pkgs = item.quantity / item.full_pack_quantity;
                     let evenPkgs = Math.abs(pkgs - Math.round(pkgs)) < 1e-9;
                     qtyCell += '<div><small class="' + (evenPkgs ? 'text-muted' : 'text-warning') + '">' +
-                        parseFloat(pkgs.toFixed(2)) + ' opak.</small></div>';
+                        parseFloat(pkgs.toFixed(2)) + ' opak.</small>';
+                    if (pickedPack !== null) {
+                        qtyCell += '<span class="badge badge-light border text-monospace ml-1" title="Wybrana wielkość opakowania">opak. ' + formatQty(pickedPack) + '</span>';
+                    }
+                    qtyCell += '</div>';
+                } else if (pickedPack !== null) {
+                    qtyCell += '<div><span class="badge badge-light border text-monospace ml-1" title="Wybrana wielkość opakowania">opak. ' + formatQty(pickedPack) + '</span></div>';
                 }
                 html += '<tr>' +
                     '<td>' + partCell + '</td>' +
@@ -1052,15 +1281,28 @@
         }
         let $vendorOpt = $vendorSelect.find('option:selected');
         let $partOpt = $partSelect.find('option:selected');
-        // Merge rule: same vendor-part, same currency, same unit price
-        // (including both unpriced). A different price OR currency means
-        // the user intends a separate line — do NOT silently overwrite
-        // the previous line's price, just push a new row.
+        // Capture the variant entry (from the page-load index) so the
+        // cart row carries the same pack_quantities the picker used.
+        let vp = getVpById(vendorPartId);
+        let pickedPack = state.pickedPackSize;
+        if (pickedPack === null || isNaN(pickedPack) || pickedPack <= 0) {
+            pickedPack = selectedFullPackQty();
+        }
+        let packQuantities = vp ? (vp.pack_quantities || []) : [];
+        // Merge rule: same vendor-part, same currency, same unit price,
+        // same picked pack size (including both unpriced / both default
+        // to the same pack). A different price, currency, OR pack size
+        // means the user intends a separate line — do NOT silently
+        // overwrite the previous line, just push a new row.
         let existing = cart.items.find(function (i) {
+            let ip = parseFloat(i.picked_pack_size);
+            let samePack = (ip === pickedPack) ||
+                ((ip === null || isNaN(ip)) && (pickedPack === null || isNaN(pickedPack)));
             return i.vendor_part_id === vendorPartId
                 && i.currency === currency
                 && (i.unit_price === unitPrice ||
-                    (i.unit_price === null && unitPrice === null));
+                    (i.unit_price === null && unitPrice === null))
+                && samePack;
         });
         if (existing) {
             existing.quantity += qty;
@@ -1078,6 +1320,8 @@
                 unit_name         : $opt.attr('data-unit-name') || '',
                 vendor_jm_id      : parseInt($opt.attr('data-vendor-jm-id'), 10) || null,
                 full_pack_quantity: parseFloat($opt.attr('data-full-pack-quantity')) || null,
+                pack_quantities   : packQuantities.slice(),
+                picked_pack_size  : pickedPack,
                 quantity          : qty,
                 unit_price        : unitPrice,
                 currency          : currency
@@ -1089,6 +1333,9 @@
         // Currency stays sticky — usually several items in a row share it.
         $cartQty.val('');
         $cartPrice.val('');
+        $cartPackages.val('').removeClass('packages-uneven');
+        state.lastDerived = null;
+        state.lastEdited = null;
         $partSelect.val('');
         refreshSelectpicker($partSelect);
         applyPartFilter();          // part cleared → restore full vendor list
@@ -1119,16 +1366,19 @@
         let unitId     = parseInt($addUnitSelect.val(), 10) || 0;
         let vendorPartNo   = $addVendorPartNo.val().trim();
         let producerPartNo = $addProducerPartNo.val().trim() || null;
-        let fpqRaw      = $addFullPackQuantity.val().toString().replace(',', '.');
-        let fpq         = parseFloat(fpqRaw);
-        let comment     = $addComment.val().trim() || null;
+        // Pack input is free-text "100/1000/5000"; we POST the list as
+        // pack_quantities AND the smallest as full_pack_quantity for
+        // back-compat with code paths that still read the singular field.
+        let packList = parsePackInput($addFullPackQuantity.val());
+        let fpq      = Math.min.apply(null, packList);
+        let comment  = $addComment.val().trim() || null;
 
         if (!vendorId)           { setAlert('Wybierz dostawcę.', 'warning'); return; }
         if (!partsId)            { setAlert('Wybierz część.', 'warning'); return; }
         if (!producerId)         { setAlert('Wybierz producenta.', 'warning'); return; }
         if (!unitId)             { setAlert('Wybierz jednostkę (JM).', 'warning'); return; }
         if (!vendorPartNo)       { setAlert('Numer u dostawcy jest wymagany.', 'warning'); return; }
-        if (isNaN(fpq) || fpq <= 0) { setAlert('Pełne opakowanie musi być > 0.', 'warning'); return; }
+        if (packList.length === 0) { setAlert('Podaj co najmniej jedną wielkość opakowania > 0.', 'warning'); return; }
 
         // ---- POST vp-add.php ----
         $.ajax({
@@ -1143,6 +1393,7 @@
                 producer_part_no:   producerPartNo || '',
                 vendor_jm_id:       unitId,
                 full_pack_quantity: fpq,
+                pack_quantities:    packList,
                 comment:            comment || ''
             }
         }).done(function (r) {
@@ -1152,8 +1403,23 @@
             }
             let newId = r.id;
 
-            // Build a VENDOR_PARTS_INDEX entry from the submitted data +
-            // names pulled from the selected option labels.
+            // Server is the source of truth for the newly created
+            // VendorPart's pack list. Use the response (r.pack_quantities,
+            // r.full_pack_quantity) when present; fall back to the values
+            // we just sent — keeps the in-memory index consistent with
+            // the DB even if the server hasn't been updated yet.
+            let respPacks = (r && Array.isArray(r.pack_quantities) && r.pack_quantities.length > 0)
+                ? r.pack_quantities.slice()
+                : packList.slice();
+            let respFpq = (r && parseFloat(r.full_pack_quantity) > 0)
+                ? parseFloat(r.full_pack_quantity)
+                : Math.min.apply(null, respPacks);
+            // Sort ascending so the picker / even-pack math always see
+            // a canonical order regardless of the order the user typed.
+            respPacks.sort(function (a, b) { return parseFloat(a) - parseFloat(b); });
+
+            // Build a VENDOR_PARTS_INDEX entry from the response + names
+            // pulled from the selected option labels.
             let $vendorOpt = $vendorSelect.find('option:selected');
             let $partOpt   = $partSelect.find('option:selected');
             let $prodOpt   = $addProducerSelect.find('option:selected');
@@ -1168,7 +1434,8 @@
                 private_comment    : comment || '',
                 vendor_jm_id       : unitId,
                 unit_name          : $unitOpt.attr('data-name') || '',
-                full_pack_quantity : fpq,
+                full_pack_quantity : respFpq,
+                pack_quantities    : respPacks,
                 vendor_name        : $vendorOpt.attr('data-name') || '',
                 part_name          : $partOpt.attr('data-name') || ''
             };
@@ -1331,19 +1598,51 @@
     $addComment.on('input',         function () { addModeDirty = true; });
 
 
-    // Opak. → Ilość: qty = packages × full pack quantity.
+    // Opak. → Ilość: qty = packages × picked pack size. Mark this as the
+    // last-edited field so the uneven warning lands here when the
+    // resulting quantity doesn't divide evenly into the picked pack.
     $cartPackages.on('input', function () {
-        let fpq = selectedFullPackQty();
+        let pack = selectedPickedPackSize();
         let pkgs = parseFloat($(this).val());
-        if (fpq === null || isNaN(pkgs) || pkgs < 0) {
-            $(this).removeClass('packages-uneven');
+        if (pack === null || isNaN(pkgs) || pkgs < 0) {
+            state.lastDerived = null;
+            applyEvenWarning($cartPackages, NaN, pack);
             return;
         }
-        $cartQty.val(parseFloat((pkgs * fpq).toFixed(6)));
-        let even = Math.abs(pkgs - Math.round(pkgs)) < 1e-9;
-        $(this).toggleClass('packages-uneven', !even);
-        $(this).attr('title', even ? 'Ilość = opakowania × ilość w opakowaniu'
-                                   : 'Uwaga: ilość nie odpowiada pełnej liczbie opakowań');
+        let qty = pkgs * pack;
+        $cartQty.val(parseFloat(qty.toFixed(6)));
+        state.lastDerived = { packages: pkgs, pack: pack };
+        state.lastEdited = $cartPackages;
+        applyEvenWarning($cartPackages, qty, pack);
+    });
+
+    // Picked-pack-size change: re-derive qty only when qty came from
+    // (packages × pack) in the first place. Otherwise the user typed a
+    // raw quantity — re-evaluate the even-pack warning but don't touch
+    // the value. `suppressPickerChange` skips this handler when the
+    // change came from populatePackSizePicker's programmatic .val().
+    $cartPackSize.on('changed.bs.select', function () {
+        if (suppressPickerChange[0]) return;
+        let newPack = parseFloat($cartPackSize.val());
+        if (!isNaN(newPack) && newPack > 0) {
+            state.pickedPackSize = newPack;
+        } else {
+            state.pickedPackSize = null;
+        }
+        let pkgs = parseFloat($cartPackages.val());
+        let qty  = parseFloat($cartQty.val());
+        let canRederive = state.lastDerived !== null
+            && !isNaN(pkgs)
+            && state.lastDerived.packages === pkgs
+            && state.pickedPackSize !== null;
+        if (canRederive) {
+            qty = pkgs * state.pickedPackSize;
+            $cartQty.val(parseFloat(qty.toFixed(6)));
+            state.lastDerived = { packages: pkgs, pack: state.pickedPackSize };
+        }
+        // Re-evaluate the warning on whichever field was last-edited
+        // (packages-uneven class + warning title land there).
+        applyEvenWarning(state.lastEdited, qty, state.pickedPackSize);
     });
 
     // Inline edit of the variant's private comment — saves immediately
@@ -1393,9 +1692,24 @@
         else if (ev.key === 'Escape') { cancelVariantCommentEdit(); }
     });
 
-    // Ilość → Opak.: packages = qty / full pack quantity.
+    // Ilość → Opak.: packages = qty / picked pack size. Marking
+    // lastEdited = $cartQty tells the even-warning helper which field
+    // should carry the uneven class.
     $cartQty.on('input', function () {
-        updatePackagesDisplay();
+        let pack = selectedPickedPackSize();
+        let qty = parseFloat($(this).val());
+        if (pack === null || isNaN(qty) || qty < 0) {
+            state.lastDerived = null;
+            state.lastEdited = $cartQty;
+            applyEvenWarning($cartQty, NaN, pack);
+            return;
+        }
+        let pkgs = qty / pack;
+        $cartPackages.val(parseFloat(pkgs.toFixed(2)));
+        // Raw quantity entered — no longer derived from packages.
+        state.lastDerived = null;
+        state.lastEdited = $cartQty;
+        applyEvenWarning($cartQty, qty, pack);
     });
 
     $addToCartBtn.on('click', function () {
@@ -1426,58 +1740,116 @@
         $editItemQty.val(item.quantity || '');
         $editItemPrice.val(item.unit_price === null || item.unit_price === undefined ? '' : item.unit_price);
         $editItemCurrency.val(item.currency || 'PLN');
-        // Opak. pre-fill: derived from the stored quantity; disabled when
-        // the variant has no usable full_pack_quantity.
-        let fpq = itemFullPackQty(item);
-        $editItemPackages.prop('disabled', fpq === null).removeClass('packages-uneven');
-        if (fpq !== null) {
-            let pkgs = (parseFloat(item.quantity) || 0) / fpq;
+        // Populate the pack-size picker from the item's pack_quantities
+        // (or fall back to a single-element list of full_pack_quantity
+        // for legacy cart rows that never recorded a list).
+        let packs = Array.isArray(item.pack_quantities) && item.pack_quantities.length > 0
+            ? item.pack_quantities.slice()
+            : (item.full_pack_quantity ? [parseFloat(item.full_pack_quantity)] : []);
+        let pickedPack = parseFloat(item.picked_pack_size);
+        let dv = (!isNaN(pickedPack) && pickedPack > 0) ? pickedPack
+             : (item.full_pack_quantity ? parseFloat(item.full_pack_quantity) : null);
+        let chosen = populatePackSizePicker($editItemPackSize, packs, dv, suppressEditPickerChange);
+        // Mirror the pick-mode visibility rules: pack-size picker only
+        // when more than one tier, packages-count only when a pack size
+        // is defined. The qty input always shows.
+        $editItemPackSizeWrap.toggle(packs.length > 1);
+        let packagesInputWrap = $('#editItemPackagesWrap');
+        packagesInputWrap.toggle(chosen !== null);
+        // Opak. pre-fill: derived from the stored quantity against the
+        // chosen pack size; disabled when there's no usable picked pack.
+        $editItemPackages.prop('disabled', chosen === null).removeClass('packages-uneven');
+        if (chosen !== null) {
+            let pkgs = (parseFloat(item.quantity) || 0) / chosen;
             $editItemPackages.val(parseFloat(pkgs.toFixed(2)));
-            $editItemPackages.toggleClass('packages-uneven', Math.abs(pkgs - Math.round(pkgs)) >= 1e-9);
-            $editItemPackages.attr('placeholder', formatQty(fpq) + '/opak.');
+            $editItemPackages.attr('placeholder', formatQty(chosen) + '/opak.');
+            let $lastEd = $editItemQty;   // the modal's stored qty was the source
+            applyEvenWarningEdit($lastEd, parseFloat(item.quantity) || 0, chosen);
         } else {
             $editItemPackages.val('').attr('placeholder', 'opak.');
         }
+        // Local picker-mode mirror so the modal's input handlers see
+        // the chosen pack size via editItemSelectedPackSize().
+        editModalState = {
+            pickedPackSize: chosen,
+            lastDerived: null,
+            lastEdited: null
+        };
+        // Mirror the pick-mode unit text onto the modal's qty input append.
+        syncEditQtyUnit(item);
         $editItemModal.data('edit-idx', idx);
         $editItemModal.modal('show');
     });
 
-    // Modal two-way sync, mirroring the picker row's Opak.↔Ilość pair:
-    //   Opak. input → Ilość = packages × full_pack_quantity
-    //   Ilość input → Opak. = quantity / full_pack_quantity
-    // Fractional package counts flag the Opak. field yellow — non-blocking.
+    function editItemSelectedPackSize() {
+        let v = parseFloat($editItemPackSize.val());
+        return (!isNaN(v) && v > 0) ? v : editModalState.pickedPackSize;
+    }
+
+    // Modal two-way sync, mirroring the picker row's Opak.↔Ilość pair,
+    // scaled against the modal's chosen pack size:
+    //   Opak. input → Ilość = packages × chosen pack
+    //   Ilość input → Opak. = quantity / chosen pack
+    // Fractional package counts flag the last-edited field yellow —
+    // non-blocking.
     function editItemPackagesFromQty() {
-        let item = cart.items[$editItemModal.data('edit-idx')];
-        let fpq = itemFullPackQty(item);
+        let pack = editItemSelectedPackSize();
         let qty = parseFloat($editItemQty.val());
-        if (fpq === null || isNaN(qty) || qty < 0) {
-            $editItemPackages.removeClass('packages-uneven');
+        if (pack === null || isNaN(qty) || qty < 0) {
+            editModalState.lastDerived = null;
+            editModalState.lastEdited = $editItemQty;
+            applyEvenWarningEdit($editItemQty, NaN, pack);
             return;
         }
-        let pkgs = qty / fpq;
-        let even = Math.abs(pkgs - Math.round(pkgs)) < 1e-9;
+        let pkgs = qty / pack;
         $editItemPackages.val(parseFloat(pkgs.toFixed(2)));
-        $editItemPackages.toggleClass('packages-uneven', !even);
-        $editItemPackages.attr('title', even ? 'Ilość = opakowania × ilość w opakowaniu'
-                                             : 'Uwaga: ilość nie odpowiada pełnej liczbie opakowań');
+        editModalState.lastDerived = null;
+        editModalState.lastEdited = $editItemQty;
+        applyEvenWarningEdit($editItemQty, qty, pack);
     }
 
     $editItemPackages.on('input', function () {
-        let item = cart.items[$editItemModal.data('edit-idx')];
-        let fpq = itemFullPackQty(item);
+        let pack = editItemSelectedPackSize();
         let pkgs = parseFloat($(this).val());
-        if (fpq === null || isNaN(pkgs) || pkgs < 0) {
-            $(this).removeClass('packages-uneven');
+        if (pack === null || isNaN(pkgs) || pkgs < 0) {
+            editModalState.lastDerived = null;
+            applyEvenWarningEdit($editItemPackages, NaN, pack);
             return;
         }
-        $editItemQty.val(parseFloat((pkgs * fpq).toFixed(6)));
-        let even = Math.abs(pkgs - Math.round(pkgs)) < 1e-9;
-        $(this).toggleClass('packages-uneven', !even);
-        $(this).attr('title', even ? 'Ilość = opakowania × ilość w opakowaniu'
-                                   : 'Uwaga: ilość nie odpowiada pełnej liczbie opakowań');
+        let qty = pkgs * pack;
+        $editItemQty.val(parseFloat(qty.toFixed(6)));
+        editModalState.lastDerived = { packages: pkgs, pack: pack };
+        editModalState.lastEdited = $editItemPackages;
+        applyEvenWarningEdit($editItemPackages, qty, pack);
     });
 
     $editItemQty.on('input', editItemPackagesFromQty);
+
+    // Edit-modal pack picker: same re-derive-or-re-evaluate logic as the
+    // picker's, but against editModalState. `suppressEditPickerChange`
+    // skips the handler when the change came from the modal's
+    // populatePackSizePicker call.
+    $editItemPackSize.on('changed.bs.select', function () {
+        if (suppressEditPickerChange[0]) return;
+        let newPack = parseFloat($editItemPackSize.val());
+        if (!isNaN(newPack) && newPack > 0) {
+            editModalState.pickedPackSize = newPack;
+        } else {
+            editModalState.pickedPackSize = null;
+        }
+        let pkgs = parseFloat($editItemPackages.val());
+        let qty  = parseFloat($editItemQty.val());
+        let canRederive = editModalState.lastDerived !== null
+            && !isNaN(pkgs)
+            && editModalState.lastDerived.packages === pkgs
+            && editModalState.pickedPackSize !== null;
+        if (canRederive) {
+            qty = pkgs * editModalState.pickedPackSize;
+            $editItemQty.val(parseFloat(qty.toFixed(6)));
+            editModalState.lastDerived = { packages: pkgs, pack: editModalState.pickedPackSize };
+        }
+        applyEvenWarningEdit(editModalState.lastEdited, qty, editModalState.pickedPackSize);
+    });
 
     // Save the edited values back into the cart, persist, re-render.
     $editItemSave.on('click', function () {
@@ -1494,9 +1866,17 @@
         if (price === null) {
             setAlert('Cena/Szt. jest wymagana (wprowadź wartość).', 'warning'); return;
         }
+        // Persist the modal's chosen pack size — falls back to the line's
+        // previous pick (or the variant's smallest pack) when the user
+        // didn't touch the picker.
+        let picked = editItemSelectedPackSize();
+        if (picked === null) {
+            picked = itemPickedPackSize(item);
+        }
         item.quantity = qty;
         item.unit_price = price;
         item.currency = $editItemCurrency.val() || 'PLN';
+        item.picked_pack_size = picked;
         $editItemModal.modal('hide');
         renderCart();
         loadActiveDocs();
@@ -1583,6 +1963,7 @@
                     quantity_unit_id: i.vendor_jm_id || 0,
                     unit_price      : i.unit_price,
                     currency        : i.currency || 'PLN',
+                    picked_pack_size: i.picked_pack_size !== undefined ? i.picked_pack_size : null,
                     comment         : ''
                 };
             })

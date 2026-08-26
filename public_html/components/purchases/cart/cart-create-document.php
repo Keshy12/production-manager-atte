@@ -17,6 +17,7 @@
  *   items[0][unit_price]                = number (optional, blank allowed)
  *   items[0][currency]                  = string (default PLN)
  *   items[0][comment]                   = string (optional)
+ *   items[0][picked_pack_size]          = number (optional, blank allowed, > 0 when present)
  *
  * Response shape:
  *   {
@@ -33,8 +34,6 @@
  */
 use Atte\DB\MsaDB;
 use Atte\Utils\Purchase\Order\PurchaseActionHandler;
-use Atte\Utils\Purchase\Order\PurchaseOrderItemRepository;
-use Atte\Utils\Purchase\Order\RFQItemRepository;
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -89,17 +88,32 @@ foreach ($_POST['items'] as $row) {
     $rowCmt = $row['comment'] ?? null;
     if ($rowCmt !== null) { $rowCmt = trim((string)$rowCmt); if ($rowCmt === '') { $rowCmt = null; } }
 
+    // picked_pack_size: optional, blank → null. Validate > 0 when present.
+    $packRaw = $row['picked_pack_size'] ?? null;
+    if ($packRaw !== null) {
+        $packRawStr = is_string($packRaw) ? trim($packRaw) : (string)$packRaw;
+        $pickedPackSize = ($packRawStr === '' || $packRawStr === null) ? null
+            : (float)str_replace(',', '.', $packRawStr);
+    } else {
+        $pickedPackSize = null;
+    }
+    if ($pickedPackSize !== null && $pickedPackSize <= 0) {
+        echo json_encode(['success' => false, 'error' => 'Wybrane opakowanie musi być > 0.']);
+        exit;
+    }
+
     if ($vpId <= 0)  { echo json_encode(['success' => false, 'error' => 'Pozycja z nieprawidłowym artykułem.']); exit; }
     if ($qty <= 0)   { echo json_encode(['success' => false, 'error' => 'Ilość musi być > 0.']); exit; }
     if ($unitId <= 0){ echo json_encode(['success' => false, 'error' => 'Brak jednostki miary.']); exit; }
 
     $items[] = [
-        'vendor_part_id'  => $vpId,
-        'quantity'        => $qty,
-        'quantity_unit_id'=> $unitId,
-        'unit_price'      => $unitPrice,
-        'currency'        => $currency,
-        'comment'         => $rowCmt,
+        'vendor_part_id'   => $vpId,
+        'quantity'         => $qty,
+        'quantity_unit_id' => $unitId,
+        'unit_price'       => $unitPrice,
+        'currency'         => $currency,
+        'comment'          => $rowCmt,
+        'picked_pack_size' => $pickedPackSize,
     ];
     $usedVpIds[] = $vpId;
 }
@@ -129,30 +143,12 @@ try {
     }
 
     if ($type === 'po') {
-        $itemRepo = new PurchaseOrderItemRepository($MsaDB);
         foreach ($items as $it) {
-            $itemRepo->create(
-                $docId,
-                $it['vendor_part_id'],
-                $it['quantity'],
-                $it['quantity_unit_id'],
-                $it['unit_price'] ?? 0,
-                $it['currency'],
-                $it['comment']
-            );
+            $handler->addItem('po', $docId, $it);
         }
     } else { // 'rfq'
-        $itemRepo = new RFQItemRepository($MsaDB);
         foreach ($items as $it) {
-            $itemRepo->create(
-                $docId,
-                $it['vendor_part_id'],
-                $it['quantity'],
-                $it['quantity_unit_id'],
-                $it['unit_price'],
-                $it['currency'],
-                $it['comment']
-            );
+            $handler->addItem('rfq', $docId, $it);
         }
     }
     $MsaDB->db->commit();

@@ -174,6 +174,7 @@ Six scripts. All use `Atte\Utils\Locker`
 - **JavaScript declarations:** always use `let` (or `const` for values
   that are never reassigned) — **never `var`**, in any new or edited
   JS, including inline `<script>` blocks in component PHP files.
+- **picked_pack_size on purchase__*_item:** denormalised DECIMAL(30,10) NULL — derived from list__vendor_part_pack which is rebuilt on each Google Sheets import. UI falls back to smallest pack when null.
 - **AJAX endpoints (component-side):** AJAX handlers live as real
   `.php` files inside `public_html/components/<Module>/...` (e.g.
   `public_html/components/purchases/cart/cart-create-document.php`).

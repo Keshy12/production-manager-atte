@@ -11,6 +11,7 @@ class RFQItem {
     public int $quantityUnitId;
     public ?float $unitPrice;
     public string $currency;
+    public ?float $pickedPackSize;
     public ?string $comment;
     public ?string $vendorName;
     public ?string $producerName;
@@ -25,6 +26,9 @@ class RFQItem {
         $this->quantityUnitId = (int)$row['quantityUnitId'];
         $this->unitPrice = isset($row['unitPrice']) && $row['unitPrice'] !== null ? (float)$row['unitPrice'] : null;
         $this->currency = (string)($row['currency'] ?? 'PLN');
+        $this->pickedPackSize = isset($row['pickedPackSize']) && $row['pickedPackSize'] !== null
+            ? (float)$row['pickedPackSize']
+            : null;
         $this->comment = $row['comment'] ?? null;
         $this->vendorName = $row['vendorName'] ?? null;
         $this->producerName = $row['producerName'] ?? null;

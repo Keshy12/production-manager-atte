@@ -65,6 +65,7 @@ require_once __DIR__ . '/../../config/config.php';
 use Atte\DB\MsaDB;
 use Atte\Utils\Locker;
 use Atte\Api\GoogleSheets;
+use Atte\Utils\Purchase\PackListParser;
 
 set_time_limit(0);
 
@@ -338,24 +339,6 @@ $partStats = ['total' => 0, 'inserted' => 0, 'inserted_inactive' => 0,
               'packs_inserted' => 0,
               'backfilled' => 0, 'skipped_already_set' => 0];
 
-/**
- * Parse "100/1000/5000" → [100.0, 1000.0, 5000.0], deduped + sorted ASC.
- * Tokens may use ',' as decimal separator (Polish locale); whitespace ignored.
- * Empty / invalid tokens dropped.
- */
-function parsePackList(string $raw): array {
-    $out = [];
-    foreach (preg_split('~/~', $raw) as $tok) {
-        $tok = trim($tok);
-        if ($tok === '') continue;
-        $n = (float)str_replace(',', '.', str_replace(' ', '', $tok));
-        if ($n > 0) $out[] = $n;
-    }
-    $out = array_values(array_unique($out));
-    sort($out);
-    return $out;
-}
-
 for ($i = 1; $i < count($rawVariantValues); $i++) {
     $r = $rawVariantValues[$i];
     if (count(array_filter($r, fn($v) => trim((string)$v) !== '')) === 0) continue;
@@ -411,7 +394,7 @@ for ($i = 1; $i < count($rawVariantValues); $i++) {
         continue;
     }
 
-    $packList = parsePackList($fullPackRaw);
+    $packList = PackListParser::parse($fullPackRaw);
     $packLog  = $packList ? ' packs=' . implode('/', $packList) : '';
 
     $existing = dbFetchOne($MsaDB,

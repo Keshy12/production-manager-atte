@@ -430,10 +430,58 @@ CLI args are read from `$argv`. The `--update-existing` flag backfills `producer
 | `bom-flat-tht-gs-upload` | `bom_flat_tht_gs_upload.lock` | — | `ds_php_bom_flat_tht` (spreadsheet 2) | Recursive BOM flatten, single-level source |
 | `bom-flat-sku-gs-upload` | `bom_flat_sku_gs_upload.lock` | — | `ds_php_bom_flat_sku` (spreadsheet 2) | Recursive BOM flatten, 3-level source path |
 | `import-vendors-from-gsheet` | `vendor_import_gsheet.lock` | `list__vendor`, `list__vendor_supplier`, `list__producer`, `list__vendor_part`, `part__unit` | read-only (3 tabs) | One-shot CLI importer; idempotent via per-row dedup; supports `--dry-run` and `--update-existing` |
+| `apply-p7-schema` | *(none)* | `purchase__order_item`, `purchase__rfq_item` | — | One-shot CLI schema migration; idempotent via `information_schema.COLUMNS`; safe to re-run; graceful on missing P2/P3 tables |
 
 **Spreadsheet IDs:**
 - (1) `1rV1rbLXDdsOxT49sgJNm1Aicldg8ZvBdQo9yaX314QI` — used by `warehouse-data-gs-upload`
 - (2) `1dVUCdqrqaMKBEN_ol75SjiFODKelDKX0fqRaO94_ydM` — shared by `warehouse-comparison`, `bom-flat-tht`, `bom-flat-sku`
+
+---
+
+## Job 8 — `apply-p7-schema.php`
+
+**File:** `src/cron/apply-p7-schema.php`
+
+### Purpose
+One-shot CLI schema migration that adds the `picked_pack_size DECIMAL(30,10) NULL` column to both purchase line-item tables (`purchase__order_item`, `purchase__rfq_item`). Idempotent — each table is checked via `information_schema.COLUMNS` first; the `ALTER` is skipped if the column already exists. Safe to re-run.
+
+### Trigger / Schedule
+**CLI invocation, not a scheduled cron.** Run once per environment after P7 is rolled out:
+
+```bash
+php src/cron/apply-p7-schema.php
+```
+
+### Inputs
+| Source | Table / Query |
+|---|---|
+| MSA DB | `information_schema.TABLES` — existence check on each target table |
+| MSA DB | `information_schema.COLUMNS` — existence check on `picked_pack_size` per target table |
+
+### Outputs
+| Target | Details |
+|---|---|
+| MSA DB | `ALTER TABLE purchase__order_item ADD COLUMN picked_pack_size DECIMAL(30,10) NULL` |
+| MSA DB | `ALTER TABLE purchase__rfq_item ADD COLUMN picked_pack_size DECIMAL(30,10) NULL` |
+
+### Locks
+- **No lock file.** Single-table, single-column `ADD COLUMN` operations are metadata-only in MySQL 8 and run near-instantly; concurrent runs would just no-op via the `information_schema.COLUMNS` guard.
+
+### Key Classes / Functions Used
+| Class | Namespace | Role |
+|---|---|---|
+| `MsaDB` | `Atte\DB` | Singleton DB access; uses `db->exec()` for the `ALTER TABLE` statements and `db->prepare()` + `execute()` for the existence checks |
+
+### Side Effects
+- **DB writes:** Two `ALTER TABLE … ADD COLUMN` statements (no-op when already applied).
+- **No reads** other than the two `information_schema` existence checks.
+- **No logs** — output is via stdout.
+- **No transactions** — each `ALTER` is a metadata-only statement.
+
+### Failure Handling
+- **DB-name guard:** aborts with non-zero exit if `MsaDB` is not connected to the `atte_ms` database (same pattern as `apply-p6-schema.php`).
+- **Missing tables:** P2/P3 may not have been applied yet (fresh checkout); the script prints `table missing, skipped (apply P2/P3 first)`, increments the skipped counter, and continues. It does NOT abort.
+- **Per-table try/catch:** any `PDOException` from the `ALTER` is logged to stderr and the failed counter incremented; the loop continues.
 
 ---
 

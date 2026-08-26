@@ -410,16 +410,17 @@ Vendor / producer / RFQ / PO / receipt domain — added in v1.6 (`feature/compon
 **File:** `src/classes/Utils/Purchase/Order/class-rfqitem.php` — RFQ line item.
 
 - Constructor: `__construct(array $row)`.
-- Public typed properties: `id`, `rfqId`, `vendorPartId`, `quantity`, `quantityUnitId`, `unitPrice` (nullable), `currency`, `comment`.
+- Public typed properties: `id`, `rfqId`, `vendorPartId`, `quantity`, `quantityUnitId`, `unitPrice` (nullable), `currency`, `pickedPackSize` (nullable), `comment`.
 - No methods — pure data.
 
 #### RFQItemRepository
 **File:** `src/classes/Utils/Purchase/Order/class-rfqitemrepository.php` — CRUD over `purchase__rfq_item`.
 
 - `getById`, `getByRfq(int $rfqId): array` — main lookup for the (future) RFQ edit page.
-- `create(...)` / `update(...)` / `delete(int $id)`.
+- `create(int $rfqId, int $vendorPartId, float $quantity, int $quantityUnitId, ?float $unitPrice = null, string $currency = 'PLN', ?string $comment = null, ?float $pickedPackSize = null): int` / `update(int $id, ..., ?float $pickedPackSize = null): bool` — `pickedPackSize` (last param) is the operator-chosen pack size (nullable, must be > 0 when provided). `delete(int $id)`.
+- `buildSelectJoin()` selects `i.picked_pack_size AS pickedPackSize` so hydrated `RFQItem` entities carry the picked-pack value.
 
-**Used by:** `PurchaseActionHandler::createDocument()`, `createPoFromRfQ()`.
+**Used by:** `PurchaseActionHandler::createDocument()`, `createPoFromRfQ()`, `addItem()`.
 
 #### PurchaseOrder
 **File:** `src/classes/Utils/Purchase/Order/class-purchaseorder.php` — Purchase Order header (state machine: `draft → sent → confirmed → partially_received → received`, plus terminal `cancelled`).
@@ -441,16 +442,17 @@ Vendor / producer / RFQ / PO / receipt domain — added in v1.6 (`feature/compon
 **File:** `src/classes/Utils/Purchase/Order/class-purchaseorderitem.php` — PO line item.
 
 - Constructor: `__construct(array $row)`.
-- Public typed properties: `id`, `poId`, `vendorPartId`, `quantity`, `quantityUnitId`, `unitPrice`, `currency`, `quantityReceived`, `comment`.
+- Public typed properties: `id`, `poId`, `vendorPartId`, `quantity`, `quantityUnitId`, `unitPrice`, `currency`, `quantityReceived`, `pickedPackSize` (nullable), `comment`.
 - No methods — pure data; `quantityReceived` is updated by `PurchaseActionHandler::createReceipt()`.
 
 #### PurchaseOrderItemRepository
 **File:** `src/classes/Utils/Purchase/Order/class-purchaseorderitemrepository.php` — CRUD over `purchase__order_item`.
 
 - `getById`, `getByPo(int $poId): array` — main lookup.
-- `create(...)` / `update(...)` / `delete(int $id)`.
+- `create(int $poId, int $vendorPartId, float $quantity, int $quantityUnitId, float $unitPrice = 0, string $currency = 'PLN', ?string $comment = null, ?float $pickedPackSize = null): int` / `update(int $id, ..., ?float $pickedPackSize = null): bool` — `pickedPackSize` (last param) is the operator-chosen pack size (nullable, must be > 0 when provided). `delete(int $id)`.
+- `buildSelectJoin()` selects `i.picked_pack_size AS pickedPackSize` so hydrated `PurchaseOrderItem` entities carry the picked-pack value.
 
-**Used by:** `PurchaseActionHandler::createReceipt()`.
+**Used by:** `PurchaseActionHandler::createReceipt()`, `addItem()`.
 
 #### OrderReceipt
 **File:** `src/classes/Utils/Purchase/Order/class-orderreceipt.php` — Goods-receipt header (one row per delivery note / PZ-WZ).
@@ -471,6 +473,7 @@ Vendor / producer / RFQ / PO / receipt domain — added in v1.6 (`feature/compon
 **File:** `src/classes/Utils/Purchase/Order/class-purchaseactionhandler.php` (~460 lines) — the single orchestrator for all multi-step procurement operations. Instantiated per-request (holds no state); constructors injects the four transactional repos (`RFQRepository`, `RFQItemRepository`, `PurchaseOrderRepository`, `PurchaseOrderItemRepository`) plus the four master repos it needs to look up vendors / parts. Uses `MsaDB->db->beginTransaction()` for atomic writes and reuses the existing `TransferGroupManager` for the `inventory__parts` writes that close the receiving loop into the warehouse.
 
 - `createDocument(string $type, int $vendorId, int $userId): int` — creates an RFQ (`type='rfq'`) or PO (`type='po'`) in `state='draft'`. Auto-allocates the next number via `allocateDocumentNumber()`; admin can override before sending.
+- `addItem(string $type, int $docId, array $itemData): int` — appends one line item to an existing draft RFQ (`type='rfq'`) or PO (`type='po'`). Dispatches to `RFQItemRepository::create()` / `PurchaseOrderItemRepository::create()` with `picked_pack_size` plumbed through (must be `> 0` when provided, null otherwise). Used by the Koszyk `cart-create-document.php` endpoint.
 - `allocateDocumentNumber(string $type, int $year): string` — `SELECT ... FOR UPDATE` on `purchase__number_counter`, returns `PO/YYYY/NNNN` or `RFQ/YYYY/NNNN`.
 - `createPoFromRfQ(int $rfqId, int $userId): int` — converts an RFQ + items into a PO, copies `vendor_part_id`, `quantity`, `quantity_unit_id`, copies `unit_price` from the RFQ item as the starting point for negotiation.
 - `createReceipt(int $poId, array $items, int $userId): int` — validates `quantity_received ≤ quantity × 1.10` per line (lenient per §9.2), opens a `TransferGroupManager::createTransferGroup(..., 'purchase_receipt')`, inserts `inventory__parts` rows with positive `qty`, updates `purchase__order_item.quantity_received`, and (if everything received) transitions the PO to `'received'` (or `'partially_received'`).

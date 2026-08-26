@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS `purchase__order_item` (
   `unit_price`          DECIMAL(30,10) NOT NULL DEFAULT 0,
   `currency`            VARCHAR(8) NOT NULL DEFAULT 'PLN',
   `quantity_received`   DECIMAL(30,10) NOT NULL DEFAULT 0,
+  `picked_pack_size`    DECIMAL(30,10) NULL,    -- P7: operator-chosen pack size from the cart UI; NULL = "not picked"
   `comment`             TEXT,
   PRIMARY KEY (`id`),
   KEY `idx_poi_po` (`po_id`),

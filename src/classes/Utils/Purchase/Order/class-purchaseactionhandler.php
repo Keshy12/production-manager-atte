@@ -96,6 +96,82 @@ class PurchaseActionHandler {
         }
     }
 
+    /**
+     * Add a single line item to an existing draft RFQ or PO. Thin wrapper
+     * around the per-type item repository that lets external callers
+     * (cart-create-document.php, the Koszyk UI) stay agnostic of which
+     * repo to instantiate — picked_pack_size flows through here so the
+     * cart UI can persist the operator-chosen pack size on the line.
+     *
+     * Expected keys in $itemData:
+     *   - vendor_part_id      int    (required, > 0)
+     *   - quantity            float  (required, > 0)
+     *   - quantity_unit_id    int    (required, > 0)
+     *   - unit_price          float|null (optional, null/blank allowed)
+     *   - currency            string (default 'PLN')
+     *   - comment             string|null (optional)
+     *   - picked_pack_size    float|null (optional, > 0 when provided)
+     *
+     * Joins any open transaction the caller started (caller owns
+     * header+items commit semantics). Returns the new item id.
+     */
+    public function addItem(string $type, int $docId, array $itemData): int {
+        $valid = ['rfq','po'];
+        if (!in_array($type, $valid, true)) {
+            throw new \InvalidArgumentException("type must be one of: " . implode(', ', $valid));
+        }
+        if ($docId <= 0) {
+            throw new \InvalidArgumentException("docId must be positive.");
+        }
+        if (!is_array($itemData) || empty($itemData)) {
+            throw new \InvalidArgumentException("itemData must be a non-empty array.");
+        }
+
+        $vpId        = (int)($itemData['vendor_part_id']   ?? 0);
+        $qty         = (float)($itemData['quantity']        ?? 0);
+        $unitId      = (int)($itemData['quantity_unit_id'] ?? 0);
+        $unitPrice   = $itemData['unit_price']   ?? null;
+        $currency    = (string)($itemData['currency']      ?? 'PLN');
+        $comment     = $itemData['comment']      ?? null;
+        $pickedPack  = $itemData['picked_pack_size'] ?? null;
+
+        if ($vpId   <= 0) throw new \InvalidArgumentException("vendor_part_id must be positive.");
+        if ($unitId <= 0) throw new \InvalidArgumentException("quantity_unit_id must be positive.");
+        if ($qty    <= 0) throw new \InvalidArgumentException("quantity must be positive.");
+        // unit_price may legitimately be null/blank for RFQs (target price).
+        if ($unitPrice !== null && $unitPrice !== '' && is_numeric($unitPrice) === false) {
+            throw new \InvalidArgumentException("unit_price must be numeric or null.");
+        }
+        if ($unitPrice === '' ) $unitPrice = null;
+        if ($unitPrice !== null) $unitPrice = (float)$unitPrice;
+        if ($pickedPack !== null && $pickedPack !== '' && is_numeric($pickedPack) === false) {
+            throw new \InvalidArgumentException("picked_pack_size must be numeric or null.");
+        }
+        if ($pickedPack === '' ) $pickedPack = null;
+        if ($pickedPack !== null) $pickedPack = (float)$pickedPack;
+
+        $MsaDB = $this->MsaDB;
+        if ($type === 'po') {
+            $itemRepo = new PurchaseOrderItemRepository($MsaDB);
+            return $itemRepo->create(
+                $docId, $vpId, $qty, $unitId,
+                $unitPrice === null ? 0.0 : (float)$unitPrice,
+                $currency !== '' ? $currency : 'PLN',
+                $comment,
+                $pickedPack
+            );
+        }
+        // 'rfq'
+        $itemRepo = new RFQItemRepository($MsaDB);
+        return $itemRepo->create(
+            $docId, $vpId, $qty, $unitId,
+            $unitPrice, // null ok for RFQs (target price, not negotiated)
+            $currency !== '' ? $currency : 'PLN',
+            $comment,
+            $pickedPack
+        );
+    }
+
     public function computeLastKnownPrice(int $vendorPartId, ?string $currency = null): ?float {
         $MsaDB = $this->MsaDB;
         try {
@@ -210,7 +286,8 @@ class PurchaseActionHandler {
                     $item->quantityUnitId,
                     $item->unitPrice === null ? 0.0 : $item->unitPrice,
                     $item->currency,
-                    $item->comment
+                    $item->comment,
+                    $item->pickedPackSize
                 );
             }
 

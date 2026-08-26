@@ -756,6 +756,12 @@ Additional polish captured during v1.6 cleanup (not in the original
   Merge rule: same vendor-part merges only when price AND currency
   also match — different price = separate line. Cart persists via
   localStorage (7-day expiry, cleared on submit).
+- **Per-line picked pack size (P7, shipped 2026-08-26)** — the Opak.
+  selection is now persisted as `purchase__*_item.picked_pack_size`
+  (DECIMAL(30,10) NULL) on the line item at cart-create time. NULL
+  means "operator didn't pick" — the cart-active-docs read falls
+  back to `MIN(list__vendor_part_pack.full_pack_quantity)` for that
+  vendor part. UI badge `opak. <size>` rendered next to qty.
 
 ---
 

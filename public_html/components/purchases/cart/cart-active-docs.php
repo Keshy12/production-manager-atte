@@ -60,13 +60,14 @@ SELECT pri.vendor_part_id,
        pr.state       AS state,
        pri.quantity   AS quantity,
        pri.unit_price AS unit_price,
+       pri.picked_pack_size AS pickedPackSize,
        pr.expected_reply_date AS expected_date
   FROM `purchase__rfq_item` pri
   JOIN `purchase__rfq` pr ON pr.id = pri.rfq_id
  WHERE pri.vendor_part_id IN ($placeholders)
    AND pr.state IN ('draft','sent','responded')
  ORDER BY pr.id DESC
-";
+ ";
 $rfqStmt = $MsaDB->db->prepare($rfqSql);
 $rfqStmt->execute($vpIds);
 $rfqRows = $rfqStmt->fetchAll(\PDO::FETCH_ASSOC);
@@ -78,13 +79,14 @@ SELECT poi.vendor_part_id,
        po.state      AS state,
        poi.quantity  AS quantity,
        poi.unit_price AS unit_price,
+       poi.picked_pack_size AS pickedPackSize,
        po.expected_delivery_date AS expected_date
   FROM `purchase__order_item` poi
   JOIN `purchase__order` po ON po.id = poi.po_id
  WHERE poi.vendor_part_id IN ($placeholders)
    AND po.state IN ('draft','sent','confirmed','partially_received')
  ORDER BY po.id DESC
-";
+ ";
 $poStmt = $MsaDB->db->prepare($poSql);
 $poStmt->execute($vpIds);
 $poRows = $poStmt->fetchAll(\PDO::FETCH_ASSOC);
@@ -93,23 +95,25 @@ $out = [];
 foreach ($rfqRows as $r) {
     $vid = (int)$r['vendor_part_id'];
     $out[$vid][] = [
-        'doc_type'     => 'rfq',
-        'number'       => $r['number'],
-        'state'        => $r['state'],
-        'quantity'     => (float)$r['quantity'],
-        'unit_price'   => $r['unit_price'] !== null ? (float)$r['unit_price'] : null,
-        'expected_date'=> $r['expected_date'],
+        'doc_type'        => 'rfq',
+        'number'          => $r['number'],
+        'state'           => $r['state'],
+        'quantity'        => (float)$r['quantity'],
+        'unit_price'      => $r['unit_price'] !== null ? (float)$r['unit_price'] : null,
+        'picked_pack_size'=> $r['pickedPackSize'] === null ? null : (float)$r['pickedPackSize'],
+        'expected_date'   => $r['expected_date'],
     ];
 }
 foreach ($poRows as $r) {
     $vid = (int)$r['vendor_part_id'];
     $out[$vid][] = [
-        'doc_type'     => 'po',
-        'number'       => $r['number'],
-        'state'        => $r['state'],
-        'quantity'     => (float)$r['quantity'],
-        'unit_price'   => $r['unit_price'] !== null ? (float)$r['unit_price'] : null,
-        'expected_date'=> $r['expected_date'],
+        'doc_type'        => 'po',
+        'number'          => $r['number'],
+        'state'           => $r['state'],
+        'quantity'        => (float)$r['quantity'],
+        'unit_price'      => $r['unit_price'] !== null ? (float)$r['unit_price'] : null,
+        'picked_pack_size'=> $r['pickedPackSize'] === null ? null : (float)$r['pickedPackSize'],
+        'expected_date'   => $r['expected_date'],
     ];
 }
 

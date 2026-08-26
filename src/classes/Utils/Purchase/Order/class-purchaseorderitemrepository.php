@@ -19,6 +19,7 @@ class PurchaseOrderItemRepository {
                        i.unit_price AS unitPrice,
                        i.currency,
                        i.quantity_received AS quantityReceived,
+                       i.picked_pack_size AS pickedPackSize,
                        i.comment,
                        v.name  AS vendorName,
                        p.name  AS producerName,
@@ -55,24 +56,30 @@ class PurchaseOrderItemRepository {
         return $result;
     }
 
-    public function create(int $poId, int $vendorPartId, float $quantity, int $quantityUnitId, float $unitPrice = 0, string $currency = 'PLN', ?string $comment = null): int {
+    public function create(int $poId, int $vendorPartId, float $quantity, int $quantityUnitId, float $unitPrice = 0, string $currency = 'PLN', ?string $comment = null, ?float $pickedPackSize = null): int {
         $MsaDB = $this->MsaDB;
         if ($poId <= 0)          throw new \InvalidArgumentException("PurchaseOrderItem poId must be positive.");
         if ($vendorPartId <= 0)   throw new \InvalidArgumentException("PurchaseOrderItem vendorPartId must be positive.");
         if ($quantityUnitId <= 0) throw new \InvalidArgumentException("PurchaseOrderItem quantityUnitId must be positive.");
         if ($quantity <= 0)       throw new \InvalidArgumentException("PurchaseOrderItem quantity must be positive.");
+        if ($pickedPackSize !== null && $pickedPackSize <= 0) {
+            throw new \InvalidArgumentException("PurchaseOrderItem pickedPackSize must be > 0 when provided.");
+        }
         return $MsaDB->insert(
             'purchase__order_item',
-            ['po_id', 'vendor_part_id', 'quantity', 'quantity_unit_id', 'unit_price', 'currency', 'comment'],
-            [$poId, $vendorPartId, $quantity, $quantityUnitId, $unitPrice, $currency, $comment]
+            ['po_id', 'vendor_part_id', 'quantity', 'quantity_unit_id', 'unit_price', 'currency', 'comment', 'picked_pack_size'],
+            [$poId, $vendorPartId, $quantity, $quantityUnitId, $unitPrice, $currency, $comment, $pickedPackSize]
         );
     }
 
-    public function update(int $id, int $vendorPartId, float $quantity, int $quantityUnitId, float $unitPrice, string $currency, ?string $comment): bool {
+    public function update(int $id, int $vendorPartId, float $quantity, int $quantityUnitId, float $unitPrice, string $currency, ?string $comment, ?float $pickedPackSize = null): bool {
         $MsaDB = $this->MsaDB;
         if ($vendorPartId <= 0)   throw new \InvalidArgumentException("PurchaseOrderItem vendorPartId must be positive.");
         if ($quantityUnitId <= 0) throw new \InvalidArgumentException("PurchaseOrderItem quantityUnitId must be positive.");
         if ($quantity <= 0)       throw new \InvalidArgumentException("PurchaseOrderItem quantity must be positive.");
+        if ($pickedPackSize !== null && $pickedPackSize <= 0) {
+            throw new \InvalidArgumentException("PurchaseOrderItem pickedPackSize must be > 0 when provided.");
+        }
         return $MsaDB->update(
             'purchase__order_item',
             [
@@ -82,6 +89,7 @@ class PurchaseOrderItemRepository {
                 'unit_price'       => $unitPrice,
                 'currency'         => $currency,
                 'comment'          => $comment,
+                'picked_pack_size' => $pickedPackSize,
             ],
             'id',
             $id

@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS `purchase__rfq_item` (
   `quantity_unit_id`  INT NOT NULL,
   `unit_price`        DECIMAL(30,10),
   `currency`          VARCHAR(8) NOT NULL DEFAULT 'PLN',
+  `picked_pack_size`  DECIMAL(30,10) NULL,    -- P7: operator-chosen pack size from the cart UI; NULL = "not picked"
   `comment`           TEXT,
   PRIMARY KEY (`id`),
   KEY `idx_rfq_item_rfq` (`rfq_id`),
