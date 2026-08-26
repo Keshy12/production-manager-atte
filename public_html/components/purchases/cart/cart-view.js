@@ -324,6 +324,36 @@
         } catch (e) { return []; }
     }
 
+    // After creating a new VendorPart, the cascade filters (vendor's
+    // data-parts / part's data-vendors) are stale — they were computed
+    // at page load and don't include the new (vendorId, partsId) pair.
+    // applyVendorFilter / applyPartFilter would re-hide the part for
+    // this vendor (and vice versa) on the next mode swap, dropping the
+    // user's selection. Update the relevant option attributes in place
+    // so the next filter pass keeps the new combination visible.
+    function updateVendorAndPartCarriedSets(vendorId, partsId) {
+        if (vendorId > 0) {
+            let $vendorOpt = $vendorSelect.find('option[value="' + vendorId + '"]');
+            if ($vendorOpt.length > 0) {
+                let partsIds = safeJsonArray($vendorOpt.attr('data-parts'));
+                if (partsIds.indexOf(partsId) === -1) {
+                    partsIds.push(partsId);
+                    $vendorOpt.attr('data-parts', JSON.stringify(partsIds));
+                }
+            }
+        }
+        if (partsId > 0) {
+            let $partOpt = $partSelect.find('option[value="' + partsId + '"]');
+            if ($partOpt.length > 0) {
+                let vendorsIds = safeJsonArray($partOpt.attr('data-vendors'));
+                if (vendorsIds.indexOf(vendorId) === -1) {
+                    vendorsIds.push(vendorId);
+                    $partOpt.attr('data-vendors', JSON.stringify(vendorsIds));
+                }
+            }
+        }
+    }
+
     // ---- cascading-filter logic ----
 
     function applyVendorFilter() {
@@ -1079,6 +1109,13 @@
             let key = vendorId + ':' + partsId;
             if (!VENDOR_PARTS_INDEX[key]) VENDOR_PARTS_INDEX[key] = [];
             VENDOR_PARTS_INDEX[key].push(entry);
+
+            // Refresh the vendor's data-parts and the part's data-vendors
+            // in place — both were computed at page load and don't include
+            // the new (vendorId, partsId) pair yet. Without this, the
+            // mode swap's applyVendorFilter / applyPartFilter would
+            // re-hide the new combination and clear the selection.
+            updateVendorAndPartCarriedSets(vendorId, partsId);
 
             // Reset qty/price so the user starts fresh in the cart step.
             $cartQty.val('');
