@@ -192,28 +192,28 @@ $units = $MsaDB->query(
                     <label for="cartPackages">Opak.:</label>
                     <input type="number" id="cartPackages" class="form-control" min="0" step="1" placeholder="opak." title="Ilość = N × opak.">
                     <!-- Small +/- stepper for the picked pack size. The
-                         stepper sits directly underneath the count input
-                         so the visual association is tight. The trailing
-                         "plus" icon opens an inline edit box for adding
-                         a new tier on the fly (same pattern as the
-                         variant-comment edit). The whole wrap is hidden
-                         when the variant has fewer than two tiers — a
-                         single-tier variant's picker is just a static
-                         value already rendered elsewhere. -->
+                         trailing pencil icon opens an inline edit box for
+                         adding a new tier on the fly (same pattern as the
+                         variant-comment edit): clicking the pencil hides
+                         the stepper and shows the input until the user
+                         saves or cancels. The whole wrap is hidden when
+                         the variant has fewer than two tiers. Tight
+                         padding keeps the stepper visually compact. -->
                     <div id="cartPackSizePickerWrap" class="mt-1" style="display:none">
-                        <small class="text-muted d-block mb-1">wielkość opak.:</small>
-                        <div class="btn-group btn-group-sm" role="group" aria-label="Wielkość opakowania">
-                            <button type="button" class="btn btn-outline-secondary" id="cartPackSizePrev" title="Poprzednia wielkość">&minus;</button>
-                            <span class="btn btn-outline-secondary disabled" id="cartPackSizeValue" style="min-width:5em">&mdash;</span>
-                            <button type="button" class="btn btn-outline-secondary" id="cartPackSizeNext" title="Następna wielkość">+</button>
-                            <button type="button" class="btn btn-outline-secondary ml-1" id="cartPackSizeAdd" title="Dodaj nową wielkość opakowania"><i class="bi bi-plus"></i></button>
+                        <small class="text-muted">wielkość opak.:</small>
+                        <div class="mt-1 d-flex align-items-center flex-wrap">
+                            <span id="cartPackSizeStepper" class="btn-group btn-group-sm" role="group" aria-label="Wielkość opakowania">
+                                <button type="button" class="btn btn-outline-secondary" id="cartPackSizePrev" title="Poprzednia wielkość" style="padding:.1rem .45rem">&minus;</button>
+                                <span class="btn btn-outline-secondary disabled" id="cartPackSizeValue" style="min-width:3.5em;padding:.1rem .35rem">&mdash;</span>
+                                <button type="button" class="btn btn-outline-secondary" id="cartPackSizeNext" title="Następna wielkość" style="padding:.1rem .45rem">+</button>
+                            </span>
+                            <button type="button" class="btn btn-sm btn-outline-secondary ml-1" id="cartPackSizeAdd" title="Dodaj nową wielkość opakowania" style="padding:.1rem .4rem"><i class="bi bi-pencil"></i></button>
+                            <span id="cartPackSizeEditBox" style="display:none" class="d-flex align-items-center flex-wrap">
+                                <input type="number" id="cartPackSizeInput" class="form-control form-control-sm" style="width:6em" min="0.0001" step="0.0001" placeholder="np. 2500">
+                                <button type="button" id="cartPackSizeSave" class="btn btn-sm btn-success ml-1" title="Zapisz" style="padding:.15rem .4rem"><i class="bi bi-check"></i></button>
+                                <button type="button" id="cartPackSizeCancel" class="btn btn-sm btn-secondary ml-1" title="Anuluj (Esc)" style="padding:.15rem .4rem"><i class="bi bi-x"></i></button>
+                            </span>
                         </div>
-                        <span id="cartPackSizeEditBox" style="display:none" class="mt-1 d-block">
-                            <input type="number" id="cartPackSizeInput" class="form-control form-control-sm d-inline-block align-middle"
-                                   style="width:7em" min="0.0001" step="0.0001" placeholder="np. 2500">
-                            <button type="button" id="cartPackSizeSave" class="btn btn-sm btn-success ml-1" title="Zapisz"><i class="bi bi-check"></i></button>
-                            <button type="button" id="cartPackSizeCancel" class="btn btn-sm btn-secondary ml-1" title="Anuluj (Esc)"><i class="bi bi-x"></i></button>
-                        </span>
                     </div>
                 </div>
                 <div class="col-md-3" id="cartQtyWrap">
@@ -352,21 +352,24 @@ $units = $MsaDB->query(
                         <input type="number" id="editItemPackages" class="form-control" min="0" step="1" placeholder="opak."
                                title="Ilość = N × opak.">
                         <!-- Modal stepper mirror — same UX as the cart
-                             picker's #cartPackSizePickerWrap. -->
+                             picker's #cartPackSizePickerWrap: clicking
+                             the pencil hides the stepper and shows the
+                             input until save/cancel. -->
                         <div id="editItemPackSizePickerWrap" class="mt-2" style="display:none">
-                            <small class="text-muted d-block mb-1">wielkość opak.:</small>
-                            <div class="btn-group btn-group-sm" role="group" aria-label="Wielkość opakowania">
-                                <button type="button" class="btn btn-outline-secondary" id="editItemPackSizePrev" title="Poprzednia wielkość">&minus;</button>
-                                <span class="btn btn-outline-secondary disabled" id="editItemPackSizeValue" style="min-width:5em">&mdash;</span>
-                                <button type="button" class="btn btn-outline-secondary" id="editItemPackSizeNext" title="Następna wielkość">+</button>
-                                <button type="button" class="btn btn-outline-secondary ml-1" id="editItemPackSizeAdd" title="Dodaj nową wielkość opakowania"><i class="bi bi-plus"></i></button>
+                            <small class="text-muted">wielkość opak.:</small>
+                            <div class="mt-1 d-flex align-items-center flex-wrap">
+                                <span id="editItemPackSizeStepper" class="btn-group btn-group-sm" role="group" aria-label="Wielkość opakowania">
+                                    <button type="button" class="btn btn-outline-secondary" id="editItemPackSizePrev" title="Poprzednia wielkość" style="padding:.1rem .45rem">&minus;</button>
+                                    <span class="btn btn-outline-secondary disabled" id="editItemPackSizeValue" style="min-width:3.5em;padding:.1rem .35rem">&mdash;</span>
+                                    <button type="button" class="btn btn-outline-secondary" id="editItemPackSizeNext" title="Następna wielkość" style="padding:.1rem .45rem">+</button>
+                                </span>
+                                <button type="button" class="btn btn-sm btn-outline-secondary ml-1" id="editItemPackSizeAdd" title="Dodaj nową wielkość opakowania" style="padding:.1rem .4rem"><i class="bi bi-pencil"></i></button>
+                                <span id="editItemPackSizeEditBox" style="display:none" class="d-flex align-items-center flex-wrap">
+                                    <input type="number" id="editItemPackSizeInput" class="form-control form-control-sm" style="width:6em" min="0.0001" step="0.0001" placeholder="np. 2500">
+                                    <button type="button" id="editItemPackSizeSave" class="btn btn-sm btn-success ml-1" title="Zapisz" style="padding:.15rem .4rem"><i class="bi bi-check"></i></button>
+                                    <button type="button" id="editItemPackSizeCancel" class="btn btn-sm btn-secondary ml-1" title="Anuluj (Esc)" style="padding:.15rem .4rem"><i class="bi bi-x"></i></button>
+                                </span>
                             </div>
-                            <span id="editItemPackSizeEditBox" style="display:none" class="mt-1 d-block">
-                                <input type="number" id="editItemPackSizeInput" class="form-control form-control-sm d-inline-block align-middle"
-                                       style="width:7em" min="0.0001" step="0.0001" placeholder="np. 2500">
-                                <button type="button" id="editItemPackSizeSave" class="btn btn-sm btn-success ml-1" title="Zapisz"><i class="bi bi-check"></i></button>
-                                <button type="button" id="editItemPackSizeCancel" class="btn btn-sm btn-secondary ml-1" title="Anuluj (Esc)"><i class="bi bi-x"></i></button>
-                            </span>
                         </div>
                     </div>
                     <div class="form-group mb-3">

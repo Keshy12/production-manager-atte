@@ -68,6 +68,7 @@
     let $partSelect          = $('#partSelect');
     let $vendorPartNoSelect  = $('#vendorPartNoSelect');
     let $cartPackSizePickerWrap  = $('#cartPackSizePickerWrap');
+    let $cartPackSizeStepper     = $('#cartPackSizeStepper');
     let $cartPackSizePrev        = $('#cartPackSizePrev');
     let $cartPackSizeValue       = $('#cartPackSizeValue');
     let $cartPackSizeNext        = $('#cartPackSizeNext');
@@ -90,6 +91,7 @@
     let $editItemModal       = $('#editItemModal');
     let $editItemHeader      = $('#editItemHeader');
     let $editItemPackSizePickerWrap = $('#editItemPackSizePickerWrap');
+    let $editItemPackSizeStepper    = $('#editItemPackSizeStepper');
     let $editItemPackSizePrev       = $('#editItemPackSizePrev');
     let $editItemPackSizeValue      = $('#editItemPackSizeValue');
     let $editItemPackSizeNext       = $('#editItemPackSizeNext');
@@ -1709,6 +1711,9 @@
         e.preventDefault();
         let vp = selectedVpEntry();
         if (!vp) return;
+        // Pencil: hide the stepper + pencil, show the inline edit box.
+        $cartPackSizeStepper.hide();
+        $cartPackSizeAdd.hide();
         $cartPackSizeEditBox.show();
         $cartPackSizeInput.val('').trigger('focus');
     });
@@ -1716,6 +1721,8 @@
         e.preventDefault();
         $cartPackSizeEditBox.hide();
         $cartPackSizeInput.val('');
+        $cartPackSizeStepper.show();
+        $cartPackSizeAdd.show();
     });
     $cartPackSizeInput.on('keydown', function (ev) {
         if (ev.key === 'Enter') { ev.preventDefault(); $cartPackSizeSave.trigger('click'); }
@@ -1748,6 +1755,8 @@
             cartAfterPackChange(qty);
             $cartPackSizeEditBox.hide();
             $cartPackSizeInput.val('');
+            $cartPackSizeStepper.show();
+            $cartPackSizeAdd.show();
         }).fail(function (xhr, status) {
             setAlert(xhr.responseJSON && xhr.responseJSON.error
                      ? xhr.responseJSON.error : status, 'danger');
@@ -1999,6 +2008,9 @@
         if (typeof idx !== 'number') idx = parseInt(idx, 10);
         let item = cart.items[idx];
         if (!item) return;
+        // Pencil: hide the stepper + pencil, show the inline edit box.
+        $editItemPackSizeStepper.hide();
+        $editItemPackSizeAdd.hide();
         $editItemPackSizeEditBox.show();
         $editItemPackSizeInput.val('').trigger('focus');
     });
@@ -2006,6 +2018,8 @@
         e.preventDefault();
         $editItemPackSizeEditBox.hide();
         $editItemPackSizeInput.val('');
+        $editItemPackSizeStepper.show();
+        $editItemPackSizeAdd.show();
     });
     $editItemPackSizeInput.on('keydown', function (ev) {
         if (ev.key === 'Enter') { ev.preventDefault(); $editItemPackSizeSave.trigger('click'); }
@@ -2044,6 +2058,8 @@
             editModalAfterPackChange(qty, newPacks);
             $editItemPackSizeEditBox.hide();
             $editItemPackSizeInput.val('');
+            $editItemPackSizeStepper.show();
+            $editItemPackSizeAdd.show();
         }).fail(function (xhr, status) {
             setAlert(xhr.responseJSON && xhr.responseJSON.error
                      ? xhr.responseJSON.error : status, 'danger');
