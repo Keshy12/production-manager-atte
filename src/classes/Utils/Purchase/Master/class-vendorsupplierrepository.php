@@ -18,7 +18,7 @@ class VendorSupplierRepository {
                        job_title AS jobTitle,
                        phone,
                        email,
-                       is_active,
+                       isActive,
                        comment
                 FROM `list__vendor_supplier`
                 WHERE id = ?";
@@ -30,14 +30,14 @@ class VendorSupplierRepository {
 
     public function getByVendor(int $vendorId, bool $onlyActive = false): array {
         $MsaDB = $this->MsaDB;
-        $where = $onlyActive ? "WHERE vendor_id = ? AND is_active = 1" : "WHERE vendor_id = ?";
+        $where = $onlyActive ? "WHERE vendor_id = ? AND isActive = 1" : "WHERE vendor_id = ?";
         $sql = "SELECT id,
                        vendor_id AS vendorId,
                        name,
                        job_title AS jobTitle,
                        phone,
                        email,
-                       is_active,
+                       isActive,
                        comment
                 FROM `list__vendor_supplier`
                 {$where}
@@ -63,7 +63,7 @@ class VendorSupplierRepository {
         }
         return $MsaDB->insert(
             'list__vendor_supplier',
-            ['vendor_id', 'name', 'job_title', 'phone', 'email', 'is_active', 'comment'],
+            ['vendor_id', 'name', 'job_title', 'phone', 'email', 'isActive', 'comment'],
             [$vendorId, $name, $jobTitle, $phone, $email, 1, $comment]
         );
     }
@@ -92,7 +92,7 @@ class VendorSupplierRepository {
         $MsaDB = $this->MsaDB;
         return $MsaDB->update(
             'list__vendor_supplier',
-            ['is_active' => $isActive ? 1 : 0],
+            ['isActive' => $isActive ? 1 : 0],
             'id',
             $id
         );

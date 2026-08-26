@@ -19,7 +19,7 @@ class VendorPartRepository {
                        vp.producer_part_no AS producerPartNo,
                        vp.vendor_jm_id AS vendorJmId,
                        vp.full_pack_quantity AS fullPackQuantity,
-                       vp.is_active,
+                       vp.isActive,
                        vp.comment,
                        vp.created_at AS createdAt,
                        vp.updated_at AS updatedAt,
@@ -45,7 +45,7 @@ class VendorPartRepository {
 
     public function getAll(bool $onlyActive = false): array {
         $MsaDB = $this->MsaDB;
-        $where = $onlyActive ? "WHERE vp.is_active = 1" : "";
+        $where = $onlyActive ? "WHERE vp.isActive = 1" : "";
         $sql = $this->buildSelectJoin() . " {$where} ORDER BY vp.id DESC";
         $stmt = $MsaDB->db->prepare($sql);
         $stmt->execute();
@@ -60,7 +60,7 @@ class VendorPartRepository {
     public function getByVendor(int $vendorId, bool $onlyActive = false): array {
         $MsaDB = $this->MsaDB;
         $where = $onlyActive
-            ? "WHERE vp.vendor_id = ? AND vp.is_active = 1"
+            ? "WHERE vp.vendor_id = ? AND vp.isActive = 1"
             : "WHERE vp.vendor_id = ?";
         $sql = $this->buildSelectJoin() . " {$where} ORDER BY vp.id DESC";
         $stmt = $MsaDB->db->prepare($sql);
@@ -76,7 +76,7 @@ class VendorPartRepository {
     public function getByProducer(int $producerId, bool $onlyActive = false): array {
         $MsaDB = $this->MsaDB;
         $where = $onlyActive
-            ? "WHERE vp.producer_id = ? AND vp.is_active = 1"
+            ? "WHERE vp.producer_id = ? AND vp.isActive = 1"
             : "WHERE vp.producer_id = ?";
         $sql = $this->buildSelectJoin() . " {$where} ORDER BY vp.id DESC";
         $stmt = $MsaDB->db->prepare($sql);
@@ -92,7 +92,7 @@ class VendorPartRepository {
     public function getByPart(int $partsId, bool $onlyActive = false): array {
         $MsaDB = $this->MsaDB;
         $where = $onlyActive
-            ? "WHERE vp.parts_id = ? AND vp.is_active = 1"
+            ? "WHERE vp.parts_id = ? AND vp.isActive = 1"
             : "WHERE vp.parts_id = ?";
         $sql = $this->buildSelectJoin() . " {$where} ORDER BY vp.id DESC";
         $stmt = $MsaDB->db->prepare($sql);
@@ -128,7 +128,7 @@ class VendorPartRepository {
 
         return $MsaDB->insert(
             'list__vendor_part',
-            ['vendor_id', 'producer_id', 'parts_id', 'vendor_part_no', 'producer_part_no', 'vendor_jm_id', 'full_pack_quantity', 'is_active', 'comment'],
+            ['vendor_id', 'producer_id', 'parts_id', 'vendor_part_no', 'producer_part_no', 'vendor_jm_id', 'full_pack_quantity', 'isActive', 'comment'],
             [$vendorId, $producerId, $partsId, $vendorPartNo, $producerPartNo, $vendorJmId, $fullPackQuantity, 1, $comment]
         );
     }
@@ -176,7 +176,7 @@ class VendorPartRepository {
         $MsaDB = $this->MsaDB;
         return $MsaDB->update(
             'list__vendor_part',
-            ['is_active' => $isActive ? 1 : 0],
+            ['isActive' => $isActive ? 1 : 0],
             'id',
             $id
         );

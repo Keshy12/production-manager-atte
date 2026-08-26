@@ -12,7 +12,7 @@ class ProducerRepository {
 
     public function getById(int $id): ?Producer {
         $MsaDB = $this->MsaDB;
-        $sql = "SELECT id, name, is_active, comment
+        $sql = "SELECT id, name, isActive, comment
                 FROM `list__producer`
                 WHERE id = ?";
         $stmt = $MsaDB->db->prepare($sql);
@@ -23,8 +23,8 @@ class ProducerRepository {
 
     public function getAll(bool $onlyActive = false): array {
         $MsaDB = $this->MsaDB;
-        $where = $onlyActive ? "WHERE is_active = 1" : "";
-        $sql = "SELECT id, name, is_active, comment
+        $where = $onlyActive ? "WHERE isActive = 1" : "";
+        $sql = "SELECT id, name, isActive, comment
                 FROM `list__producer`
                 {$where}
                 ORDER BY name ASC";
@@ -40,7 +40,7 @@ class ProducerRepository {
 
     public function getByName(string $name): ?Producer {
         $MsaDB = $this->MsaDB;
-        $sql = "SELECT id, name, is_active, comment
+        $sql = "SELECT id, name, isActive, comment
                 FROM `list__producer`
                 WHERE name = ?";
         $stmt = $MsaDB->db->prepare($sql);
@@ -57,7 +57,7 @@ class ProducerRepository {
         }
         return $MsaDB->insert(
             'list__producer',
-            ['name', 'is_active', 'comment'],
+            ['name', 'isActive', 'comment'],
             [$name, 1, $comment]
         );
     }
@@ -83,7 +83,7 @@ class ProducerRepository {
         $MsaDB = $this->MsaDB;
         return $MsaDB->update(
             'list__producer',
-            ['is_active' => $isActive ? 1 : 0],
+            ['isActive' => $isActive ? 1 : 0],
             'id',
             $id
         );

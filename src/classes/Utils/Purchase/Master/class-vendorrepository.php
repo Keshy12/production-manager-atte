@@ -17,7 +17,7 @@ class VendorRepository {
                        address,
                        additional_data AS additionalData,
                        lead_time_days AS leadTimeDays,
-                       is_active,
+                       isActive,
                        comment,
                        created_at AS createdAt,
                        updated_at AS updatedAt
@@ -31,13 +31,13 @@ class VendorRepository {
 
     public function getAll(bool $onlyActive = false): array {
         $MsaDB = $this->MsaDB;
-        $where = $onlyActive ? "WHERE is_active = 1" : "";
+        $where = $onlyActive ? "WHERE isActive = 1" : "";
         $sql = "SELECT id,
                        name,
                        address,
                        additional_data AS additionalData,
                        lead_time_days AS leadTimeDays,
-                       is_active,
+                       isActive,
                        comment,
                        created_at AS createdAt,
                        updated_at AS updatedAt
@@ -62,7 +62,7 @@ class VendorRepository {
         }
         return $MsaDB->insert(
             'list__vendor',
-            ['name', 'address', 'additional_data', 'lead_time_days', 'is_active', 'comment'],
+            ['name', 'address', 'additional_data', 'lead_time_days', 'isActive', 'comment'],
             [$name, $address, $additionalData, $leadTimeDays, 1, $comment]
         );
     }
@@ -91,7 +91,7 @@ class VendorRepository {
         $MsaDB = $this->MsaDB;
         return $MsaDB->update(
             'list__vendor',
-            ['is_active' => $isActive ? 1 : 0],
+            ['isActive' => $isActive ? 1 : 0],
             'id',
             $id
         );
