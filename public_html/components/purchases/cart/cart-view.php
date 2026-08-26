@@ -230,7 +230,7 @@ $units = $MsaDB->query(
             </div>
             <div class="row mt-2 align-items-center">
                 <div class="col-6 text-left">
-                    <button type="button" id="toggleAddVariantBtn" class="btn btn-outline-info" disabled
+                    <button type="button" id="toggleAddVariantBtn" class="btn btn-outline-info"
                             title="Dodaj nowy artykuł dostawcy do katalogu">
                         <i class="bi bi-plus-square"></i> + Artykuł
                     </button>

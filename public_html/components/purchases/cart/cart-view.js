@@ -382,12 +382,6 @@
         }
     }
 
-    // Q7: the "+ Artykuł" button enables once a vendor is picked.
-    function updateToggleAddBtnState() {
-        let vendorId = parseInt($vendorSelect.val(), 10) || null;
-        $toggleAddVariantBtn.prop('disabled', !vendorId);
-    }
-
     // Full-pack quantity of the currently selected variant (null when the
     // variant has no usable pack size or nothing is selected).
     function selectedFullPackQty() {
@@ -1199,12 +1193,9 @@
             resetAddModeFields();
             setPickerMode('pick');
         } else {
-            // Q7: only the vendor is required; parts/jm/producer are picked in-add-mode.
-            let vendorId = parseInt($vendorSelect.val(), 10) || null;
-            if (!vendorId) {
-                setAlert('Wybierz najpierw dostawcę.', 'warning');
-                return;
-            }
+            // Vendor isn't required to enter add mode — the user may pick
+            // it inside the add-mode form. Save validation in updateAddBtnState
+            // and createNewVariant() still rejects if vendor is empty.
             prefillAddModeFromSelection();
             setPickerMode('add');
         }
@@ -1220,10 +1211,6 @@
     $addFullPackQuantity.on('input',function () { addModeDirty = true; updateAddBtnState(); });
     $addComment.on('input',         function () { addModeDirty = true; });
 
-    // Re-evaluate the toggle button's enabled state every time the
-    // vendor picker changes — it should only be available once a vendor
-    // is selected (Q7).
-    $vendorSelect.on('change', updateToggleAddBtnState);
 
     // Opak. → Ilość: qty = packages × full pack quantity.
     $cartPackages.on('input', function () {
@@ -1471,6 +1458,5 @@
         renderCart();
         refreshVendorPartRow();
         loadActiveDocs();   // badges for restored items
-        updateToggleAddBtnState();
     });
 })();
