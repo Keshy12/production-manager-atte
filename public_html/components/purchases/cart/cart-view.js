@@ -67,8 +67,8 @@
     let $vendorSelect        = $('#vendorSelect');
     let $partSelect          = $('#partSelect');
     let $vendorPartNoSelect  = $('#vendorPartNoSelect');
-    let $cartPackSize        = $('#cartPackSize');
-    let $cartPackSizeWrap    = $('#cartPackSizeWrap');
+    let $cartPackSizeChips       = $('#cartPackSizeChips');
+    let $cartPackSizePickerWrap  = $('#cartPackSizePickerWrap');
     let $cartPackages        = $('#cartPackages');
     let $cartQty             = $('#cartQty');
     let $cartPrice           = $('#cartPrice');
@@ -82,7 +82,8 @@
     let $variantCommentInput = $('#variantCommentInput');
     let $editItemModal       = $('#editItemModal');
     let $editItemHeader      = $('#editItemHeader');
-    let $editItemPackSize    = $('#editItemPackSize');
+    let $editItemPackSizeChips      = $('#editItemPackSizeChips');
+    let $editItemPackSizePickerWrap = $('#editItemPackSizePickerWrap');
     let $editItemPackages    = $('#editItemPackages');
     let $editItemQty         = $('#editItemQty');
     let $editItemPrice       = $('#editItemPrice');
@@ -405,39 +406,26 @@
     // asynchronously after .val(), so the suppress flag must be held
     // for the duration of the dispatch. Each picker has its own flag
     // (cart vs edit modal) so they don't interfere with each other.
-    function populatePackSizePicker($picker, packQuantities, defaultValue, suppressRef) {
+    function populatePackSizeChips($chipsContainer, $wrap, packQuantities, defaultValue) {
         let packs = Array.isArray(packQuantities) ? packQuantities.slice() : [];
         packs.sort(function (a, b) { return parseFloat(a) - parseFloat(b); });
-        // No empty option on purpose: bootstrap-select falls back to its
-        // `title` attribute when no option is selected, which is the
-        // expected placeholder UX. The picker only renders when there's
-        // a usable pack list, so the empty-option fallback isn't needed.
-        let opts = packs.map(function (p) {
-            return '<option value="' + p + '">' + formatQty(p) + '</option>';
-        }).join('');
-        $picker.html(opts);
-        $picker.prop('disabled', packs.length === 0);
-        refreshSelectpicker($picker);
-        let target = null;
-        if (suppressRef) suppressRef[0] = true;
-        try {
-            if (packs.length === 0) {
-                // Bootstrap-select + empty options → title attribute is
-                // shown. selectpicker('val', '') is harmless.
-                $picker.selectpicker('val', '');
-            } else {
-                let dv = parseFloat(defaultValue);
-                target = (!isNaN(dv) && dv > 0 && packs.indexOf(dv) !== -1) ? dv
-                       : parseFloat(packs[0]);
-                $picker.selectpicker('val', String(target));
-            }
-        } finally {
-            // Release on the next tick so the dispatched changed.bs.select
-            // event sees suppressRef[0] === true.
-            if (suppressRef) {
-                setTimeout(function () { suppressRef[0] = false; }, 0);
-            }
+        if (packs.length === 0) {
+            $chipsContainer.empty();
+            $wrap.hide();
+            return null;
         }
+        let dv = parseFloat(defaultValue);
+        let target = (!isNaN(dv) && dv > 0 && packs.indexOf(dv) !== -1) ? dv
+                   : parseFloat(packs[0]);
+        let html = packs.map(function (p) {
+            let active = (parseFloat(p) === target);
+            return '<button type="button" class="btn ' + (active ? 'btn-secondary' : 'btn-outline-secondary') + '"' +
+                   ' data-pack-size="' + p + '"' +
+                   ' aria-pressed="' + (active ? 'true' : 'false') + '">' +
+                   formatQty(p) + '</button>';
+        }).join('');
+        $chipsContainer.html(html);
+        $wrap.show();
         return target;
     }
 
@@ -471,13 +459,6 @@
         lastEdited.attr('title',
             'Uwaga: ilość nie odpowiada pełnej liczbie opakowań (wielkość: ' + formatQty(pack) + ')');
     }
-
-    // Suppression flags for the two pickers' changed.bs.select handlers.
-    // Initialized to mutable single-element arrays so populatePackSizePicker
-    // can hold the suppression for one tick (bootstrap-select dispatches
-    // the change event asynchronously after a programmatic .val()).
-    let suppressPickerChange    = [false];
-    let suppressEditPickerChange = [false];
 
     function stateBadgeClass(state) {
         switch (state) {
@@ -691,12 +672,11 @@
     }
 
     // Picked pack size of the currently selected variant — null when no
-    // pack is selectable. Tracks `state.pickedPackSize` after a picker
-    // selection; for callers that just need a hint of what's currently
-    // active (e.g. cart row render), `state.pickedPackSize` is the truth.
+    // pack is selectable. The chip group sets state.pickedPackSize on
+    // populate and on chip click; state is the truth (chips don't have
+    // a selectpicker.val() to read).
     function selectedPickedPackSize() {
-        let v = parseFloat($cartPackSize.val());
-        return (!isNaN(v) && v > 0) ? v : state.pickedPackSize;
+        return state.pickedPackSize;
     }
 
     // Picked pack size stored on a cart item (modal-safe counterpart).
@@ -754,13 +734,11 @@
             $cartPrice.val('');
             $cartPackages.val('').prop('disabled', true).removeClass('packages-uneven')
                 .attr('placeholder', 'opak.');
-            // Pack-size picker: empty + disabled, no selection carried
-            // over. Price/currency row hides. populatePackSizePicker
-            // returns null for an empty pack list (the picker is then
-            // disabled and shows the placeholder).
-            populatePackSizePicker($cartPackSize, [], null, suppressPickerChange);
+            // Pack-size chip group: empty + hidden, no selection carried
+            // over. Price/currency row hides. populatePackSizeChips
+            // returns null and hides the chip wrap for an empty pack list.
+            populatePackSizeChips($cartPackSizeChips, $cartPackSizePickerWrap, [], null);
             $cartPriceRow.hide();
-            $cartPackSizeWrap.hide();
             $cartPackagesWrap.hide();
             // Clear pick-mode picker state — a future variant shouldn't
             // inherit the previous one's chosen pack.
@@ -772,24 +750,26 @@
             // Informative placeholder: how many units one picked pack holds.
             let fpq = selectedFullPackQty();
             $cartPackages.attr('placeholder', fpq !== null ? formatQty(fpq) + '/opak.' : 'opak.');
-            // Populate the pack-size picker from the variant's
+            // Populate the pack-size chip group from the variant's
             // pack_quantities; default to its full_pack_quantity
-            // (smallest pack). The picker is enabled iff the variant has
-            // at least one usable pack size.
+            // (smallest pack). The chip group is hidden when the variant
+            // has fewer than two tiers (single-tier variants skip it).
             let packQuantities = vp ? (vp.pack_quantities || []) : [];
-            let picked = populatePackSizePicker($cartPackSize, packQuantities, fpq, suppressPickerChange);
+            let picked = populatePackSizeChips($cartPackSizeChips, $cartPackSizePickerWrap,
+                                              packQuantities, fpq);
             state.pickedPackSize = picked;
             state.lastDerived = null;
             state.lastEdited = null;
             $cartPriceRow.show();
-            // Pack-size picker is only useful when the variant has more
-            // than one tier — single-tier variants skip it. The
-            // packages-count input is only useful when a pack size is
-            // actually defined; pack-less variants skip it as well. The
-            // 100%-width picker sibling needs its parent sized container,
-            // which we satisfy by toggling the wrapping col-md-2.
-            $cartPackSizeWrap.toggle(packQuantities.length > 1);
+            // Packages-count input is only useful when a pack size is
+            // actually defined; pack-less variants skip it as well.
+            // Single-tier variants show the count input but skip the
+            // picker (single chip would be redundant).
             $cartPackagesWrap.toggle(picked !== null);
+            // The chip group is rendered only when more than one tier
+            // exists; the packages-count input still works without it
+            // (state.pickedPackSize is the resolved single tier).
+            $cartPackSizePickerWrap.toggle(packQuantities.length > 1);
             // Disable the count input when no pack size is defined; clear
             // any stale value. Without this the input keeps the
             // `disabled=true` set by the !resolved branch and the user
@@ -1630,22 +1610,26 @@
 
     // Picked-pack-size change: re-derive qty only when qty came from
     // (packages × pack) in the first place. Otherwise the user typed a
-    // raw quantity — re-evaluate the even-pack warning but don't touch
-    // the value. `suppressPickerChange` skips this handler when the
-    // change came from populatePackSizePicker's programmatic .val().
-    $cartPackSize.on('changed.bs.select', function () {
-        if (suppressPickerChange[0]) return;
-        let newPack = parseFloat($cartPackSize.val());
+    // Chip click — switch the picked pack size. Re-derive qty from
+    // packages × new pack if the qty was derived (state.lastDerived),
+    // otherwise leave it alone and just re-evaluate the even-pack
+    // warning. Mark the clicked chip active; reset siblings.
+    $cartPackSizeChips.on('click', 'button[data-pack-size]', function () {
+        let newPack = parseFloat($(this).attr('data-pack-size'));
         if (!isNaN(newPack) && newPack > 0) {
             state.pickedPackSize = newPack;
         } else {
             state.pickedPackSize = null;
+            return;
         }
-        // Keep the packages-count placeholder in sync with the currently
-        // picked pack size ("2500/opak." when the user switches to the
-        // 2500 tier). Also re-evaluate wrap visibility + input disable
-        // since picking the placeholder-allowed "no pack" (only happens
-        // when the picker has no real option selected — defensive).
+        // Visual: active chip becomes btn-secondary, others btn-outline-secondary.
+        $cartPackSizeChips.find('button').each(function () {
+            let isActive = parseFloat($(this).attr('data-pack-size')) === newPack;
+            $(this).removeClass('btn-secondary btn-outline-secondary')
+                .addClass(isActive ? 'btn-secondary' : 'btn-outline-secondary')
+                .attr('aria-pressed', isActive ? 'true' : 'false');
+        });
+        // Placeholder + disable mirror the syncAmountsInputs resolved branch.
         $cartPackagesWrap.toggle(state.pickedPackSize !== null);
         $cartPackages.prop('disabled', state.pickedPackSize === null).val('');
         $cartPackages.attr('placeholder',
@@ -1770,11 +1754,12 @@
         let pickedPack = parseFloat(item.picked_pack_size);
         let dv = (!isNaN(pickedPack) && pickedPack > 0) ? pickedPack
              : (item.full_pack_quantity ? parseFloat(item.full_pack_quantity) : null);
-        let chosen = populatePackSizePicker($editItemPackSize, packs, dv, suppressEditPickerChange);
-        // Mirror the pick-mode visibility rules: pack-size picker only
-        // when more than one tier, packages-count only when a pack size
-        // is defined. The qty input always shows.
-        $editItemPackSizeWrap.toggle(packs.length > 1);
+        let chosen = populatePackSizeChips($editItemPackSizeChips, $editItemPackSizePickerWrap,
+                                           packs, dv);
+        // Mirror the pick-mode visibility rules: chip group only when
+        // more than one tier, packages-count only when a pack size is
+        // defined. The qty input always shows.
+        $editItemPackSizePickerWrap.toggle(packs.length > 1);
         let packagesInputWrap = $('#editItemPackagesWrap');
         packagesInputWrap.toggle(chosen !== null);
         // Opak. pre-fill: derived from the stored quantity against the
@@ -1803,8 +1788,7 @@
     });
 
     function editItemSelectedPackSize() {
-        let v = parseFloat($editItemPackSize.val());
-        return (!isNaN(v) && v > 0) ? v : editModalState.pickedPackSize;
+        return editModalState.pickedPackSize;
     }
 
     // Modal two-way sync, mirroring the picker row's Opak.↔Ilość pair,
@@ -1846,18 +1830,23 @@
 
     $editItemQty.on('input', editItemPackagesFromQty);
 
-    // Edit-modal pack picker: same re-derive-or-re-evaluate logic as the
-    // picker's, but against editModalState. `suppressEditPickerChange`
-    // skips the handler when the change came from the modal's
-    // populatePackSizePicker call.
-    $editItemPackSize.on('changed.bs.select', function () {
-        if (suppressEditPickerChange[0]) return;
-        let newPack = parseFloat($editItemPackSize.val());
+    // Edit-modal chip click: same re-derive-or-re-evaluate logic as the
+    // picker's chip handler, but against editModalState.
+    $editItemPackSizeChips.on('click', 'button[data-pack-size]', function () {
+        let newPack = parseFloat($(this).attr('data-pack-size'));
         if (!isNaN(newPack) && newPack > 0) {
             editModalState.pickedPackSize = newPack;
         } else {
             editModalState.pickedPackSize = null;
+            return;
         }
+        // Visual: active chip becomes btn-secondary, others btn-outline-secondary.
+        $editItemPackSizeChips.find('button').each(function () {
+            let isActive = parseFloat($(this).attr('data-pack-size')) === newPack;
+            $(this).removeClass('btn-secondary btn-outline-secondary')
+                .addClass(isActive ? 'btn-secondary' : 'btn-outline-secondary')
+                .attr('aria-pressed', isActive ? 'true' : 'false');
+        });
         // Keep the modal's packages-count placeholder in sync with the
         // currently picked pack size, same rule as the picker row.
         let editPackagesInputWrap = $('#editItemPackagesWrap');

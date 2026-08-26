@@ -149,7 +149,7 @@ $units = $MsaDB->query(
                 </div>
             </div>
             <div class="row mt-3" id="pickVariantRow">
-                <div class="col-md-4" id="vendorPartCell">
+                <div class="col-md-6" id="vendorPartCell">
                     <label for="vendorPartNoSelect">Numer u dostawcy:</label>
                     <div class="d-flex align-items-start">
                         <div class="flex-grow-1 mr-1">
@@ -183,23 +183,22 @@ $units = $MsaDB->query(
                      vendorPartCell in pick mode (inline layout). Cena/Szt.
                      and Waluta live in a separate #cartPriceRow that is
                      shown only after a variant is selected (they have no
-                     meaning against an ambiguous pick). #cartPackSizeWrap
-                     and #cartPackagesWrap are hidden until the selected
-                     variant has a usable pack-size definition (single-tier
-                     variants skip the picker; pack-less variants skip both). -->
-                <div class="col-md-2" id="cartPackSizeWrap" style="display:none">
-                    <label for="cartPackSize">Opak. (wielkość):</label>
-                    <select id="cartPackSize" class="selectpicker form-control" data-width="100%" data-container="#cartPackSizeWrap" title="wielkość opakowania">
-                        <!-- populated by populatePackSizePicker() — empty here
-                             means bootstrap-select shows the title attribute
-                             as the placeholder until a variant is picked. -->
-                    </select>
-                </div>
-                <div class="col-md-2" id="cartPackagesWrap" style="display:none">
+                     meaning against an ambiguous pick). #cartPackagesWrap
+                     is hidden until the selected variant has a usable
+                     pack-size definition; the picker chip group lives
+                     *inside* the packages wrap (sits below the input) so
+                     the picker is rendered close to the count it multiplies. -->
+                <div class="col-md-3" id="cartPackagesWrap" style="display:none">
                     <label for="cartPackages">Opak.:</label>
                     <input type="number" id="cartPackages" class="form-control" min="0" step="1" placeholder="opak." title="Ilość = N × opak.">
+                    <div id="cartPackSizePickerWrap" class="mt-1" style="display:none">
+                        <small class="text-muted d-block mb-1">wielkość opak.:</small>
+                        <div class="btn-group btn-group-sm d-flex flex-wrap" id="cartPackSizeChips" role="group" aria-label="Wielkość opakowania">
+                            <!-- populated by populatePackSizeChips() -->
+                        </div>
+                    </div>
                 </div>
-                <div class="col-md-2" id="cartQtyWrap">
+                <div class="col-md-3" id="cartQtyWrap">
                     <label for="cartQty">Ilość:</label>
                     <div class="input-group">
                         <input type="number" id="cartQty" class="form-control" min="0.0001" step="0.0001">
@@ -326,23 +325,20 @@ $units = $MsaDB->query(
                 </div>
                 <div class="modal-body">
                     <div id="editItemHeader" class="text-muted small mb-3"></div>
-                    <!-- #editItemPackSizeWrap and #editItemPackagesWrap mirror
-                         the picker's visibility rules: pack-size only when
-                         more than one tier, packages-count only when a pack
-                         size is defined. #editItemQty always shows. -->
-                    <div class="form-group mb-3" id="editItemPackSizeWrap" style="display:none">
-                        <label for="editItemPackSize">Opak. (wielkość):</label>
-                        <select id="editItemPackSize" class="selectpicker form-control" data-width="100%" data-container="#editItemPackSizeWrap" title="wielkość opakowania">
-                            <!-- populated by populatePackSizePicker() — empty
-                                 here means bootstrap-select shows the title
-                                 attribute as the placeholder until the
-                                 edit modal opens for a cart row. -->
-                        </select>
-                    </div>
+                    <!-- #editItemPackagesWrap is hidden when no pack size is
+                         defined for the cart item; the picker chip group
+                         lives *inside* the packages wrap (sits below the
+                         input) — same rule as the picker's main row. -->
                     <div class="form-group mb-3" id="editItemPackagesWrap" style="display:none">
                         <label for="editItemPackages">Opak.:</label>
                         <input type="number" id="editItemPackages" class="form-control" min="0" step="1" placeholder="opak."
                                title="Ilość = N × opak.">
+                        <div id="editItemPackSizePickerWrap" class="mt-2" style="display:none">
+                            <small class="text-muted d-block mb-1">wielkość opak.:</small>
+                            <div class="btn-group btn-group-sm d-flex flex-wrap" id="editItemPackSizeChips" role="group" aria-label="Wielkość opakowania">
+                                <!-- populated by populatePackSizeChips() -->
+                            </div>
+                        </div>
                     </div>
                     <div class="form-group mb-3">
                         <label for="editItemQty">Ilość:</label>
