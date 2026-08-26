@@ -64,6 +64,13 @@
     let $addProducerPartNo   = $('#addProducerPartNo');
     let $addFullPackQuantity = $('#addFullPackQuantity');
     let $addComment          = $('#addComment');
+    // Cart-add input wrappers — move between #pickVariantRow (pick mode,
+    // inline with vendorPartCell) and #cartAddRow (add mode, own row).
+    let $cartPackagesWrap    = $('#cartPackagesWrap');
+    let $cartQtyWrap         = $('#cartQtyWrap');
+    let $cartPriceWrap       = $('#cartPriceWrap');
+    let $cartCurrencyWrap    = $('#cartCurrencyWrap');
+    let $cartAddRow          = $('#cartAddRow');
     let $cartCard            = $('#cartCard');
     let $cartBody            = $('#cartBody');
     let $cartCount           = $('#cartCount');
@@ -98,13 +105,33 @@
     // dirtiness so the Anuluj button can warn before discarding.
     let addModeDirty = false;
 
+    // Move the four cart-add wrappers (Opak./Ilość/Cena/Szt./Waluta)
+    // either into #cartAddRow (own row, used in add mode — col-md-3 each,
+    // 4×3=12 fits) or back into #pickVariantRow right after vendorPartCell
+    // (inline with the Numer u dostawcy selectpicker, used in pick mode —
+    // col-md-4 + 4×col-md-2 = 12 fits). Their input/select IDs stay the
+    // same so event handlers and VENDOR_PARTS_INDEX state are unaffected.
+    function moveCartAddWrappersTo($target, mode) {
+        let colClass = mode === 'add' ? 'col-md-3' : 'col-md-2';
+        let otherClass = mode === 'add' ? 'col-md-2' : 'col-md-3';
+        [$cartPackagesWrap, $cartQtyWrap, $cartPriceWrap, $cartCurrencyWrap].forEach(function ($w) {
+            $w.removeClass(otherClass).addClass(colClass).appendTo($target);
+        });
+    }
+
     function setPickerMode(mode) {
         pickerMode = mode === 'add' ? 'add' : 'pick';
         // Visual hint on the picker card body.
-        let $card = $('#pickVariantRow').closest('.card');
+        let $card = $pickVariantRow.closest('.card');
         $card.toggleClass('picker-add-mode', pickerMode === 'add');
         if (pickerMode === 'add') {
+            // Move the four cart-add wrappers out of pickVariantRow so the
+            // "Numer u dostawcy" selectpicker can be replaced visually by
+            // the add-mode fields above. They land in cartAddRow which we
+            // show below addVariantRow1.
+            moveCartAddWrappersTo($cartAddRow, 'add');
             $pickVariantRow.hide();
+            $cartAddRow.show();
             $addVariantRow1.show();
             $addVariantRow2.show();
             $addVariantCommentRow.show();
@@ -112,9 +139,7 @@
                 .removeClass('btn-outline-info').addClass('btn-outline-warning')
                 .html('<i class="bi bi-x-square"></i> Anuluj')
                 .attr('title', 'Anuluj dodawanie nowego artykułu');
-            // In add mode the "Numer u dostawcy" picker is irrelevant —
-            // hide its sibling so the row reads cleanly.
-            // Also un-filter the Part picker so any active part is selectable.
+            // Un-filter the Part picker so any active part is selectable.
             $partSelect.find('option').each(function () {
                 let id = parseInt($(this).val(), 10) || 0;
                 if (id === 0) return;
@@ -122,7 +147,11 @@
             });
             refreshSelectpicker($partSelect);
         } else {
+            // Move the four cart-add wrappers back next to vendorPartCell
+            // so the original inline pick-mode layout returns.
+            moveCartAddWrappersTo($pickVariantRow, 'pick');
             $pickVariantRow.show();
+            $cartAddRow.hide();
             $addVariantRow1.hide();
             $addVariantRow2.hide();
             $addVariantCommentRow.hide();

@@ -137,6 +137,31 @@ $units = $MsaDB->query(
                         <a href="#" id="vpSearchBtn" class="text-muted clear-picker-link ml-1" title="Szukaj po numerze dostawcy / producenta / części"><i class="bi bi-search"></i></a>
                     </div>
                 </div>
+                <!-- The four cart-add wrappers below live in pickVariantRow
+                     next to vendorPartCell in pick mode (inline layout), and
+                     get moved into #cartAddRow in add mode via .appendTo().
+                     Their col-md class is swapped (2 <-> 3) on the move so
+                     both row layouts use 12 columns exactly. -->
+                <div class="col-md-2" id="cartPackagesWrap">
+                    <label for="cartPackages">Opak.:</label>
+                    <input type="number" id="cartPackages" class="form-control" min="0" step="1" placeholder="opak." title="Ilość = opakowania × ilość w opakowaniu">
+                </div>
+                <div class="col-md-2" id="cartQtyWrap">
+                    <label for="cartQty">Ilość:</label>
+                    <input type="number" id="cartQty" class="form-control" min="0.0001" step="0.0001" placeholder="szt.">
+                </div>
+                <div class="col-md-2" id="cartPriceWrap">
+                    <label for="cartPrice">Cena/Szt.:</label>
+                    <input type="number" id="cartPrice" class="form-control" min="0" step="0.0001" placeholder="opcjonalna">
+                </div>
+                <div class="col-md-2" id="cartCurrencyWrap">
+                    <label for="cartCurrency">Waluta:</label>
+                    <select id="cartCurrency" class="form-control">
+                        <option value="PLN" selected>PLN</option>
+                        <option value="EUR">EUR</option>
+                        <option value="USD">USD</option>
+                    </select>
+                </div>
             </div>
 
             <div class="row mt-2" id="addVariantRow1" style="display:none">
@@ -179,28 +204,9 @@ $units = $MsaDB->query(
                 </div>
             </div>
 
-            <div class="row mt-2" id="cartAddRow">
-                <div class="col-md-3">
-                    <label for="cartPackages">Opak.:</label>
-                    <input type="number" id="cartPackages" class="form-control" min="0" step="1" placeholder="opak." title="Ilość = opakowania × ilość w opakowaniu">
-                </div>
-                <div class="col-md-3">
-                    <label for="cartQty">Ilość:</label>
-                    <input type="number" id="cartQty" class="form-control" min="0.0001" step="0.0001" placeholder="szt.">
-                </div>
-                <div class="col-md-3">
-                    <label for="cartPrice">Cena/Szt.:</label>
-                    <input type="number" id="cartPrice" class="form-control" min="0" step="0.0001" placeholder="opcjonalna">
-                </div>
-                <div class="col-md-3">
-                    <label for="cartCurrency">Waluta:</label>
-                    <select id="cartCurrency" class="form-control">
-                        <option value="PLN" selected>PLN</option>
-                        <option value="EUR">EUR</option>
-                        <option value="USD">USD</option>
-                    </select>
-                </div>
-            </div>
+            <!-- Empty container in pick mode; receives the cart-add wrappers
+                 via .appendTo() when entering add mode. -->
+            <div class="row mt-2" id="cartAddRow" style="display:none"></div>
 
             <div class="row mt-2" id="addVariantCommentRow" style="display:none">
                 <div class="col-md-12">
@@ -226,12 +232,14 @@ $units = $MsaDB->query(
                     </span>
                 </div>
             </div>
-            <div class="row mt-2">
-                <div class="col-12 text-right">
-                    <button type="button" id="toggleAddVariantBtn" class="btn btn-outline-info mr-3" disabled
+            <div class="row mt-2 align-items-center">
+                <div class="col-6 text-left">
+                    <button type="button" id="toggleAddVariantBtn" class="btn btn-outline-info" disabled
                             title="Dodaj nowy artykuł dostawcy do katalogu">
                         <i class="bi bi-plus-square"></i> + Artykuł
                     </button>
+                </div>
+                <div class="col-6 text-right">
                     <button type="button" id="clearSelectionBtn" class="btn btn-danger mr-1" title="Wyczyść wybór dostawcy i części">
                         Wyczyść
                     </button>
