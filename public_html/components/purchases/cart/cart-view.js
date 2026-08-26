@@ -67,8 +67,15 @@
     let $vendorSelect        = $('#vendorSelect');
     let $partSelect          = $('#partSelect');
     let $vendorPartNoSelect  = $('#vendorPartNoSelect');
-    let $cartPackSizeChips       = $('#cartPackSizeChips');
     let $cartPackSizePickerWrap  = $('#cartPackSizePickerWrap');
+    let $cartPackSizePrev        = $('#cartPackSizePrev');
+    let $cartPackSizeValue       = $('#cartPackSizeValue');
+    let $cartPackSizeNext        = $('#cartPackSizeNext');
+    let $cartPackSizeAdd         = $('#cartPackSizeAdd');
+    let $cartPackSizeEditBox     = $('#cartPackSizeEditBox');
+    let $cartPackSizeInput       = $('#cartPackSizeInput');
+    let $cartPackSizeSave        = $('#cartPackSizeSave');
+    let $cartPackSizeCancel      = $('#cartPackSizeCancel');
     let $cartPackages        = $('#cartPackages');
     let $cartQty             = $('#cartQty');
     let $cartPrice           = $('#cartPrice');
@@ -82,8 +89,15 @@
     let $variantCommentInput = $('#variantCommentInput');
     let $editItemModal       = $('#editItemModal');
     let $editItemHeader      = $('#editItemHeader');
-    let $editItemPackSizeChips      = $('#editItemPackSizeChips');
     let $editItemPackSizePickerWrap = $('#editItemPackSizePickerWrap');
+    let $editItemPackSizePrev       = $('#editItemPackSizePrev');
+    let $editItemPackSizeValue      = $('#editItemPackSizeValue');
+    let $editItemPackSizeNext       = $('#editItemPackSizeNext');
+    let $editItemPackSizeAdd        = $('#editItemPackSizeAdd');
+    let $editItemPackSizeEditBox    = $('#editItemPackSizeEditBox');
+    let $editItemPackSizeInput      = $('#editItemPackSizeInput');
+    let $editItemPackSizeSave       = $('#editItemPackSizeSave');
+    let $editItemPackSizeCancel     = $('#editItemPackSizeCancel');
     let $editItemPackages    = $('#editItemPackages');
     let $editItemQty         = $('#editItemQty');
     let $editItemPrice       = $('#editItemPrice');
@@ -406,25 +420,42 @@
     // asynchronously after .val(), so the suppress flag must be held
     // for the duration of the dispatch. Each picker has its own flag
     // (cart vs edit modal) so they don't interfere with each other.
-    function populatePackSizeChips($chipsContainer, $wrap, packQuantities, defaultValue) {
+    // Cycle the picked pack size through the sorted list by ±1.
+    // Returns the new picked value, or null if there is no list / nothing
+    // to cycle to in the requested direction.
+    function stepPackSize(packs, current, delta) {
+        if (!Array.isArray(packs) || packs.length === 0) return null;
+        let sorted = packs.slice().sort(function (a, b) { return parseFloat(a) - parseFloat(b); });
+        let idx = sorted.findIndex(function (p) { return parseFloat(p) === parseFloat(current); });
+        if (idx === -1) {
+            // current not in list — jump to the boundary the user asked for
+            return parseFloat(delta > 0 ? sorted[sorted.length - 1] : sorted[0]);
+        }
+        let nextIdx = idx + delta;
+        if (nextIdx < 0 || nextIdx >= sorted.length) return parseFloat(sorted[idx]);
+        return parseFloat(sorted[nextIdx]);
+    }
+
+    // Render the pack-size stepper. Sets the displayed value, enables
+    // / disables prev/next based on position, shows or hides the wrap
+    // depending on whether there are pack tiers at all. Returns the
+    // resolved picked value (or null when no packs).
+    function populatePackSizeStepper($value, $prev, $next, $wrap, packQuantities, defaultValue) {
         let packs = Array.isArray(packQuantities) ? packQuantities.slice() : [];
         packs.sort(function (a, b) { return parseFloat(a) - parseFloat(b); });
         if (packs.length === 0) {
-            $chipsContainer.empty();
+            $value.text('—');
+            $prev.prop('disabled', true);
+            $next.prop('disabled', true);
             $wrap.hide();
             return null;
         }
         let dv = parseFloat(defaultValue);
         let target = (!isNaN(dv) && dv > 0 && packs.indexOf(dv) !== -1) ? dv
                    : parseFloat(packs[0]);
-        let html = packs.map(function (p) {
-            let active = (parseFloat(p) === target);
-            return '<button type="button" class="btn ' + (active ? 'btn-secondary' : 'btn-outline-secondary') + '"' +
-                   ' data-pack-size="' + p + '"' +
-                   ' aria-pressed="' + (active ? 'true' : 'false') + '">' +
-                   formatQty(p) + '</button>';
-        }).join('');
-        $chipsContainer.html(html);
+        $value.text(formatQty(target));
+        $prev.prop('disabled', target === parseFloat(packs[0]));
+        $next.prop('disabled', target === parseFloat(packs[packs.length - 1]));
         $wrap.show();
         return target;
     }
@@ -734,10 +765,12 @@
             $cartPrice.val('');
             $cartPackages.val('').prop('disabled', true).removeClass('packages-uneven')
                 .attr('placeholder', 'opak.');
-            // Pack-size chip group: empty + hidden, no selection carried
-            // over. Price/currency row hides. populatePackSizeChips
-            // returns null and hides the chip wrap for an empty pack list.
-            populatePackSizeChips($cartPackSizeChips, $cartPackSizePickerWrap, [], null);
+            // Pack-size stepper: empty + hidden, no selection carried
+            // over. Price/currency row hides. populatePackSizeStepper
+            // returns null and hides the stepper wrap for an empty pack
+            // list.
+            populatePackSizeStepper($cartPackSizeValue, $cartPackSizePrev, $cartPackSizeNext,
+                                    $cartPackSizePickerWrap, [], null);
             $cartPriceRow.hide();
             $cartPackagesWrap.hide();
             // Clear pick-mode picker state — a future variant shouldn't
@@ -750,13 +783,13 @@
             // Informative placeholder: how many units one picked pack holds.
             let fpq = selectedFullPackQty();
             $cartPackages.attr('placeholder', fpq !== null ? formatQty(fpq) + '/opak.' : 'opak.');
-            // Populate the pack-size chip group from the variant's
+            // Populate the pack-size stepper from the variant's
             // pack_quantities; default to its full_pack_quantity
-            // (smallest pack). The chip group is hidden when the variant
+            // (smallest pack). The stepper is hidden when the variant
             // has fewer than two tiers (single-tier variants skip it).
             let packQuantities = vp ? (vp.pack_quantities || []) : [];
-            let picked = populatePackSizeChips($cartPackSizeChips, $cartPackSizePickerWrap,
-                                              packQuantities, fpq);
+            let picked = populatePackSizeStepper($cartPackSizeValue, $cartPackSizePrev, $cartPackSizeNext,
+                                                 $cartPackSizePickerWrap, packQuantities, fpq);
             state.pickedPackSize = picked;
             state.lastDerived = null;
             state.lastEdited = null;
@@ -1608,27 +1641,28 @@
         applyEvenWarning($cartPackages, qty, pack);
     });
 
-    // Picked-pack-size change: re-derive qty only when qty came from
-    // (packages × pack) in the first place. Otherwise the user typed a
-    // Chip click — switch the picked pack size. Re-derive qty from
-    // packages × new pack if the qty was derived (state.lastDerived),
-    // otherwise leave it alone and just re-evaluate the even-pack
-    // warning. Mark the clicked chip active; reset siblings.
-    $cartPackSizeChips.on('click', 'button[data-pack-size]', function () {
-        let newPack = parseFloat($(this).attr('data-pack-size'));
+    // Cart pack-size stepper: − cycles down, + cycles up, the trailing
+    // + icon opens an inline edit box for adding a new tier on the fly.
+    // All three handlers funnel through cartAfterPackChange() which owns
+    // state.pickedPackSize, the visual stepper refresh, the qty
+    // re-derivation logic, and the even-pack warning.
+    function cartAfterPackChange(newPack) {
         if (!isNaN(newPack) && newPack > 0) {
             state.pickedPackSize = newPack;
         } else {
             state.pickedPackSize = null;
             return;
         }
-        // Visual: active chip becomes btn-secondary, others btn-outline-secondary.
-        $cartPackSizeChips.find('button').each(function () {
-            let isActive = parseFloat($(this).attr('data-pack-size')) === newPack;
-            $(this).removeClass('btn-secondary btn-outline-secondary')
-                .addClass(isActive ? 'btn-secondary' : 'btn-outline-secondary')
-                .attr('aria-pressed', isActive ? 'true' : 'false');
-        });
+        // The variant's pack list is what the stepper represents. Read
+        // it from the currently selected option so a freshly-added tier
+        // (added via the inline editor below) is visible immediately.
+        let $sel = $vendorPartNoSelect.find('option:selected');
+        let vp   = ($sel.length > 0 && parseInt($sel.attr('data-vp-id'), 10) > 0)
+                   ? getVpById(parseInt($sel.attr('data-vp-id'), 10)) : null;
+        let packs = vp ? (vp.pack_quantities || []) : [];
+        // Refresh the stepper visual with the new value.
+        populatePackSizeStepper($cartPackSizeValue, $cartPackSizePrev, $cartPackSizeNext,
+                                $cartPackSizePickerWrap, packs, newPack);
         // Placeholder + disable mirror the syncAmountsInputs resolved branch.
         $cartPackagesWrap.toggle(state.pickedPackSize !== null);
         $cartPackages.prop('disabled', state.pickedPackSize === null).val('');
@@ -1645,9 +1679,81 @@
             $cartQty.val(parseFloat(qty.toFixed(6)));
             state.lastDerived = { packages: pkgs, pack: state.pickedPackSize };
         }
-        // Re-evaluate the warning on whichever field was last-edited
-        // (packages-uneven class + warning title land there).
+        // Re-evaluate the warning on whichever field was last-edited.
         applyEvenWarning(state.lastEdited, qty, state.pickedPackSize);
+    }
+
+    $cartPackSizePrev.on('click', function () {
+        if (!state.pickedPackSize) return;
+        let $sel = $vendorPartNoSelect.find('option:selected');
+        let vp   = ($sel.length > 0 && parseInt($sel.attr('data-vp-id'), 10) > 0)
+                   ? getVpById(parseInt($sel.attr('data-vp-id'), 10)) : null;
+        let packs = vp ? (vp.pack_quantities || []) : [];
+        cartAfterPackChange(stepPackSize(packs, state.pickedPackSize, -1));
+    });
+    $cartPackSizeNext.on('click', function () {
+        if (!state.pickedPackSize) return;
+        let $sel = $vendorPartNoSelect.find('option:selected');
+        let vp   = ($sel.length > 0 && parseInt($sel.attr('data-vp-id'), 10) > 0)
+                   ? getVpById(parseInt($sel.attr('data-vp-id'), 10)) : null;
+        let packs = vp ? (vp.pack_quantities || []) : [];
+        cartAfterPackChange(stepPackSize(packs, state.pickedPackSize, +1));
+    });
+
+    // Inline add-tier editor — same pattern as the variant-comment
+    // edit (pencil → input + save/cancel, AJAX on save). POSTs to
+    // vendor-part-pack-add.php which INSERTs into list__vendor_part_pack
+    // (UNIQUE (vendor_part_id, full_pack_quantity) makes duplicate
+    // submissions idempotent) and returns the merged + sorted list.
+    $cartPackSizeAdd.on('click', function (e) {
+        e.preventDefault();
+        let vp = selectedVpEntry();
+        if (!vp) return;
+        $cartPackSizeEditBox.show();
+        $cartPackSizeInput.val('').trigger('focus');
+    });
+    $cartPackSizeCancel.on('click', function (e) {
+        e.preventDefault();
+        $cartPackSizeEditBox.hide();
+        $cartPackSizeInput.val('');
+    });
+    $cartPackSizeInput.on('keydown', function (ev) {
+        if (ev.key === 'Enter') { ev.preventDefault(); $cartPackSizeSave.trigger('click'); }
+        if (ev.key === 'Escape') { ev.preventDefault(); $cartPackSizeCancel.trigger('click'); }
+    });
+    $cartPackSizeSave.on('click', function (e) {
+        e.preventDefault();
+        let vp = selectedVpEntry();
+        if (!vp) return;
+        let raw = $cartPackSizeInput.val().toString().replace(',', '.').trim();
+        let qty = parseFloat(raw);
+        if (isNaN(qty) || qty <= 0) {
+            setAlert('Wielkość opakowania musi być > 0.', 'warning');
+            return;
+        }
+        let $btn = $(this);
+        $btn.prop('disabled', true);
+        $.ajax({
+            url: COMPONENTS_PATH + '/purchases/cart/vendor-part-pack-add.php',
+            type: 'POST',
+            dataType: 'json',
+            data: { vp_id: vp.id, full_pack_quantity: qty }
+        }).done(function (r) {
+            if (!r || !r.success) {
+                setAlert(r && r.error ? r.error : 'Błąd zapisu wielkości opakowania.', 'danger');
+                return;
+            }
+            // Refresh in-memory catalog entry and re-render the stepper.
+            vp.pack_quantities = Array.isArray(r.pack_quantities) ? r.pack_quantities.slice() : [];
+            cartAfterPackChange(qty);
+            $cartPackSizeEditBox.hide();
+            $cartPackSizeInput.val('');
+        }).fail(function (xhr, status) {
+            setAlert(xhr.responseJSON && xhr.responseJSON.error
+                     ? xhr.responseJSON.error : status, 'danger');
+        }).always(function () {
+            $btn.prop('disabled', false);
+        });
     });
 
     // Inline edit of the variant's private comment — saves immediately
@@ -1754,8 +1860,8 @@
         let pickedPack = parseFloat(item.picked_pack_size);
         let dv = (!isNaN(pickedPack) && pickedPack > 0) ? pickedPack
              : (item.full_pack_quantity ? parseFloat(item.full_pack_quantity) : null);
-        let chosen = populatePackSizeChips($editItemPackSizeChips, $editItemPackSizePickerWrap,
-                                           packs, dv);
+        let chosen = populatePackSizeStepper($editItemPackSizeValue, $editItemPackSizePrev, $editItemPackSizeNext,
+                                              $editItemPackSizePickerWrap, packs, dv);
         // Mirror the pick-mode visibility rules: chip group only when
         // more than one tier, packages-count only when a pack size is
         // defined. The qty input always shows.
@@ -1830,25 +1936,20 @@
 
     $editItemQty.on('input', editItemPackagesFromQty);
 
-    // Edit-modal chip click: same re-derive-or-re-evaluate logic as the
-    // picker's chip handler, but against editModalState.
-    $editItemPackSizeChips.on('click', 'button[data-pack-size]', function () {
-        let newPack = parseFloat($(this).attr('data-pack-size'));
+    // Edit-modal stepper: same re-derive-or-re-evaluate logic as the
+    // cart picker's stepper, but against editModalState. The cart's
+    // VENDOR_PARTS_INDEX isn't always populated for cart items that
+    // were added before the migration; we read the packs list from the
+    // currently edited cart item instead.
+    function editModalAfterPackChange(newPack, packs) {
         if (!isNaN(newPack) && newPack > 0) {
             editModalState.pickedPackSize = newPack;
         } else {
             editModalState.pickedPackSize = null;
             return;
         }
-        // Visual: active chip becomes btn-secondary, others btn-outline-secondary.
-        $editItemPackSizeChips.find('button').each(function () {
-            let isActive = parseFloat($(this).attr('data-pack-size')) === newPack;
-            $(this).removeClass('btn-secondary btn-outline-secondary')
-                .addClass(isActive ? 'btn-secondary' : 'btn-outline-secondary')
-                .attr('aria-pressed', isActive ? 'true' : 'false');
-        });
-        // Keep the modal's packages-count placeholder in sync with the
-        // currently picked pack size, same rule as the picker row.
+        populatePackSizeStepper($editItemPackSizeValue, $editItemPackSizePrev, $editItemPackSizeNext,
+                                $editItemPackSizePickerWrap, packs, newPack);
         let editPackagesInputWrap = $('#editItemPackagesWrap');
         editPackagesInputWrap.toggle(editModalState.pickedPackSize !== null);
         $editItemPackages.prop('disabled', editModalState.pickedPackSize === null).val('');
@@ -1866,6 +1967,89 @@
             editModalState.lastDerived = { packages: pkgs, pack: editModalState.pickedPackSize };
         }
         applyEvenWarningEdit(editModalState.lastEdited, qty, editModalState.pickedPackSize);
+    }
+
+    $editItemPackSizePrev.on('click', function () {
+        if (!editModalState.pickedPackSize) return;
+        let idx = $editItemModal.data('edit-idx');
+        if (typeof idx !== 'number') idx = parseInt(idx, 10);
+        let item = cart.items[idx];
+        if (!item) return;
+        let packs = Array.isArray(item.pack_quantities) ? item.pack_quantities : [];
+        editModalAfterPackChange(stepPackSize(packs, editModalState.pickedPackSize, -1), packs);
+    });
+    $editItemPackSizeNext.on('click', function () {
+        if (!editModalState.pickedPackSize) return;
+        let idx = $editItemModal.data('edit-idx');
+        if (typeof idx !== 'number') idx = parseInt(idx, 10);
+        let item = cart.items[idx];
+        if (!item) return;
+        let packs = Array.isArray(item.pack_quantities) ? item.pack_quantities : [];
+        editModalAfterPackChange(stepPackSize(packs, editModalState.pickedPackSize, +1), packs);
+    });
+
+    // Modal inline add-tier — same UX as the cart picker's + icon. The
+    // AJAX update goes through the same endpoint and updates both the
+    // cart item's pack_quantities (so the modal sees it on next open
+    // and the create-doc payload carries it) and VENDOR_PARTS_INDEX
+    // (so the cart picker's catalog view stays fresh).
+    $editItemPackSizeAdd.on('click', function (e) {
+        e.preventDefault();
+        let idx = $editItemModal.data('edit-idx');
+        if (typeof idx !== 'number') idx = parseInt(idx, 10);
+        let item = cart.items[idx];
+        if (!item) return;
+        $editItemPackSizeEditBox.show();
+        $editItemPackSizeInput.val('').trigger('focus');
+    });
+    $editItemPackSizeCancel.on('click', function (e) {
+        e.preventDefault();
+        $editItemPackSizeEditBox.hide();
+        $editItemPackSizeInput.val('');
+    });
+    $editItemPackSizeInput.on('keydown', function (ev) {
+        if (ev.key === 'Enter') { ev.preventDefault(); $editItemPackSizeSave.trigger('click'); }
+        if (ev.key === 'Escape') { ev.preventDefault(); $editItemPackSizeCancel.trigger('click'); }
+    });
+    $editItemPackSizeSave.on('click', function (e) {
+        e.preventDefault();
+        let idx = $editItemModal.data('edit-idx');
+        if (typeof idx !== 'number') idx = parseInt(idx, 10);
+        let item = cart.items[idx];
+        if (!item || !item.vendor_part_id) return;
+        let raw = $editItemPackSizeInput.val().toString().replace(',', '.').trim();
+        let qty = parseFloat(raw);
+        if (isNaN(qty) || qty <= 0) {
+            setAlert('Wielkość opakowania musi być > 0.', 'warning');
+            return;
+        }
+        let $btn = $(this);
+        $btn.prop('disabled', true);
+        $.ajax({
+            url: COMPONENTS_PATH + '/purchases/cart/vendor-part-pack-add.php',
+            type: 'POST',
+            dataType: 'json',
+            data: { vp_id: item.vendor_part_id, full_pack_quantity: qty }
+        }).done(function (r) {
+            if (!r || !r.success) {
+                setAlert(r && r.error ? r.error : 'Błąd zapisu wielkości opakowania.', 'danger');
+                return;
+            }
+            let newPacks = Array.isArray(r.pack_quantities) ? r.pack_quantities.slice() : [];
+            item.pack_quantities = newPacks;
+            // Mirror into VENDOR_PARTS_INDEX so the picker-row catalog
+            // view stays fresh too.
+            let vp = getVpById(item.vendor_part_id);
+            if (vp) vp.pack_quantities = newPacks;
+            editModalAfterPackChange(qty, newPacks);
+            $editItemPackSizeEditBox.hide();
+            $editItemPackSizeInput.val('');
+        }).fail(function (xhr, status) {
+            setAlert(xhr.responseJSON && xhr.responseJSON.error
+                     ? xhr.responseJSON.error : status, 'danger');
+        }).always(function () {
+            $btn.prop('disabled', false);
+        });
     });
 
     // Save the edited values back into the cart, persist, re-render.
