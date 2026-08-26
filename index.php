@@ -139,6 +139,16 @@ switch ($request) {
         includeWithVariables($headerDir, array('title' => 'Artykuły u dostawców'));
         require $componentsDir . '/Admin/Purchase/VendorParts/vendor-parts-view.php';
         break;
+    case 'admin/purchase/orders/edit':
+        requireAdmin();
+        includeWithVariables($headerDir, array('title' => 'Edycja zamówienia'));
+        require $componentsDir . '/Admin/Purchase/Orders/orders-edit.php';
+        break;
+    case 'admin/purchase/rfqs/edit':
+        requireAdmin();
+        includeWithVariables($headerDir, array('title' => 'Edycja zapytania'));
+        require $componentsDir . '/Admin/Purchase/RFQs/rfqs-edit.php';
+        break;
     case 'purchase/cart':
         requireAdmin();
         includeWithVariables($headerDir, array('title' => 'Koszyk zakupowy'));

@@ -15,8 +15,10 @@
 //      a valid VendorPart is selected. Same vendor_part_id merges in qty
 //      instead of duplicating.
 //   5. Each vendor group in the cart has its own "Utwórz zapytanie"
-//      / "Utwórz zamówienie" buttons — submits only that group's
-//      items to POST /cart-action.php.
+//      / "Utwórz zamówienie" buttons — POST cart-create-document.php
+//      with the group's items; server creates a draft RFQ/PO and returns
+//      the edit URL which the client opens in a new tab. Used items
+//      are removed from the cart on success.
 //   6. The cart persists across page refreshes via localStorage
 //      (7-day expiry, cleared on submit and on "Wyczyść koszyk").
 
@@ -937,8 +939,12 @@
                     escapeHtml(group.name) +
                     ' <small class="text-muted">(' + group.items.length + ' poz. · łącznie ' + formatPrice(groupValue) + ')</small>' +
                 '</h6>' +
-                '<div>' +
-                    '<button type="button" class="btn btn-sm btn-outline-danger clear-vendor-items-btn" data-vendor-id="' + vid + '" title="Usuń wszystkie pozycje tego dostawcy z koszyka">' +
+                '<div class="btn-group btn-group-sm" role="group" aria-label="Utwórz dokument">' +
+                    '<button type="button" class="btn btn-outline-primary create-doc-btn" data-doc-type="rfq" data-vendor-id="' + vid + '" title="Utwórz zapytanie ofertowe (RFQ) jako szkic i otwórz w nowej karcie">' +
+                        '<i class="bi bi-question-square"></i> Utwórz zapytanie</button>' +
+                    '<button type="button" class="btn btn-outline-success create-doc-btn" data-doc-type="po" data-vendor-id="' + vid + '" title="Utwórz zamówienie (PO) jako szkic i otwórz w nowej karcie">' +
+                        '<i class="bi bi-cart-check"></i> Utwórz zamówienie</button>' +
+                    '<button type="button" class="btn btn-outline-danger clear-vendor-items-btn" data-vendor-id="' + vid + '" title="Usuń wszystkie pozycje tego dostawcy z koszyka">' +
                         '<i class="bi bi-trash"></i></button>' +
                 '</div>' +
                 '</div>' +
@@ -1018,12 +1024,6 @@
             });
 
             html += '</tbody></table></div>' +
-                '<div class="d-flex justify-content-end">' +
-                    '<button type="button" class="btn btn-primary mr-2 create-rfq-btn" data-vendor-id="' + vid + '">' +
-                    '<i class="bi bi-file-earmark-text"></i> Utwórz zapytanie</button>' +
-                    '<button type="button" class="btn btn-success create-po-btn" data-vendor-id="' + vid + '">' +
-                    '<i class="bi bi-bag-check"></i> Utwórz zamówienie</button>' +
-                '</div>' +
                 '</div>';
         });
         $cartBody.html(html);
@@ -1210,54 +1210,6 @@
             setAlert('Artykuł dodany do katalogu — uzupełnij ilość i kliknij Dodaj.', 'success');
         }).fail(function () {
             setAlert('Błąd komunikacji z serwerem.', 'danger');
-        });
-    }
-
-    function buildPayload(docType, vendorId, items) {
-        return {
-            doc_type  : docType,
-            vendor_id : vendorId,
-            date      : '',
-            comment   : '',
-            items     : JSON.stringify(items.map(function (i) {
-                return {
-                    vendor_part_id : i.vendor_part_id,
-                    quantity       : i.quantity,
-                    unit_price     : i.unit_price === null ? '' : i.unit_price,
-                    currency       : i.currency
-                };
-            }))
-        };
-    }
-
-    function submit(docType, btn) {
-        let $btn = $(btn);
-        let vendorId = parseInt($btn.data('vendor-id'), 10);
-        if (!vendorId) { setAlert('Brak identyfikatora dostawcy.', 'danger'); return; }
-        let items = cart.items.filter(function (i) { return i.vendor_id === vendorId; });
-        if (items.length === 0) { setAlert('Brak pozycji dla tego dostawcy.', 'warning'); return; }
-        $btn.prop('disabled', true).text('Tworzę...');
-        $.ajax({
-            url: COMPONENTS_PATH + '/purchases/cart//cart-action.php',
-            method: 'POST',
-            data: buildPayload(docType, vendorId, items),
-            dataType: 'json'
-        }).done(function (response) {
-            if (response && response.success) {
-                setAlert('Utworzono dokument. Przekierowuję...', 'success');
-                clearSavedCart();   // submitted — don't restore these items
-                window.location.href = response.redirect;
-            } else {
-                setAlert('Błąd: ' + (response && response.error ? response.error : 'nieznany'), 'danger');
-                $btn.prop('disabled', false).html(docType === 'po'
-                    ? '<i class="bi bi-bag-check"></i> Utwórz zamówienie'
-                    : '<i class="bi bi-file-earmark-text"></i> Utwórz zapytanie');
-            }
-        }).fail(function (xhr) {
-            setAlert('Błąd HTTP ' + xhr.status, 'danger');
-            $btn.prop('disabled', false).html(docType === 'po'
-                ? '<i class="bi bi-bag-check"></i> Utwórz zamówienie'
-                : '<i class="bi bi-file-earmark-text"></i> Utwórz zapytanie');
         });
     }
 
@@ -1599,11 +1551,81 @@
         setAlert('Usunięto pozycje dostawcy ' + name + '.', 'info');
     });
 
-    // Per-vendor-group create buttons
-    $cartBody.on('click', '.create-rfq-btn, .create-po-btn', function () {
-        let docType = $(this).hasClass('create-rfq-btn') ? 'rfq' : 'po';
-        submit(docType, this);
+    // Per-vendor-group create buttons ("Utwórz zapytanie" / "Utwórz zamówienie").
+    // POST cart-create-document.php → server creates draft + items in one tx
+    // → on success, remove used items from cart and open the edit URL in a
+    // new tab (window.open with _blank). The new tab follows the URL the
+    // server returned; the original tab keeps showing the remaining cart.
+    $cartBody.on('click', '.create-doc-btn', function () {
+        let docType = $(this).data('doc-type');
+        let vid = parseInt($(this).data('vendor-id'), 10) || 0;
+        if (!vid) return;
+        createDocumentFromVendor(docType, vid, $(this));
     });
+
+    function createDocumentFromVendor(docType, vid, $btn) {
+        if (cart.items.length === 0) return;
+        // Items for THIS vendor only — each vendor group has its own
+        // create buttons, and a PO/RFQ is locked to one vendor.
+        let items = cart.items.filter(function (i) { return parseInt(i.vendor_id, 10) === vid; });
+        if (items.length === 0) return;
+
+        // jQuery's $.ajax with a structured data object emits form-encoded
+        // nested arrays automatically (PHP parses items[0][vendor_part_id]).
+        let payload = {
+            type:      docType,
+            vendor_id: vid,
+            items:     items.map(function (i) {
+                return {
+                    vendor_part_id  : i.vendor_part_id,
+                    quantity        : i.quantity,
+                    quantity_unit_id: i.vendor_jm_id || 0,
+                    unit_price      : i.unit_price,
+                    currency        : i.currency || 'PLN',
+                    comment         : ''
+                };
+            })
+        };
+
+        $.ajax({
+            url: COMPONENTS_PATH + '/purchases/cart/cart-create-document.php',
+            type: 'POST',
+            dataType: 'json',
+            data: payload
+        }).done(function (r) {
+            if (!r || !r.success) {
+                setAlert((r && r.error) ? r.error : 'Błąd tworzenia dokumentu.', 'danger');
+                return;
+            }
+            // Drop the used items from the local cart. Server mirrors the
+            // IDs back in used_vendor_part_ids so we don't need to re-derive.
+            let usedIds = {};
+            (r.used_vendor_part_ids || []).forEach(function (id) { usedIds[id] = true; });
+            cart.items = cart.items.filter(function (i) { return !usedIds[i.vendor_part_id]; });
+
+            // Open the edit page in a new tab. window.open returns null if
+            // the browser blocked the popup — warn the user but keep the
+            // cart cleared (the doc IS created; user can find it later).
+            let win = window.open(r.edit_url, '_blank');
+            if (!win) {
+                setAlert(r.message + ' (Okno edycji zablokowane przez przeglądarkę — dokument istnieje pod adresem: ' + r.edit_url + ')', 'warning');
+            } else {
+                setAlert(r.message + ' Pozycje usunięte z koszyka.', 'success');
+            }
+            renderCart();
+            loadActiveDocs();
+            saveCart();
+        }).fail(function (xhr, textStatus) {
+            let msg = 'Błąd serwera (' + textStatus + ').';
+            if (xhr && xhr.responseJSON && xhr.responseJSON.error) {
+                msg = xhr.responseJSON.error;
+            } else if (xhr && xhr.responseText) {
+                let m = xhr.responseText.match(/"error"\s*:\s*"([^"]+)"/);
+                if (m) msg = m[1];
+            }
+            setAlert(msg, 'danger');
+        });
+    }
 
     // Clear cart
     $clearBtn.on('click', function () {

@@ -171,6 +171,43 @@ Six scripts. All use `Atte\Utils\Locker`
 - **JavaScript declarations:** always use `let` (or `const` for values
   that are never reassigned) — **never `var`**, in any new or edited
   JS, including inline `<script>` blocks in component PHP files.
+- **AJAX endpoints (component-side):** AJAX handlers live as real
+  `.php` files inside `public_html/components/<Module>/...` (e.g.
+  `public_html/components/purchases/cart/cart-create-document.php`).
+  The `.htaccess` POST rule rewrites the URL to itself (rather than
+  forwarding to `index.php`) so the file is served directly — this is
+  what makes POST work for AJAX endpoints. The shape:
+  - Start with `header('Content-Type: application/json; charset=utf-8');`
+    + a `$_SESSION['isAdmin'] !== true` gate (return `403` JSON, exit)
+    + a `$_SERVER['REQUEST_METHOD'] !== 'POST'` gate (return `405` JSON, exit).
+  - Read inputs from `$_POST` (form-encoded) or `json_decode(file_get_contents('php://input'), true)`
+    (raw JSON). `$_POST` works automatically when the client uses
+    jQuery's `$.ajax({ data: { ... } })` with a structured object — jQuery
+    emits `items[0][vendor_part_id]=…` style form-encoding, which PHP
+    parses into the nested array `$_POST['items'][0]['vendor_part_id']`.
+    No JSON encoding on the client side needed.
+  - Validate inputs (positive ints, ranges). On failure: respond
+    `{success: false, error: '…'}` with HTTP 200 (not 4xx) — the JS
+    side handles the message via `setAlert`.
+  - DB work goes through the existing repositories (e.g.
+    `PurchaseActionHandler::createDocument()`, `RFQItemRepository::create()`)
+    and should be wrapped in a transaction (`$MsaDB->db->beginTransaction();`)
+    so header+items insert as one unit. On throw, roll back; on success,
+    commit and respond `{success: true, …}`.
+  - Return exactly one `echo json_encode(...)` then `exit;`. No HTML,
+    no views, no `includeWithVariables` — this is a pure JSON endpoint.
+- **AJAX endpoints (client-side):** jQuery's `$.ajax` is the standard.
+  The `COMPONENTS_PATH` constant (`/atte_ms_new/public_html/components`,
+  set in `public_html/assets/layout/header.js`) is the URL prefix. Set
+  `dataType: 'json'`, pass a structured `data:` object (NOT a JSON string)
+  so the server can use `$_POST`. Always `.done()` + `.fail()`:
+  - `.done(r => { if (!r.success) { setAlert(r.error, 'danger'); return; } … })`
+  - `.fail((xhr, status) => { setAlert(xhr.responseJSON?.error ?? status, 'danger'); })`
+  No `window.confirm()` for create/submit actions (annoying friction) —
+  reserve it for genuinely destructive ops like clearing a vendor group.
+  For "open in new tab" flows, do `$.ajax(...).done(r => window.open(r.edit_url, '_blank'))`
+  AFTER receiving the response, so you can clean up local state first
+  (remove used items from cart, refresh badges) before the new tab opens.
 - **bootstrap-select `width` option:** for a picker that must
   fill its parent and stay responsive, set `data-width="100%"` —
   the picker becomes exactly the parent's width and the plugin
