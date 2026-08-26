@@ -586,6 +586,19 @@
             if (!groups[g]) { groups[g] = []; groupOrder.push(g); }
             groups[g].push(vp);
         });
+        // Pre-select ONLY on an explicit hand-off (search modal) or when
+        // exactly one option exists — otherwise the user chooses.
+        let preferred = null;
+        if (preferredVpId) {
+            options.forEach(function (vp) { if (vp.id === preferredVpId) preferred = vp.id; });
+        }
+        let targetId = null;
+        if (preferred !== null) {
+            targetId = String(preferred);
+        } else if (options.length === 1) {
+            targetId = String(options[0].id);
+        }
+        let targetIdNum = targetId !== null ? parseInt(targetId, 10) : null;
         let html = '';
         groupOrder.forEach(function (g) {
             html += '<optgroup label="' + escapeHtml(g) + '">';
@@ -595,7 +608,16 @@
                 let subtext = (vp.producer_part_no && vp.producer_part_no !== vp.vendor_part_no)
                     ? ' data-subtext="' + escapeHtml(vp.producer_part_no) + '"'
                     : '';
+                // Mark the preferred option with the standard `selected`
+                // HTML attribute — when the browser parses this HTML it
+                // sets the underlying <select>'s value, which bootstrap-
+                // select picks up on refresh. This is the canonical way
+                // to set the initial value; calling selectpicker('val')
+                // after destroy+reinit races with the widget's internal
+                // init and silently loses the selection.
+                let selectedAttr = (targetIdNum !== null && vp.id === targetIdNum) ? ' selected' : '';
                 html += '<option value="' + vp.id + '"' +
+                    selectedAttr +
                     subtext +
                     ' data-vp-id="' + vp.id + '"' +
                     ' data-vendor-id="' + vp.vendor_id + '"' +
@@ -611,27 +633,9 @@
             html += '</optgroup>';
         });
         $vendorPartNoSelect.html(html);
-        // Pre-select ONLY on an explicit hand-off (search modal) or when
-        // exactly one option exists — otherwise the user chooses.
-        let preferred = null;
-        if (preferredVpId) {
-            options.forEach(function (vp) { if (vp.id === preferredVpId) preferred = vp.id; });
-        }
-        let targetId = null;
-        if (preferred !== null) {
-            targetId = String(preferred);
-        } else if (options.length === 1) {
-            targetId = String(options[0].id);
-        }
-        // Wholesale option replacement + clean widget rebuild. Refresh()
-        // alone leaves the dropdown menu rendering stale entries briefly
-        // (flicker after adding a new VP); destroy+reinit forces a fresh
-        // widget state from the new <option> list.
-        destroyAndReinitSelectpicker($vendorPartNoSelect);
-        if (targetId !== null && typeof $vendorPartNoSelect.selectpicker === 'function') {
-            try { $vendorPartNoSelect.selectpicker('val', targetId); } catch (e) { /* noop */ }
-            refreshSelectpicker($vendorPartNoSelect);
-        }
+        // Refresh is enough — the `selected` attribute set during the
+        // .html() parse above already established the initial value.
+        refreshSelectpicker($vendorPartNoSelect);
         // Amount inputs belong to a concrete device — clear them when it
         // changed, keep them otherwise.
         let resolvedId = targetId !== null ? parseInt(targetId, 10) : null;
@@ -1081,23 +1085,26 @@
             $cartPrice.val('');
             $cartPackages.val('').removeClass('packages-uneven');
             resetAddModeFields();
-            // Snap back to pick mode. Order matters: setPickerMode first
-            // re-applies the vendor/part filter that add mode bypassed;
-            // refreshVendorPartRow then rebuilds the variant picker with
-            // the new entry pre-selected.
+            // Snap back to pick mode. setPickerMode re-applies the
+            // vendor/part filter that add mode bypassed.
             setPickerMode('pick');
-            // The mode swap toggles the part picker's filter state (add
-            // mode un-filtered all options, pick mode re-filters by the
-            // vendor). Refresh() alone leaves the bootstrap-select menu
-            // rendering the pre-swap state briefly — destroy+reinit
-            // forces a clean widget rebuild so the dropdown matches the
-            // current filter state.
+            // Force a clean rebuild of the part picker — add mode
+            // un-filtered all parts, pick mode re-filters by vendor, and
+            // refresh() alone lets the menu render the pre-swap state
+            // briefly. destroy+reinit tears down the wrapper and rebuilds
+            // it with the current option set.
             destroyAndReinitSelectpicker($partSelect);
-            destroyAndReinitSelectpicker($vendorSelect);
-            refreshVendorPartRow(newId);
-            // Focus qty so the user can type immediately without reaching
-            // for the mouse.
-            $cartQty.trigger('focus');
+            // Defer the variant picker rebuild so the mode-swap DOM has
+            // a chance to settle before we swap in the new <option> list
+            // with the freshly-added variant pre-selected (via the
+            // `selected` attribute set during refreshVendorPartRow's
+            // .html() parse).
+            setTimeout(function () {
+                refreshVendorPartRow(newId);
+                // Focus qty so the user can type immediately without
+                // reaching for the mouse.
+                $cartQty.trigger('focus');
+            }, 0);
             setAlert('Artykuł dodany do katalogu — uzupełnij ilość i kliknij Dodaj.', 'success');
         }).fail(function () {
             setAlert('Błąd komunikacji z serwerem.', 'danger');
