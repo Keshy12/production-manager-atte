@@ -9,7 +9,7 @@
  * Same shape as the inline PHP queries that build the initial pickers
  * at page load:
  *   vendors[]: { id, name, parts_ids[] }
- *   parts[]:   { id, name, description, vendors_ids[] }
+ *   parts[]:   { id, name, description, jm, vendors_ids[] }
  *
  * GET only, no params. Admin-only (matches cart-view.php's gate).
  */
@@ -41,11 +41,11 @@ $vendorRows = $MsaDB->query(
 );
 
 $partRows = $MsaDB->query(
-    "SELECT p.id, p.name, p.description, GROUP_CONCAT(vp.vendor_id) AS vendors_ids
+    "SELECT p.id, p.name, p.description, p.JM, GROUP_CONCAT(vp.vendor_id) AS vendors_ids
        FROM `list__parts` p
        LEFT JOIN `list__vendor_part` vp ON vp.parts_id = p.id AND vp.isActive = 1
       WHERE p.isActive = 1
-      GROUP BY p.id, p.name, p.description
+      GROUP BY p.id, p.name, p.description, p.JM
       ORDER BY p.name ASC"
 );
 
@@ -64,6 +64,7 @@ foreach ($partRows as $p) {
         'id'          => (int)$p['id'],
         'name'        => $p['name'],
         'description' => $p['description'],
+        'jm'          => (int)$p['JM'],
         'vendors_ids' => $p['vendors_ids'] === null
             ? []
             : array_map('intval', explode(',', $p['vendors_ids']))

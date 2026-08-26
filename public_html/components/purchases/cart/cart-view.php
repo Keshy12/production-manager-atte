@@ -20,11 +20,11 @@ $vendorsWithParts = $MsaDB->query(
 
 // Parts with their vendors_ids
 $partsWithVendors = $MsaDB->query(
-    "SELECT p.id, p.name, p.description, GROUP_CONCAT(vp.vendor_id) AS vendors_ids
+    "SELECT p.id, p.name, p.description, p.JM, GROUP_CONCAT(vp.vendor_id) AS vendors_ids
        FROM `list__parts` p
        LEFT JOIN `list__vendor_part` vp ON vp.parts_id = p.id AND vp.isActive = 1
       WHERE p.isActive = 1
-      GROUP BY p.id, p.name, p.description
+      GROUP BY p.id, p.name, p.description, p.JM
       ORDER BY p.name ASC"
 );
 
@@ -117,6 +117,7 @@ $units = $MsaDB->query(
                             <option value="<?= (int)$p['id'] ?>"
                                     data-name="<?= htmlspecialchars($p['name']) ?>"
                                     data-subtext="<?= htmlspecialchars($p['description']) ?>"
+                                    data-jm="<?= (int)$p['JM'] ?>"
                                     data-vendors='<?= htmlspecialchars(json_encode($p['vendors_ids'] === null ? [] : array_map('intval', explode(',', $p['vendors_ids']))), ENT_QUOTES) ?>'>
                                 <?= htmlspecialchars($p['name']) ?>
                             </option>

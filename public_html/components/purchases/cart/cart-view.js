@@ -198,6 +198,18 @@
     function prefillAddModeFromSelection() {
         $addVendorPartNo.val('');
         $addComment.val('');
+        // Default the JM picker to the currently-picked Part's own unit
+        // (list__parts.JM). Only meaningful when a Part is already
+        // selected; if not, the user picks it inside the form (and
+        // the change handler will set JM at that point).
+        let $partOpt = $partSelect.find('option:selected');
+        if ($partOpt.length > 0) {
+            let jm = parseInt($partOpt.attr('data-jm'), 10) || null;
+            if (jm) {
+                $addUnitSelect.val(String(jm));
+                refreshSelectpicker($addUnitSelect);
+            }
+        }
         addModeDirty = false;
     }
 
@@ -378,6 +390,7 @@
                     : '';
                 partHtml += '<option value="' + p.id + '"' +
                     ' data-name="' + escapeHtml(p.name) + '"' +
+                    ' data-jm="' + (p.jm || '') + '"' +
                     subtext +
                     ' data-vendors=\'' + JSON.stringify(p.vendors_ids || []) + '\'>' +
                     escapeHtml(p.name) +
@@ -1260,6 +1273,18 @@
         applyPartFilter();
         refreshVendorPartRow();
         loadSelectionDocs();
+        // In add mode, default the JM picker to the Part's own unit
+        // (list__parts.JM, surfaced as data-jm on each option). Saves
+        // the user from picking it manually when the vendor uses the
+        // same unit the part itself has.
+        if (pickerMode === 'add') {
+            let $opt = $partSelect.find('option:selected');
+            let jm = parseInt($opt.attr('data-jm'), 10) || null;
+            if (jm) {
+                $addUnitSelect.val(String(jm));
+                refreshSelectpicker($addUnitSelect);
+            }
+        }
     });
 
     // Picking a variant from a partially-scoped list completes the combo.
