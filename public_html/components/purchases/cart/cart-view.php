@@ -190,7 +190,9 @@ $units = $MsaDB->query(
                 <div class="col-md-2" id="cartPackSizeWrap" style="display:none">
                     <label for="cartPackSize">Opak. (wielkość):</label>
                     <select id="cartPackSize" class="selectpicker form-control" data-width="100%" data-container="#cartPackSizeWrap" title="wielkość opakowania">
-                        <option value="">-- wybierz --</option>
+                        <!-- populated by populatePackSizePicker() — empty here
+                             means bootstrap-select shows the title attribute
+                             as the placeholder until a variant is picked. -->
                     </select>
                 </div>
                 <div class="col-md-2" id="cartPackagesWrap" style="display:none">
@@ -331,7 +333,10 @@ $units = $MsaDB->query(
                     <div class="form-group mb-3" id="editItemPackSizeWrap" style="display:none">
                         <label for="editItemPackSize">Opak. (wielkość):</label>
                         <select id="editItemPackSize" class="selectpicker form-control" data-width="100%" data-container="#editItemPackSizeWrap" title="wielkość opakowania">
-                            <option value="">-- wybierz --</option>
+                            <!-- populated by populatePackSizePicker() — empty
+                                 here means bootstrap-select shows the title
+                                 attribute as the placeholder until the
+                                 edit modal opens for a cart row. -->
                         </select>
                     </div>
                     <div class="form-group mb-3" id="editItemPackagesWrap" style="display:none">

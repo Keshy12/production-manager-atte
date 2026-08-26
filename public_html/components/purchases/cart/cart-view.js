@@ -408,10 +408,13 @@
     function populatePackSizePicker($picker, packQuantities, defaultValue, suppressRef) {
         let packs = Array.isArray(packQuantities) ? packQuantities.slice() : [];
         packs.sort(function (a, b) { return parseFloat(a) - parseFloat(b); });
-        let opts = '<option value="">-- wybierz --</option>';
-        packs.forEach(function (p) {
-            opts += '<option value="' + p + '">' + formatQty(p) + '</option>';
-        });
+        // No empty option on purpose: bootstrap-select falls back to its
+        // `title` attribute when no option is selected, which is the
+        // expected placeholder UX. The picker only renders when there's
+        // a usable pack list, so the empty-option fallback isn't needed.
+        let opts = packs.map(function (p) {
+            return '<option value="' + p + '">' + formatQty(p) + '</option>';
+        }).join('');
         $picker.html(opts);
         $picker.prop('disabled', packs.length === 0);
         refreshSelectpicker($picker);
@@ -419,6 +422,8 @@
         if (suppressRef) suppressRef[0] = true;
         try {
             if (packs.length === 0) {
+                // Bootstrap-select + empty options → title attribute is
+                // shown. selectpicker('val', '') is harmless.
                 $picker.selectpicker('val', '');
             } else {
                 let dv = parseFloat(defaultValue);
@@ -780,9 +785,16 @@
             // Pack-size picker is only useful when the variant has more
             // than one tier — single-tier variants skip it. The
             // packages-count input is only useful when a pack size is
-            // actually defined; pack-less variants skip it as well.
+            // actually defined; pack-less variants skip it as well. The
+            // 100%-width picker sibling needs its parent sized container,
+            // which we satisfy by toggling the wrapping col-md-2.
             $cartPackSizeWrap.toggle(packQuantities.length > 1);
             $cartPackagesWrap.toggle(picked !== null);
+            // Disable the count input when no pack size is defined; clear
+            // any stale value. Without this the input keeps the
+            // `disabled=true` set by the !resolved branch and the user
+            // can't type into it.
+            $cartPackages.prop('disabled', picked === null).val('');
             $variantInfoRow.show();
             renderVariantComment();
         }
@@ -1629,6 +1641,15 @@
         } else {
             state.pickedPackSize = null;
         }
+        // Keep the packages-count placeholder in sync with the currently
+        // picked pack size ("2500/opak." when the user switches to the
+        // 2500 tier). Also re-evaluate wrap visibility + input disable
+        // since picking the placeholder-allowed "no pack" (only happens
+        // when the picker has no real option selected — defensive).
+        $cartPackagesWrap.toggle(state.pickedPackSize !== null);
+        $cartPackages.prop('disabled', state.pickedPackSize === null).val('');
+        $cartPackages.attr('placeholder',
+            state.pickedPackSize !== null ? formatQty(state.pickedPackSize) + '/opak.' : 'opak.');
         let pkgs = parseFloat($cartPackages.val());
         let qty  = parseFloat($cartQty.val());
         let canRederive = state.lastDerived !== null
@@ -1837,6 +1858,13 @@
         } else {
             editModalState.pickedPackSize = null;
         }
+        // Keep the modal's packages-count placeholder in sync with the
+        // currently picked pack size, same rule as the picker row.
+        let editPackagesInputWrap = $('#editItemPackagesWrap');
+        editPackagesInputWrap.toggle(editModalState.pickedPackSize !== null);
+        $editItemPackages.prop('disabled', editModalState.pickedPackSize === null).val('');
+        $editItemPackages.attr('placeholder',
+            editModalState.pickedPackSize !== null ? formatQty(editModalState.pickedPackSize) + '/opak.' : 'opak.');
         let pkgs = parseFloat($editItemPackages.val());
         let qty  = parseFloat($editItemQty.val());
         let canRederive = editModalState.lastDerived !== null
