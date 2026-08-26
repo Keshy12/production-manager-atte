@@ -127,7 +127,8 @@ CREATE TABLE `inventory__parts` (
 | `list__vendor` | `id`, `name`, `address`, `additional_data`, `lead_time_days`, `is_active`, `comment`, `created_at`, `updated_at` | Vendor (dostawca) — supplier we buy components from. Procurement module. |
 | `list__vendor_supplier` | `id`, `vendor_id` (FK), `name`, `job_title`, `phone`, `email`, `is_active`, `comment` | Vendor contact person (1-to-many → `list__vendor`). Procurement module. |
 | `list__producer` | `id`, `name`, `is_active`, `comment` | Component manufacturer (producent). Procurement module. |
-| `list__vendor_part` | `id`, `vendor_id` (FK), `producer_id` (FK), `parts_id` (FK→`list__parts`), `vendor_part_no`, `vendor_jm_id` (FK→`part__unit`), `full_pack_quantity`, `is_active`, `comment`, `created_at`, `updated_at` | Vendor Part — catalog row for the (vendor × producer × part) triple. Unique on `(vendor_id, vendor_part_no)`. Procurement module. |
+| `list__vendor_part` | `id`, `vendor_id` (FK), `producer_id` (FK), `parts_id` (FK→`list__parts`), `vendor_part_no`, `vendor_jm_id` (FK→`part__unit`), `is_active`, `comment`, `created_at`, `updated_at` | Vendor Part — catalog row for the (vendor × producer × part) triple. Unique on `(vendor_id, vendor_part_no)`. Pack sizes live in `list__vendor_part_pack`. Procurement module. |
+| `list__vendor_part_pack` | `id`, `vendor_part_id` (FK→`list__vendor_part` ON DELETE CASCADE), `full_pack_quantity` DECIMAL(30,10), `created_at` | One row per pack size offered for a Vendor Part (e.g. `100`, `1000`, `5000` for the same variant). Unique on `(vendor_part_id, full_pack_quantity)`. Empty sheet cell = no rows. Procurement module. |
 
 Supporting classification tables:
 | Table | Key Columns | Purpose |

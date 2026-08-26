@@ -18,7 +18,6 @@ class VendorPartRepository {
                        vp.vendor_part_no AS vendorPartNo,
                        vp.producer_part_no AS producerPartNo,
                        vp.vendor_jm_id AS vendorJmId,
-                       vp.full_pack_quantity AS fullPackQuantity,
                        vp.isActive,
                        vp.comment,
                        vp.created_at AS createdAt,
@@ -34,13 +33,49 @@ class VendorPartRepository {
                 LEFT JOIN `part__unit` u     ON vp.vendor_jm_id = u.id";
     }
 
+    /**
+     * Pull pack sizes for the given vendor_part_ids in one query.
+     * Returns [vpId => ['packs' => float[], 'minPack' => ?float]].
+     */
+    private function loadPacksByVpId(array $vpIds): array {
+        if ($vpIds === []) return [];
+        $MsaDB = $this->MsaDB;
+        $placeholders = implode(',', array_fill(0, count($vpIds), '?'));
+        $stmt = $MsaDB->db->prepare(
+            "SELECT vendor_part_id,
+                    MIN(full_pack_quantity) AS min_pack,
+                    GROUP_CONCAT(full_pack_quantity ORDER BY full_pack_quantity ASC) AS packs_csv
+               FROM `list__vendor_part_pack`
+              WHERE vendor_part_id IN ($placeholders)
+              GROUP BY vendor_part_id"
+        );
+        $stmt->execute($vpIds);
+        $out = [];
+        foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $pr) {
+            $out[(int)$pr['vendor_part_id']] = [
+                'packs'   => $pr['packs_csv'] === null ? [] : array_map('floatval', explode(',', $pr['packs_csv'])),
+                'minPack' => $pr['min_pack'] === null ? null : (float)$pr['min_pack'],
+            ];
+        }
+        return $out;
+    }
+
+    /** Hydrate a row array with pack info before constructing VendorPart. */
+    private function hydratePacks(array $row): array {
+        $packs = $this->loadPacksByVpId([(int)$row['id']]);
+        $p = $packs[(int)$row['id']] ?? ['packs' => [], 'minPack' => null];
+        $row['fullPackQuantity'] = $p['minPack']; // back-compat with callers
+        $row['packQuantities']  = $p['packs'];
+        return $row;
+    }
+
     public function getById(int $id): ?VendorPart {
         $MsaDB = $this->MsaDB;
         $sql = $this->buildSelectJoin() . " WHERE vp.id = ?";
         $stmt = $MsaDB->db->prepare($sql);
         $stmt->execute([$id]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-        return $row === false ? null : new VendorPart($row);
+        return $row === false ? null : new VendorPart($this->hydratePacks($row));
     }
 
     public function getAll(bool $onlyActive = false): array {
@@ -50,8 +85,12 @@ class VendorPartRepository {
         $stmt = $MsaDB->db->prepare($sql);
         $stmt->execute();
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        $packs = $this->loadPacksByVpId(array_map(fn($r) => (int)$r['id'], $rows));
         $result = [];
         foreach ($rows as $row) {
+            $p = $packs[(int)$row['id']] ?? ['packs' => [], 'minPack' => null];
+            $row['fullPackQuantity'] = $p['minPack'];
+            $row['packQuantities']  = $p['packs'];
             $result[] = new VendorPart($row);
         }
         return $result;
@@ -66,8 +105,12 @@ class VendorPartRepository {
         $stmt = $MsaDB->db->prepare($sql);
         $stmt->execute([$vendorId]);
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        $packs = $this->loadPacksByVpId(array_map(fn($r) => (int)$r['id'], $rows));
         $result = [];
         foreach ($rows as $row) {
+            $p = $packs[(int)$row['id']] ?? ['packs' => [], 'minPack' => null];
+            $row['fullPackQuantity'] = $p['minPack'];
+            $row['packQuantities']  = $p['packs'];
             $result[] = new VendorPart($row);
         }
         return $result;
@@ -82,8 +125,12 @@ class VendorPartRepository {
         $stmt = $MsaDB->db->prepare($sql);
         $stmt->execute([$producerId]);
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        $packs = $this->loadPacksByVpId(array_map(fn($r) => (int)$r['id'], $rows));
         $result = [];
         foreach ($rows as $row) {
+            $p = $packs[(int)$row['id']] ?? ['packs' => [], 'minPack' => null];
+            $row['fullPackQuantity'] = $p['minPack'];
+            $row['packQuantities']  = $p['packs'];
             $result[] = new VendorPart($row);
         }
         return $result;
@@ -98,13 +145,27 @@ class VendorPartRepository {
         $stmt = $MsaDB->db->prepare($sql);
         $stmt->execute([$partsId]);
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        $packs = $this->loadPacksByVpId(array_map(fn($r) => (int)$r['id'], $rows));
         $result = [];
         foreach ($rows as $row) {
+            $p = $packs[(int)$row['id']] ?? ['packs' => [], 'minPack' => null];
+            $row['fullPackQuantity'] = $p['minPack'];
+            $row['packQuantities']  = $p['packs'];
             $result[] = new VendorPart($row);
         }
         return $result;
     }
 
+    /**
+     * Insert a new VendorPart row. Pack sizes are NOT inserted here — the
+     * admin UI / import script that calls create() is responsible for
+     * inserting into list__vendor_part_pack. The repository stays a thin
+     * wrapper so call sites that don't need pack data don't pay for it.
+     *
+     * The $fullPackQuantity parameter is kept for back-compat (admin
+     * "Pełne opakowanie" form); when present and positive, a single pack
+     * row is created in addition to the header row.
+     */
     public function create(
         int $vendorId,
         int $producerId,
@@ -126,11 +187,15 @@ class VendorPartRepository {
         $producerPartNo = ($producerPartNo === null || $producerPartNo === '')
             ? null : trim($producerPartNo);
 
-        return $MsaDB->insert(
+        $newId = $MsaDB->insert(
             'list__vendor_part',
-            ['vendor_id', 'producer_id', 'parts_id', 'vendor_part_no', 'producer_part_no', 'vendor_jm_id', 'full_pack_quantity', 'isActive', 'comment'],
-            [$vendorId, $producerId, $partsId, $vendorPartNo, $producerPartNo, $vendorJmId, $fullPackQuantity, 1, $comment]
+            ['vendor_id', 'producer_id', 'parts_id', 'vendor_part_no', 'producer_part_no', 'vendor_jm_id', 'isActive', 'comment'],
+            [$vendorId, $producerId, $partsId, $vendorPartNo, $producerPartNo, $vendorJmId, 1, $comment]
         );
+        $MsaDB->db->prepare(
+            "INSERT IGNORE INTO `list__vendor_part_pack` (`vendor_part_id`, `full_pack_quantity`) VALUES (?, ?)"
+        )->execute([$newId, $fullPackQuantity]);
+        return $newId;
     }
 
     public function update(
@@ -155,21 +220,31 @@ class VendorPartRepository {
         $producerPartNo = ($producerPartNo === null || $producerPartNo === '')
             ? null : trim($producerPartNo);
 
-        return $MsaDB->update(
+        $ok = $MsaDB->update(
             'list__vendor_part',
             [
-                'vendor_id'          => $vendorId,
-                'producer_id'        => $producerId,
-                'parts_id'           => $partsId,
-                'vendor_part_no'     => $vendorPartNo,
-                'producer_part_no'   => $producerPartNo,
-                'vendor_jm_id'       => $vendorJmId,
-                'full_pack_quantity' => $fullPackQuantity,
-                'comment'            => $comment,
+                'vendor_id'        => $vendorId,
+                'producer_id'      => $producerId,
+                'parts_id'         => $partsId,
+                'vendor_part_no'   => $vendorPartNo,
+                'producer_part_no' => $producerPartNo,
+                'vendor_jm_id'     => $vendorJmId,
+                'comment'          => $comment,
             ],
             'id',
             $id
         );
+        if ($ok) {
+            // Refresh single pack size for back-compat with the admin
+            // "Pełne opakowanie" form. DELETE+INSERT collapses to a single
+            // pack row (admin UI doesn't expose multi-pack yet).
+            $MsaDB->db->prepare("DELETE FROM `list__vendor_part_pack` WHERE vendor_part_id = ?")
+                     ->execute([$id]);
+            $MsaDB->db->prepare(
+                "INSERT IGNORE INTO `list__vendor_part_pack` (`vendor_part_id`, `full_pack_quantity`) VALUES (?, ?)"
+            )->execute([$id, $fullPackQuantity]);
+        }
+        return $ok;
     }
 
     public function toggleActive(int $id, bool $isActive): bool {

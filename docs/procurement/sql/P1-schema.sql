@@ -58,6 +58,11 @@ CREATE TABLE IF NOT EXISTS `list__producer` (
 -- ------------------------------------------------------------
 -- 4.1.4 Vendor Part (the "OrderVariant")
 -- Uniqueness: vendor's own part no is unique per vendor.
+--
+-- Note: a VendorPart can have multiple full-pack quantities
+-- (e.g. vendor offers the same part in packs of 100, 1000, 5000).
+-- One row in `list__vendor_part_pack` per pack size; the parent
+-- `list__vendor_part` no longer carries pack data.
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `list__vendor_part` (
   `id`                  INT NOT NULL AUTO_INCREMENT,
@@ -66,7 +71,6 @@ CREATE TABLE IF NOT EXISTS `list__vendor_part` (
   `parts_id`            INT NOT NULL,
   `vendor_part_no`      VARCHAR(255) NOT NULL,
   `vendor_jm_id`        INT NOT NULL,
-  `full_pack_quantity`  DECIMAL(30,10) NOT NULL DEFAULT 1,
   `is_active`           TINYINT(1) NOT NULL DEFAULT 1,
   `comment`             TEXT,
   `created_at`          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -89,6 +93,25 @@ CREATE TABLE IF NOT EXISTS `list__vendor_part` (
   CONSTRAINT `fk_vp_unit`     FOREIGN KEY (`vendor_jm_id`)
     REFERENCES `part__unit`(`id`)
     ON DELETE RESTRICT ON UPDATE CASCADE
+) ENGINE=InnoDB;
+
+-- ------------------------------------------------------------
+-- 4.1.4b Vendor Part pack size (1-to-many to list__vendor_part)
+-- A vendor can offer the same (vendor × producer × part) variant
+-- in multiple pack sizes (e.g. "100/1000/5000"). One row per size.
+-- Empty sheet cell = no rows for that variant (no default).
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `list__vendor_part_pack` (
+  `id`                INT NOT NULL AUTO_INCREMENT,
+  `vendor_part_id`    INT NOT NULL,
+  `full_pack_quantity` DECIMAL(30,10) NOT NULL,
+  `created_at`        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_vp_pack` (`vendor_part_id`,`full_pack_quantity`),
+  KEY `idx_vpp_vp`    (`vendor_part_id`),
+  CONSTRAINT `fk_vpp_vendor_part` FOREIGN KEY (`vendor_part_id`)
+    REFERENCES `list__vendor_part`(`id`)
+    ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB;
 
 COMMIT;

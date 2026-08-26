@@ -105,8 +105,17 @@ or table reference; the codebase already does this in places.
 │  is_active       │          │  parts_id             │
 └────────┬─────────┘          │  vendor_part_no       │
          │ 1                  │  vendor_jm_id         │
-         │                    │  full_pack_quantity   │
-         │ *                  └───────────────────────┘
+         │                    │  is_active, comment   │
+         │                    │           │           │
+         │ *                  │           │ 1         │
+         │                    │           ▼ *         │
+         │                    │ ┌────────────────────┐
+         │                    │ │ list__vendor_part_pack
+         │                    │ │ ───────────────────│
+         │                    │ │ vendor_part_id     │
+         │                    │ │ full_pack_quantity │
+         │                    │ └────────────────────┘
+         │                    └───────────────────────┘
 ┌────────▼───────────┐                  ▲ ▲
 │ list__vendor_suppl.│                  │ │
 │ ─────────────────  │            ┌─────┘ │
@@ -227,6 +236,8 @@ CREATE TABLE `list__producer` (
 
 -- 4.1.4 Vendor Part (the "OrderVariant")
 -- Only 'parts' are procured; SMD/THT/SKU are produced in-house.
+-- Pack sizes live in a child table (4.1.4b) — a vendor can offer
+-- the same variant in multiple pack sizes (e.g. "100/1000/5000").
 CREATE TABLE `list__vendor_part` (
   `id`                  INT NOT NULL AUTO_INCREMENT,
   `vendor_id`           INT NOT NULL,
@@ -234,7 +245,6 @@ CREATE TABLE `list__vendor_part` (
   `parts_id`            INT NOT NULL,               -- FK → list__parts
   `vendor_part_no`      VARCHAR(255) NOT NULL,      -- vendor's own name for the part
   `vendor_jm_id`        INT NOT NULL,               -- vendor's unit of measure (→ part__unit)
-  `full_pack_quantity`  DECIMAL(30,10) NOT NULL DEFAULT 1, -- MOQ / pack size in vendor units
   `is_active`           TINYINT(1) NOT NULL DEFAULT 1,
   `comment`             TEXT,
   `created_at`          DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -249,6 +259,23 @@ CREATE TABLE `list__vendor_part` (
   CONSTRAINT `fk_vp_producer` FOREIGN KEY (`producer_id`)   REFERENCES `list__producer`(`id`),
   CONSTRAINT `fk_vp_parts`    FOREIGN KEY (`parts_id`)      REFERENCES `list__parts`(`id`),
   CONSTRAINT `fk_vp_unit`     FOREIGN KEY (`vendor_jm_id`)  REFERENCES `part__unit`(`id`)
+) ENGINE=InnoDB;
+```
+
+```sql
+-- 4.1.4b Vendor Part pack size (1-to-many to list__vendor_part).
+-- One row per pack size. Empty sheet cell = no rows for that variant.
+CREATE TABLE `list__vendor_part_pack` (
+  `id`                INT NOT NULL AUTO_INCREMENT,
+  `vendor_part_id`    INT NOT NULL,
+  `full_pack_quantity` DECIMAL(30,10) NOT NULL,
+  `created_at`        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_vp_pack` (`vendor_part_id`,`full_pack_quantity`),
+  KEY `idx_vpp_vp` (`vendor_part_id`),
+  CONSTRAINT `fk_vpp_vendor_part` FOREIGN KEY (`vendor_part_id`)
+    REFERENCES `list__vendor_part`(`id`)
+    ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB;
 ```
 

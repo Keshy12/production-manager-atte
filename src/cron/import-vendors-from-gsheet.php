@@ -8,6 +8,7 @@
  *   - list__vendor_supplier
  *   - list__producer (created on demand)
  *   - list__vendor_part (including the optional producer_part_no column)
+ *   - list__vendor_part_pack (one row per pack size; "100/1000/5000" splits)
  *
  * Run from CLI:
  *   php src/cron/import-vendors-from-gsheet.php
@@ -21,8 +22,16 @@
  *     producer name).
  *   - Producer is created on first sight.
  *   - Vendor JM unit is created in `part__unit` on first sight.
- *   - Producer PartNo (column 5 of order_variants) is imported when
+ *   - Producer PartNo (column M of `ref_order_variants`) is imported when
  *     present and non-empty; the column stays NULL when missing.
+ *   - Pack quantities: column Q of `ref_order_variants` is split on `/`
+ *     (e.g. "100/1000/5000" → three rows in `list__vendor_part_pack`).
+ *     Empty cell = no pack rows. Tokens are trimmed, `,` treated as
+ *     decimal point (Polish locale), duplicates collapsed.
+ *   - Inactive flag: column S of `ref_order_variants` is treated as
+ *     boolean (TRUE = inactive). On re-import the sheet is the source of
+ *     truth: existing rows are marked isActive=1 if S is empty/false,
+ *     isActive=0 if S is true. New rows with S=true are not inserted.
  *   - PartNo not found in `list__parts.name` => row skipped + logged.
  *   - Empty cells in vendor 'Notes' leave `comment` as NULL.
  *   - Lead time column is interpreted as DAYS (per spec).
@@ -376,25 +385,43 @@ for ($i = 1; $i < count($rawContactValues); $i++) {
 logLine("Suppliers summary: rows={$supplierStats['rows']} contacts_attempted={$supplierStats['contacts_attempted']} inserted={$supplierStats['inserted']} skipped_existing={$supplierStats['skipped_existing']} skipped_no_vendor={$supplierStats['skipped_no_vendor']}");
 
 // ---------------------------------------------------------------
-// 3) VENDOR PARTS — sheet `order_variants`
-//    Header (1-indexed col): ID, PartNo, PartName, JM Our, Producer,
-//                            Producer PartNo, Vendor Name, Vendor PartNo,
-//                            Vendor JM, Vendor Full Pack Qty,
-//                            Our PRIVATE Comment
-//    Index in 0-based row:  0     1        2        3       4
-//                            5          6            7          8        9            10
+// 3) VENDOR PARTS — sheet `ref_order_variants`
+//    Range read: H:S (the variant data block lives between H and S)
+//    1-indexed col: H  I       J          K        L         M               N            O             P         Q                    R                  S
+//                   ID PartNo  PartName   JM Our   Producer  Producer PartNo Vendor Name  Vendor PartNo  Vendor JM Vendor Full Pack Qty Our PRIVATE Comment INACTIVE
+//    Local index:   0  1       2          3        4         5               6            7             8         9                    10                 11
 // ---------------------------------------------------------------
-logLine('--- Vendor parts (order_variants) ---');
-$rawVariantValues = readSheetCli($spreadsheetId, 'order_variants', 'A:K', $MsaDB);
+logLine('--- Vendor parts (ref_order_variants) ---');
+$rawVariantValues = readSheetCli($spreadsheetId, 'ref_order_variants', 'H:S', $MsaDB);
 if (!$rawVariantValues || count($rawVariantValues) < 2) {
-    logLine('Arkusz order_variants pusty lub nieczytelny.');
+    logLine('Arkusz ref_order_variants pusty lub nieczytelny.');
     exit(1);
 }
 
 $partStats = ['total' => 0, 'inserted' => 0, 'skipped_existing' => 0,
               'skipped_no_part' => 0, 'skipped_no_vendor' => 0,
               'skipped_no_producer' => 0, 'skipped_no_unit' => 0,
+              'skipped_inactive' => 0, 'marked_inactive' => 0,
+              'marked_active' => 0, 'packs_inserted' => 0,
               'backfilled' => 0, 'skipped_already_set' => 0];
+
+/**
+ * Parse "100/1000/5000" → [100.0, 1000.0, 5000.0], deduped + sorted ASC.
+ * Tokens may use ',' as decimal separator (Polish locale); whitespace ignored.
+ * Empty / invalid tokens dropped.
+ */
+function parsePackList(string $raw): array {
+    $out = [];
+    foreach (preg_split('~/~', $raw) as $tok) {
+        $tok = trim($tok);
+        if ($tok === '') continue;
+        $n = (float)str_replace(',', '.', str_replace(' ', '', $tok));
+        if ($n > 0) $out[] = $n;
+    }
+    $out = array_values(array_unique($out));
+    sort($out);
+    return $out;
+}
 
 for ($i = 1; $i < count($rawVariantValues); $i++) {
     $r = $rawVariantValues[$i];
@@ -409,6 +436,9 @@ for ($i = 1; $i < count($rawVariantValues); $i++) {
     $vendorJM       = trim((string)($r[8] ?? ''));
     $fullPackRaw    = trim((string)($r[9] ?? ''));
     $comment        = trim((string)($r[10] ?? '')) ?: null;
+    // Column S = INACTIVE flag. filter_var() with FILTER_VALIDATE_BOOLEAN
+    // accepts: true/1/on/yes → true (inactive); false/0/off/no/empty → false.
+    $isInactive     = filter_var(trim((string)($r[11] ?? '')), FILTER_VALIDATE_BOOLEAN);
 
     if ($partNo === '' || $vendorNm === '' || $vendorPartNo === '' || $producerNm === '') {
         $partStats['skipped_no_part']++;
@@ -448,62 +478,108 @@ for ($i = 1; $i < count($rawVariantValues); $i++) {
         continue;
     }
 
+    $packList = parsePackList($fullPackRaw);
+    $packLog  = $packList ? ' packs=' . implode('/', $packList) : '';
+
     $existing = dbFetchOne($MsaDB,
-        "SELECT id, producer_part_no AS producerPartNo
+        "SELECT id, producer_part_no AS producerPartNo, isActive
            FROM `list__vendor_part`
           WHERE vendor_id = ? AND vendor_part_no = ?",
         [$vendorId, $vendorPartNo]
     );
-    if ($existing) {
-        if ($updateExisting && $existing['producerPartNo'] === null && $producerPartNo) {
-            // Backfill: existing row has NULL producer_part_no, sheet has a value.
-            // Safe to update — won't overwrite any manually-entered data.
-            $MsaDB->update(
-                'list__vendor_part',
-                ['producer_part_no' => $producerPartNo],
-                'id',
-                $existing['id']
-            );
-            $partStats['backfilled']++;
-            logLine("  [vp] backfilled producer_part_no=$producerPartNo on vendor=$vendorNm part=$partNo vendorPartNo=$vendorPartNo");
-        } else {
-            if ($updateExisting && $producerPartNo && $existing['producerPartNo'] !== null) {
-                $partStats['skipped_already_set']++;
-                logLine("  [vp] skipped (already set: " . $existing['producerPartNo'] . ") for vendor=$vendorNm part=$partNo vendorPartNo=$vendorPartNo");
-            } else {
-                $partStats['skipped_existing']++;
-                logLine("  [vp] skipped (existing) vendor=$vendorNm producer=$producerNm part=$partNo vendorPartNo=$vendorPartNo");
+
+    // --- Sheet says INACTIVE ---
+    if ($isInactive) {
+        if ($existing) {
+            if ((int)$existing['isActive'] !== 0 && !$dryRun) {
+                $MsaDB->update('list__vendor_part', ['isActive' => 0], 'id', $existing['id']);
             }
+            $partStats['marked_inactive']++;
+            logLine("  [vp] marked INACTIVE (S=true) vendor=$vendorNm part=$partNo vendorPartNo=$vendorPartNo");
+        } else {
+            $partStats['skipped_inactive']++;
+            logLine("  [vp] SKIP inactive in sheet (S=true) vendor=$vendorNm part=$partNo vendorPartNo=$vendorPartNo");
         }
         continue;
     }
 
-    $packNorm = str_replace([' ', ','], ['', '.'], $fullPackRaw);
-    if (!is_numeric($packNorm) || (float)$packNorm <= 0) $packNorm = 1;
+    // --- Sheet says ACTIVE (or empty) ---
 
+    if ($existing) {
+        // Re-activate if sheet says active but DB says inactive.
+        if ((int)$existing['isActive'] !== 1 && !$dryRun) {
+            $MsaDB->update('list__vendor_part', ['isActive' => 1], 'id', $existing['id']);
+            $partStats['marked_active']++;
+            logLine("  [vp] marked ACTIVE vendor=$vendorNm part=$partNo vendorPartNo=$vendorPartNo");
+        }
+        // Backfill producer_part_no (preserved old behaviour, opt-in).
+        if ($updateExisting && $existing['producerPartNo'] === null && $producerPartNo) {
+            if (!$dryRun) {
+                $MsaDB->update(
+                    'list__vendor_part',
+                    ['producer_part_no' => $producerPartNo],
+                    'id',
+                    $existing['id']
+                );
+            }
+            $partStats['backfilled']++;
+            logLine("  [vp] backfilled producer_part_no=$producerPartNo on vendor=$vendorNm part=$partNo vendorPartNo=$vendorPartNo");
+        } elseif ($updateExisting && $producerPartNo && $existing['producerPartNo'] !== null) {
+            $partStats['skipped_already_set']++;
+        }
+        // Refresh packs: DELETE then INSERT. Idempotent re-imports converge.
+        if (!$dryRun) {
+            $MsaDB->db->prepare("DELETE FROM `list__vendor_part_pack` WHERE vendor_part_id = ?")
+                     ->execute([$existing['id']]);
+            insertPackRows($MsaDB, $existing['id'], $packList);
+            $partStats['packs_inserted'] += count($packList);
+        }
+        logLine("  [vp] refreshed vendor=$vendorNm part=$partNo vendorPartNo=$vendorPartNo$packLog");
+        continue;
+    }
+
+    // New active row: insert header (no full_pack_quantity column) + pack rows.
     $data = [
-        'vendor_id'          => $vendorId,
-        'producer_id'        => $producerId > 0 ? $producerId : 0,
-        'parts_id'           => $partsId,
-        'vendor_part_no'     => $vendorPartNo,
-        'producer_part_no'   => $producerPartNo,
-        'vendor_jm_id'       => $unitId > 0 ? $unitId : 0,
-        'full_pack_quantity' => (float)$packNorm,
-        'comment'            => $comment,
+        'vendor_id'        => $vendorId,
+        'producer_id'      => $producerId > 0 ? $producerId : 0,
+        'parts_id'         => $partsId,
+        'vendor_part_no'   => $vendorPartNo,
+        'producer_part_no' => $producerPartNo,
+        'vendor_jm_id'     => $unitId > 0 ? $unitId : 0,
+        'comment'          => $comment,
     ];
 
     if ($dryRun) {
         $partStats['inserted']++;
         $pPartLog = $producerPartNo ? " producerPartNo=$producerPartNo" : '';
-        logLine("  [vp] would create vendor=$vendorNm producer=$producerNm part=$partNo vendorPartNo=$vendorPartNo$pPartLog unit=$vendorJM pack=$packNorm");
+        logLine("  [vp] would create vendor=$vendorNm producer=$producerNm part=$partNo vendorPartNo=$vendorPartNo$pPartLog unit=$vendorJM$packLog");
         continue;
     }
-    dbInsertAssoc($MsaDB, 'list__vendor_part', $data);
+    $newId = dbInsertAssoc($MsaDB, 'list__vendor_part', $data);
+    insertPackRows($MsaDB, $newId, $packList);
     $partStats['inserted']++;
+    $partStats['packs_inserted'] += count($packList);
     $pPartLog = $producerPartNo ? " producerPartNo=$producerPartNo" : '';
-    logLine("  [vp] created vendor=$vendorNm producer=$producerId part=$partNo vendorPartNo=$vendorPartNo$pPartLog");
+    logLine("  [vp] created vendor=$vendorNm producer=$producerId part=$partNo vendorPartNo=$vendorPartNo$pPartLog$packLog");
 }
-logLine("VendorParts summary: total={$partStats['total']} inserted={$partStats['inserted']} skipped_existing={$partStats['skipped_existing']} skipped_no_part={$partStats['skipped_no_part']} skipped_no_vendor={$partStats['skipped_no_vendor']} skipped_no_producer={$partStats['skipped_no_producer']} skipped_no_unit={$partStats['skipped_no_unit']} backfilled={$partStats['backfilled']} skipped_already_set={$partStats['skipped_already_set']}");
+
+/**
+ * INSERT IGNORE one row per pack into list__vendor_part_pack. The
+ * UNIQUE (vendor_part_id, full_pack_quantity) constraint makes this
+ * safe to call from concurrent imports; duplicates collapse silently.
+ * Caller is responsible for clearing stale pack rows when needed.
+ */
+function insertPackRows(MsaDB $db, int $vendorPartId, array $packList): void {
+    if ($packList === []) return;
+    $stmt = $db->db->prepare(
+        "INSERT IGNORE INTO `list__vendor_part_pack` (`vendor_part_id`, `full_pack_quantity`) VALUES (?, ?)"
+    );
+    foreach ($packList as $qty) {
+        $stmt->execute([$vendorPartId, $qty]);
+    }
+}
+
+logLine("VendorParts summary: total={$partStats['total']} inserted={$partStats['inserted']} skipped_existing={$partStats['skipped_existing']} skipped_no_part={$partStats['skipped_no_part']} skipped_no_vendor={$partStats['skipped_no_vendor']} skipped_no_producer={$partStats['skipped_no_producer']} skipped_no_unit={$partStats['skipped_no_unit']} skipped_inactive={$partStats['skipped_inactive']} marked_inactive={$partStats['marked_inactive']} marked_active={$partStats['marked_active']} packs_inserted={$partStats['packs_inserted']} backfilled={$partStats['backfilled']} skipped_already_set={$partStats['skipped_already_set']}");
 
 logLine('=== Vendor import complete ===');
 logLine("Log file: $logFile");

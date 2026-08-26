@@ -29,11 +29,17 @@ $partsWithVendors = $MsaDB->query(
 );
 
 // VendorParts lookup index — keyed by "vendorId:partId" → list of {id, vendor_part_no,
-// producer_part_no, full_pack_quantity, vendor_jm_id, unit_name, vendor_name, …}
+// producer_part_no, pack_quantities, full_pack_quantity (MIN for back-compat),
+// vendor_jm_id, unit_name, vendor_name, …}
 // (consumed by cart-view.js loadSelectionDocs()).
+//
+// Pack sizes live in `list__vendor_part_pack` (1-to-many). We fetch them in
+// a second query and merge by vendor_part_id so the main SELECT doesn't
+// multiply rows. `full_pack_quantity` is kept as MIN(pack) for back-compat
+// with the cart JS that displays "opak. N" today; multi-pack UI comes later.
 $vpRows = $MsaDB->query(
     "SELECT vp.id, vp.vendor_id, vp.parts_id, vp.vendor_part_no,
-            vp.producer_part_no, vp.vendor_jm_id, vp.full_pack_quantity,
+            vp.producer_part_no, vp.vendor_jm_id,
             v.name AS vendor_name, u.name AS unit_name, p.name AS part_name,
             pr.name AS producer_name, vp.comment AS private_comment
        FROM `list__vendor_part` vp
@@ -43,10 +49,26 @@ $vpRows = $MsaDB->query(
        LEFT JOIN `list__producer` pr ON pr.id = vp.producer_id
       WHERE vp.isActive = 1 AND v.isActive = 1"
 );
+$packRows = $MsaDB->query(
+    "SELECT vendor_part_id,
+            MIN(full_pack_quantity) AS min_pack,
+            GROUP_CONCAT(full_pack_quantity ORDER BY full_pack_quantity ASC) AS packs_csv
+       FROM `list__vendor_part_pack`
+      GROUP BY vendor_part_id"
+);
+$packsByVpId = [];
+foreach ($packRows as $pr) {
+    $packsByVpId[(int)$pr['vendor_part_id']] = [
+        'packs'   => $pr['packs_csv'] === null ? [] : array_map('floatval', explode(',', $pr['packs_csv'])),
+        'minPack' => $pr['min_pack'] === null ? null : (float)$pr['min_pack'],
+    ];
+}
 $vendorPartsIndex = [];
 foreach ($vpRows as $r) {
+    $vpId = (int)$r['id'];
+    $pack = $packsByVpId[$vpId] ?? ['packs' => [], 'minPack' => null];
     $entry = [
-        'id'                 => (int)$r['id'],
+        'id'                 => $vpId,
         'vendor_id'          => (int)$r['vendor_id'],
         'parts_id'           => (int)$r['parts_id'],
         'vendor_part_no'     => $r['vendor_part_no'],
@@ -55,7 +77,8 @@ foreach ($vpRows as $r) {
         'private_comment'    => $r['private_comment'],
         'vendor_jm_id'       => (int)$r['vendor_jm_id'],
         'unit_name'          => $r['unit_name'],
-        'full_pack_quantity' => (float)$r['full_pack_quantity'],
+        'full_pack_quantity' => $pack['minPack'], // back-compat: smallest pack
+        'pack_quantities'    => $pack['packs'],   // all pack sizes (asc)
         'vendor_name'        => $r['vendor_name'],
         'part_name'          => $r['part_name'],
     ];
