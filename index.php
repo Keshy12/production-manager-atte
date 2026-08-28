@@ -129,15 +129,57 @@ switch ($request) {
         includeWithVariables($headerDir, array('title' => 'Dostawcy'));
         require $componentsDir . '/Admin/Purchase/Vendors/vendors-view.php';
         break;
+    case 'admin/purchase/vendors/edit':
+        // Dedicated edit/create page for a single vendor. The id is
+        // passed via ?id=N (mirrors the producer-edit / vendor-parts/edit
+        // convention). Absent or zero id → CREATE mode (empty form);
+        // positive id → EDIT mode (pre-populated fields + inline
+        // supplier CRUD + read-only vendor-parts list). The form posts
+        // to a separate endpoint file (edit/vendor-edit-save.php)
+        // because the .htaccess POST rule blocks POSTs to router-only
+        // URLs; only real files under components/ are served directly.
+        // See AGENTS.md "AJAX endpoints (component-side)".
+        requireAdmin();
+        includeWithVariables($headerDir, array('title' => 'Edytuj dostawcę'));
+        require $componentsDir . '/Admin/Purchase/Vendors/edit/vendor-edit-view.php';
+        break;
     case 'admin/purchase/producers':
         requireAdmin();
         includeWithVariables($headerDir, array('title' => 'Producenci'));
         require $componentsDir . '/Admin/Purchase/Producers/producers-view.php';
         break;
+    case 'admin/purchase/producers/edit':
+        // Dedicated edit/create page for a single producer. The id is
+        // passed via ?id=N (mirrors the vendor-parts/edit convention).
+        // Absent or zero id → CREATE mode (empty form); positive id →
+        // EDIT mode (pre-populated fields). The form posts to a separate
+        // endpoint file (edit/producer-edit-save.php) because the
+        // .htaccess POST rule blocks POSTs to router-only URLs; only
+        // real files under components/ are served directly. See
+        // AGENTS.md "AJAX endpoints (component-side)".
+        requireAdmin();
+        includeWithVariables($headerDir, array('title' => 'Edytuj producenta'));
+        require $componentsDir . '/Admin/Purchase/Producers/edit/producer-edit-view.php';
+        break;
     case 'admin/purchase/vendor-parts':
         requireAdmin();
         includeWithVariables($headerDir, array('title' => 'Artykuły u dostawców'));
         require $componentsDir . '/Admin/Purchase/VendorParts/vendor-parts-view.php';
+        break;
+    case 'admin/purchase/vendor-parts/edit':
+        // Dedicated edit/create page for a single vendor-part. The id is
+        // passed via ?id=N (mirrors orders-edit.php, rfqs-edit.php, and
+        // the producers/edit dual-mode convention — no wildcard /
+        // numeric-segment in the switch). Absent or zero id → CREATE
+        // mode (empty form); positive id → EDIT mode (pre-populated
+        // fields). The form posts to a separate endpoint file
+        // (vendor-part-edit-save.php) because the .htaccess POST rule
+        // (lines 7-9) blocks POSTs to router-only URLs; only real files
+        // under components/ are served directly. See AGENTS.md "AJAX
+        // endpoints (component-side)".
+        requireAdmin();
+        includeWithVariables($headerDir, array('title' => 'Artykuł u dostawcy'));
+        require $componentsDir . '/Admin/Purchase/VendorParts/edit/vendor-part-edit-view.php';
         break;
     case 'admin/purchase/orders/edit':
         requireAdmin();

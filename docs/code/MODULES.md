@@ -184,9 +184,12 @@
 - `Producers/table-row-template.php`, `Producers/producers-view.js`
 
 **Key files (VendorParts):**
-- `VendorParts/vendor-parts-view.php` — list with 4 searchable FK dropdowns (vendor/producer/part/unit), `VendorParts/modals.php`
-- `VendorParts/vp-{add,update,toggle-active,get}.php`
-- `VendorParts/vp-search-{vendors,producers,parts,units}.php` — AJAX search endpoints for the FK dropdowns
+- `VendorParts/vendor-parts-view.php` — list with 4 searchable FK dropdowns (vendor/producer/part/unit); renders rows from `vendor-parts-view.js`
+- `VendorParts/edit/vendor-part-edit-view.php` — dual-mode dedicated edit/create page (rendered on `GET /admin/purchase/vendor-parts/edit`; `?id=N` for EDIT, absent/zero for CREATE); pre-populates every VP field including multi-pack sizes and `isActive` in EDIT mode, renders an empty form in CREATE mode
+- `VendorParts/edit/vendor-part-edit-save.php` — `POST` endpoint that backs the edit page; updates the VP header + replaces the pack set atomically via `VendorPartRepository::update()`
+- `VendorParts/edit/vendor-part-edit-view.js` — multi-pack add/remove row UX
+- `VendorParts/vp-{add,list,filter-options}.php`
+- `VendorParts/vp-search-{producers,parts,units}.php` — AJAX search endpoints consumed by the Vendors page's add-VP modal (the Vendors page still uses the original modal flow). `vp-search-vendors.php` was removed when the VendorParts edit flow moved to a dedicated page (the edit page pre-renders the full vendor list server-side).
 - `VendorParts/table-row-template.php`, `VendorParts/vendor-parts-view.js`
 
 **Key Utils classes (foundation, `Atte\Utils\Purchase\Master`):**
