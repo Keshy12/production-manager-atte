@@ -1672,13 +1672,25 @@
             state.pickedPackSize !== null ? formatQty(state.pickedPackSize) + '/opak.' : 'opak.');
         let pkgs = parseFloat($cartPackages.val());
         let qty  = parseFloat($cartQty.val());
-        let canRederive = state.lastDerived !== null
+        // Re-derive the OTHER field from the user's source-of-truth
+        // input, decided by state.lastEdited. If the user last typed
+        // in pkgs (state.lastEdited === $cartPackages), the qty input
+        // is derived and we recompute it. If the user last typed qty
+        // (state.lastEdited === $cartQty), pkgs is derived and we
+        // recompute it from qty / newPack. If neither has been touched
+        // since the variant was picked, we leave both alone.
+        if (state.lastEdited === $cartPackages
             && !isNaN(pkgs)
-            && state.lastDerived.packages === pkgs
-            && state.pickedPackSize !== null;
-        if (canRederive) {
+            && state.pickedPackSize !== null) {
             qty = pkgs * state.pickedPackSize;
             $cartQty.val(parseFloat(qty.toFixed(6)));
+            state.lastDerived = { packages: pkgs, pack: state.pickedPackSize };
+        } else if (state.lastEdited === $cartQty
+            && !isNaN(qty) && qty > 0
+            && state.pickedPackSize !== null) {
+            let newPkgs = qty / state.pickedPackSize;
+            $cartPackages.val(parseFloat(newPkgs.toFixed(2)));
+            pkgs = newPkgs;
             state.lastDerived = { packages: pkgs, pack: state.pickedPackSize };
         }
         // Re-evaluate the warning on whichever field was last-edited.
@@ -1970,13 +1982,23 @@
             editModalState.pickedPackSize !== null ? formatQty(editModalState.pickedPackSize) + '/opak.' : 'opak.');
         let pkgs = parseFloat($editItemPackages.val());
         let qty  = parseFloat($editItemQty.val());
-        let canRederive = editModalState.lastDerived !== null
+        // Re-derive the OTHER field from the user's source-of-truth
+        // input, decided by editModalState.lastEdited. Same logic as the
+        // cart picker's cartAfterPackChange — pkgs → qty when the user
+        // last typed in pkgs, qty → pkgs when the user last typed in
+        // qty, leave both alone when neither has been touched.
+        if (editModalState.lastEdited === $editItemPackages
             && !isNaN(pkgs)
-            && editModalState.lastDerived.packages === pkgs
-            && editModalState.pickedPackSize !== null;
-        if (canRederive) {
+            && editModalState.pickedPackSize !== null) {
             qty = pkgs * editModalState.pickedPackSize;
             $editItemQty.val(parseFloat(qty.toFixed(6)));
+            editModalState.lastDerived = { packages: pkgs, pack: editModalState.pickedPackSize };
+        } else if (editModalState.lastEdited === $editItemQty
+            && !isNaN(qty) && qty > 0
+            && editModalState.pickedPackSize !== null) {
+            let newPkgs = qty / editModalState.pickedPackSize;
+            $editItemPackages.val(parseFloat(newPkgs.toFixed(2)));
+            pkgs = newPkgs;
             editModalState.lastDerived = { packages: pkgs, pack: editModalState.pickedPackSize };
         }
         applyEvenWarningEdit(editModalState.lastEdited, qty, editModalState.pickedPackSize);
