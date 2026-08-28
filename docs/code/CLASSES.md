@@ -382,8 +382,9 @@ Vendor / producer / RFQ / PO / receipt domain — added in v1.6 (`feature/compon
 **File:** `src/classes/Utils/Purchase/Master/class-vendorpartrepository.php` — CRUD over `list__vendor_part`; the most-used repo (drives the Koszyk picker's variant list, the search modal, the vendor-parts admin view).
 
 - `getById`, `getAll(bool $onlyActive = false)`, `getByVendor(int $vendorId, bool $onlyActive = false)`, `getByProducer(int $producerId, bool $onlyActive = false)`, `getByPart(int $partsId, bool $onlyActive = false)` — the four "by-X" lookups used by the admin views.
-- `create(...)` / `update(...)` / `toggleActive(...)` — standard with `name` + JM + full-pack validation.
-- `existsForVendorAndPartNo(int $vendorId, string $vendorPartNo): bool` — uniqueness pre-check for the create flow; the `vp-update.php` endpoint also relies on the `(vendor_id, vendor_part_no)` UNIQUE index in DB as the real race guard.
+- `create(...)` / `update(...)` / `toggleActive(...)` — standard with `name` + JM + full-pack validation. `update(...)` takes `array $packQuantities` (replacing the legacy single-`float $fullPackQuantity`); the header update + pack-set replacement are wrapped in one transaction. The header row does NOT carry a denormalised `full_pack_quantity` column — pack sizes live entirely in `list__vendor_part_pack`.
+- `getPackQuantities(int $vendorPartId): float[]` — pack sizes for a single VP, sorted ASC; thin wrapper for callers that don't need the full header row.
+- `existsForVendorAndPartNo(int $vendorId, string $vendorPartNo): bool` — uniqueness pre-check for the create flow; the dedicated edit page (`edit/vendor-part-edit-save.php`) also relies on the `(vendor_id, vendor_part_no)` UNIQUE index in DB as the real race guard.
 - `buildSelectJoin(): string` — shared SELECT clause used by every read.
 
 **Used by:** `VendorParts` admin view; `purchases/cart/cart-view.php` (variant options, VENDOR_PARTS_INDEX, scoped options, comment display); `purchases/cart/vendor-part-search.php` and `purchases/cart/vendor-part-comment.php` (search modal + comment save); `purchases/receipts/receipt-get.php`; `import-vendors-from-gsheet.php`; `PurchaseActionHandler`.
