@@ -13,6 +13,12 @@ class Vendor {
     public ?string $comment;
     public ?string $createdAt;
     public ?string $updatedAt;
+    // Hydrated by VendorRepository::search() so the listing can show
+    // "#Dostawców" and "#Artykułów" without a second round-trip.
+    // Not set by getById / getAll — callers needing these values
+    // should call countSuppliers() / countVendorParts() explicitly.
+    public int $supplierCount = 0;
+    public int $vendorPartCount = 0;
 
     public function __construct(array $row){        $this->id = (int)$row['id'];
         $this->name = (string)$row['name'];
@@ -23,5 +29,7 @@ class Vendor {
         $this->comment = $row['comment'] ?? null;
         $this->createdAt = $row['createdAt'] ?? null;
         $this->updatedAt = $row['updatedAt'] ?? null;
+        $this->supplierCount = (int)($row['supplierCount'] ?? 0);
+        $this->vendorPartCount = (int)($row['vendorPartCount'] ?? 0);
     }
 }

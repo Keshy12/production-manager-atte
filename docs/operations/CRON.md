@@ -391,7 +391,7 @@ CLI args are read from `$argv`. The `--update-existing` flag backfills `producer
 | MSA DB | `list__vendor` — vendor header (name, lead_time_days, comment) |
 | MSA DB | `list__vendor_supplier` — up to 2 contact persons per vendor |
 | MSA DB | `list__producer` — manufacturer (auto-created on first sight) |
-| MSA DB | `list__vendor_part` — the (vendor × producer × part) catalog row including `vendor_part_no`, `vendor_jm_id`, `full_pack_quantity`, `comment`, and (P5+) `producer_part_no` |
+| MSA DB | `list__vendor_part` — the (vendor × producer × part) catalog row including `vendor_part_no`, `vendor_jm_id`, `comment`, and (P5+) `producer_part_no`. Pack sizes live in `list__vendor_part_pack` (no denormalised `full_pack_quantity` column on the header) |
 | MSA DB | `part__unit` — new units auto-created when a vendor uses one we don't yet track |
 | Log file | `public_html/var/logs/vendor-import-<YYYY-MM-DD>.log` — per-day rolling log; same as the other cron jobs' `public_html/var/logs/` convention |
 
