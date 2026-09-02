@@ -237,19 +237,17 @@
         refreshSelectpicker($addUnitSelect);
         $addVendorPartNo.val('');
         $addProducerPartNo.val('');
-        $addFullPackQuantity.val('1');
+        $addFullPackQuantity.val('');
         $addComment.val('');
         addModeDirty = false;
     }
 
     function isAddModeDirty() {
         if (!addModeDirty) return false;
-        // pack input is free-text now ("100/1000/5000"); anything other
-        // than the default "1" counts as dirty. Defaulted-empty input
-        // parses to [1], same as the placeholder string.
-        let packs = parsePackInput($addFullPackQuantity.val());
-        let packDirty = !(packs.length === 1 && packs[0] === 1)
-            && !($addFullPackQuantity.val().toString().trim() === '1');
+        // Pack input is optional — empty/blank means "no pack size"
+        // and is NOT dirty. Any non-empty value (even just a `/`)
+        // is treated as user input and therefore dirty.
+        let packDirty = $addFullPackQuantity.val().toString().trim() !== '';
         return ($addProducerSelect.val()
             || $addUnitSelect.val()
             || $addVendorPartNo.val().trim()
@@ -391,14 +389,14 @@
 
     // Parse the add-mode "Pełne opakowanie" free-text field into a list
     // of positive floats. Splits on `/`, trims each segment, parses each
-    // as a float, dedupes, drops non-positive entries. Empty input →
-    // [1] (the legacy single-pack default). Used to derive both
-    // `full_pack_quantity` (smallest) and `pack_quantities` for the new
-    // VendorPart.
+    // as a float, dedupes, drops non-positive entries. Empty / null input
+    // → [] (no pack size recorded; the VP simply has no pack tiers).
+    // Used to derive both `full_pack_quantity` (smallest) and
+    // `pack_quantities` for the new VendorPart.
     function parsePackInput(raw) {
-        if (raw === null || raw === undefined) return [1];
+        if (raw === null || raw === undefined) return [];
         let s = String(raw).trim();
-        if (s === '') return [1];
+        if (s === '') return [];
         let out = [];
         s.split('/').forEach(function (part) {
             let v = parseFloat(String(part).trim().replace(',', '.'));
@@ -665,15 +663,18 @@
         if (pickerMode === 'add') {
             // Save button — enable only when every required catalog field
             // is valid. Qty/price/currency belong to the next step.
-            // Pack input is free-text "100/1000/5000"; we just need ≥1
-            // positive value to record pack_quantities server-side.
+            // Pack input is OPTIONAL: empty means "no pack size recorded";
+            // a non-empty value must parse to at least one positive number
+            // (otherwise the createNewVariant submit will error out).
             let packs = parsePackInput($addFullPackQuantity.val());
+            let rawPack = $addFullPackQuantity.val().toString().trim();
+            let packOk = rawPack === '' || packs.length > 0;
             let ok = (parseInt($vendorSelect.val(), 10) || 0) > 0
                 && (parseInt($partSelect.val(), 10) || 0) > 0
                 && (parseInt($addProducerSelect.val(), 10) || 0) > 0
                 && (parseInt($addUnitSelect.val(), 10) || 0) > 0
                 && $addVendorPartNo.val().trim() !== ''
-                && packs.length > 0;
+                && packOk;
             $addToCartBtn.prop('disabled', !ok);
         } else {
             // Pick mode — enable when a concrete variant is selected.
@@ -1393,11 +1394,15 @@
         let unitId     = parseInt($addUnitSelect.val(), 10) || 0;
         let vendorPartNo   = $addVendorPartNo.val().trim();
         let producerPartNo = $addProducerPartNo.val().trim() || null;
-        // Pack input is free-text "100/1000/5000"; we POST the list as
-        // pack_quantities AND the smallest as full_pack_quantity for
-        // back-compat with code paths that still read the singular field.
-        let packList = parsePackInput($addFullPackQuantity.val());
-        let fpq      = Math.min.apply(null, packList);
+        // Pack input is OPTIONAL. Empty/blank = no pack size recorded
+        // (no list__vendor_part_pack row). Non-empty input is parsed as
+        // free-text "100/1000/5000"; we POST the list as pack_quantities
+        // AND the smallest as full_pack_quantity for back-compat with
+        // code paths that still read the singular field.
+        let rawPackInput    = $addFullPackQuantity.val();
+        let packInputGiven  = rawPackInput.trim() !== '';
+        let packList        = packInputGiven ? parsePackInput(rawPackInput) : [];
+        let fpq             = packList.length > 0 ? Math.min.apply(null, packList) : null;
         let comment  = $addComment.val().trim() || null;
 
         if (!vendorId)           { setAlert('Wybierz dostawcę.', 'warning'); return; }
@@ -1405,7 +1410,12 @@
         if (!producerId)         { setAlert('Wybierz producenta.', 'warning'); return; }
         if (!unitId)             { setAlert('Wybierz jednostkę (JM).', 'warning'); return; }
         if (!vendorPartNo)       { setAlert('Numer u dostawcy jest wymagany.', 'warning'); return; }
-        if (packList.length === 0) { setAlert('Podaj co najmniej jedną wielkość opakowania > 0.', 'warning'); return; }
+        // Pack input is optional; only error when user typed something
+        // but nothing parsed to a positive number.
+        if (packInputGiven && packList.length === 0) {
+            setAlert('Podaj co najmniej jedną wielkość opakowania > 0.', 'warning');
+            return;
+        }
 
         // ---- POST vp-add.php ----
         $.ajax({
@@ -1434,13 +1444,19 @@
             // VendorPart's pack list. Use the response (r.pack_quantities,
             // r.full_pack_quantity) when present; fall back to the values
             // we just sent — keeps the in-memory index consistent with
-            // the DB even if the server hasn't been updated yet.
+            // the DB even if the server hasn't been updated yet. The
+            // pack payload is OPTIONAL: r.full_pack_quantity may be null
+            // and r.pack_quantities may be [], both meaning "no pack size
+            // recorded for this VP".
             let respPacks = (r && Array.isArray(r.pack_quantities) && r.pack_quantities.length > 0)
                 ? r.pack_quantities.slice()
                 : packList.slice();
-            let respFpq = (r && parseFloat(r.full_pack_quantity) > 0)
+            let respFpqRaw = (r && r.full_pack_quantity !== null && r.full_pack_quantity !== undefined)
                 ? parseFloat(r.full_pack_quantity)
-                : Math.min.apply(null, respPacks);
+                : NaN;
+            let respFpq = (!isNaN(respFpqRaw) && respFpqRaw > 0)
+                ? respFpqRaw
+                : (respPacks.length > 0 ? Math.min.apply(null, respPacks) : null);
             // Sort ascending so the picker / even-pack math always see
             // a canonical order regardless of the order the user typed.
             respPacks.sort(function (a, b) { return parseFloat(a) - parseFloat(b); });
@@ -1593,7 +1609,31 @@
             if (isAddModeDirty() && !window.confirm('Odrzucić wprowadzone dane nowego artykułu?')) {
                 return;
             }
+            // Cancel = full reset of every input the user touched
+            // before pressing Anuluj. Distinct from save (Zapisz): a
+            // successful save keeps vendor + qty/price cleared but
+            // leaves the part picker alone so the user can keep
+            // queueing from the same vendor; cancel discards the
+            // entire creation context.
+            //   - vendor + part (the new-VP context)
+            //   - add-mode catalog inputs (Producent, JM, Numer u
+            //     dostawcy, Numer u producenta, Pełne opakowanie,
+            //     Komentarz) — handled by resetAddModeFields()
+            //   - cart-step leftovers (qty/price were hidden when add
+            //     mode opened but still held values)
+            //   - any leftover alert from a previous failed save
+            $vendorSelect.val('');
+            refreshSelectpicker($vendorSelect);
+            $partSelect.val('');
+            refreshSelectpicker($partSelect);
+            $cartQty.val('');
+            $cartPrice.val('');
+            $cartPackages.val('').removeClass('packages-uneven');
+            setAlert('', '');
             resetAddModeFields();
+            // setPickerMode('pick') re-applies the vendor/part filter
+            // that add mode bypassed; with both pickers now empty it
+            // restores full option lists and re-syncs the amount inputs.
             setPickerMode('pick');
         } else {
             // Show the explanation modal — user dismisses / continues

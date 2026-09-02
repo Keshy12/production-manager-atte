@@ -28,25 +28,33 @@ if($comment !== null) { $comment = trim($comment); if($comment === '') { $commen
 
 // pack_quantities: array of positive floats (sorted asc on the client).
 // Fall back to a single-element list using the legacy full_pack_quantity form
-// field (defaults to 1.0 if even that is missing) so older clients still work.
-// Empty / non-positive entries are dropped; duplicates collapsed.
+// field so older clients still work. Empty / non-positive entries are dropped;
+// duplicates collapsed. The pack payload is OPTIONAL — when both
+// `pack_quantities` and the legacy `full_pack_quantity` are absent/blank,
+// no pack row is written (the VP simply has no pack tiers recorded).
 $packList = [];
 if (isset($_POST['pack_quantities']) && is_array($_POST['pack_quantities'])) {
     foreach ($_POST['pack_quantities'] as $v) {
+        if ($v === null || $v === '') continue;
         if (is_numeric($v)) {
             $f = (float)str_replace(',', '.', (string)$v);
             if ($f > 0) { $packList[] = $f; }
         }
     }
 } else {
-    $legacy = str_replace(',', '.', (string)($_POST['full_pack_quantity'] ?? '1'));
-    $legacyF = (float)$legacy;
-    if ($legacyF > 0) { $packList[] = $legacyF; }
+    $rawLegacy = $_POST['full_pack_quantity'] ?? null;
+    if ($rawLegacy !== null && $rawLegacy !== '' && is_numeric($rawLegacy)) {
+        $legacyF = (float)str_replace(',', '.', (string)$rawLegacy);
+        if ($legacyF > 0) { $packList[] = $legacyF; }
+    }
 }
 $packList = array_values(array_unique($packList));
 sort($packList);
-if (empty($packList)) { $packList = [1.0]; }
-$fullPackQuantity = $packList[0]; // min after sort asc
+// null when no pack size was provided (the cart UI defaults the input to
+// empty and lets the user opt-in by typing a value); smallest pack
+// otherwise — keeps back-compat with code paths that still read the
+// singular `full_pack_quantity` column on `list__vendor_part`.
+$fullPackQuantity = empty($packList) ? null : $packList[0];
 
 try {
     $MsaDB = MsaDB::getInstance();
@@ -68,18 +76,21 @@ try {
             $partsId,
             $vendorPartNo,
             $vendorJmId,
-            // VendorPartRepository::create() expects a single $fullPackQuantity
-            // (legacy param). We pass the smallest pack here so the admin form
-            // still shows a sensible default; the multi-pack rows are written
-            // below and override any duplicate-pack uniqueness.
+            // Pass the smallest pack (or null when the user didn't enter
+            // any pack size). The repo inserts the seed pack row when
+            // non-null; the remaining tiers are written below.
             $fullPackQuantity,
             $comment,
             $producerPartNo
         );
 
         // Insert one row per ADDITIONAL pack size. The repo already
-        // inserted the smallest pack as a legacy single-row, so skip it
-        // here. ON DUPLICATE KEY UPDATE on UNIQUE (vendor_part_id,
+        // inserted the smallest pack as a legacy single-row when
+        // $fullPackQuantity is non-null; skip it here. When the user
+        // didn't enter a pack size, $fullPackQuantity is null, the
+        // repo skipped its insert, AND array_slice on [] yields no
+        // additional rows — so the VP ends up with no pack tiers.
+        // ON DUPLICATE KEY UPDATE on UNIQUE (vendor_part_id,
         // full_pack_quantity) is a defence-in-depth — collapses a
         // concurrent insert race, no effect otherwise.
         $packStmt = $MsaDB->db->prepare(

@@ -277,8 +277,8 @@ $units = $MsaDB->query(
                 </div>
                 <div class="col-md-3">
                     <label for="addFullPackQuantity">Pełne opakowanie:</label>
-                    <input type="text" id="addFullPackQuantity" class="form-control" value="1">
-                    <small class="form-text text-muted">Wielkości opakowań oddzielone `/`, np. 100/1000/5000. Puste = domyślnie 1.</small>
+                    <input type="text" id="addFullPackQuantity" class="form-control" placeholder="np. 100/1000/5000">
+                    <small class="form-text text-muted">Wielkości opakowań oddzielone `/`, np. 100/1000/5000. Puste = brak opakowania.</small>
                 </div>
             </div>
 

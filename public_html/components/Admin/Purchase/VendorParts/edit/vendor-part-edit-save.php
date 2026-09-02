@@ -132,7 +132,11 @@ try {
         // the legacy AJAX add endpoint.
         $MsaDB->db->beginTransaction();
         try {
-            $seedPack = empty($packList) ? 1.0 : $packList[0];
+            // Seed pack: null when the user didn't enter any pack size
+            // (no list__vendor_part_pack row gets written), smallest
+            // pack otherwise. Mirrors vp-add.php so the cart flow and
+            // the dedicated admin edit page produce the same DB shape.
+            $seedPack = empty($packList) ? null : $packList[0];
             $newId = $repo->create(
                 $vendorId,
                 $producerId,

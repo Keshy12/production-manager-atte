@@ -304,8 +304,10 @@ class VendorPartRepository {
      * wrapper so call sites that don't need pack data don't pay for it.
      *
      * The $fullPackQuantity parameter is kept for back-compat (admin
-     * "Pełne opakowanie" form); when present and positive, a single pack
-     * row is created in addition to the header row.
+     * "Pełne opakowanie" form). It is now OPTIONAL: pass null when the
+     * user didn't enter a pack size, and no list__vendor_part_pack row
+     * will be inserted (the VP simply has no pack tiers). A positive
+     * float seeds a single pack row, matching the legacy behaviour.
      */
     public function create(
         int $vendorId,
@@ -313,7 +315,7 @@ class VendorPartRepository {
         int $partsId,
         string $vendorPartNo,
         int $vendorJmId,
-        float $fullPackQuantity = 1,
+        ?float $fullPackQuantity = null,
         ?string $comment = null,
         ?string $producerPartNo = null
     ): int {
@@ -322,7 +324,10 @@ class VendorPartRepository {
         if ($producerId <= 0) throw new \InvalidArgumentException("VendorPart producerId must be positive.");
         if ($partsId    <= 0) throw new \InvalidArgumentException("VendorPart partsId must be positive.");
         if ($vendorJmId <= 0) throw new \InvalidArgumentException("VendorPart vendorJmId must be positive.");
-        if ($fullPackQuantity <= 0) throw new \InvalidArgumentException("VendorPart fullPackQuantity must be positive.");
+        // null is allowed (no pack size entered); only reject non-positive floats.
+        if ($fullPackQuantity !== null && $fullPackQuantity <= 0) {
+            throw new \InvalidArgumentException("VendorPart fullPackQuantity must be positive when provided.");
+        }
         $vendorPartNo = trim($vendorPartNo);
         if ($vendorPartNo === '') throw new \InvalidArgumentException("VendorPart vendorPartNo cannot be empty.");
         $producerPartNo = ($producerPartNo === null || $producerPartNo === '')
@@ -333,9 +338,11 @@ class VendorPartRepository {
             ['vendor_id', 'producer_id', 'parts_id', 'vendor_part_no', 'producer_part_no', 'vendor_jm_id', 'isActive', 'comment'],
             [$vendorId, $producerId, $partsId, $vendorPartNo, $producerPartNo, $vendorJmId, 1, $comment]
         );
-        $MsaDB->db->prepare(
-            "INSERT IGNORE INTO `list__vendor_part_pack` (`vendor_part_id`, `full_pack_quantity`) VALUES (?, ?)"
-        )->execute([$newId, $fullPackQuantity]);
+        if ($fullPackQuantity !== null) {
+            $MsaDB->db->prepare(
+                "INSERT IGNORE INTO `list__vendor_part_pack` (`vendor_part_id`, `full_pack_quantity`) VALUES (?, ?)"
+            )->execute([$newId, $fullPackQuantity]);
+        }
         return $newId;
     }
 
