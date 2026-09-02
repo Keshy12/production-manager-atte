@@ -316,8 +316,9 @@ Phase 2 introduces RFQ (Request For Quote) lifecycle tables. PO + receipt tables
 > `list__vendor_part`) had their `is_active` column renamed to
 > `isActive` to match the rest of the `list__*` family (camelCase).
 > The migration is idempotent — see
-> `docs/procurement/sql/P6-schema.sql`. The `purchase__*` tables use
-> their own created_at / updated_at columns and were not affected.
+> (P6 column rename is baked into the unified `migrate-to-procurement-schema.php`
+> schema.) The `purchase__*` tables use their own created_at / updated_at
+> columns and were not affected.
 
 | Table | Key Columns | Purpose |
 |---|---|---|
@@ -504,8 +505,8 @@ Summary of 2026-08 (procurement module) changes:
 | P3 | Added 2 PO tables | `purchase__order`, `purchase__order_item` | PO header + line items. State machine `draft → sent → confirmed → partially_received → received` (+ `cancelled`). `converted_from_rfq_id` ON DELETE SET NULL. `vendor_po_number` capture. |
 | P4 | Added 2 receipt tables + ref row | `purchase__order_receipt`, `purchase__order_receipt_item`, `ref__transfer_group_types` row `('purchase_receipt', 'Przyjęcie z zamówienia #{po_id}')` | Goods-receipt header + line items. Receipts create a `transfer_group` of type `purchase_receipt` and write positive `inventory__parts` rows. Lenient 110% over-delivery per line (P5 deferred). |
 | P5 | Added 1 column | `list__vendor_part` | `producer_part_no VARCHAR(255) DEFAULT NULL` — producer's own catalog name, surfaced as option subtext in the Koszyk picker and the cart table sub-line. |
-| P6 | Renamed 1 column × 4 tables | `list__vendor`, `list__vendor_supplier`, `list__producer`, `list__vendor_part` | `is_active` → `isActive` to match the rest of the `list__*` family. Idempotent migration in `docs/procurement/sql/P6-schema.sql`. Repository SQL aliases removed in the same commit. |
-| P7 | Added 1 column × 2 tables | `purchase__order_item`, `purchase__rfq_item` | `picked_pack_size DECIMAL(30,10) NULL` — denormalised operator-chosen pack size per line, sourced from `list__vendor_part_pack`. Idempotent migration in `docs/procurement/sql/P7-schema.sql`; cart UI (Koszyk) writes it on create, falls back to smallest pack when null. |
+| P6 | Renamed 1 column × 4 tables | `list__vendor`, `list__vendor_supplier`, `list__producer`, `list__vendor_part` | `is_active` → `isActive` to match the rest of the `list__*` family. Baked into the unified `migrate-to-procurement-schema.php` schema (CREATE TABLE statements use `isActive` from the start). Repository SQL aliases removed in the same commit. |
+| P7 | Added 1 column × 2 tables | `purchase__order_item`, `purchase__rfq_item` | `picked_pack_size DECIMAL(30,10) NULL` — denormalised operator-chosen pack size per line, sourced from `list__vendor_part_pack`. Baked into the unified `migrate-to-procurement-schema.php` schema (CREATE TABLE statements include the column from the start); cart UI (Koszyk) writes it on create, falls back to smallest pack when null. |
 
 ---
 

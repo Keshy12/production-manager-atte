@@ -39,7 +39,7 @@ Read these documents in order to ramp up efficiently:
 | [CLASSES.md](./code/CLASSES.md) | Domain classes (Api, DB, Utils, etc.) — purpose and usage | Seventh — when writing business logic |
 | [procurement/PLAN.md](./procurement/PLAN.md) | **Procurement module** — vendor / producer / RFQ / PO / receipt domain, schema, class structure, P1–P6 changelog, deferred items | When working on the procurement domain (master data or transaction flow) |
 | [INTEGRATIONS.md](./operations/INTEGRATIONS.md) | Google Sheets export/import, FlowPin data ingestion | Eighth — when working on external integrations |
-| [CRON.md](./operations/CRON.md) | All scheduled jobs (7 scripts — the 6 historic + `import-vendors-from-gsheet`), intervals, what they do | Ninth — before modifying or adding cron jobs |
+| [CRON.md](./operations/CRON.md) | All scheduled jobs (6 historic scripts) + reference to one-shot procurement tooling (`migrate-to-procurement-schema`, `seed-component-procurement-from-gsheet`); what each does | Ninth — before modifying or adding cron jobs |
 | [STACK.md](./reference/STACK.md) | PHP 8.0+, MySQL 5.7+, required extensions, tooling | Tenth — environment setup and dependency questions |
 
 ---
@@ -90,7 +90,7 @@ docs/
 → See [MODULES.md](./code/MODULES.md) — directory listing of all 20 module folders under `public_html/components/`.
 
 **Q: How do I work on the procurement module?**
-→ Read [procurement/PLAN.md](./procurement/PLAN.md) first — it has the v1.6 status, the domain model, the `Master\` / `Order\` substructure, and the P1–P6 changelog. Then [docs/code/CLASSES.md](./code/CLASSES.md) § Procurement for the 9 entities + 8 repositories + `PurchaseActionHandler`, [docs/code/MODULES.md](./code/MODULES.md) for the file map (Admin/Purchase/{Vendors,Producers,VendorParts} for master data, `purchases/{cart,receipts,documents}` for user-facing UX), and [docs/system/ARCHITECTURE.md](./system/ARCHITECTURE.md) §3a for the layered substructure. To add data → [DATABASE.md](./data/DATABASE.md) §4j (`purchase__*`) and §4b (`list__vendor*`). To add an endpoint or cron → [CRON.md](./operations/CRON.md) Job 7 (`import-vendors-from-gsheet` is the reference template for the Sheets-via-CLI pattern).
+→ Read [procurement/PLAN.md](./procurement/PLAN.md) first — it has the v1.6 status, the domain model, the `Master\` / `Order\` substructure, and the P1–P6 changelog. Then [docs/code/CLASSES.md](./code/CLASSES.md) § Procurement for the 9 entities + 8 repositories + `PurchaseActionHandler`, [docs/code/MODULES.md](./code/MODULES.md) for the file map (Admin/Purchase/{Vendors,Producers,VendorParts} for master data, `purchases/{cart,receipts,documents}` for user-facing UX), and [docs/system/ARCHITECTURE.md](./system/ARCHITECTURE.md) §3a for the layered substructure. To add data → [DATABASE.md](./data/DATABASE.md) §4j (`purchase__*`) and §4b (`list__vendor*`). To apply the schema to a fresh DB → `php src/cron/migrate-to-procurement-schema.php`. To seed master data from Google Sheets → `php src/cron/seed-component-procurement-from-gsheet.php` (the reference template for the Sheets-via-CLI pattern; documented in the script header).
 
 ---
 

@@ -369,7 +369,7 @@ Vendor / producer / RFQ / PO / receipt domain — added in v1.6 (`feature/compon
 - `getById`, `getAll(bool $onlyActive = false)`, `getByName(string $name): ?Producer` (used by the Sheets importer to dedup by business key).
 - `create(...)` / `update(...)` / `toggleActive(...)` — standard.
 
-**Used by:** `Producers` admin view; `import-vendors-from-gsheet.php` (creates producers on first sight); `VendorPart` (FK target).
+**Used by:** `Producers` admin view; `seed-component-procurement-from-gsheet.php` (creates producers on first sight); `VendorPart` (FK target).
 
 #### VendorPart
 **File:** `src/classes/Utils/Purchase/Master/class-vendorpart.php` — the (vendor × producer × part) catalog row, known internally as the "OrderVariant".
@@ -387,7 +387,7 @@ Vendor / producer / RFQ / PO / receipt domain — added in v1.6 (`feature/compon
 - `existsForVendorAndPartNo(int $vendorId, string $vendorPartNo): bool` — uniqueness pre-check for the create flow; the dedicated edit page (`edit/vendor-part-edit-save.php`) also relies on the `(vendor_id, vendor_part_no)` UNIQUE index in DB as the real race guard.
 - `buildSelectJoin(): string` — shared SELECT clause used by every read.
 
-**Used by:** `VendorParts` admin view; `purchases/cart/cart-view.php` (variant options, VENDOR_PARTS_INDEX, scoped options, comment display); `purchases/cart/vendor-part-search.php` and `purchases/cart/vendor-part-comment.php` (search modal + comment save); `purchases/receipts/receipt-get.php`; `import-vendors-from-gsheet.php`; `PurchaseActionHandler`.
+**Used by:** `VendorParts` admin view; `purchases/cart/cart-view.php` (variant options, VENDOR_PARTS_INDEX, scoped options, comment display); `purchases/cart/vendor-part-search.php` and `purchases/cart/vendor-part-comment.php` (search modal + comment save); `purchases/receipts/receipt-get.php`; `seed-component-procurement-from-gsheet.php`; `PurchaseActionHandler`.
 
 ### Order
 

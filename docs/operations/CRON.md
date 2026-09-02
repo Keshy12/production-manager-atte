@@ -357,68 +357,6 @@ Anonymous function `$flattenBom` (lines 40–93) — recursive closure with path
 
 ---
 
-## Job 7 — `import-vendors-from-gsheet.php`
-
-**File:** `src/cron/import-vendors-from-gsheet.php` (461 lines)
-
-### Purpose
-One-shot Google Sheets → MSA importer for procurement master data (Phase 1). Reads three sheets from the same spreadsheet that `update-part-prices.php` uses, and populates the four procurement tables: `list__vendor`, `list__vendor_supplier`, `list__producer` (created on demand), and `list__vendor_part` (including the optional `producer_part_no` column added in P5). Idempotent — re-runs are safe; existing rows are skipped, matched by business key (vendor name, vendor+supplier name, vendor+vendor_part_no, producer name). Producer is created on first sight; vendor JM unit is created in `part__unit` on first sight. `producer_part_no` (P5 column 5 of `order_variants`) is imported when present and non-empty. Vendor 'Notes' (vendor `comment`) and lead time (`lead_time_days` in days) are also captured. `PartNo` not found in `list__parts.name` → row skipped + logged.
-
-### Trigger / Schedule
-**CLI invocation, not a scheduled cron.** Run manually after the spreadsheet is updated:
-
-```bash
-php src/cron/import-vendors-from-gsheet.php                  # live import
-php src/cron/import-vendors-from-gsheet.php --dry-run       # parse + report, no writes
-php src/cron/import-vendors-from-gsheet.php --update-existing # backfill NULL producer_part_no
-```
-
-CLI args are read from `$argv`. The `--update-existing` flag backfills `producer_part_no` on existing `list__vendor_part` rows whose value is currently NULL — useful as a one-shot after the P5 migration when historical rows need populating from a freshly-populated spreadsheet column.
-
-### Inputs
-| Source | Sheet / Columns |
-|---|---|
-| Google Sheet | Spreadsheet `1OowYceg8hWtuCmnqPiqCyg5N3rVaAngEvmnGRhjeOew`, tab `dane_dostawcy` — column A = vendor ID (sheet-local), B = vendor name, J = notes, K = lead time days |
-| Google Sheet | Same spreadsheet, tab `dane_dostawcy_kontakty` — column A = vendor ID (FK), C–F = person 1 (name, role, phone, email), G–J = person 2 |
-| Google Sheet | Same spreadsheet, tab `order_variants` — column idx 1 = PartNo, 4 = Producer name, 5 = Producer PartNo, 6 = VendorName, 7 = VendorPartNo, 8 = VendorJM, 9 = FullPack, 10 = Comment |
-| MSA DB | `list__parts` — for the PartNo → parts_id lookup (skip + log on miss) |
-| MSA DB | `list__vendor`, `list__vendor_supplier`, `list__producer`, `list__vendor_part` — dedup lookups (vendor name, vendor+supplier name, vendor+vendor_part_no, producer name) |
-| MSA DB | `part__unit` — vendor JM unit lookup; auto-created on first sight |
-
-### Outputs
-| Target | Details |
-|---|---|
-| MSA DB | `list__vendor` — vendor header (name, lead_time_days, comment) |
-| MSA DB | `list__vendor_supplier` — up to 2 contact persons per vendor |
-| MSA DB | `list__producer` — manufacturer (auto-created on first sight) |
-| MSA DB | `list__vendor_part` — the (vendor × producer × part) catalog row including `vendor_part_no`, `vendor_jm_id`, `comment`, and (P5+) `producer_part_no`. Pack sizes live in `list__vendor_part_pack` (no denormalised `full_pack_quantity` column on the header) |
-| MSA DB | `part__unit` — new units auto-created when a vendor uses one we don't yet track |
-| Log file | `public_html/var/logs/vendor-import-<YYYY-MM-DD>.log` — per-day rolling log; same as the other cron jobs' `public_html/var/logs/` convention |
-
-### Locks
-- **Lock file:** `public_html/var/locks/vendor_import_gsheet.lock`
-- Standard pre-check / try-finally pattern, with `register_shutdown_function` for crash-safe unlock (added during the B2 audit cleanup, 2026-08-25). Prevents double-runs that would re-process the same spreadsheet; the per-row dedup would also catch duplicates, so the lock is defence-in-depth rather than correctness-critical.
-
-### Key Classes / Functions Used
-| Class / Function | Namespace | Role |
-|---|---|---|
-| `MsaDB` | `Atte\DB` | `getInstance()` for all DB access (insert + select; rows passed assoc to the `Vendor*` / `Producer*` / `VendorPart*` repositories through the file-local `dbInsertAssoc` / `dbFetchOne` helpers) |
-| `Locker` | `Atte\Utils` | `vendor_import_gsheet.lock` concurrent-run guard |
-| `GoogleSheets::readSheet()` | `Atte\Api` | Sheet read with built-in 401 → refresh → retry flow. The Api class no longer loads `config-google-sheets.php` (that file eagerly instantiates `Hybridauth\Provider\Google`, which calls `session_start()` and breaks CLI after stdout output); `GoogleOAuth::regenerateToken()` lazily defines `GOOGLE_CLIENT_ID/SECRET` from `$_ENV` only when a refresh is actually needed. |
-
-### Side Effects
-- **DB writes** to `list__vendor`, `list__vendor_supplier`, `list__producer`, `list__vendor_part`, `part__unit` — idempotent, all rows are `INSERT IGNORE` / dedup-then-insert under the hood.
-- **Google Sheets API reads** — three sheet tabs pulled per run.
-- **Logs** to `public_html/var/logs/vendor-import-<YYYY-MM-DD>.log` and stdout.
-- **No transactions** — each row insert is its own statement (per-row dedup is the correctness guard; partial imports are acceptable; re-running picks up where it left off).
-
-### Failure Handling
-- Per-row try / catch: any single row that throws (FK miss, etc.) is logged + skipped; the script continues with the next row.
-- Hard top-level error → `error_log()` + non-zero exit.
-- `--dry-run` mode catches all exceptions at the top level and reports totals without writing.
-
----
-
 ## Quick Reference Table
 
 | Job | Lock file | DB writes | Google Sheets | Unique behaviour |
@@ -429,59 +367,10 @@ CLI args are read from `$argv`. The `--update-existing` flag backfills `producer
 | `flowpin-sku-update` | `flowpin.lock` (non-blocking) | `inventory__*`, checkpoints, progress | — (local logs) | Full ERP sync; per-record transactions + checkpoints |
 | `bom-flat-tht-gs-upload` | `bom_flat_tht_gs_upload.lock` | — | `ds_php_bom_flat_tht` (spreadsheet 2) | Recursive BOM flatten, single-level source |
 | `bom-flat-sku-gs-upload` | `bom_flat_sku_gs_upload.lock` | — | `ds_php_bom_flat_sku` (spreadsheet 2) | Recursive BOM flatten, 3-level source path |
-| `import-vendors-from-gsheet` | `vendor_import_gsheet.lock` | `list__vendor`, `list__vendor_supplier`, `list__producer`, `list__vendor_part`, `part__unit` | read-only (3 tabs) | One-shot CLI importer; idempotent via per-row dedup; supports `--dry-run` and `--update-existing` |
-| `apply-p7-schema` | *(none)* | `purchase__order_item`, `purchase__rfq_item` | — | One-shot CLI schema migration; idempotent via `information_schema.COLUMNS`; safe to re-run; graceful on missing P2/P3 tables |
 
 **Spreadsheet IDs:**
 - (1) `1rV1rbLXDdsOxT49sgJNm1Aicldg8ZvBdQo9yaX314QI` — used by `warehouse-data-gs-upload`
 - (2) `1dVUCdqrqaMKBEN_ol75SjiFODKelDKX0fqRaO94_ydM` — shared by `warehouse-comparison`, `bom-flat-tht`, `bom-flat-sku`
-
----
-
-## Job 8 — `apply-p7-schema.php`
-
-**File:** `src/cron/apply-p7-schema.php`
-
-### Purpose
-One-shot CLI schema migration that adds the `picked_pack_size DECIMAL(30,10) NULL` column to both purchase line-item tables (`purchase__order_item`, `purchase__rfq_item`). Idempotent — each table is checked via `information_schema.COLUMNS` first; the `ALTER` is skipped if the column already exists. Safe to re-run.
-
-### Trigger / Schedule
-**CLI invocation, not a scheduled cron.** Run once per environment after P7 is rolled out:
-
-```bash
-php src/cron/apply-p7-schema.php
-```
-
-### Inputs
-| Source | Table / Query |
-|---|---|
-| MSA DB | `information_schema.TABLES` — existence check on each target table |
-| MSA DB | `information_schema.COLUMNS` — existence check on `picked_pack_size` per target table |
-
-### Outputs
-| Target | Details |
-|---|---|
-| MSA DB | `ALTER TABLE purchase__order_item ADD COLUMN picked_pack_size DECIMAL(30,10) NULL` |
-| MSA DB | `ALTER TABLE purchase__rfq_item ADD COLUMN picked_pack_size DECIMAL(30,10) NULL` |
-
-### Locks
-- **No lock file.** Single-table, single-column `ADD COLUMN` operations are metadata-only in MySQL 8 and run near-instantly; concurrent runs would just no-op via the `information_schema.COLUMNS` guard.
-
-### Key Classes / Functions Used
-| Class | Namespace | Role |
-|---|---|---|
-| `MsaDB` | `Atte\DB` | Singleton DB access; uses `db->exec()` for the `ALTER TABLE` statements and `db->prepare()` + `execute()` for the existence checks |
-
-### Side Effects
-- **DB writes:** Two `ALTER TABLE … ADD COLUMN` statements (no-op when already applied).
-- **No reads** other than the two `information_schema` existence checks.
-- **No logs** — output is via stdout.
-- **No transactions** — each `ALTER` is a metadata-only statement.
-
-### Failure Handling
-- **DB-name guard:** aborts with non-zero exit if `MsaDB` is not connected to the `atte_ms` database (same pattern as `apply-p6-schema.php`).
-- **Missing tables:** P2/P3 may not have been applied yet (fresh checkout); the script prints `table missing, skipped (apply P2/P3 first)`, increments the skipped counter, and continues. It does NOT abort.
-- **Per-table try/catch:** any `PDOException` from the `ALTER` is logged to stderr and the failed counter incremented; the loop continues.
 
 ---
 

@@ -205,7 +205,10 @@
 - `list__vendor_part` — catalog row for (vendor × producer × part) triple; unique on `(vendor_id, vendor_part_no)`
 
 **One-time import helper:**
-- `src/cron/import-vendors-from-gsheet.php` — CLI importer that pulls vendor / contact / VendorPart data from the Google Sheets spreadsheet shared with `update-part-prices.php`. Idempotent, supports `--dry-run`. Sheet reads go through `Atte\Api\GoogleSheets::readSheet()`; the Api class is CLI-safe (no Hybridauth / `session_start()` load). CLI bootstrap pattern (`require_once config.php`) documented in the script header.
+- `src/cron/seed-component-procurement-from-gsheet.php` — CLI seeder that pulls vendor / contact / VendorPart data from the Google Sheets spreadsheet shared with `update-part-prices.php`. Idempotent, supports `--dry-run` and `--step=variants`. Sheet reads go through `Atte\Api\GoogleSheets::readSheet()`; the Api class is CLI-safe (no Hybridauth / `session_start()` load). CLI bootstrap pattern (`require_once config.php`) documented in the script header.
+
+**Schema migration helper:**
+- `src/cron/migrate-to-procurement-schema.php` — one-shot CLI that applies the 12 procurement tables (`list__vendor*`, `list__producer`, `purchase__*`) to a fresh DB. Idempotent via `information_schema.TABLES` per-table check; FK-order safe. Replaces the phase-by-phase `apply-p[2-7]-schema.php` scripts.
 
 **Notable behaviors:**
 - Soft-delete via `is_active` flag — never hard-delete referenced rows

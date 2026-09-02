@@ -24,7 +24,7 @@ The next time you change something here, also update:
 - `docs/data/DATABASE.md` for schema,
 - `docs/code/MODULES.md` for file map,
 - `docs/code/CLASSES.md` for the new `Atte\Utils\Purchase\…` classes,
-- `docs/operations/CRON.md` for `import-vendors-from-gsheet.php`,
+- `docs/operations/CRON.md` for `seed-component-procurement-from-gsheet.php` and `migrate-to-procurement-schema.php`,
 - `docs/system/ROUTING.md` for route changes,
 - `docs/system/ARCHITECTURE.md` for the Master/Order/ActionHandler split.
 
@@ -717,16 +717,16 @@ When the vendor replies to an RFQ:
    a generic search over `list__parts`. **Still open (v1.6).**
 5. **Producer's own PartNo per part** — Distinct from our internal part
    name and from the vendor's reference. **Shipped in P5** — column
-   `list__vendor_part.producer_part_no` added (see
-   `docs/procurement/sql/P5-schema.sql`); surfaced in the Koszyk
+   `list__vendor_part.producer_part_no` added; baked into the new
+   `migrate-to-procurement-schema.php` schema. Surfaced in the Koszyk
    picker option subtext and the cart table sub-line.
 
 Additional polish captured during v1.6 cleanup (not in the original
 §9.2 list):
 
 - Soft-delete of referenced rows is correctly prevented by
-  `ON DELETE RESTRICT` (P2–P4) — the `is_active` (now `isActive`,
-  see `docs/procurement/sql/P6-schema.sql`) flag is the deactivation
+  `ON DELETE RESTRICT` (P2–P4) — the `isActive` flag (P6 rename
+  baked into the unified schema) is the deactivation
   channel.
 - **Inline create-vendor-part flow** was built but the Koszyk page
   evolved away from the original "Reorder" screen into a vendor-first
@@ -779,7 +779,7 @@ module was built**. For the current state, see:
 - Schema: `docs/data/DATABASE.md` — `list__vendor*`, `list__producer`,
   `purchase__*` tables.
 - Routes: `docs/system/ROUTING.md` — 6 procurement routes.
-- Cron: `docs/operations/CRON.md` — `import-vendors-from-gsheet.php`.
+- Cron: `docs/operations/CRON.md` — `seed-component-procurement-from-gsheet.php` and `migrate-to-procurement-schema.php`.
 - Architecture: `docs/system/ARCHITECTURE.md` — Master / Order /
   ActionHandler split.
 
