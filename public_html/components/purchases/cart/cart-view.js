@@ -31,6 +31,7 @@
                              //  vendor_jm_id, full_pack_quantity, pack_quantities,
                              //  picked_pack_size, quantity, unit_price, currency}
         activeDocs:  {},     // vendor_part_id (string) → [doc, …]
+        activeDocsLoaded: false,  // flipped true after the first AJAX fetch resolves (or fails). While false, inline edit is blocked so the load's re-render can't blow away an open edit session.
     };
 
     // ---- picker-mode state ----
@@ -53,16 +54,6 @@
         lastEdited: null
     };
 
-    // Edit-modal pick-mode mirror. The modal opens for an arbitrary cart
-    // line and runs its own Opak./Ilość pair against the line's chosen
-    // pack — kept separate from `state` so opening the modal doesn't
-    // clobber whatever the picker row has selected.
-    let editModalState = {
-        pickedPackSize: null,
-        lastDerived: null,
-        lastEdited: null
-    };
-
     // DOM refs
     let $vendorSelect        = $('#vendorSelect');
     let $partSelect          = $('#partSelect');
@@ -81,6 +72,7 @@
     let $cartQty             = $('#cartQty');
     let $cartPrice           = $('#cartPrice');
     let $cartCurrency        = $('#cartCurrency');
+    let $cartLineComment     = $('#cartLineComment');
     let $cartPriceRow        = $('#cartPriceRow');
     let $variantInfoRow      = $('#variantInfoRow');
     let $variantCommentDisplay = $('#variantCommentDisplay');
@@ -88,27 +80,11 @@
     let $variantCommentEdit  = $('#variantCommentEdit');
     let $variantCommentEditBox = $('#variantCommentEditBox');
     let $variantCommentInput = $('#variantCommentInput');
-    let $editItemModal       = $('#editItemModal');
-    let $editItemHeader      = $('#editItemHeader');
-    let $editItemPackSizePickerWrap = $('#editItemPackSizePickerWrap');
-    let $editItemPackSizeStepper    = $('#editItemPackSizeStepper');
-    let $editItemPackSizePrev       = $('#editItemPackSizePrev');
-    let $editItemPackSizeValue      = $('#editItemPackSizeValue');
-    let $editItemPackSizeNext       = $('#editItemPackSizeNext');
-    let $editItemPackSizeAdd        = $('#editItemPackSizeAdd');
-    let $editItemPackSizeEditBox    = $('#editItemPackSizeEditBox');
-    let $editItemPackSizeInput      = $('#editItemPackSizeInput');
-    let $editItemPackSizeSave       = $('#editItemPackSizeSave');
-    let $editItemPackSizeCancel     = $('#editItemPackSizeCancel');
-    let $editItemPackages    = $('#editItemPackages');
-    let $editItemQty         = $('#editItemQty');
-    let $editItemPrice       = $('#editItemPrice');
-    let $editItemCurrency    = $('#editItemCurrency');
-    let $editItemSave        = $('#editItemSave');
     let $addToCartBtn        = $('#addToCartBtn');
     let $toggleAddVariantBtn       = $('#toggleAddVariantBtn');
     let $addVariantHelpModal       = $('#addVariantHelpModal');
     let $addVariantHelpContinue    = $('#addVariantHelpContinue');
+    let $cartConfirmModal          = $('#cartConfirmModal');
     let $clearSelectionBtn         = $('#clearSelectionBtn');
     let $pickVariantRow      = $('#pickVariantRow');
     let $addVariantRow1      = $('#addVariantRow1');
@@ -313,10 +289,16 @@
             // `picked_pack_size` at all. Fall back to the variant's
             // full_pack_quantity (smallest pack) so the row badge and
             // even-pack math work without a re-edit.
+            // Pre-line-comment carts didn't carry `line_comment` —
+            // normalize to null so render checks (item.line_comment || '')
+            // work uniformly.
             cart.items.forEach(function (item) {
                 if (item.picked_pack_size === undefined || item.picked_pack_size === null) {
                     let fpq = parseFloat(item.full_pack_quantity);
                     item.picked_pack_size = (!isNaN(fpq) && fpq > 0) ? fpq : null;
+                }
+                if (typeof item.line_comment !== 'string') {
+                    item.line_comment = null;
                 }
             });
         } catch (e) { /* corrupt/unavailable — start empty */ }
@@ -359,10 +341,41 @@
         );
     }
 
+    // Reusable themed confirmation dialog. Replaces native window.confirm
+    // so the cart's destructive actions (remove-row, remove-vendor-items,
+    // create-doc, clear-cart) use the same Bootstrap-styled prompt.
+    //   opts.title      — modal title
+    //   opts.body       — HTML allowed (escape text fragments before passing)
+    //   opts.okLabel    — confirm button text (default 'Potwierdź')
+    //   opts.okClass    — confirm button color (default 'btn-danger')
+    //   opts.onConfirm  — function to run on confirm (modal auto-hides)
+    function cartConfirm(opts) {
+        $cartConfirmModal.find('#cartConfirmTitle').text(opts.title || 'Potwierdź');
+        $cartConfirmModal.find('#cartConfirmBody').html(opts.body || '');
+        const $ok = $cartConfirmModal.find('#cartConfirmOk');
+        $ok.text(opts.okLabel || 'Potwierdź')
+           .removeClass('btn-danger btn-success btn-primary btn-warning')
+           .addClass(opts.okClass || 'btn-danger');
+        // Detach any prior handler so repeated calls don't stack.
+        $ok.off('click.cartConfirm').one('click.cartConfirm', function () {
+            $cartConfirmModal.modal('hide');
+            if (typeof opts.onConfirm === 'function') { opts.onConfirm(); }
+        });
+        $cartConfirmModal.modal('show');
+    }
+
     function escapeHtml(s) {
         return String(s == null ? '' : s)
             .replace(/&/g, '&amp;').replace(/</g, '&lt;')
             .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    // escapeHtml + nl2br combined — safe to drop already-escaped HTML
+    // straight into innerHTML. Used by the cart row's Uwagi cell so
+    // multi-line notes (newlines the user typed in the input/textarea)
+    // render on screen instead of collapsing to a single line.
+    function nl2brSafe(escapedHtml) {
+        return escapedHtml.replace(/\r\n|\r|\n/g, '<br>');
     }
 
     function formatQty(n) {
@@ -437,10 +450,15 @@
     }
 
     // Render the pack-size stepper. Sets the displayed value, enables
-    // / disables prev/next based on position, shows or hides the wrap
-    // depending on whether there are pack tiers at all. Returns the
-    // resolved picked value (or null when no packs).
-    function populatePackSizeStepper($value, $prev, $next, $wrap, packQuantities, defaultValue) {
+    // / disables prev/next based on position, and shows/hides the wrap
+    // (and the stepper span inside it) depending on whether there are
+    // pack tiers at all. The +/- stays visible at all times — only its
+    // enabled state changes — so single-tier variants render the same
+    // layout as multi-tier ones, just with both boundary buttons
+    // disabled (the user can still see the resolved pack size and
+    // click the pencil to add another tier). Returns the resolved
+    // picked value (or null when no packs).
+    function populatePackSizeStepper($value, $prev, $next, $wrap, $stepper, packQuantities, defaultValue) {
         let packs = Array.isArray(packQuantities) ? packQuantities.slice() : [];
         packs.sort(function (a, b) { return parseFloat(a) - parseFloat(b); });
         if (packs.length === 0) {
@@ -448,16 +466,34 @@
             $prev.prop('disabled', true);
             $next.prop('disabled', true);
             $wrap.hide();
+            $stepper.hide();
             return null;
         }
         let dv = parseFloat(defaultValue);
         let target = (!isNaN(dv) && dv > 0 && packs.indexOf(dv) !== -1) ? dv
                    : parseFloat(packs[0]);
         $value.text(formatQty(target));
+        // Boundary disable: with a single tier, target equals both the
+        // smallest and the largest pack, so both buttons end up
+        // disabled — visually the same chip group, just greyed out.
         $prev.prop('disabled', target === parseFloat(packs[0]));
         $next.prop('disabled', target === parseFloat(packs[packs.length - 1]));
         $wrap.show();
+        $stepper.show();
         return target;
+    }
+
+    // Visibility-only twin of populatePackSizeStepper — used by the
+    // pencil cancel/save handlers to restore the picker state after
+    // the inline edit box has been dismissed, without re-touching the
+    // stepper value or prev/next buttons. Wrap + stepper span stay
+    // visible whenever a pack size is defined; prev/next boundary
+    // disabled state is left untouched (it was already correct when
+    // the variant was picked).
+    function applyPackSizePickerVisibility($wrap, $stepper, packQuantities) {
+        let n = Array.isArray(packQuantities) ? packQuantities.length : 0;
+        $wrap.toggle(n >= 1);
+        $stepper.toggle(n >= 1);
     }
 
     // Apply or remove the `packages-uneven` warning class + title on the
@@ -469,20 +505,6 @@
         // Always clear both — last-edited wins; the other stays clean.
         $cartPackages.removeClass('packages-uneven').removeAttr('title');
         $cartQty.removeClass('packages-uneven').removeAttr('title');
-        let even = isEven(qty, pack);
-        if (even) return;
-        if (!lastEdited || !lastEdited.length) return;
-        lastEdited.addClass('packages-uneven');
-        lastEdited.attr('title',
-            'Uwaga: ilość nie odpowiada pełnej liczbie opakowań (wielkość: ' + formatQty(pack) + ')');
-    }
-
-    // Edit-modal twin of applyEvenWarning — operates on the modal's
-    // $editItemPackages / $editItemQty fields. Same semantics: lastEdited
-    // flags; the other stays clean.
-    function applyEvenWarningEdit(lastEdited, qty, pack) {
-        $editItemPackages.removeClass('packages-uneven').removeAttr('title');
-        $editItemQty.removeClass('packages-uneven').removeAttr('title');
         let even = isEven(qty, pack);
         if (even) return;
         if (!lastEdited || !lastEdited.length) return;
@@ -734,17 +756,11 @@
     // (visible text); the placeholder is no longer used (kept for
     // back-compat with non-bootstrap-selectpicker themes).
     let $cartQtyUnit = $('#cartQtyUnit');
-    let $editItemQtyUnit = $('#editItemQtyUnit');
     function syncQtyPlaceholder() {
         let $sel = $vendorPartNoSelect.find('option:selected');
         let unit = ($sel.length > 0 ? $sel.attr('data-unit-name') : '') || 'szt.';
         $cartQty.attr('placeholder', unit);
         $cartQtyUnit.text(unit || 'szt.');
-    }
-    function syncEditQtyUnit(item) {
-        let unit = (item && item.unit_name) ? item.unit_name : 'szt.';
-        $editItemQty.attr('placeholder', unit);
-        $editItemQtyUnit.text(unit || 'szt.');
     }
 
     // Ilość/Cena/Waluta are editable only once a concrete variant is
@@ -766,6 +782,7 @@
         if (!resolved) {
             $cartQty.val('');
             $cartPrice.val('');
+            $cartLineComment.val('');
             $cartPackages.val('').prop('disabled', true).removeClass('packages-uneven')
                 .attr('placeholder', 'opak.');
             // Pack-size stepper: empty + hidden, no selection carried
@@ -773,7 +790,7 @@
             // returns null and hides the stepper wrap for an empty pack
             // list.
             populatePackSizeStepper($cartPackSizeValue, $cartPackSizePrev, $cartPackSizeNext,
-                                    $cartPackSizePickerWrap, [], null);
+                                    $cartPackSizePickerWrap, $cartPackSizeStepper, [], null);
             $cartPriceRow.hide();
             $cartPackagesWrap.hide();
             // Clear pick-mode picker state — a future variant shouldn't
@@ -788,24 +805,23 @@
             $cartPackages.attr('placeholder', fpq !== null ? formatQty(fpq) + '/opak.' : 'opak.');
             // Populate the pack-size stepper from the variant's
             // pack_quantities; default to its full_pack_quantity
-            // (smallest pack). The stepper is hidden when the variant
-            // has fewer than two tiers (single-tier variants skip it).
+            // (smallest pack). The picker wrap stays visible whenever
+            // a pack size is defined so the "+" pencil icon (add new
+            // tier) remains reachable on single-tier variants; the
+            // stepper +/- itself is suppressed when there's only one
+            // tier (a single chip would be redundant).
             let packQuantities = vp ? (vp.pack_quantities || []) : [];
             let picked = populatePackSizeStepper($cartPackSizeValue, $cartPackSizePrev, $cartPackSizeNext,
-                                                 $cartPackSizePickerWrap, packQuantities, fpq);
+                                                 $cartPackSizePickerWrap, $cartPackSizeStepper, packQuantities, fpq);
             state.pickedPackSize = picked;
             state.lastDerived = null;
             state.lastEdited = null;
             $cartPriceRow.show();
             // Packages-count input is only useful when a pack size is
             // actually defined; pack-less variants skip it as well.
-            // Single-tier variants show the count input but skip the
-            // picker (single chip would be redundant).
+            // Single-tier variants keep the count input — it derives
+            // off state.pickedPackSize without needing the stepper.
             $cartPackagesWrap.toggle(picked !== null);
-            // The chip group is rendered only when more than one tier
-            // exists; the packages-count input still works without it
-            // (state.pickedPackSize is the resolved single tier).
-            $cartPackSizePickerWrap.toggle(packQuantities.length > 1);
             // Disable the count input when no pack size is defined; clear
             // any stale value. Without this the input keeps the
             // `disabled=true` set by the !resolved branch and the user
@@ -988,6 +1004,7 @@
         if (resolvedId !== lastResolvedVpId) {
             $cartQty.val('');
             $cartPrice.val('');
+            $cartLineComment.val('');
             resetPackagesInput();
             lastResolvedVpId = resolvedId;
         } else {
@@ -1140,6 +1157,7 @@
     function loadActiveDocs() {
         if (cart.items.length === 0) {
             cart.activeDocs = {};
+            cart.activeDocsLoaded = true;
             renderCart();
             return;
         }
@@ -1152,9 +1170,11 @@
             dataType: 'json'
         }).done(function (docs) {
             cart.activeDocs = docs || {};
+            cart.activeDocsLoaded = true;
             renderCart();
         }).fail(function () {
             cart.activeDocs = {};
+            cart.activeDocsLoaded = true;
             renderCart();
         });
     }
@@ -1207,6 +1227,7 @@
                     '<th>Cena</th>' +
                     '<th>Wartość</th>' +
                     '<th>Aktywne dok.</th>' +
+                    '<th>Uwagi</th>' +
                     '<th>Akcje</th>' +
                 '</tr>' +
                 '</thead><tbody>';
@@ -1216,14 +1237,22 @@
                 let lineTotal = (item.unit_price ? item.unit_price * item.quantity : 0);
                 let docs = cart.activeDocs[item.vendor_part_id] || [];
                 let docBadges = '';
-                docs.forEach(function (d) {
-                    docBadges += '<span class="badge ' + stateBadgeClass(d.state) + ' mr-1" title="' +
-                        stateBadgeLabel(d.state) + ' · ' + formatQty(d.quantity) + ' · ' + formatPrice(d.unit_price) + '">' +
-                        docTypeIcon(d.doc_type) + ' ' + escapeHtml(d.number) + ' · ' + stateBadgeLabel(d.state) +
-                        '</span>';
-                });
-                if (!docBadges) {
-                    docBadges = '<span class="text-muted">—</span>';
+                if (!cart.activeDocsLoaded) {
+                    // While the first AJAX fetch is in flight, show a
+                    // muted placeholder so the user knows the cell will
+                    // populate shortly. The badge group never lands in
+                    // a "frozen" empty state.
+                    docBadges = '<small class="text-muted"><i class="bi bi-hourglass-split"></i> ładowanie…</small>';
+                } else {
+                    docs.forEach(function (d) {
+                        docBadges += '<span class="badge ' + stateBadgeClass(d.state) + ' mr-1" title="' +
+                            stateBadgeLabel(d.state) + ' · ' + formatQty(d.quantity) + ' · ' + formatPrice(d.unit_price) + '">' +
+                            docTypeIcon(d.doc_type) + ' ' + escapeHtml(d.number) + ' · ' + stateBadgeLabel(d.state) +
+                            '</span>';
+                    });
+                    if (!docBadges) {
+                        docBadges = '<span class="text-muted">—</span>';
+                    }
                 }
 
                 // Część cell carries prefixed sub-lines: vendor/producer
@@ -1240,13 +1269,22 @@
                 if (item.description) {
                     partCell += '<div><small class="text-muted">' + escapeHtml(item.description) + '</small></div>';
                 }
-                // Comment is variant-level — read live so pen-edits show up
-                // in cart rows immediately.
+                // Variant-level "Komentarz artykułu" — read live so pen-edits show
+                // up in cart rows immediately. Pen icon swaps the line
+                // into an inline editor.
                 let vpLive = getVpById(item.vendor_part_id);
                 let liveCmt = vpLive ? (vpLive.private_comment || '') : '';
-                if (liveCmt) {
-                    partCell += '<div><small class="text-muted"><i class="bi bi-journal-text"></i> Komentarz: ' + escapeHtml(liveCmt) + '</small></div>';
-                }
+                partCell += '<div class="cart-row-comment-line">' +
+                    '<small class="text-muted">' +
+                    '<i class="bi bi-journal-text"></i> Komentarz: ' +
+                    (liveCmt ? escapeHtml(liveCmt) : '<em>Brak</em>') +
+                    '</small> ' +
+                    '<button type="button" class="btn btn-link btn-sm p-0 ml-1 cart-row-comment-edit" ' +
+                    'data-vp-id="' + item.vendor_part_id + '" ' +
+                    'title="' + (liveCmt ? 'Edytuj komentarz' : 'Dodaj komentarz') + '">' +
+                    '<i class="bi bi-pencil"></i>' +
+                    '</button>' +
+                    '</div>';
                 // Ilość cell carries the package count as a sub-line
                 // (yellow when qty doesn't match whole packages) plus
                 // the badge showing the chosen pack size for this line.
@@ -1264,17 +1302,37 @@
                 } else if (pickedPack !== null) {
                     qtyCell += '<div><span class="badge badge-light border text-monospace ml-1" title="Wybrana wielkość opakowania">opak. ' + formatQty(pickedPack) + '</span></div>';
                 }
-                html += '<tr>' +
+                html += '<tr class="cart-item-row" data-idx="' + x.idx + '">' +
                     '<td>' + partCell + '</td>' +
-                    '<td>' + qtyCell + '</td>' +
-                    '<td>' + (item.unit_price === null || item.unit_price === undefined
+                    '<td class="cart-cell-qty">' + qtyCell + '</td>' +
+                    '<td class="cart-cell-price">' + (item.unit_price === null || item.unit_price === undefined
                         ? '<span class="text-muted">—</span>'
                         : formatPrice(item.unit_price) +
                           '<div><small class="text-muted">' + escapeHtml(item.currency) + '/' + escapeHtml(item.unit_name) + '</small></div>') + '</td>' +
-                    '<td>' + formatPrice(lineTotal) + '</td>' +
+                    '<td class="cart-cell-line-total">' +
+                        (item.unit_price === null || item.unit_price === undefined
+                            ? '<span class="text-muted">—</span>'
+                            : formatPrice(item.unit_price * item.quantity) +
+                              (item.currency
+                                  ? '<div><small class="text-muted">' + escapeHtml(item.currency) + '</small></div>'
+                                  : '')) +
+                    '</td>' +
                     '<td style="white-space: nowrap;">' + docBadges + '</td>' +
-                    '<td style="white-space: nowrap;">' +
-                        '<button type="button" class="btn btn-sm btn-outline-primary edit-item-btn mr-1" data-idx="' + x.idx + '" title="Edytuj ilość / cenę / walutę"><i class="bi bi-pencil"></i></button>' +
+                    // Uwagi do pozycji — its own column (sits before Akcje).
+                    // Travels to purchase__rfq_item.comment /
+                    // purchase__order_item.comment. Editable inline like
+                    // the RFQ pattern (qty/price/uwagi). nl2br so
+                    // multi-line notes render on screen without losing
+                    // newlines.
+                    '<td class="cart-cell-comment cart-row-line-comment-cell">' +
+                        (item.line_comment
+                            ? nl2brSafe(escapeHtml(item.line_comment))
+                            : '<span class="text-muted">—</span>') +
+                    '</td>' +
+                    '<td class="cart-cell-akcje" style="white-space: nowrap;">' +
+                        '<button type="button" class="btn btn-sm btn-outline-primary edit-item-btn mr-1" data-idx="' + x.idx + '"' +
+                            (cart.activeDocsLoaded ? '' : ' disabled') +
+                            ' title="' + (cart.activeDocsLoaded ? 'Edytuj ilość / cenę / uwagi' : 'Ładowanie aktywnych dokumentów…') + '"><i class="bi bi-pencil"></i></button>' +
                         '<button type="button" class="btn btn-sm btn-danger remove-item-btn" data-idx="' + x.idx + '" title="Usuń pozycję">' +
                             '<i class="bi bi-trash"></i></button>' +
                     '</td>' +
@@ -1352,15 +1410,24 @@
                 picked_pack_size  : pickedPack,
                 quantity          : qty,
                 unit_price        : unitPrice,
-                currency          : currency
+                currency          : currency,
+                // "Uwagi do pozycji" — captured from the picker at add
+                // time; travels to purchase__rfq_item.comment /
+                // purchase__order_item.comment. Trimmed + blank→null so
+                // empty entries don't waste TEXT storage.
+                line_comment      : ($.trim($cartLineComment.val() || '') || null)
             });
             setAlert('Dodano pozycję do koszyka.', 'success');
         }
         // Reset qty + price, clear the part picker (vendor stays selected
         // so the user can queue the next part from the same vendor).
         // Currency stays sticky — usually several items in a row share it.
-        $cartQty.val('');
-        $cartPrice.val('');
+        // Uwagi do pozycji is per-line, so it resets too — a comment
+        // captured for the previous line shouldn't leak onto the next.
+$cartQty.val('');
+            $cartPrice.val('');
+            $cartLineComment.val('');
+        $cartLineComment.val('');
         $cartPackages.val('').removeClass('packages-uneven');
         state.lastDerived = null;
         state.lastEdited = null;
@@ -1498,6 +1565,7 @@
             // Reset qty/price so the user starts fresh in the cart step.
             $cartQty.val('');
             $cartPrice.val('');
+            $cartLineComment.val('');
             $cartPackages.val('').removeClass('packages-uneven');
             resetAddModeFields();
             // Snap back to pick mode. setPickerMode re-applies the
@@ -1606,44 +1674,55 @@
     // then cart line); the Continue button does the actual transition.
     $toggleAddVariantBtn.on('click', function () {
         if (pickerMode === 'add') {
-            if (isAddModeDirty() && !window.confirm('Odrzucić wprowadzone dane nowego artykułu?')) {
+            if (isAddModeDirty()) {
+                cartConfirm({
+                    title: 'Odrzucić wprowadzone dane?',
+                    body: '<p>Wprowadzone dane nowego artykułu (producent, JM, numer, opakowanie, komentarz) zostaną utracone.</p>',
+                    okLabel: 'Odrzuć',
+                    okClass: 'btn-danger',
+                    onConfirm: function () { cancelAddVariant(); }
+                });
                 return;
             }
-            // Cancel = full reset of every input the user touched
-            // before pressing Anuluj. Distinct from save (Zapisz): a
-            // successful save keeps vendor + qty/price cleared but
-            // leaves the part picker alone so the user can keep
-            // queueing from the same vendor; cancel discards the
-            // entire creation context.
-            //   - vendor + part (the new-VP context)
-            //   - add-mode catalog inputs (Producent, JM, Numer u
-            //     dostawcy, Numer u producenta, Pełne opakowanie,
-            //     Komentarz) — handled by resetAddModeFields()
-            //   - cart-step leftovers (qty/price were hidden when add
-            //     mode opened but still held values)
-            //   - any leftover alert from a previous failed save
-            $vendorSelect.val('');
-            refreshSelectpicker($vendorSelect);
-            $partSelect.val('');
-            refreshSelectpicker($partSelect);
-            $cartQty.val('');
-            $cartPrice.val('');
-            $cartPackages.val('').removeClass('packages-uneven');
-            setAlert('', '');
-            resetAddModeFields();
-            // setPickerMode('pick') re-applies the vendor/part filter
-            // that add mode bypassed; with both pickers now empty it
-            // restores full option lists and re-syncs the amount inputs.
-            setPickerMode('pick');
-        } else {
-            // Show the explanation modal — user dismisses / continues
-            // from inside it. Vendor isn't required to enter add mode
-            // (the user can pick it inside the form); Save validation in
-            // updateAddBtnState and createNewVariant() still rejects
-            // if vendor is empty.
-            $addVariantHelpModal.modal('show');
+            cancelAddVariant();
+            return;
         }
+        // Show the explanation modal — user dismisses / continues
+        // from inside it. Vendor isn't required to enter add mode
+        // (the user can pick it inside the form); Save validation in
+        // updateAddBtnState and createNewVariant() still rejects
+        // if vendor is empty.
+        $addVariantHelpModal.modal('show');
     });
+
+    // Cancel = full reset of every input the user touched before
+    // pressing Anuluj. Distinct from save (Zapisz): a successful save
+    // keeps vendor + qty/price cleared but leaves the part picker alone
+    // so the user can keep queueing from the same vendor; cancel
+    // discards the entire creation context.
+    //   - vendor + part (the new-VP context)
+    //   - add-mode catalog inputs (Producent, JM, Numer u dostawcy,
+    //     Numer u producenta, Pełne opakowanie, Komentarz) — handled
+    //     by resetAddModeFields()
+    //   - cart-step leftovers (qty/price were hidden when add mode
+    //     opened but still held values)
+    //   - any leftover alert from a previous failed save
+    function cancelAddVariant() {
+        $vendorSelect.val('');
+        refreshSelectpicker($vendorSelect);
+        $partSelect.val('');
+        refreshSelectpicker($partSelect);
+        $cartQty.val('');
+        $cartPrice.val('');
+        $cartLineComment.val('');
+        $cartPackages.val('').removeClass('packages-uneven');
+        setAlert('', '');
+        resetAddModeFields();
+        // setPickerMode('pick') re-applies the vendor/part filter
+        // that add mode bypassed; with both pickers now empty it
+        // restores full option lists and re-syncs the amount inputs.
+        setPickerMode('pick');
+    }
 
     // "Rozumiem, kontynuuj" inside the help modal — does the actual
     // pick → add transition that the toggle button would have done
@@ -1704,7 +1783,7 @@
         let packs = vp ? (vp.pack_quantities || []) : [];
         // Refresh the stepper visual with the new value.
         populatePackSizeStepper($cartPackSizeValue, $cartPackSizePrev, $cartPackSizeNext,
-                                $cartPackSizePickerWrap, packs, newPack);
+                                $cartPackSizePickerWrap, $cartPackSizeStepper, packs, newPack);
         // Placeholder + disable mirror the syncAmountsInputs resolved branch.
         $cartPackagesWrap.toggle(state.pickedPackSize !== null);
         $cartPackages.prop('disabled', state.pickedPackSize === null).val('');
@@ -1777,7 +1856,13 @@
         e.preventDefault();
         $cartPackSizeEditBox.removeClass('d-flex').addClass('d-none');
         $cartPackSizeInput.val('');
-        $cartPackSizeStepper.show();
+        // Restore picker visibility from the current variant. The stepper
+        // +/- stay rendered (just disabled on single-tier) so the
+        // layout matches multi-tier variants exactly; the helper only
+        // needs to put the wrap + stepper span back into view.
+        let vp = selectedVpEntry();
+        applyPackSizePickerVisibility($cartPackSizePickerWrap, $cartPackSizeStepper,
+                                      vp ? (vp.pack_quantities || []) : []);
         $cartPackSizeAdd.show();
     });
     $cartPackSizeInput.on('keydown', function (ev) {
@@ -1811,7 +1896,8 @@
             cartAfterPackChange(qty);
             $cartPackSizeEditBox.removeClass('d-flex').addClass('d-none');
             $cartPackSizeInput.val('');
-            $cartPackSizeStepper.show();
+            // cartAfterPackChange already drove visibility through
+            // populatePackSizeStepper — just reveal the pencil.
             $cartPackSizeAdd.show();
         }).fail(function (xhr, status) {
             setAlert(xhr.responseJSON && xhr.responseJSON.error
@@ -1843,7 +1929,7 @@
         if (!vp) { cancelVariantCommentEdit(); return; }
         let val = $.trim($variantCommentInput.val());
         $.ajax({
-            url: COMPONENTS_PATH + '/purchases/cart//vendor-part-comment.php',
+            url: COMPONENTS_PATH + '/purchases/cart/vendor-part-comment.php',
             method: 'POST',
             data: { vp_id: vp.id, comment: val },
             dataType: 'json'
@@ -1866,6 +1952,80 @@
     $variantCommentInput.on('keydown', function (ev) {
         if (ev.key === 'Enter') { ev.preventDefault(); saveVariantComment(); }
         else if (ev.key === 'Escape') { cancelVariantCommentEdit(); }
+    });
+
+    // Per-row inline edit of the vendor-part comment shown in the cart
+    // sub-line. The pen in cart-row-comment-line opens a tiny editor in
+    // place; Save posts to vendor-part-comment.php (same endpoint the
+    // picker-side edit uses), Cancel re-renders the row.
+    $cartBody.on('click', '.cart-row-comment-edit', function (e) {
+        e.preventDefault();
+        let $btn = $(this);
+        let vpId = parseInt($btn.attr('data-vp-id'), 10);
+        if (!vpId) return;
+        let vp = getVpById(vpId);
+        if (!vp) return;
+        let $line = $btn.closest('.cart-row-comment-line');
+        let cur = vp.private_comment || '';
+        $line.html(
+            '<textarea rows="2" class="form-control form-control-sm cart-row-comment-input" placeholder="Komentarz do pozycji...">' +
+            escapeHtml(cur) +
+            '</textarea>' +
+            '<div class="mt-1">' +
+            '<button type="button" class="btn btn-sm btn-success cart-row-comment-save mr-1" data-vp-id="' + vpId + '" title="Zapisz (Ctrl+Enter)"><i class="bi bi-check-lg"></i> Zapisz</button>' +
+            '<button type="button" class="btn btn-sm btn-outline-secondary cart-row-comment-cancel" title="Anuluj (Esc)">Anuluj</button>' +
+            '</div>'
+        );
+        let $ta = $line.find('textarea').trigger('focus');
+        // Place caret at end so users can extend an existing comment.
+        let v = $ta.val();
+        if (v) { $ta[0].selectionStart = $ta[0].selectionEnd = v.length; }
+    });
+
+    $cartBody.on('click', '.cart-row-comment-cancel', function () {
+        renderCart();
+    });
+
+    $cartBody.on('click', '.cart-row-comment-save', function () {
+        let $btn = $(this);
+        let vpId = parseInt($btn.attr('data-vp-id'), 10);
+        if (!vpId) return;
+        let $line = $btn.closest('.cart-row-comment-line');
+        let val = $.trim($line.find('textarea').val() || '');
+        $btn.prop('disabled', true);
+        let $cancelBtn = $line.find('.cart-row-comment-cancel').prop('disabled', true);
+
+        $.ajax({
+            url: COMPONENTS_PATH + '/purchases/cart/vendor-part-comment.php',
+            method: 'POST',
+            data: { vp_id: vpId, comment: val },
+            dataType: 'json'
+        }).done(function (resp) {
+            if (resp && resp.success) {
+                let vp = getVpById(vpId);
+                if (vp) vp.private_comment = (val === '' ? null : val);
+                renderCart();
+                setAlert('Komentarz zapisany.', 'success');
+            } else {
+                setAlert('Błąd zapisu komentarza: ' + (resp && resp.error ? resp.error : 'nieznany'), 'danger');
+                $btn.prop('disabled', false);
+                $cancelBtn.prop('disabled', false);
+            }
+        }).fail(function () {
+            setAlert('Błąd zapisu komentarza.', 'danger');
+            $btn.prop('disabled', false);
+            $cancelBtn.prop('disabled', false);
+        });
+    });
+
+    $cartBody.on('keydown', '.cart-row-comment-input', function (e) {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            renderCart();
+        } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            $(this).closest('.cart-row-comment-line').find('.cart-row-comment-save').trigger('click');
+        }
     });
 
     // Ilość → Opak.: packages = qty / picked pack size. Marking
@@ -1898,279 +2058,275 @@
 
     // Remove cart item
     $cartBody.on('click', '.remove-item-btn', function () {
-        let idx = parseInt($(this).data('idx'), 10);
-        cart.items.splice(idx, 1);
-        renderCart();
-        loadActiveDocs();
-        saveCart();
-        setAlert('Usunięto pozycję.', 'info');
-    });
-
-    // Open the quick-edit modal pre-filled with the current line values.
-    $cartBody.on('click', '.edit-item-btn', function () {
-        let idx = parseInt($(this).data('idx'), 10);
-        let item = cart.items[idx];
+        const idx = parseInt($(this).data('idx'), 10);
+        const item = cart.items[idx];
         if (!item) return;
-        $editItemHeader.text((item.vendor_name || '') + ' — ' + (item.vendor_part_no || '') +
-            (item.producer_part_no ? ' (prod: ' + item.producer_part_no + ')' : ''));
-        $editItemQty.val(item.quantity || '');
-        $editItemPrice.val(item.unit_price === null || item.unit_price === undefined ? '' : item.unit_price);
-        $editItemCurrency.val(item.currency || 'PLN');
-        // Populate the pack-size picker from the item's pack_quantities
-        // (or fall back to a single-element list of full_pack_quantity
-        // for legacy cart rows that never recorded a list).
-        let packs = Array.isArray(item.pack_quantities) && item.pack_quantities.length > 0
-            ? item.pack_quantities.slice()
-            : (item.full_pack_quantity ? [parseFloat(item.full_pack_quantity)] : []);
-        let pickedPack = parseFloat(item.picked_pack_size);
-        let dv = (!isNaN(pickedPack) && pickedPack > 0) ? pickedPack
-             : (item.full_pack_quantity ? parseFloat(item.full_pack_quantity) : null);
-        let chosen = populatePackSizeStepper($editItemPackSizeValue, $editItemPackSizePrev, $editItemPackSizeNext,
-                                              $editItemPackSizePickerWrap, packs, dv);
-        // Mirror the pick-mode visibility rules: chip group only when
-        // more than one tier, packages-count only when a pack size is
-        // defined. The qty input always shows.
-        $editItemPackSizePickerWrap.toggle(packs.length > 1);
-        let packagesInputWrap = $('#editItemPackagesWrap');
-        packagesInputWrap.toggle(chosen !== null);
-        // Opak. pre-fill: derived from the stored quantity against the
-        // chosen pack size; disabled when there's no usable picked pack.
-        $editItemPackages.prop('disabled', chosen === null).removeClass('packages-uneven');
-        if (chosen !== null) {
-            let pkgs = (parseFloat(item.quantity) || 0) / chosen;
-            $editItemPackages.val(parseFloat(pkgs.toFixed(2)));
-            $editItemPackages.attr('placeholder', formatQty(chosen) + '/opak.');
-            let $lastEd = $editItemQty;   // the modal's stored qty was the source
-            applyEvenWarningEdit($lastEd, parseFloat(item.quantity) || 0, chosen);
-        } else {
-            $editItemPackages.val('').attr('placeholder', 'opak.');
-        }
-        // Local picker-mode mirror so the modal's input handlers see
-        // the chosen pack size via editItemSelectedPackSize().
-        editModalState = {
-            pickedPackSize: chosen,
-            lastDerived: null,
-            lastEdited: null
-        };
-        // Mirror the pick-mode unit text onto the modal's qty input append.
-        syncEditQtyUnit(item);
-        $editItemModal.data('edit-idx', idx);
-        $editItemModal.modal('show');
-    });
-
-    function editItemSelectedPackSize() {
-        return editModalState.pickedPackSize;
-    }
-
-    // Modal two-way sync, mirroring the picker row's Opak.↔Ilość pair,
-    // scaled against the modal's chosen pack size:
-    //   Opak. input → Ilość = packages × chosen pack
-    //   Ilość input → Opak. = quantity / chosen pack
-    // Fractional package counts flag the last-edited field yellow —
-    // non-blocking.
-    function editItemPackagesFromQty() {
-        let pack = editItemSelectedPackSize();
-        let qty = parseFloat($editItemQty.val());
-        if (pack === null || isNaN(qty) || qty < 0) {
-            editModalState.lastDerived = null;
-            editModalState.lastEdited = $editItemQty;
-            applyEvenWarningEdit($editItemQty, NaN, pack);
-            return;
-        }
-        let pkgs = qty / pack;
-        $editItemPackages.val(parseFloat(pkgs.toFixed(2)));
-        editModalState.lastDerived = null;
-        editModalState.lastEdited = $editItemQty;
-        applyEvenWarningEdit($editItemQty, qty, pack);
-    }
-
-    $editItemPackages.on('input', function () {
-        let pack = editItemSelectedPackSize();
-        let pkgs = parseFloat($(this).val());
-        if (pack === null || isNaN(pkgs) || pkgs < 0) {
-            editModalState.lastDerived = null;
-            applyEvenWarningEdit($editItemPackages, NaN, pack);
-            return;
-        }
-        let qty = pkgs * pack;
-        $editItemQty.val(parseFloat(qty.toFixed(6)));
-        editModalState.lastDerived = { packages: pkgs, pack: pack };
-        editModalState.lastEdited = $editItemPackages;
-        applyEvenWarningEdit($editItemPackages, qty, pack);
-    });
-
-    $editItemQty.on('input', editItemPackagesFromQty);
-
-    // Edit-modal stepper: same re-derive-or-re-evaluate logic as the
-    // cart picker's stepper, but against editModalState. The cart's
-    // VENDOR_PARTS_INDEX isn't always populated for cart items that
-    // were added before the migration; we read the packs list from the
-    // currently edited cart item instead.
-    function editModalAfterPackChange(newPack, packs) {
-        if (!isNaN(newPack) && newPack > 0) {
-            editModalState.pickedPackSize = newPack;
-        } else {
-            editModalState.pickedPackSize = null;
-            return;
-        }
-        populatePackSizeStepper($editItemPackSizeValue, $editItemPackSizePrev, $editItemPackSizeNext,
-                                $editItemPackSizePickerWrap, packs, newPack);
-        let editPackagesInputWrap = $('#editItemPackagesWrap');
-        editPackagesInputWrap.toggle(editModalState.pickedPackSize !== null);
-        $editItemPackages.prop('disabled', editModalState.pickedPackSize === null).val('');
-        $editItemPackages.attr('placeholder',
-            editModalState.pickedPackSize !== null ? formatQty(editModalState.pickedPackSize) + '/opak.' : 'opak.');
-        let pkgs = parseFloat($editItemPackages.val());
-        let qty  = parseFloat($editItemQty.val());
-        // Re-derive the OTHER field from the user's source-of-truth
-        // input, decided by editModalState.lastEdited. Same logic as the
-        // cart picker's cartAfterPackChange — pkgs → qty when the user
-        // last typed in pkgs, qty → pkgs when the user last typed in
-        // qty, leave both alone when neither has been touched.
-        if (editModalState.lastEdited === $editItemPackages
-            && !isNaN(pkgs)
-            && editModalState.pickedPackSize !== null) {
-            qty = pkgs * editModalState.pickedPackSize;
-            $editItemQty.val(parseFloat(qty.toFixed(6)));
-            editModalState.lastDerived = { packages: pkgs, pack: editModalState.pickedPackSize };
-        } else if (editModalState.lastEdited === $editItemQty
-            && !isNaN(qty) && qty > 0
-            && editModalState.pickedPackSize !== null) {
-            let newPkgs = qty / editModalState.pickedPackSize;
-            $editItemPackages.val(parseFloat(newPkgs.toFixed(2)));
-            pkgs = newPkgs;
-            editModalState.lastDerived = { packages: pkgs, pack: editModalState.pickedPackSize };
-        }
-        applyEvenWarningEdit(editModalState.lastEdited, qty, editModalState.pickedPackSize);
-    }
-
-    $editItemPackSizePrev.on('click', function () {
-        if (!editModalState.pickedPackSize) return;
-        let idx = $editItemModal.data('edit-idx');
-        if (typeof idx !== 'number') idx = parseInt(idx, 10);
-        let item = cart.items[idx];
-        if (!item) return;
-        let packs = Array.isArray(item.pack_quantities) ? item.pack_quantities : [];
-        editModalAfterPackChange(stepPackSize(packs, editModalState.pickedPackSize, -1), packs);
-    });
-    $editItemPackSizeNext.on('click', function () {
-        if (!editModalState.pickedPackSize) return;
-        let idx = $editItemModal.data('edit-idx');
-        if (typeof idx !== 'number') idx = parseInt(idx, 10);
-        let item = cart.items[idx];
-        if (!item) return;
-        let packs = Array.isArray(item.pack_quantities) ? item.pack_quantities : [];
-        editModalAfterPackChange(stepPackSize(packs, editModalState.pickedPackSize, +1), packs);
-    });
-
-    // Modal inline add-tier — same UX as the cart picker's + icon. The
-    // AJAX update goes through the same endpoint and updates both the
-    // cart item's pack_quantities (so the modal sees it on next open
-    // and the create-doc payload carries it) and VENDOR_PARTS_INDEX
-    // (so the cart picker's catalog view stays fresh).
-    $editItemPackSizeAdd.on('click', function (e) {
-        e.preventDefault();
-        let idx = $editItemModal.data('edit-idx');
-        if (typeof idx !== 'number') idx = parseInt(idx, 10);
-        let item = cart.items[idx];
-        if (!item) return;
-        // Pencil: hide the stepper + pencil, show the inline edit box.
-        $editItemPackSizeStepper.hide();
-        $editItemPackSizeAdd.hide();
-        $editItemPackSizeEditBox.removeClass('d-none').addClass('d-flex');
-        $editItemPackSizeInput.val('').trigger('focus');
-    });
-    $editItemPackSizeCancel.on('click', function (e) {
-        e.preventDefault();
-        $editItemPackSizeEditBox.removeClass('d-flex').addClass('d-none');
-        $editItemPackSizeInput.val('');
-        $editItemPackSizeStepper.show();
-        $editItemPackSizeAdd.show();
-    });
-    $editItemPackSizeInput.on('keydown', function (ev) {
-        if (ev.key === 'Enter') { ev.preventDefault(); $editItemPackSizeSave.trigger('click'); }
-        if (ev.key === 'Escape') { ev.preventDefault(); $editItemPackSizeCancel.trigger('click'); }
-    });
-    $editItemPackSizeSave.on('click', function (e) {
-        e.preventDefault();
-        let idx = $editItemModal.data('edit-idx');
-        if (typeof idx !== 'number') idx = parseInt(idx, 10);
-        let item = cart.items[idx];
-        if (!item || !item.vendor_part_id) return;
-        let raw = $editItemPackSizeInput.val().toString().replace(',', '.').trim();
-        let qty = parseFloat(raw);
-        if (isNaN(qty) || qty <= 0) {
-            setAlert('Wielkość opakowania musi być > 0.', 'warning');
-            return;
-        }
-        let $btn = $(this);
-        $btn.prop('disabled', true);
-        $.ajax({
-            url: COMPONENTS_PATH + '/purchases/cart/vendor-part-pack-add.php',
-            type: 'POST',
-            dataType: 'json',
-            data: { vp_id: item.vendor_part_id, full_pack_quantity: qty }
-        }).done(function (r) {
-            if (!r || !r.success) {
-                setAlert(r && r.error ? r.error : 'Błąd zapisu wielkości opakowania.', 'danger');
-                return;
+        const label = (item.vendor_part_no || 'pozycja') +
+            (item.producer_part_no ? ' (' + item.producer_part_no + ')' : '');
+        cartConfirm({
+            title: 'Usunąć pozycję?',
+            body: '<p>Pozycja <strong>' + escapeHtml(label) + '</strong> zostanie trwale usunięta z koszyka.</p>',
+            okLabel: 'Usuń',
+            okClass: 'btn-danger',
+            onConfirm: function () {
+                cart.items.splice(idx, 1);
+                renderCart();
+                loadActiveDocs();
+                saveCart();
+                setAlert('Usunięto pozycję.', 'info');
             }
-            let newPacks = Array.isArray(r.pack_quantities) ? r.pack_quantities.slice() : [];
-            item.pack_quantities = newPacks;
-            // Mirror into VENDOR_PARTS_INDEX so the picker-row catalog
-            // view stays fresh too.
-            let vp = getVpById(item.vendor_part_id);
-            if (vp) vp.pack_quantities = newPacks;
-            editModalAfterPackChange(qty, newPacks);
-            $editItemPackSizeEditBox.removeClass('d-flex').addClass('d-none');
-            $editItemPackSizeInput.val('');
-            $editItemPackSizeStepper.show();
-            $editItemPackSizeAdd.show();
-        }).fail(function (xhr, status) {
-            setAlert(xhr.responseJSON && xhr.responseJSON.error
-                     ? xhr.responseJSON.error : status, 'danger');
-        }).always(function () {
-            $btn.prop('disabled', false);
         });
     });
 
-    // Save the edited values back into the cart, persist, re-render.
-    $editItemSave.on('click', function () {
-        let idx = $editItemModal.data('edit-idx');
-        if (typeof idx !== 'number') idx = parseInt(idx, 10);
-        let item = cart.items[idx];
-        if (!item) { $editItemModal.modal('hide'); return; }
-        let qty = parseFloat($editItemQty.val());
-        let priceRaw = $editItemPrice.val() === '' ? NaN : parseFloat($editItemPrice.val());
-        let price = (!isNaN(priceRaw) && priceRaw >= 0) ? priceRaw : null;
+    // ---- Inline edit for cart rows (matches /admin/purchase/rfqs/ pattern) ----
+    //
+    // Click pencil → qty / price / uwagi cells swap to inputs, the
+    // Akcje cell shows Save + Cancel only. Esc cancels, Enter (or
+    // Ctrl+Enter in the textarea) saves. Save writes to cart.items[idx]
+    // + localStorage and re-renders. Currency and picked_pack_size are
+    // locked — same shape as RFQ lines (set when the item is added,
+    // editable only by removing and re-adding).
+
+    $cartBody.on('click', '.edit-item-btn', function () {
+        // Belt-and-suspenders: the button is rendered with the disabled
+        // attribute while activeDocsLoaded is false, but a stale click
+        // can still slip through (devtools, race conditions). Guard.
+        if (!cart.activeDocsLoaded) return;
+        const $tr = $(this).closest('tr.cart-item-row');
+        if ($tr.data('cart-editing')) return;
+        const idx = parseInt($tr.attr('data-idx'), 10);
+        const item = cart.items[idx];
+        if (!item) return;
+        $tr.data('cart-editing', true);
+
+        // Stash original cell HTML so Cancel can restore verbatim.
+        $tr.data('orig-qty-html',     $tr.find('td.cart-cell-qty').html());
+        $tr.data('orig-price-html',   $tr.find('td.cart-cell-price').html());
+        $tr.data('orig-value-html',   $tr.find('td.cart-cell-line-total').html());
+        $tr.data('orig-comment-html', $tr.find('td.cart-cell-comment').html());
+        $tr.data('orig-akcje-html',   $tr.find('td.cart-cell-akcje').html());
+        // Stash currency so the live value-cell updater can render the
+        // sub-line during edit (the price input's currency hint shows
+        // the same value, but reading it from a single source avoids
+        // parsing HTML).
+        $tr.data('cart-edit-currency', item.currency || '');
+
+        // Swap qty cell. With-pack lines show the qty input (primary) PLUS
+        // an Opak. input + pack badge underneath, two-way synced —
+        // mirrors the picker's Opak.↔Ilość pair. No-pack lines fall
+        // back to a bare qty input.
+        const unitName = item.unit_name || '';
+        const pickedPack = itemPickedPackSize(item);
+        if (pickedPack !== null && pickedPack > 0) {
+            const currentQty = parseFloat(item.quantity) || 0;
+            const currentPkgs = currentQty / pickedPack;
+            $tr.data('cart-edit-pack', pickedPack);
+            $tr.find('td.cart-cell-qty').empty().append(
+                '<input type="number" step="any" min="0" class="form-control form-control-sm text-right cart-edit-input cart-edit-qty" value="' + escapeHtml(currentQty) + '">' +
+                '<div class="d-flex align-items-center flex-wrap mt-1" style="gap:.25rem">' +
+                    '<input type="number" step="1" min="0" class="form-control form-control-sm text-right cart-edit-input cart-edit-packages" ' +
+                    'style="width:6em" value="' + escapeHtml(parseFloat(currentPkgs.toFixed(2))) + '" ' +
+                    'title="Opak. — qty jest wyliczane jako opak. × wielkość">' +
+                    '<small class="text-muted">opak.</small>' +
+                    '<span class="badge badge-light border text-monospace" title="Wielkość opakowania (stała)">× ' + escapeHtml(formatQty(pickedPack)) + '</span>' +
+                '</div>' +
+                (unitName ? '<div><small class="text-muted">' + escapeHtml(unitName) + '</small></div>' : '')
+            );
+        } else {
+            $tr.find('td.cart-cell-qty').empty().append(
+                '<input type="number" step="any" min="0" class="form-control form-control-sm text-right cart-edit-input cart-edit-qty" value="' + escapeHtml(item.quantity || '') + '">' +
+                (unitName ? '<div><small class="text-muted">' + escapeHtml(unitName) + '</small></div>' : '')
+            );
+        }
+
+        // Swap price cell. Currency / JM sub-line stays as a hint.
+        const priceInputVal = item.unit_price === null || item.unit_price === undefined ? '' : item.unit_price;
+        $tr.find('td.cart-cell-price').empty().append(
+            '<input type="number" step="any" min="0" class="form-control form-control-sm text-right cart-edit-input cart-edit-price" value="' + escapeHtml(priceInputVal) + '">' +
+            '<div><small class="text-muted">' + escapeHtml(item.currency || 'PLN') + '/' + escapeHtml(unitName) + '</small></div>'
+        );
+
+        // Swap comment cell with a textarea.
+        $tr.find('td.cart-cell-comment').empty().append(
+            '<textarea rows="2" class="form-control form-control-sm cart-edit-comment" placeholder="Uwagi do pozycji...">' + escapeHtml(item.line_comment || '') + '</textarea>'
+        );
+
+        // Swap actions cell — Save + Cancel only.
+        $tr.find('td.cart-cell-akcje').html(
+            '<button type="button" class="btn btn-sm btn-success cart-row-save mr-1" title="Zapisz (Enter / Ctrl+Enter)"><i class="bi bi-check-lg"></i></button>' +
+            '<button type="button" class="btn btn-sm btn-outline-secondary cart-row-cancel" title="Anuluj (Esc)"><i class="bi bi-x-lg"></i></button>'
+        );
+
+        $tr.data('cart-edit-idx', idx);
+        // Focus the first numeric input in the row (packages if shown,
+        // otherwise qty).
+        const $firstInput = $tr.find('.cart-edit-packages, .cart-edit-qty').first();
+        $firstInput.trigger('focus').trigger('select');
+    });
+
+    // Cancel → restore original cell HTML, leave edit mode. The value
+    // cell is restored too because the live updater may have rewritten
+    // it during the session — without this the row would show stale
+    // Wartość after Cancel.
+    $cartBody.on('click', '.cart-row-cancel', function () {
+        const $tr = $(this).closest('tr.cart-item-row');
+        if (!$tr.data('cart-editing')) return;
+        $tr.find('td.cart-cell-qty').html($tr.data('orig-qty-html'));
+        $tr.find('td.cart-cell-price').html($tr.data('orig-price-html'));
+        $tr.find('td.cart-cell-line-total').html($tr.data('orig-value-html'));
+        $tr.find('td.cart-cell-comment').html($tr.data('orig-comment-html'));
+        $tr.find('td.cart-cell-akcje').html($tr.data('orig-akcje-html'));
+        $tr.removeData('cart-editing');
+        $tr.removeData(['orig-qty-html', 'orig-price-html', 'orig-value-html', 'orig-comment-html', 'orig-akcje-html', 'cart-edit-idx', 'cart-edit-pack', 'cart-edit-currency']);
+    });
+
+    // Two-way sync between qty input and packages input — mirrors the
+    // picker's Opak.↔Ilość pair. Whichever input was edited gets the
+    // uneven-pack yellow flag; the other clears.
+    function applyPackSync($source, isPackagesSource) {
+        const $tr = $source.closest('tr.cart-item-row');
+        const pack = parseFloat($tr.data('cart-edit-pack'));
+        if (!pack || pack <= 0) return;
+        const raw = ($source.val() || '').toString().replace(',', '.');
+        const val = parseFloat(raw);
+        const $qtyInput     = $tr.find('.cart-edit-qty');
+        const $packagesInput = $tr.find('.cart-edit-packages');
+        if (isNaN(val) || val < 0) {
+            // Source is empty/invalid — leave the other input alone but
+            // clear any stale warning on this one so the user can fix.
+            $source.removeClass('packages-uneven').removeAttr('title');
+            return;
+        }
+        const newQty   = isPackagesSource ? val * pack : val;
+        const newPkgs  = isPackagesSource ? val       : val / pack;
+        // Write to the OTHER input only — never bounce back into the
+        // currently focused one (would steal caret + duplicate digits).
+        if (isPackagesSource) {
+            if (document.activeElement !== $qtyInput[0]) {
+                $qtyInput.val(parseFloat(newQty.toFixed(6)));
+            }
+        } else {
+            if (document.activeElement !== $packagesInput[0]) {
+                $packagesInput.val(parseFloat(newPkgs.toFixed(2)));
+            }
+        }
+        // Apply yellow flag to the source input when the resulting qty
+        // doesn't evenly divide the pack size; clear from the other.
+        const qtyForCheck = isPackagesSource ? newQty : val;
+        const even = Math.abs(qtyForCheck - Math.round(qtyForCheck / pack) * pack) < 1e-9 * pack;
+        if (even) {
+            $source.removeClass('packages-uneven').removeAttr('title');
+        } else {
+            $source.addClass('packages-uneven').attr(
+                'title',
+                'Uwaga: ilość nie odpowiada pełnej liczbie opakowań (wielkość: ' + formatQty(pack) + ')'
+            );
+        }
+        const $other = isPackagesSource ? $qtyInput : $packagesInput;
+        $other.removeClass('packages-uneven').removeAttr('title');
+    }
+
+    // Live-update the Wartość cell (qty × price) as the user edits qty,
+    // price, or packages during inline edit. Reads the current input
+    // values, computes the new line total, and rewrites the cell
+    // content. Shows "—" when qty or price is missing/invalid;
+    // otherwise formatPrice(qty × price) + currency sub-line, matching
+    // the read-mode render and the RFQ pattern.
+    function updateCartLineTotalCell($tr) {
+        const qty = parseFloat(($tr.find('.cart-edit-qty').val() || '').toString().replace(',', '.'));
+        const priceRaw = ($tr.find('.cart-edit-price').val() || '').toString().trim();
+        const price = (priceRaw === '') ? null : parseFloat(priceRaw.replace(',', '.'));
+        const $cell = $tr.find('.cart-cell-line-total');
+        if (isNaN(qty) || qty <= 0 || price === null || isNaN(price)) {
+            $cell.html('<span class="text-muted">—</span>');
+        } else {
+            // The currency sub-line sits on the row's data-* via the
+            // cart item. We pull from the price input's sibling
+            // currency hint in pick mode; here we read it from the
+            // current price cell's currency sub-line so switching
+            // currencies mid-edit would still propagate. Simpler:
+            // stash currency at edit-open time.
+            const currency = $tr.data('cart-edit-currency') || '';
+            $cell.html(
+                escapeHtml(formatPrice(qty * price)) +
+                (currency
+                    ? '<div><small class="text-muted">' + escapeHtml(currency) + '</small></div>'
+                    : '')
+            );
+        }
+    }
+
+    $cartBody.on('input', '.cart-edit-qty',     function () { applyPackSync($(this), false); updateCartLineTotalCell($(this).closest('tr.cart-item-row')); });
+    $cartBody.on('input', '.cart-edit-price',   function () { updateCartLineTotalCell($(this).closest('tr.cart-item-row')); });
+    $cartBody.on('input', '.cart-edit-packages', function () { applyPackSync($(this), true);  updateCartLineTotalCell($(this).closest('tr.cart-item-row')); });
+
+    // Save → write to cart.items[idx], persist, re-render. With-pack
+    // lines read packages × pack_size; no-pack lines read the qty input.
+    $cartBody.on('click', '.cart-row-save', function () {
+        const $tr = $(this).closest('tr.cart-item-row');
+        if (!$tr.data('cart-editing')) return;
+        const idx = parseInt($tr.data('cart-edit-idx'), 10);
+        const item = cart.items[idx];
+        if (!item) return;
+
+        // qty is the source of truth — packages input is a derived
+        // convenience kept in sync via applyPackSync, so by save time
+        // both fields agree (or the user only edited qty).
+        const qtyRaw = ($tr.find('.cart-edit-qty').val() || '').toString().replace(',', '.');
+        const qty    = parseFloat(qtyRaw);
         if (isNaN(qty) || qty <= 0) {
-            setAlert('Ilość musi być większa od zera.', 'warning'); return;
+            setAlert('Ilość musi być > 0.', 'warning');
+            $tr.find('.cart-edit-qty').trigger('focus');
+            return;
         }
-        if (price === null) {
-            setAlert('Cena/Szt. jest wymagana (wprowadź wartość).', 'warning'); return;
+
+        const priceRaw = ($tr.find('.cart-edit-price').val() || '').toString().trim();
+        const price    = (priceRaw === '') ? null : parseFloat(priceRaw.replace(',', '.'));
+        const lineCmt  = ($tr.find('.cart-edit-comment').val() || '').toString();
+
+        if (price !== null && (isNaN(price) || price < 0)) {
+            setAlert('Cena nie może być ujemna.', 'warning');
+            $tr.find('.cart-edit-price').trigger('focus');
+            return;
         }
-        // Persist the modal's chosen pack size — falls back to the line's
-        // previous pick (or the variant's smallest pack) when the user
-        // didn't touch the picker.
-        let picked = editItemSelectedPackSize();
-        if (picked === null) {
-            picked = itemPickedPackSize(item);
-        }
-        item.quantity = qty;
-        item.unit_price = price;
-        item.currency = $editItemCurrency.val() || 'PLN';
-        item.picked_pack_size = picked;
-        $editItemModal.modal('hide');
+
+        // Trim + empty→null for storage.
+        const trimmedCmt = $.trim(lineCmt);
+        item.quantity    = qty;
+        item.unit_price  = price;
+        item.line_comment = trimmedCmt === '' ? null : trimmedCmt;
+        // picked_pack_size + currency stay locked — matches RFQ UX.
+
+        $tr.removeData('cart-editing');
+        $tr.removeData(['orig-qty-html', 'orig-price-html', 'orig-value-html', 'orig-comment-html', 'orig-akcje-html', 'cart-edit-idx', 'cart-edit-pack', 'cart-edit-currency']);
+
         renderCart();
         loadActiveDocs();
         saveCart();
         setAlert('Pozycja zaktualizowana.', 'success');
     });
 
-    // Remove the Enter-key submit binding on the qty/price inputs —
-    // pressing Enter inside a modal input can dismiss the modal via
-    // Bootstrap's default keyhandler; the user clicks the Zapisz button
-    // explicitly.
+    // Keyboard shortcuts: Esc cancels; Enter (in qty/price inputs) saves;
+    // Ctrl+Enter (in the comment textarea) saves — Enter alone in the
+    // textarea still inserts a newline, matching rfqs-edit.js.
+    $cartBody.on('keydown', '.cart-edit-input', function (e) {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            $(this).closest('tr.cart-item-row').find('.cart-row-cancel').trigger('click');
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            $(this).closest('tr.cart-item-row').find('.cart-row-save').trigger('click');
+        }
+    });
+    $cartBody.on('keydown', '.cart-edit-comment', function (e) {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            $(this).closest('tr.cart-item-row').find('.cart-row-cancel').trigger('click');
+        } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            $(this).closest('tr.cart-item-row').find('.cart-row-save').trigger('click');
+        }
+    });
 
     // Select this vendor in the picker so more items can be queued.
     $cartBody.on('click', '.select-vendor-btn', function (e) {
@@ -2207,12 +2363,20 @@
         for (let i = 0; i < cart.items.length; i++) {
             if (parseInt(cart.items[i].vendor_id, 10) === vid) { name = cart.items[i].vendor_name; break; }
         }
-        if (!window.confirm('Usunąć ' + count + ' poz. dostawcy ' + name + ' z koszyka?')) return;
-        cart.items = cart.items.filter(function (i) { return parseInt(i.vendor_id, 10) !== vid; });
-        renderCart();
-        loadActiveDocs();
-        saveCart();
-        setAlert('Usunięto pozycje dostawcy ' + name + '.', 'info');
+        if (!name) name = ('#' + vid);
+        cartConfirm({
+            title: 'Usunąć pozycje dostawcy?',
+            body: '<p>' + count + ' poz. dostawcy <strong>' + escapeHtml(name) + '</strong> zostanie trwale usuniętych z koszyka.</p>',
+            okLabel: 'Usuń ' + count + ' poz.',
+            okClass: 'btn-danger',
+            onConfirm: function () {
+                cart.items = cart.items.filter(function (i) { return parseInt(i.vendor_id, 10) !== vid; });
+                renderCart();
+                loadActiveDocs();
+                saveCart();
+                setAlert('Usunięto pozycje dostawcy ' + name + '.', 'info');
+            }
+        });
     });
 
     // Per-vendor-group create buttons ("Utwórz zapytanie" / "Utwórz zamówienie").
@@ -2221,10 +2385,41 @@
     // new tab (window.open with _blank). The new tab follows the URL the
     // server returned; the original tab keeps showing the remaining cart.
     $cartBody.on('click', '.create-doc-btn', function () {
-        let docType = $(this).data('doc-type');
-        let vid = parseInt($(this).data('vendor-id'), 10) || 0;
+        const docType = $(this).data('doc-type');
+        const $btn = $(this);
+        const vid = parseInt($btn.data('vendor-id'), 10) || 0;
         if (!vid) return;
-        createDocumentFromVendor(docType, vid, $(this));
+        const items = cart.items.filter(function (i) { return parseInt(i.vendor_id, 10) === vid; });
+        if (items.length === 0) return;
+        // Summary the user sees in the confirmation modal — vendor name,
+        // item count, and the running total. unit_price is "Cena/Szt."
+        // (price per piece) and quantity is in pieces, so line value is
+        // simply qty × price — pack size is a display/UX grouping, not
+        // a quantity multiplier (an earlier draft multiplied by pack
+        // size and produced wildly wrong totals). Currency comes from
+        // the first item (mixed currencies within one vendor group are
+        // uncommon but if present the user is best served by knowing
+        // the dominant one).
+        const vendorName = items[0].vendor_name || ('#' + vid);
+        const itemCount = items.length;
+        let totalValue = 0;
+        let currency   = items[0].currency || 'PLN';
+        items.forEach(function (it) {
+            const qty   = parseFloat(it.quantity) || 0;
+            const price = parseFloat(it.unit_price) || 0;
+            totalValue += qty * price;
+        });
+        const isRfq = (docType === 'rfq');
+        cartConfirm({
+            title: isRfq ? 'Utworzyć zapytanie?' : 'Utworzyć zamówienie?',
+            body: '<p>Dostawca: <strong>' + escapeHtml(vendorName) + '</strong></p>' +
+                  '<p>Pozycji: <strong>' + itemCount + '</strong><br>' +
+                  'Łączna wartość: <strong>' + escapeHtml(formatPrice(totalValue)) + ' ' + escapeHtml(currency) + '</strong></p>' +
+                  '<p class="text-muted small mb-0">Dokument zostanie utworzony jako szkic i otwarty w nowej karcie.</p>',
+            okLabel: isRfq ? 'Utwórz zapytanie' : 'Utwórz zamówienie',
+            okClass: 'btn-success',
+            onConfirm: function () { createDocumentFromVendor(docType, vid, $btn); }
+        });
     });
 
     function createDocumentFromVendor(docType, vid, $btn) {
@@ -2247,7 +2442,10 @@
                     unit_price      : i.unit_price,
                     currency        : i.currency || 'PLN',
                     picked_pack_size: i.picked_pack_size !== undefined ? i.picked_pack_size : null,
-                    comment         : ''
+                    // "Uwagi do pozycji" — travels to
+                    // purchase__rfq_item.comment / purchase__order_item.comment.
+                    // Null when blank (server trims empty → null).
+                    comment         : i.line_comment || ''
                 };
             })
         };
@@ -2295,12 +2493,20 @@
     // Clear cart
     $clearBtn.on('click', function () {
         if (cart.items.length === 0) { return; }
-        if (!window.confirm('Wyczyścić koszyk? ' + cart.items.length + ' pozycji zostanie usuniętych.')) { return; }
-        cart.items = [];
-        cart.activeDocs = {};
-        clearSavedCart();
-        renderCart();
-        setAlert('Koszyk wyczyszczony.', 'info');
+        const count = cart.items.length;
+        cartConfirm({
+            title: 'Wyczyścić koszyk?',
+            body: '<p>' + count + ' pozycji zostanie trwale usuniętych z koszyka. Tej operacji nie można cofnąć.</p>',
+            okLabel: 'Wyczyść koszyk',
+            okClass: 'btn-danger',
+            onConfirm: function () {
+                cart.items = [];
+                cart.activeDocs = {};
+                clearSavedCart();
+                renderCart();
+                setAlert('Koszyk wyczyszczony.', 'info');
+            }
+        });
     });
 
     // Initial render — deferred to ready() so it runs AFTER header.js's

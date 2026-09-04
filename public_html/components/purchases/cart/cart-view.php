@@ -166,7 +166,7 @@ $units = $MsaDB->query(
                     <div id="variantInfoRow" class="mt-1" style="display:none">
                         <span id="variantCommentDisplay" class="text-muted small">
                             <i class="bi bi-journal-text"></i>
-                            <strong>Komentarz wewnętrzny:</strong>
+                            <strong>Komentarz artykułu:</strong>
                             <em id="variantCommentText" class="ml-1">Brak komentarza</em>
                             <a href="#" id="variantCommentEdit" class="text-muted ml-1"
                                title="Edytuj komentarz — zapisze się od razu na karcie artykułu"><i class="bi bi-pencil"></i></a>
@@ -196,12 +196,13 @@ $units = $MsaDB->query(
                          adding a new tier on the fly (same pattern as the
                          variant-comment edit): clicking the pencil hides
                          the stepper and shows the input until the user
-                         saves or cancels. The whole wrap is hidden when
-                         the variant has fewer than two tiers. Tight
-                         padding keeps the stepper visually compact. -->
+                         saves or cancels. Label sits inline with the
+                         stepper so single-tier variants (which render the
+                         same layout, just with prev/next disabled) match
+                         multi-tier ones exactly. -->
                     <div id="cartPackSizePickerWrap" class="mt-1" style="display:none">
-                        <small class="text-muted">wielkość opak.:</small>
-                        <div class="mt-1 d-flex align-items-center flex-wrap">
+                        <div class="d-flex align-items-center flex-wrap">
+                            <small class="text-muted mr-2">wielkość opak.:</small>
                             <span id="cartPackSizeStepper" class="btn-group btn-group-sm" role="group" aria-label="Wielkość opakowania">
                                 <button type="button" class="btn btn-outline-secondary" id="cartPackSizePrev" title="Poprzednia wielkość" style="padding:.1rem .45rem">&minus;</button>
                                 <span class="btn btn-outline-secondary disabled" id="cartPackSizeValue" style="min-width:3.5em;padding:.1rem .35rem">&mdash;</span>
@@ -245,6 +246,19 @@ $units = $MsaDB->query(
                         <option value="EUR">EUR</option>
                         <option value="USD">USD</option>
                     </select>
+                </div>
+                <!-- "Uwagi do pozycji" — per-line comment captured at pick
+                     time and travels into purchase__rfq_item.comment /
+                     purchase__order_item.comment. Distinct from the
+                     variant/catalog "Komentarz artykułu" above: this one
+                     is one-shot per cart line, not stored on the article.
+                     Lives next to Cena/Waluta so the user captures it as
+                     part of building the cart line, not only later via
+                     the Edytuj pozycję modal. -->
+                <div class="col-md-7" id="cartLineCommentWrap">
+                    <label for="cartLineComment">Uwagi do pozycji:</label>
+                    <input type="text" id="cartLineComment" class="form-control" maxlength="500"
+                           placeholder="Jednorazowe uwagi — trafią do RFQ / zamówienia">
                 </div>
             </div>
 
@@ -339,74 +353,7 @@ $units = $MsaDB->query(
         </div>
     </div>
 
-    <!-- ===== Quick edit modal for a single cart line ===== -->
-    <div class="modal fade" id="editItemModal" tabindex="-1" role="dialog" aria-hidden="true">
-        <div class="modal-dialog" role="document">
-            <div class="modal-content">
-                <div class="modal-header py-2">
-                    <h5 class="modal-title"><i class="bi bi-pencil"></i> Edytuj pozycję</h5>
-                    <button type="button" class="close" data-dismiss="modal" aria-label="Zamknij"><span>&times;</span></button>
-                </div>
-                <div class="modal-body">
-                    <div id="editItemHeader" class="text-muted small mb-3"></div>
-                    <!-- #editItemPackagesWrap is hidden when no pack size is
-                         defined for the cart item; the picker chip group
-                         lives *inside* the packages wrap (sits below the
-                         input) — same rule as the picker's main row. -->
-                    <div class="form-group mb-3" id="editItemPackagesWrap" style="display:none">
-                        <label for="editItemPackages">Opak.:</label>
-                        <input type="number" id="editItemPackages" class="form-control" min="0" step="1" placeholder="opak."
-                               title="Ilość = N × opak.">
-                        <!-- Modal stepper mirror — same UX as the cart
-                             picker's #cartPackSizePickerWrap: clicking
-                             the pencil hides the stepper and shows the
-                             input until save/cancel. -->
-                        <div id="editItemPackSizePickerWrap" class="mt-2" style="display:none">
-                            <small class="text-muted">wielkość opak.:</small>
-                            <div class="mt-1 d-flex align-items-center flex-wrap">
-                                <span id="editItemPackSizeStepper" class="btn-group btn-group-sm" role="group" aria-label="Wielkość opakowania">
-                                    <button type="button" class="btn btn-outline-secondary" id="editItemPackSizePrev" title="Poprzednia wielkość" style="padding:.1rem .45rem">&minus;</button>
-                                    <span class="btn btn-outline-secondary disabled" id="editItemPackSizeValue" style="min-width:3.5em;padding:.1rem .35rem">&mdash;</span>
-                                    <button type="button" class="btn btn-outline-secondary" id="editItemPackSizeNext" title="Następna wielkość" style="padding:.1rem .45rem">+</button>
-                                </span>
-                                <button type="button" class="btn btn-sm btn-outline-secondary ml-1" id="editItemPackSizeAdd" title="Dodaj nową wielkość opakowania" style="padding:.1rem .4rem"><i class="bi bi-pencil"></i></button>
-                                <span id="editItemPackSizeEditBox" class="d-none align-items-center flex-wrap">
-                                    <input type="number" id="editItemPackSizeInput" class="form-control form-control-sm" style="width:6em" min="0.0001" step="0.0001" placeholder="np. 2500">
-                                    <button type="button" id="editItemPackSizeSave" class="btn btn-sm btn-success ml-1" title="Zapisz" style="padding:.15rem .4rem"><i class="bi bi-check"></i></button>
-                                    <button type="button" id="editItemPackSizeCancel" class="btn btn-sm btn-secondary ml-1" title="Anuluj (Esc)" style="padding:.15rem .4rem"><i class="bi bi-x"></i></button>
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="form-group mb-3">
-                        <label for="editItemQty">Ilość:</label>
-                        <div class="input-group">
-                            <input type="number" id="editItemQty" class="form-control" min="0.0001" step="0.0001">
-                            <div class="input-group-append">
-                                <span class="input-group-text" id="editItemQtyUnit">szt.</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="form-group mb-3">
-                        <label for="editItemPrice">Cena/Szt.:</label>
-                        <input type="number" id="editItemPrice" class="form-control" min="0" step="0.0001" placeholder="cena jednostkowa">
-                    </div>
-                    <div class="form-group mb-3">
-                        <label for="editItemCurrency">Waluta:</label>
-                        <select id="editItemCurrency" class="form-control">
-                            <option value="PLN">PLN</option>
-                            <option value="EUR">EUR</option>
-                            <option value="USD">USD</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="modal-footer py-2">
-                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Anuluj</button>
-                    <button type="button" class="btn btn-success" id="editItemSave">Zapisz</button>
-                </div>
-            </div>
-        </div>
-    </div>
+    
 
     <!-- ===== Help modal: shown when the user clicks "+ Artykuł" ===== -->
     <div class="modal fade" id="addVariantHelpModal" tabindex="-1" role="dialog" aria-hidden="true">
@@ -429,6 +376,28 @@ $units = $MsaDB->query(
                 <div class="modal-footer py-2">
                     <button type="button" class="btn btn-secondary" data-dismiss="modal">Anuluj</button>
                     <button type="button" class="btn btn-primary" id="addVariantHelpContinue">Rozumiem, kontynuuj</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== Reusable confirmation modal =====
+         One Bootstrap modal driven by cartConfirm({title, body, okLabel,
+         okClass, onConfirm}) in cart-view.js. Used for delete-row,
+         delete-vendor-items, create-doc and clear-cart actions so the
+         native window.confirm / no-confirm UX is replaced with a
+         consistent themed dialog. -->
+    <div class="modal fade" id="cartConfirmModal" tabindex="-1" role="dialog" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered" role="document">
+            <div class="modal-content">
+                <div class="modal-header py-2">
+                    <h5 class="modal-title" id="cartConfirmTitle">Potwierdź</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Zamknij"><span>&times;</span></button>
+                </div>
+                <div class="modal-body" id="cartConfirmBody"></div>
+                <div class="modal-footer py-2">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Anuluj</button>
+                    <button type="button" class="btn btn-danger" id="cartConfirmOk">Potwierdź</button>
                 </div>
             </div>
         </div>
