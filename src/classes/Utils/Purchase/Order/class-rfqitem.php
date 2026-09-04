@@ -16,8 +16,11 @@ class RFQItem {
     public ?string $vendorName;
     public ?string $producerName;
     public ?string $partName;
+    public ?string $partDescription;
     public ?string $unitName;
     public ?string $vendorPartNo;
+    public ?string $producerPartNo;
+    public ?string $vendorPartComment;
 
     public function __construct(array $row){        $this->id = (int)$row['id'];
         $this->rfqId = (int)$row['rfqId'];
@@ -33,7 +36,10 @@ class RFQItem {
         $this->vendorName = $row['vendorName'] ?? null;
         $this->producerName = $row['producerName'] ?? null;
         $this->partName = $row['partName'] ?? null;
+        $this->partDescription = $row['partDescription'] ?? null;
         $this->unitName = $row['unitName'] ?? null;
         $this->vendorPartNo = $row['vendorPartNo'] ?? null;
+        $this->producerPartNo = $row['producerPartNo'] ?? null;
+        $this->vendorPartComment = $row['vendorPartComment'] ?? null;
     }
 }

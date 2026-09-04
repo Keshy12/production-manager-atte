@@ -21,9 +21,11 @@ class RFQRepository {
                        r.comment,
                        r.created_at AS createdAt,
                        r.updated_at AS updatedAt,
-                       v.name AS vendorName
+                       v.name AS vendorName,
+                       TRIM(CONCAT(u.name, ' ', u.surname)) AS createdByName
                 FROM `purchase__rfq` r
-                LEFT JOIN `list__vendor` v ON r.vendor_id = v.id";
+                LEFT JOIN `list__vendor` v ON r.vendor_id = v.id
+                LEFT JOIN `user` u        ON r.created_by = u.user_id";
     }
 
     public function getById(int $id): ?RFQ {

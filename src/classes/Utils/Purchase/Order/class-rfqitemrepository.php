@@ -23,8 +23,11 @@ class RFQItemRepository {
                        v.name  AS vendorName,
                        p.name  AS producerName,
                        lp.name AS partName,
+                       lp.description AS partDescription,
                        u.name  AS unitName,
-                       vp.vendor_part_no AS vendorPartNo
+                       vp.vendor_part_no AS vendorPartNo,
+                       vp.producer_part_no AS producerPartNo,
+                       vp.comment AS vendorPartComment
                 FROM `purchase__rfq_item` i
                 LEFT JOIN `list__vendor_part` vp ON i.vendor_part_id   = vp.id
                 LEFT JOIN `list__vendor` v       ON vp.vendor_id       = v.id

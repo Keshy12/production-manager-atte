@@ -11,6 +11,7 @@ class RFQ {
     public ?string $expectedReplyDate;
     public ?string $sentAt;
     public int $createdBy;
+    public ?string $createdByName;
     public ?string $comment;
     public ?string $createdAt;
     public ?string $updatedAt;
@@ -23,6 +24,7 @@ class RFQ {
         $this->expectedReplyDate = $row['expectedReplyDate'] ?? null;
         $this->sentAt = $row['sentAt'] ?? null;
         $this->createdBy = (int)$row['createdBy'];
+        $this->createdByName = $row['createdByName'] ?? null;
         $this->comment = $row['comment'] ?? null;
         $this->createdAt = $row['createdAt'] ?? null;
         $this->updatedAt = $row['updatedAt'] ?? null;
