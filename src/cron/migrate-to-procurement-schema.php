@@ -22,6 +22,13 @@
  *   purchase__order, purchase__order_item,
  *   purchase__order_receipt, purchase__order_receipt_item
  *
+ * Also adds 2 columns to purchase__rfq and purchase__order:
+ *   pdf_generated_at (datetime NULL) — when the PDF was last generated
+ *   pdf_path         (varchar(255) NULL) — relative path to the PDF file
+ * The CREATE TABLE blocks include them for fresh DBs; a separate
+ * idempotent ALTER step (checking information_schema.COLUMNS) backfills
+ * them on databases that already have the tables from a prior run.
+ *
  * Also seeds one row in ref__transfer_group_types (slug='purchase_receipt')
  * required by the goods-receipt flow. Does NOT seed purchase__number_counter
  * — allocateDocumentNumber() handles the missing-row case with
@@ -157,6 +164,8 @@ CREATE TABLE `purchase__rfq` (
   `comment` text DEFAULT NULL,
   `created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `pdf_generated_at` datetime DEFAULT NULL,
+  `pdf_path` varchar(255) DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `idx_rfq_vendor` (`vendor_id`),
   KEY `idx_rfq_state` (`state`),
@@ -202,6 +211,8 @@ CREATE TABLE `purchase__order` (
   `comment` text DEFAULT NULL,
   `created_at` datetime NOT NULL DEFAULT current_timestamp(),
   `updated_at` datetime NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `pdf_generated_at` datetime DEFAULT NULL,
+  `pdf_path` varchar(255) DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `idx_po_vendor` (`vendor_id`),
   KEY `idx_po_state` (`state`),
@@ -295,6 +306,49 @@ foreach ($tables as $name => $ddl) {
     }
 }
 
+// ── Backfill pdf_generated_at + pdf_path on already-migrated databases ─
+// Fresh DBs already received these columns via the CREATE TABLE blocks.
+// Databases that ran this script before this addition need an idempotent
+// ALTER so re-runs pick up the new fields without manual migration.
+$columnAdds = [
+    'purchase__rfq' => [
+        'pdf_generated_at' => "ADD COLUMN `pdf_generated_at` DATETIME DEFAULT NULL AFTER `updated_at`",
+        'pdf_path'         => "ADD COLUMN `pdf_path` VARCHAR(255) DEFAULT NULL AFTER `pdf_generated_at`",
+    ],
+    'purchase__order' => [
+        'pdf_generated_at' => "ADD COLUMN `pdf_generated_at` DATETIME DEFAULT NULL AFTER `updated_at`",
+        'pdf_path'         => "ADD COLUMN `pdf_path` VARCHAR(255) DEFAULT NULL AFTER `pdf_generated_at`",
+    ],
+];
+
+$colExistsStmt = $db->prepare(
+    "SELECT 1
+       FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = ?
+        AND COLUMN_NAME = ?"
+);
+foreach ($columnAdds as $table => $cols) {
+    foreach ($cols as $colName => $addDDL) {
+        $colExistsStmt->execute([$table, $colName]);
+        if ($colExistsStmt->fetchColumn()) {
+            echo "= {$table}.{$colName}: already exists (skipped)\n";
+            $skipped++;
+            continue;
+        }
+        try {
+            $db->exec("ALTER TABLE `{$table}` {$addDDL}");
+            echo "✓ {$table}.{$colName}: added\n";
+            $created++;
+        } catch (\PDOException $e) {
+            fwrite(STDERR, "✗ {$table}.{$colName}: " . $e->getMessage() . "\n");
+            $failed++;
+        }
+    }
+}
+
+echo "\n";
+
 // ── Required seed: transfer-group type used by the goods-receipt flow ─
 // PurchaseActionHandler::createReceipt() looks up this slug to label
 // the transfer group it opens. INSERT IGNORE so re-runs are safe.
@@ -354,7 +408,30 @@ $slugCount = (int) $db->query(
 )->fetchColumn();
 echo "Seed slug 'purchase_receipt': " . ($slugCount === 1 ? 'present ✓' : "MISSING (got {$slugCount}) ✗") . "\n";
 
+// pdf_generated_at + pdf_path on both purchase tables. Fresh DBs get them
+// via CREATE TABLE; already-migrated DBs get them via the ALTER block above.
+$expectedPdfColumns = [
+    'purchase__rfq'   => ['pdf_generated_at', 'pdf_path'],
+    'purchase__order' => ['pdf_generated_at', 'pdf_path'],
+];
+$pdfMissing = [];
+foreach ($expectedPdfColumns as $tbl => $cols) {
+    foreach ($cols as $col) {
+        $colExistsStmt->execute([$tbl, $col]);
+        if (!$colExistsStmt->fetchColumn()) {
+            $pdfMissing[] = "{$tbl}.{$col}";
+        }
+    }
+}
+echo "PDF columns: " . ($pdfMissing
+    ? "MISSING " . implode(', ', $pdfMissing) . " ✗"
+    : "all 4 present ✓") . "\n";
+
 echo "\nDone. Created: {$created}, Skipped: {$skipped}, Failed: {$failed}.\n";
 
-$ok = $failed === 0 && empty($missing) && $fkCount === 22 && $slugCount === 1;
+$ok = $failed === 0
+    && empty($missing)
+    && $fkCount === 22
+    && $slugCount === 1
+    && empty($pdfMissing);
 exit($ok ? 0 : 2);
