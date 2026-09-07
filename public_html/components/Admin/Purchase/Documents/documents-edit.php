@@ -288,7 +288,12 @@ function formatPrice($v) {
                                     </button>
                                 </div>
                             </td>
-                            <td><small class="text-muted"><?= htmlspecialchars($i->producerName ?? '—') ?></small></td>
+                            <td>
+                                <?= htmlspecialchars($i->producerName ?? '—') ?>
+                                <?php if (!empty($i->producerPartNo)): ?>
+                                    <div><small class="text-muted"><?= htmlspecialchars($i->producerPartNo) ?></small></div>
+                                <?php endif; ?>
+                            </td>
                             <td class="text-right doc-cell-qty">
                                 <?= htmlspecialchars(formatQty($i->quantity)) ?>
                                 <?php
