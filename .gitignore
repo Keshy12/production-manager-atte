@@ -9,3 +9,6 @@ composer.phar
 /public_html/components/tests/*.backup
 /.idea
 /src/cron/logs/
+
+# Schema dumps / DB exports — keep out of the repo, generate fresh from MySQL
+*.sql
