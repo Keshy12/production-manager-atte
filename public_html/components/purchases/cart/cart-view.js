@@ -538,6 +538,18 @@
         return docType === 'rfq' ? '⚠' : '📦';
     }
 
+
+    // Build the admin 'documents/edit' URL for an active doc returned
+    // by the cart-active-docs endpoint. JS has no PHP-side BASEURL, so
+    // we anchor on window.location.origin (e.g. http://localhost) and
+    // append ROOT_DIR (the path prefix from header.js, e.g.
+    // '/atte_ms_new') + the admin route. docType: 'rfq' | 'po';
+    // docId: numeric primary key from purchase__rfq.id /
+    // purchase__order.id (exposed in the cart-active-docs payload).
+    function docEditUrl(docType, docId) {
+        return window.location.origin + ROOT_DIR + '/admin/purchase/documents/edit?id=' +
+            encodeURIComponent(docId) + '&type=' + encodeURIComponent(docType);
+    }
     function safeJsonArray(raw) {
         if (!raw) return [];
         try {
@@ -1123,19 +1135,50 @@
             let list = docs[vp.id] || [];
             if (list.length === 0) return;
             total += list.length;
-            html += '<div class="mb-1"><strong>' + escapeHtml(vp.vendor_part_no) + '</strong>' +
-                ' <span class="text-muted">(' + list.length + ')</span>: ';
+            html += '<div class="selection-docs-vp mb-3">' +
+                '<div class="font-weight-bold mb-1">' + escapeHtml(vp.vendor_part_no) +
+                ' <span class="text-muted font-weight-normal">(' + list.length + ')</span>' +
+                '</div>' +
+                '<div class="table-responsive">' +
+                '<table class="table table-sm table-striped mb-0 selection-docs-table">' +
+                '<thead class="thead-light"><tr>' +
+                    '<th class="small text-uppercase text-muted align-middle text-nowrap p-1">Dokument</th>' +
+                    '<th class="small text-uppercase text-muted align-middle text-nowrap p-1">Typ</th>' +
+                    '<th class="small text-uppercase text-muted align-middle text-nowrap p-1">Status</th>' +
+                    '<th class="small text-uppercase text-muted align-middle text-nowrap p-1 text-right">Ilosc</th>' +
+                    '<th class="small text-uppercase text-muted align-middle text-nowrap p-1 text-right">Cena jedn.</th>' +
+                    '<th class="small text-uppercase text-muted align-middle text-nowrap p-1">Termin</th>' +
+                    '<th class="small text-uppercase text-muted align-middle text-nowrap p-1">Akcja</th>' +
+                '</tr></thead><tbody>';
             list.forEach(function (d) {
-                html += '<span class="badge ' + stateBadgeClass(d.state) + ' mr-1" title="' +
-                    stateBadgeLabel(d.state) + ' · ' + formatQty(d.quantity) + ' szt. · ' + formatPrice(d.unit_price) + '">' +
-                    docTypeIcon(d.doc_type) + ' ' + escapeHtml(d.number) + ' · ' + stateBadgeLabel(d.state) +
-                    '</span>';
+                let editUrl = (d.id !== undefined && d.id !== null && d.id !== '') ? docEditUrl(d.doc_type, d.id) : null;
+                let docCell = '<span class="text-monospace">' + docTypeIcon(d.doc_type) + ' ' + (editUrl ? '<a href="' + editUrl + '" target="_blank" rel="noopener" class="text-reset text-decoration-none">' + escapeHtml(d.number) + '</a>' : escapeHtml(d.number)) + '</span>';
+                let typeBadge = '<span class="badge ' + (d.doc_type === 'rfq' ? 'badge-info' : 'badge-secondary') + '">' + (d.doc_type === 'rfq' ? 'RFQ' : 'PO') + '</span>';
+                let stateBadge = '<span class="badge ' + stateBadgeClass(d.state) + '">' + escapeHtml(stateBadgeLabel(d.state)) + '</span>';
+                let pack = (d.picked_pack_size !== null && d.picked_pack_size !== undefined && parseFloat(d.picked_pack_size) > 0) ? parseFloat(d.picked_pack_size) : null;
+                let qtyHtml = '<div>' + escapeHtml(formatQty(d.quantity)) + '</div>';
+                if (pack !== null) { qtyHtml += '<div><span class="badge badge-light border text-monospace" title="Wybrana wielkosc opakowania">opak. ' + escapeHtml(formatQty(pack)) + '</span></div>'; }
+                let priceHtml = (d.unit_price !== null && d.unit_price !== undefined) ? escapeHtml(formatPrice(d.unit_price)) : '<span class="text-muted">\u2014</span>';
+                priceHtml += '<div><small class="text-muted">PLN</small></div>';
+                let dateCell = (d.expected_date && d.expected_date !== '') ? escapeHtml(d.expected_date) : '<span class="text-muted">\u2014</span>';
+                let actionCell = editUrl ? '<a href="' + editUrl + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary" title="Otworz edycje w nowej karcie">Edytuj</a>' : '<span class="text-muted">\u2014</span>';
+                html += '<tr>' +
+                    '<td class="align-middle text-nowrap p-1">' + docCell + '</td>' +
+                    '<td class="align-middle text-nowrap p-1">' + typeBadge + '</td>' +
+                    '<td class="align-middle text-nowrap p-1">' + stateBadge + '</td>' +
+                    '<td class="align-middle text-nowrap p-1 text-right">' + qtyHtml + '</td>' +
+                    '<td class="align-middle text-nowrap p-1 text-right">' + priceHtml + '</td>' +
+                    '<td class="align-middle text-nowrap p-1">' + dateCell + '</td>' +
+                    '<td class="align-middle text-nowrap p-1">' + actionCell + '</td>' +
+                '</tr>';
             });
-            html += '</div>';
+            html += '</tbody></table></div></div>';
         });
-        if (total === 0) {
-            html = '<span class="text-muted">Brak aktywnych dokumentów dla tej pozycji.</span>';
-        }
+        if (total === 0) { html = '<span class="text-muted">Brak aktywnych dokument\u00f3w dla tej pozycji.</span>'; }
+        $selectionDocsContent.html(html);
+        $selectionDocsCard.show();
+        updateSelectionDocsBadge();
+    }
         $selectionDocsContent.html(html);
         $selectionDocsCard.show();
         updateSelectionDocsBadge();

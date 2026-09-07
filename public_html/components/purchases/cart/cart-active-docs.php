@@ -56,7 +56,8 @@ $MsaDB = MsaDB::getInstance();
 // Active RFQs (draft / sent / responded — non-terminal)
 $rfqSql = "
 SELECT pri.vendor_part_id,
-       pr.rfq_number  AS number,
+        pr.id          AS id,
+        pr.rfq_number  AS number,
        pr.state       AS state,
        pri.quantity   AS quantity,
        pri.unit_price AS unit_price,
@@ -75,7 +76,8 @@ $rfqRows = $rfqStmt->fetchAll(\PDO::FETCH_ASSOC);
 // Active POs (draft / sent / confirmed / partially_received — non-terminal)
 $poSql = "
 SELECT poi.vendor_part_id,
-       po.po_number  AS number,
+        po.id         AS id,
+        po.po_number  AS number,
        po.state      AS state,
        poi.quantity  AS quantity,
        poi.unit_price AS unit_price,
@@ -96,6 +98,8 @@ foreach ($rfqRows as $r) {
     $vid = (int)$r['vendor_part_id'];
     $out[$vid][] = [
         'doc_type'        => 'rfq',
+        // purchase__rfq.id -- primary key for deep-link.
+        'id'              => (int)$r['id'],
         'number'          => $r['number'],
         'state'           => $r['state'],
         'quantity'        => (float)$r['quantity'],
@@ -108,6 +112,8 @@ foreach ($poRows as $r) {
     $vid = (int)$r['vendor_part_id'];
     $out[$vid][] = [
         'doc_type'        => 'po',
+        // purchase__order.id -- primary key for deep-link.
+        'id'              => (int)$r['id'],
         'number'          => $r['number'],
         'state'           => $r['state'],
         'quantity'        => (float)$r['quantity'],
