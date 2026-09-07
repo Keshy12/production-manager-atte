@@ -34,13 +34,14 @@ $(function () {
     const DOC_TYPE = (new URLSearchParams(location.search).get('type') || 'rfq');
 
     // Endpoint URLs are stamped on the add wrapper by documents-edit.php
-    // (data-add-url / data-update-url / data-delete-url). Fall back to
-    // the canonical filenames if the wrapper doesn't render.
+    // (data-add-url / data-update-url / data-delete-url / data-merge-url).
+    // Fall back to the canonical filenames if the wrapper doesn't render.
     const ENDPOINT_BASE = '/Admin/Purchase/Documents/';
     const $docWrapper = $('.doc-add-wrapper');
     const ADD_URL    = $docWrapper.length ? ($docWrapper.data('add-url')    || 'document-item-add.php')    : 'document-item-add.php';
     const UPDATE_URL = $docWrapper.length ? ($docWrapper.data('update-url') || 'document-item-update.php') : 'document-item-update.php';
     const DELETE_URL = $docWrapper.length ? ($docWrapper.data('delete-url') || 'document-item-delete.php') : 'document-item-delete.php';
+    const MERGE_URL  = $docWrapper.length ? ($docWrapper.data('merge-url')  || 'document-item-merge.php')  : 'document-item-merge.php';
 
     const $tbody = $('#doc-items-tbody');
     if ($tbody.length === 0) return;
@@ -606,7 +607,6 @@ $(function () {
         vendorId:       parseInt($addWrapper.attr('data-vendor-id'), 10),
         vendorName:     $addWrapper.attr('data-vendor-name') || '',
         docId:          parseInt($addWrapper.attr('data-doc-id'), 10),
-        excludeIds:     JSON.parse($addWrapper.attr('data-existing-vp-ids') || '[]'),
         vpsByPart:      JSON.parse($addWrapper.attr('data-vps-by-part') || '{}'),
         selectedVp:     null,
         pickedPackSize: null,
@@ -806,9 +806,13 @@ $(function () {
     // ---- Cascade: part → VP ----
     // Group VendorParts by producer for the current part — same
     // optgroup pattern as cart (cart-view.js lines ~935–989).
-    // Excludes vendor parts already on this RFQ (same VP can't be
-    // added twice). Auto-selects the only candidate when exactly one
-    // remains after exclusion.
+    // Every VP for the picked part is listed (no client-side
+    // exclusion), so the user can pick a VP that's already on the
+    // document. The server enforces the exact-match conflict check
+    // and surfaces the merge modal when needed; for non-matching
+    // tuples (different price / currency / quantity unit) the new
+    // row simply inserts as a sibling. Auto-selects the only
+    // candidate when exactly one VP exists for the part.
     function refreshDocVendorPartRow(partId) {
         addState.selectedVp     = null;
         addState.pickedPackSize = null;
@@ -835,11 +839,11 @@ $(function () {
         $saveBtn.prop('disabled', true);
 
         const allForPart = addState.vpsByPart[partId] || [];
-        const available = allForPart.filter(function (vp) {
-            return addState.excludeIds.indexOf(vp.id) === -1;
-        });
+        // No more client-side excludeIds filter — every VP for the
+        // picked part is now a candidate. Duplicate VP additions are
+        // handled server-side via the merge modal (see save handler).
 
-        if (available.length === 0) {
+        if (allForPart.length === 0) {
             $vpSelect.empty();
             $vpSelect.prop('disabled', true);
             $vpSelect.selectpicker('refresh');
@@ -852,7 +856,7 @@ $(function () {
         // "= N jm/opak." display) can read it from the DOM if needed.
         const groups = {};
         const order = [];
-        available.forEach(function (vp) {
+        allForPart.forEach(function (vp) {
             const g = vp.producer_name || 'Bez producenta';
             if (!groups[g]) { groups[g] = []; order.push(g); }
             groups[g].push(vp);
@@ -880,7 +884,7 @@ $(function () {
         $vpRow.show();
 
         // If there's exactly one variant, auto-pick it for one-click UX.
-        if (available.length === 1 && firstVp) {
+        if (allForPart.length === 1 && firstVp) {
             $vpSelect.selectpicker('val', String(firstVp.id));
             selectDocVendorPart(firstVp);
         }
@@ -1142,6 +1146,209 @@ $(function () {
         $saveBtn.prop('disabled', true);
         $cancelBtn.prop('disabled', true);
 
+        // The payload is captured once so the "Dodaj mimo to" branch
+        // can re-POST it verbatim with `force_insert: 1`.
+        const addPayload = {
+            type:             DOC_TYPE,
+            doc_id:           addState.docId,
+            vendor_part_id:   addState.selectedVp.id,
+            quantity:         qty,
+            unit_price:       unitPrice === null ? '' : unitPrice,
+            currency:         currency,
+            picked_pack_size: pack === null ? '' : pack,
+            comment:          comment
+        };
+
+        $.ajax({
+            url: COMPONENTS_PATH + ENDPOINT_BASE + ADD_URL,
+            method: 'POST',
+            dataType: 'json',
+            data: addPayload
+        })
+        .done(function (resp) {
+            if (resp && resp.success) {
+                if (typeof setAlert === 'function') { setAlert(resp.message || 'Pozycja dodana.', 'success'); }
+                // Reload whole page so the new row picks up server-side
+                // formatting (qty trailing-zero strip, Wartość calc,
+                // vendor-part-comment sub-line, JM badge).
+                window.location.reload();
+                return;
+            }
+
+            // Merge-conflict path: the server found an exact-match
+            // duplicate row. Show the modal with the three buttons
+            // and stop. The buttons each take a different next-step:
+            //   [Anuluj]           — close, leave form alone (handled
+            //                        by data-dismiss + the modal
+            //                        hidden.bs.modal hook below)
+            //   [Dodaj mimo to]    — re-POST addPayload + force_insert=1
+            //   [Połącz]           — POST to MERGE_URL with
+            //                        existing_item_id + add_qty (qty)
+            if (resp && resp.needs_merge && resp.existing_item && resp.proposed) {
+                populateMergeModal(resp);
+                // Stash the proposed qty on the modal so the [Połącz]
+                // handler can ship it as `add_qty`. The body lines
+                // (priceLine, quantityLine) are rendered from the same
+                // payload by populateMergeModal — re-reading them from
+                // the DOM would risk drift on number formatting.
+                $mergeModal.attr('data-proposed-qty', String(qty));
+                $mergeModal.modal('show');
+                return;
+            }
+
+            $saveBtn.prop('disabled', false);
+            $cancelBtn.prop('disabled', false);
+            if (typeof setAlert === 'function') {
+                setAlert((resp && resp.error) || 'Błąd zapisu.', 'danger');
+            } else {
+                alert((resp && resp.error) || 'Błąd zapisu.');
+            }
+        })
+        .fail(function (xhr, status) {
+            $saveBtn.prop('disabled', false);
+            $cancelBtn.prop('disabled', false);
+            const msg = (xhr && xhr.responseJSON && xhr.responseJSON.error) || status || 'Błąd sieci.';
+            if (typeof setAlert === 'function') { setAlert(msg, 'danger'); }
+            else { alert(msg); }
+        });
+    });
+
+    // ---- Merge modal: helper + button wiring ----
+    // The modal lives in documents-edit.php (id="docMergeModal").
+    // populateMergeModal(resp) fills the body lines + stamps data-*
+    // attrs the [Połącz] handler reads to build its POST.
+    const $mergeModal = $('#docMergeModal');
+
+    function formatMergePrice(p, currency) {
+        if (p === null || p === undefined || p === '') return '—';
+        // Mirror the PHP formatPrice() helper on the read side. No
+        // raw cents — show with up to 4 decimals, strip trailing zeros.
+        return String(+parseFloat(parseFloat(p).toFixed(4)).toString()) + ' ' + (currency || '');
+    }
+
+    function populateMergeModal(resp) {
+        const existing = resp.existing_item || {};
+        const proposed = resp.proposed      || {};
+        const priceText = formatMergePrice(existing.unit_price, existing.currency);
+        // Modal title remains static ("Pozycja już istnieje na dokumencie").
+        $('#docMergeModalPartName').text(existing.vendor_part_no || '—');
+        $('#docMergeModalPriceLine').text('Cena: ' + priceText);
+        $('#docMergeModalQuantityLine').text(
+            'Istniejąca ilość: ' + formatQty(existing.quantity)
+            + '   ·   Proponowana ilość: ' + formatQty(proposed.quantity)
+        );
+        $('#docMergeModalBody').html(
+            'Część <strong>' + escapeHtml(existing.vendor_part_no || '') + '</strong> jest już na tym dokumencie '
+            + 'z tą samą ceną (<strong>' + escapeHtml(String(formatMergePrice(existing.unit_price, existing.currency))) + '/jm</strong>). '
+            + 'Możesz połączyć ilości w jedną pozycję albo dodać nowy wiersz z tą samą ceną.'
+        );
+        // Stash everything on the modal so the button handlers don't
+        // have to chase fields back through DOM nodes.
+        $mergeModal.attr('data-existing-item-id', String(existing.id || ''));
+        $mergeModal.attr('data-existing-qty',     String(existing.quantity || ''));
+        $mergeModal.attr('data-existing-vp-no',   String(existing.vendor_part_no || ''));
+        $mergeModal.attr('data-existing-price',   existing.unit_price === null || existing.unit_price === undefined ? '' : String(existing.unit_price));
+        $mergeModal.attr('data-existing-currency',String(existing.currency || ''));
+    }
+
+    // [Anuluj] is wired via data-dismiss="modal" + the hidden.bs.modal
+    // hook below — re-enabling save+cancel is the only cleanup needed.
+    $mergeModal.on('hidden.bs.modal', function () {
+        // Always re-enable the form buttons — covers every dismissal
+        // path (X, Anuluj, Esc, click-outside). If the user chose
+        // [Połącz] / [Dodaj mimo to], the in-flight AJAX handlers
+        // re-disable as needed and finally reload the page.
+        $saveBtn.prop('disabled', false);
+        $cancelBtn.prop('disabled', false);
+        $('.doc-merge-cancel, .doc-merge-confirm, .doc-merge-force').prop('disabled', false);
+    });
+
+    // [Połącz] — POST to document-item-merge.php to atomically add
+    // the proposed qty to the existing row.
+    $('.doc-merge-confirm').on('click', function () {
+        const $btn = $(this);
+        const $cancelBtnM = $('.doc-merge-cancel');
+        const $forceBtn   = $('.doc-merge-force');
+        if ($btn.prop('disabled')) return;
+        $btn.prop('disabled', true);
+        $cancelBtnM.prop('disabled', true);
+        $forceBtn.prop('disabled', true);
+
+        const existingItemId = parseInt($mergeModal.attr('data-existing-item-id'), 10);
+        const addQty         = parseFloat($mergeModal.attr('data-proposed-qty'));
+        if (!existingItemId || isNaN(addQty) || addQty <= 0) {
+            if (typeof setAlert === 'function') { setAlert('Nieprawidłowe dane połączenia.', 'danger'); }
+            else { alert('Nieprawidłowe dane połączenia.'); }
+            $mergeModal.modal('hide');
+            return;
+        }
+
+        $.ajax({
+            url: COMPONENTS_PATH + ENDPOINT_BASE + MERGE_URL,
+            method: 'POST',
+            dataType: 'json',
+            data: {
+                type:             DOC_TYPE,
+                doc_id:           addState.docId,
+                existing_item_id: existingItemId,
+                add_qty:          addQty
+            }
+        })
+        .done(function (resp) {
+            if (resp && resp.success) {
+                if (typeof setAlert === 'function') { setAlert(resp.message || 'Pozycje połączone.', 'success'); }
+                window.location.reload();
+                return;
+            }
+            if (typeof setAlert === 'function') {
+                setAlert((resp && resp.error) || 'Nie udało się połączyć pozycji.', 'danger');
+            } else {
+                alert((resp && resp.error) || 'Nie udało się połączyć pozycji.');
+            }
+            // Re-enable modal buttons + form buttons so the user can retry.
+            $btn.prop('disabled', false);
+            $cancelBtnM.prop('disabled', false);
+            $forceBtn.prop('disabled', false);
+            $saveBtn.prop('disabled', false);
+            $cancelBtn.prop('disabled', false);
+        })
+        .fail(function (xhr, status) {
+            const msg = (xhr && xhr.responseJSON && xhr.responseJSON.error) || status || 'Błąd sieci.';
+            if (typeof setAlert === 'function') { setAlert('Nie udało się połączyć pozycji: ' + msg, 'danger'); }
+            else { alert('Nie udało się połączyć pozycji: ' + msg); }
+            $btn.prop('disabled', false);
+            $cancelBtnM.prop('disabled', false);
+            $forceBtn.prop('disabled', false);
+            $saveBtn.prop('disabled', false);
+            $cancelBtn.prop('disabled', false);
+        });
+    });
+
+    // [Dodaj mimo to] — re-POST the original add payload to
+    // document-item-add.php with force_insert=1 so the server skips
+    // the merge check and inserts the new row as a sibling.
+    $('.doc-merge-force').on('click', function () {
+        const $btn = $(this);
+        const $cancelBtnM = $('.doc-merge-cancel');
+        const $confirmBtn = $('.doc-merge-confirm');
+        if ($btn.prop('disabled')) return;
+        $btn.prop('disabled', true);
+        $cancelBtnM.prop('disabled', true);
+        $confirmBtn.prop('disabled', true);
+
+        // Rebuild the payload from the current add-card state. We
+        // can't trust the addPayload closure var directly because the
+        // user may have edited the inputs between the merge detection
+        // and the click on this button. (Cheap to re-read — every
+        // input is in addState already.)
+        const qtyRaw   = ($qtyInput.val() || '').toString().replace(',', '.');
+        const qty      = parseFloat(qtyRaw);
+        const priceRaw = ($priceInput.val() || '').toString().trim();
+        const unitPrice = priceRaw === '' ? null : parseFloat(priceRaw.replace(',', '.'));
+        const currency = ($currencyInp.val() || 'PLN').toString().trim() || 'PLN';
+        const pack     = addState.pickedPackSize;
+        const comment  = ($commentInp.val() || '').toString();
+
         $.ajax({
             url: COMPONENTS_PATH + ENDPOINT_BASE + ADD_URL,
             method: 'POST',
@@ -1154,32 +1361,36 @@ $(function () {
                 unit_price:       unitPrice === null ? '' : unitPrice,
                 currency:         currency,
                 picked_pack_size: pack === null ? '' : pack,
-                comment:          comment
+                comment:          comment,
+                force_insert:     1
             }
         })
         .done(function (resp) {
             if (resp && resp.success) {
                 if (typeof setAlert === 'function') { setAlert(resp.message || 'Pozycja dodana.', 'success'); }
-                // Reload whole page so the new row picks up server-side
-                // formatting (qty trailing-zero strip, Wartość calc,
-                // vendor-part-comment sub-line, JM badge).
                 window.location.reload();
-            } else {
-                $saveBtn.prop('disabled', false);
-                $cancelBtn.prop('disabled', false);
-                if (typeof setAlert === 'function') {
-                    setAlert((resp && resp.error) || 'Błąd zapisu.', 'danger');
-                } else {
-                    alert((resp && resp.error) || 'Błąd zapisu.');
-                }
+                return;
             }
-        })
-        .fail(function (xhr, status) {
+            if (typeof setAlert === 'function') {
+                setAlert((resp && resp.error) || 'Nie udało się dodać pozycji.', 'danger');
+            } else {
+                alert((resp && resp.error) || 'Nie udało się dodać pozycji.');
+            }
+            $btn.prop('disabled', false);
+            $cancelBtnM.prop('disabled', false);
+            $confirmBtn.prop('disabled', false);
             $saveBtn.prop('disabled', false);
             $cancelBtn.prop('disabled', false);
+        })
+        .fail(function (xhr, status) {
             const msg = (xhr && xhr.responseJSON && xhr.responseJSON.error) || status || 'Błąd sieci.';
-            if (typeof setAlert === 'function') { setAlert(msg, 'danger'); }
-            else { alert(msg); }
+            if (typeof setAlert === 'function') { setAlert('Nie udało się dodać pozycji: ' + msg, 'danger'); }
+            else { alert('Nie udało się dodać pozycji: ' + msg); }
+            $btn.prop('disabled', false);
+            $cancelBtnM.prop('disabled', false);
+            $confirmBtn.prop('disabled', false);
+            $saveBtn.prop('disabled', false);
+            $cancelBtn.prop('disabled', false);
         });
     });
 

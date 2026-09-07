@@ -367,14 +367,6 @@ function formatPrice($v) {
 
     <?php if ($allowedEdit): ?>
     <?php
-        // Pre-compute vendor_part_ids already on this document so the
-        // cascade picker can hide them.
-        $existingVpIds = [];
-        foreach ($items as $existingItem) {
-            $existingVpIds[] = (int)$existingItem->vendorPartId;
-        }
-        $existingVpIdsJson = htmlspecialchars(json_encode(array_values(array_unique($existingVpIds))), ENT_QUOTES, 'UTF-8');
-
         // ---- Cascade picker data ----
         // Parts: only active parts that have at least one active
         // VendorPart for this document's vendor. Mirrors rfqs-edit.php.
@@ -452,11 +444,11 @@ function formatPrice($v) {
          data-doc-id="<?= (int)$doc->id ?>"
          data-vendor-id="<?= (int)$doc->vendorId ?>"
          data-vendor-name="<?= htmlspecialchars($doc->vendorName ?? '', ENT_QUOTES, 'UTF-8') ?>"
-         data-existing-vp-ids="<?= $existingVpIdsJson ?>"
          data-vps-by-part="<?= $vpsByPartJson ?>"
          data-add-url="document-item-add.php"
          data-update-url="document-item-update.php"
-         data-delete-url="document-item-delete.php">
+         data-delete-url="document-item-delete.php"
+         data-merge-url="document-item-merge.php">
         <div class="text-center mb-3">
             <button type="button" class="btn btn-outline-primary btn-sm doc-add-toggle" title="Dodaj pozycję">
                 <i class="bi bi-plus-circle"></i> Dodaj pozycję
@@ -588,6 +580,53 @@ function formatPrice($v) {
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-dismiss="modal">Anuluj</button>
                 <button type="button" class="btn btn-danger" id="docItemDeleteConfirm">Usuń</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!--
+    Merge-conflict confirmation modal. Shown when the "Dodaj pozycję"
+    save POST finds an exact-match duplicate row on the doc
+    (same vendor_part_id / currency / quantity_unit_id / unit_price).
+    Three buttons, all dispatched from documents-edit.js:
+      [Anuluj]           — close the modal, leave the form alone
+      [Dodaj mimo to]    — re-POST the add payload with force_insert=1
+      [Połącz]           — POST to document-item-merge.php to atomically
+                           add the proposed qty to the existing row
+    Placeholders are filled by the populateMergeModal(resp) JS helper;
+    see documents-edit.js.
+-->
+<div class="modal fade" id="docMergeModal" tabindex="-1" role="dialog" aria-labelledby="docMergeModalTitle" aria-hidden="true"
+     data-existing-item-id=""
+     data-existing-qty=""
+     data-existing-vp-no=""
+     data-existing-price=""
+     data-existing-currency=""
+     data-proposed-qty="">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="docMergeModalTitle">Pozycja już istnieje na dokumencie</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p id="docMergeModalBody" class="mb-2"></p>
+                <div class="border rounded p-2 mb-2 small">
+                    <div class="font-weight-bold" id="docMergeModalPartName">—</div>
+                    <div class="text-muted" id="docMergeModalPriceLine"></div>
+                    <div class="text-muted" id="docMergeModalQuantityLine"></div>
+                </div>
+                <p class="text-muted small mb-0">
+                    Połączenie sumuje ilości w jedną pozycję. Dodanie mimo to tworzy osobny wiersz z tą samą ceną.
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary doc-merge-cancel" data-dismiss="modal">Anuluj</button>
+                <button type="button" class="btn btn-warning doc-merge-force">Dodaj mimo to</button>
+                <button type="button" class="btn btn-primary doc-merge-confirm">Połącz</button>
             </div>
         </div>
     </div>

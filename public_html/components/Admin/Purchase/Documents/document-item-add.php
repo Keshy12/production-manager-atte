@@ -30,8 +30,9 @@
  *   comment          = string         (optional, blank → NULL)
  *
  * Response:
- *   {success: true, item_id: int, message: 'Pozycja dodana.'}   on save
- *   {success: false, error: '...'}                             on validation/server error
+ *   {success: true,  item_id: int, message: 'Pozycja dodana.'}                          on save
+ *   {success: false, needs_merge: true, existing_item: {...}, proposed: {...}}         on exact-match duplicate (the JS shows a merge modal in this case; force_insert=1 in the POST bypasses this)
+ *   {success: false, error: '...'}                                                    on validation/server error
  */
 use Atte\DB\MsaDB;
 use Atte\Utils\Purchase\Order\PurchaseActionHandler;
@@ -140,6 +141,70 @@ $unitId = (int)$vp['vendor_jm_id'];
 if ($unitId <= 0) {
     echo json_encode(['success' => false, 'error' => 'Artykuł nie ma przypisanej jednostki miary.']);
     exit;
+}
+
+// ── force_insert: skip the merge-detection check and insert directly ─
+// The client sends `force_insert=1` when the user clicks "Dodaj mimo to"
+// in the merge modal — the merge-conflict warning has been acknowledged,
+// the new row lands as a sibling of the existing one. Truthy = non-empty
+// string (jQuery's $.ajax form-encodes the integer '1' as a string).
+$forceInsert = (isset($_POST['force_insert']) && (string)$_POST['force_insert'] !== '' && (string)$_POST['force_insert'] !== '0');
+
+$itemTable = $type === 'po' ? 'purchase__order_item' : 'purchase__rfq_item';
+$docFkCol  = $type === 'po' ? 'po_id'                : 'rfq_id';
+
+// ── Merge detection ─────────────────────────────────────────────────
+// Look for an existing row on the same doc with the same
+// (vendor_part_id, currency, quantity_unit_id, unit_price) tuple.
+// `unit_price <=> ?` is NULL-safe equality so RFQ rows with a NULL
+// unit price match a proposal whose unit price is also NULL; PO rows
+// never carry NULL (default 0.0), so the same operator still produces
+// the expected equality for the numeric case. The picker lets users
+// re-add a VP at a different price/currency; this check only blocks
+// the exact-match duplicates that the old `excludeIds` filter used
+// to hide.
+if (!$forceInsert) {
+    $matchStmt = $MsaDB->db->prepare(
+        "SELECT i.id, i.vendor_part_id, i.unit_price, i.currency, i.quantity,
+                vp.vendor_part_no
+           FROM `{$itemTable}` i
+           JOIN `list__vendor_part` vp ON vp.id = i.vendor_part_id
+          WHERE i.{$docFkCol} = ?
+            AND i.vendor_part_id = ?
+            AND i.currency = ?
+            AND i.quantity_unit_id = ?
+            AND i.unit_price <=> ?
+          LIMIT 1"
+    );
+    $matchStmt->execute([$docId, $vpId, $currency, $unitId, $unitPrice]);
+    $match = $matchStmt->fetch(\PDO::FETCH_ASSOC);
+    if ($match) {
+        // Surface the conflict to the client — JS opens the merge
+        // modal with three buttons (Anuluj / Dodaj mimo to / Połącz).
+        // No write happened, so no transaction is open.
+        $existingItem = [
+            'id'              => (int)$match['id'],
+            'vendor_part_id'  => (int)$match['vendor_part_id'],
+            'vendor_part_no'  => (string)($match['vendor_part_no'] ?? ''),
+            'unit_price'      => $match['unit_price'] === null ? null : (float)$match['unit_price'],
+            'currency'        => (string)$match['currency'],
+            'quantity'        => (float)$match['quantity'],
+        ];
+        $proposed = [
+            'quantity'        => $qty,
+            'unit_price'      => $unitPrice,
+            'currency'        => $currency,
+            'vendor_part_id'  => $vpId,
+            'vendor_part_no'  => (string)($vp['vendor_part_no'] ?? ''),
+        ];
+        echo json_encode([
+            'success'       => false,
+            'needs_merge'   => true,
+            'existing_item' => $existingItem,
+            'proposed'      => $proposed,
+        ]);
+        exit;
+    }
 }
 
 // ── Insert via the right repo ───────────────────────────────────────
