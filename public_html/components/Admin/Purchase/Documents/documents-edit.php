@@ -215,7 +215,7 @@ function formatPrice($v) {
                             <th>Część</th>
                             <th>Producent</th>
                             <th class="text-right">Ilość</th>
-                            <th class="text-right">Cena / JM</th>
+                            <th class="text-right">Cena</th>
                             <th>Waluta</th>
                             <th class="text-right">Wartość</th>
                             <?php if ($type === 'po'): ?>
@@ -288,7 +288,7 @@ function formatPrice($v) {
                                     </button>
                                 </div>
                             </td>
-                            <td><?= htmlspecialchars($i->producerName ?? '—') ?></td>
+                            <td><small class="text-muted"><?= htmlspecialchars($i->producerName ?? '—') ?></small></td>
                             <td class="text-right doc-cell-qty">
                                 <?= htmlspecialchars(formatQty($i->quantity)) ?>
                                 <?php
