@@ -64,3 +64,16 @@
     background-color: rgba(23,162,184,.03);
     padding-left: .75rem;
 }
+
+
+/* Active-docs table: BS4 utilities (mb-0, thead-light, small,
+   text-uppercase, text-muted, align-middle, text-nowrap, p-1,
+   text-monospace, text-reset, text-decoration-none) are applied on
+   rendered cells in cart-view.js. The badge-link hover/focus rule
+   below has no BS4 equivalent (filter:brightness + box-shadow ring). */
+.cart-active-doc-badges .badge-link { transition: filter .12s ease, box-shadow .12s ease; }
+.cart-active-doc-badges .badge-link:hover,
+.cart-active-doc-badges .badge-link:focus {
+    text-decoration: none; filter: brightness(0.92);
+    box-shadow: 0 0 0 .15rem rgba(0,0,0,.08); outline: none;
+}
