@@ -1281,18 +1281,49 @@
                 let docs = cart.activeDocs[item.vendor_part_id] || [];
                 let docBadges = '';
                 if (!cart.activeDocsLoaded) {
-                    // While the first AJAX fetch is in flight, show a
-                    // muted placeholder so the user knows the cell will
-                    // populate shortly. The badge group never lands in
-                    // a "frozen" empty state.
-                    docBadges = '<small class="text-muted"><i class="bi bi-hourglass-split"></i> ładowanie…</small>';
+                    docBadges = '<small class="text-muted"><i class="bi bi-hourglass-split"></i> ladowanie\u2026</small>';
+                } else if (docs.length === 0) {
+                    docBadges = '<span class="text-muted">\u2014</span>';
                 } else {
+                    let inner = '';
                     docs.forEach(function (d) {
-                        docBadges += '<span class="badge ' + stateBadgeClass(d.state) + ' mr-1" title="' +
-                            stateBadgeLabel(d.state) + ' · ' + formatQty(d.quantity) + ' · ' + formatPrice(d.unit_price) + '">' +
-                            docTypeIcon(d.doc_type) + ' ' + escapeHtml(d.number) + ' · ' + stateBadgeLabel(d.state) +
-                            '</span>';
+                        let cls   = 'badge ' + stateBadgeClass(d.state);
+                        let title = stateBadgeLabel(d.state) + ' \u00b7 ' + formatQty(d.quantity) + ' \u00b7 ' + formatPrice(d.unit_price);
+                        let label = docTypeIcon(d.doc_type) + ' ' + escapeHtml(d.number) + ' \u00b7 ' + escapeHtml(stateBadgeLabel(d.state));
+                        if (d.id !== undefined && d.id !== null && d.id !== '') {
+                            inner += '<a class="' + cls + ' badge-link text-decoration-none mb-1" href="' + docEditUrl(d.doc_type, d.id) + '" target="_blank" rel="noopener" title="' + escapeHtml(title) + '">' + label + '</a>';
+                        } else {
+                            inner += '<span class="' + cls + ' mb-1" title="' + escapeHtml(title) + '">' + label + '</span>';
+                        }
                     });
+                    docBadges = '<div class="cart-active-doc-badges d-flex flex-column align-items-start">' + inner + '</div>';
+                }
+                let vn = item.vendor_part_no || '';
+                let pn = item.producer_part_no || '';
+                let partCell = escapeHtml(item.part_name);
+                if (vn && pn && vn === pn) {
+                    partCell += '<div><small class="text-muted">Nr dost./prod.: <span class="font-weight-bold">' + escapeHtml(vn) + '</span></small></div>';
+                } else {
+                    if (vn) partCell += '<div><small class="text-muted">Nr dost.: <span class="font-weight-bold">' + escapeHtml(vn) + '</span></small></div>';
+                    if (pn) partCell += '<div><small class="text-muted">Nr prod.: <span class="font-weight-bold">' + escapeHtml(pn) + '</span></small></div>';
+                }
+                if (item.description) { partCell += '<div><small class="text-muted">' + escapeHtml(item.description) + '</small></div>'; }
+                let vpLive = getVpById(item.vendor_part_id);
+                let liveCmt = vpLive ? (vpLive.private_comment || '') : '';
+                partCell += '<div class="cart-row-comment-line"><small class="text-muted"><i class="bi bi-journal-text"></i> Uwagi do artykulu: ' + (liveCmt ? escapeHtml(liveCmt) : '<em>Brak</em>') + '</small> <button type="button" class="btn btn-link btn-sm p-0 ml-1 cart-row-comment-edit" data-vp-id="' + item.vendor_part_id + '" title="' + (liveCmt ? 'Edytuj komentarz' : 'Dodaj komentarz') + '"><i class="bi bi-pencil"></i></button></div>';
+                let qtyCell = formatQty(item.quantity);
+                let pickedPack = itemPickedPackSize(item);
+                if (item.full_pack_quantity && item.full_pack_quantity > 0) {
+                    let pkgs = item.quantity / item.full_pack_quantity;
+                    let evenPkgs = Math.abs(pkgs - Math.round(pkgs)) < 1e-9;
+                    qtyCell += '<div><small class="' + (evenPkgs ? 'text-muted' : 'text-warning') + '">' + parseFloat(pkgs.toFixed(2)) + ' opak.</small>';
+                    if (pickedPack !== null) { qtyCell += '<span class="badge badge-light border text-monospace ml-1" title="Wybrana wielkosc opakowania">opak. ' + formatQty(pickedPack) + '</span>'; }
+                    qtyCell += '</div>';
+                } else if (pickedPack !== null) {
+                    qtyCell += '<div><span class="badge badge-light border text-monospace ml-1" title="Wybrana wielkosc opakowania">opak. ' + formatQty(pickedPack) + '</span></div>';
+                }
+                html += '<tr class="cart-item-row" data-idx="' + x.idx + '"><td>' + partCell + '</td><td class="cart-cell-qty">' + qtyCell + '</td><td class="cart-cell-price">' + (item.unit_price === null || item.unit_price === undefined ? '<span class="text-muted">\u2014</span>' : formatPrice(item.unit_price) + '<div><small class="text-muted">' + escapeHtml(item.currency) + '/' + escapeHtml(item.unit_name) + '</small></div>') + '</td><td class="cart-cell-line-total">' + (item.unit_price === null || item.unit_price === undefined ? '<span class="text-muted">\u2014</span>' : formatPrice(item.unit_price * item.quantity) + (item.currency ? '<div><small class="text-muted">' + escapeHtml(item.currency) + '</small></div>' : '')) + '</td><td style="white-space: nowrap; min-width: 120px;">' + docBadges + '</td><td class="cart-cell-comment cart-row-line-comment-cell">' + (item.line_comment ? nl2brSafe(escapeHtml(item.line_comment)) : '<span class="text-muted">\u2014</span>') + '</td><td class="cart-cell-akcze" style="white-space: nowrap;"><button type="button" class="btn btn-sm btn-outline-primary edit-item-btn mr-1" data-idx="' + x.idx + '"' + (cart.activeDocsLoaded ? '' : ' disabled') + ' title="' + (cart.activeDocsLoaded ? 'Edytuj ilo\u015b\u0107 / cen\u0119 / uwagi' : '\u0141adowanie aktywnych dokument\u00f3w\u2026') + '"><i class="bi bi-pencil"></i></button><button type="button" class="btn btn-sm btn-danger remove-item-btn" data-idx="' + x.idx + '" title="Usu\u0144 pozycj\u0119"><i class="bi bi-trash"></i></button></td></tr>';
+            });
                     if (!docBadges) {
                         docBadges = '<span class="text-muted">—</span>';
                     }
