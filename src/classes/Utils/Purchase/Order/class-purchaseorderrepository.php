@@ -25,10 +25,12 @@ class PurchaseOrderRepository {
                        o.created_at AS createdAt,
                        o.updated_at AS updatedAt,
                        v.name AS vendorName,
-                       rfq.rfq_number AS convertedFromRfqNumber
+                       rfq.rfq_number AS convertedFromRfqNumber,
+                       TRIM(CONCAT(u.name, ' ', u.surname)) AS createdByName
                 FROM `purchase__order` o
-                LEFT JOIN `list__vendor` v ON o.vendor_id = v.id
-                LEFT JOIN `purchase__rfq` rfq ON o.converted_from_rfq_id = rfq.id";
+                LEFT JOIN `list__vendor`  v   ON o.vendor_id            = v.id
+                LEFT JOIN `purchase__rfq` rfq ON o.converted_from_rfq_id = rfq.id
+                LEFT JOIN `user`          u   ON o.created_by            = u.user_id";
     }
 
     public function getById(int $id): ?PurchaseOrder {

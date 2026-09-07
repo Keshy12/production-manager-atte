@@ -14,6 +14,7 @@ class PurchaseOrder {
     public ?string $sentAt;
     public ?string $confirmedAt;
     public int $createdBy;
+    public ?string $createdByName;
     public ?string $comment;
     public ?string $createdAt;
     public ?string $updatedAt;
@@ -31,6 +32,7 @@ class PurchaseOrder {
         $this->sentAt = $row['sentAt'] ?? null;
         $this->confirmedAt = $row['confirmedAt'] ?? null;
         $this->createdBy = (int)$row['createdBy'];
+        $this->createdByName = isset($row['createdByName']) && $row['createdByName'] !== '' ? $row['createdByName'] : null;
         $this->comment = $row['comment'] ?? null;
         $this->createdAt = $row['createdAt'] ?? null;
         $this->updatedAt = $row['updatedAt'] ?? null;
