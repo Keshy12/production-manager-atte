@@ -181,24 +181,6 @@ switch ($request) {
         includeWithVariables($headerDir, array('title' => 'Artykuł u dostawcy'));
         require $componentsDir . '/Admin/Purchase/VendorParts/edit/vendor-part-edit-view.php';
         break;
-    case 'admin/purchase/rfqs/edit':
-        // Legacy alias from the pre-merge era. 301 to the canonical
-        // URL with type=rfq appended. Any other query params are
-        // forwarded as-is. Bookmarks + email links auto-update.
-        $qs = $_GET;
-        $qs['type'] = 'rfq';
-        header('Location: http://' . BASEURL . '/admin/purchase/documents/edit?' . http_build_query($qs), true, 301);
-        exit;
-        break;
-    case 'admin/purchase/orders/edit':
-        // Legacy alias from the pre-merge era. 301 to the canonical
-        // URL with type=po appended. Any other query params are
-        // forwarded as-is. Bookmarks + email links auto-update.
-        $qs = $_GET;
-        $qs['type'] = 'po';
-        header('Location: http://' . BASEURL . '/admin/purchase/documents/edit?' . http_build_query($qs), true, 301);
-        exit;
-        break;
     case 'admin/purchase/documents/edit':
         requireAdmin();
         includeWithVariables($headerDir, array('title' => 'Edycja dokumentu'));
