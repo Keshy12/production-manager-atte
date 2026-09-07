@@ -181,21 +181,26 @@ switch ($request) {
         includeWithVariables($headerDir, array('title' => 'Artykuł u dostawcy'));
         require $componentsDir . '/Admin/Purchase/VendorParts/edit/vendor-part-edit-view.php';
         break;
-    case 'admin/purchase/documents/edit':
-    case 'admin/purchase/orders/edit':
     case 'admin/purchase/rfqs/edit':
-        // Merged RFQ + PO edit page (Phase 2 / Phase 3 / Phase 4 of the
-        // edit-page merge). The legacy /rfqs/edit and /orders/edit URLs
-        // are kept as fall-through aliases so existing bookmarks +
-        // cart-create-document.php links still work. The new URL takes
-        // ?type=rfq|po in the query string; the legacy aliases set it
-        // here based on which route was hit.
+        // Legacy alias from the pre-merge era. 301 to the canonical
+        // URL with type=rfq appended. Any other query params are
+        // forwarded as-is. Bookmarks + email links auto-update.
+        $qs = $_GET;
+        $qs['type'] = 'rfq';
+        header('Location: http://' . BASEURL . '/admin/purchase/documents/edit?' . http_build_query($qs), true, 301);
+        exit;
+        break;
+    case 'admin/purchase/orders/edit':
+        // Legacy alias from the pre-merge era. 301 to the canonical
+        // URL with type=po appended. Any other query params are
+        // forwarded as-is. Bookmarks + email links auto-update.
+        $qs = $_GET;
+        $qs['type'] = 'po';
+        header('Location: http://' . BASEURL . '/admin/purchase/documents/edit?' . http_build_query($qs), true, 301);
+        exit;
+        break;
+    case 'admin/purchase/documents/edit':
         requireAdmin();
-        if ($request === 'admin/purchase/orders/edit') {
-            $_GET['type'] = 'po';
-        } elseif ($request === 'admin/purchase/rfqs/edit') {
-            $_GET['type'] = 'rfq';
-        }
         includeWithVariables($headerDir, array('title' => 'Edycja dokumentu'));
         require $componentsDir . '/Admin/Purchase/Documents/documents-edit.php';
         break;
