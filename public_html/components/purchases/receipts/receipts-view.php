@@ -89,7 +89,7 @@ include('table-row-template.php');
                                         <td><?= htmlspecialchars($r->documentNumber ?? '—') ?></td>
                                         <td>
                                             <?php if ($r->poNumber): ?>
-                                                <a href="http://<?= BASEURL ?>/admin/purchase/orders/edit?id=<?= $r->poId ?>"
+                                                <a href="http://<?= BASEURL ?>/admin/purchase/documents/edit?id=<?= $r->poId ?>&amp;type=po"
                                                    onclick="event.stopPropagation();">
                                                     <?= htmlspecialchars($r->poNumber) ?>
                                                 </a>

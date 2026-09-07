@@ -24,7 +24,7 @@
  *     success:  true,
  *     doc_type: 'rfq'|'po',
  *     doc_id:   int,
- *     edit_url: '/admin/purchase/orders/edit?id=N' or '/admin/purchase/rfqs/edit?id=N',
+ *     edit_url: '/admin/purchase/documents/edit?id=N&type=rfq|po',
  *     used_vendor_part_ids: [int, ...]   // mirror of input item vendor_part_ids, for the cart to remove
  *     message: string
  *   }
@@ -167,9 +167,7 @@ try {
     exit;
 }
 
-$editUrl = 'http://' . BASEURL . '/' . (($type === 'po')
-    ? 'admin/purchase/orders/edit'
-    : 'admin/purchase/rfqs/edit') . '?id=' . $docId;
+$editUrl = 'http://' . BASEURL . '/admin/purchase/documents/edit?id=' . $docId . '&type=' . $type;
 
 echo json_encode([
     'success'              => true,

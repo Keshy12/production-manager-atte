@@ -2308,7 +2308,7 @@ $cartQty.val('');
 
     // Keyboard shortcuts: Esc cancels; Enter (in qty/price inputs) saves;
     // Ctrl+Enter (in the comment textarea) saves — Enter alone in the
-    // textarea still inserts a newline, matching rfqs-edit.js.
+    // textarea still inserts a newline, matching documents-edit.js.
     $cartBody.on('keydown', '.cart-edit-input', function (e) {
         if (e.key === 'Escape') {
             e.preventDefault();

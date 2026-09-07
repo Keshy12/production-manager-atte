@@ -2,8 +2,8 @@
 /**
  * AJAX: LIKE-search over VendorParts scoped to ONE vendor (the RFQ's
  * vendor). Used by the "Dodaj pozycję" picker on
- * /admin/purchase/rfqs/edit so the admin can only pick parts that
- * belong to this RFQ's vendor.
+ * /admin/purchase/documents/edit?type=rfq so the admin can only pick
+ * parts that belong to this RFQ's vendor.
  *
  * POST params:
  *   vendor_id   (int)    — required, > 0

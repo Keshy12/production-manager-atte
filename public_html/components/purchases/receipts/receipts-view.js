@@ -44,7 +44,7 @@ $(document).ready(function() {
                   + '<div class="col-md-3"><strong>Numer dokumentu:</strong><br>' + esc(rc.documentNumber || '—') + '</div>'
                   + '<div class="col-md-3"><strong>Zamówienie:</strong><br>'
                   +   (rc.poNumber
-                          ? '<a href="http://' + ROOT_DIR + '/admin/purchase/orders/edit?id=' + rc.poId + '">'
+                          ? '<a href="http://' + ROOT_DIR + '/admin/purchase/documents/edit?id=' + rc.poId + '&type=po">'
                             + esc(rc.poNumber) + '</a>'
                           : '#' + rc.poId)
                   + '</div>'

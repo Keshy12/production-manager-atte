@@ -3,7 +3,7 @@
  * Dedicated edit/create page for a single vendor-part.
  *
  * Wired at /admin/purchase/vendor-parts/edit (mirrors the
- * orders-edit.php / rfqs-edit.php convention; see also the
+ * documents-edit.php convention; see also the
  * producers/edit dual-mode page). Renders the form on GET and lets
  * vendor-part-edit-save.php handle the POST submission.
  *
