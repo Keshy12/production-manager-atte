@@ -2333,6 +2333,19 @@ $cartQty.val('');
         e.preventDefault();
         let vid = parseInt($(this).data('vendor-id'), 10) || null;
         if (!vid) return;
+        // When a Part is selected beforehand, applyPartFilter() has hidden
+        // every vendor that doesn't supply it. If the clicked vendor isn't
+        // in that filtered set, $vendorSelect.val(vid) silently fails and
+        // the picker displays the wrong text (or stays empty). Reset the
+        // cascading state first so the target vendor is reachable, then
+        // run the normal selection flow.
+        $partSelect.val('');
+        refreshSelectpicker($partSelect);
+        $vendorPartNoSelect.val('');
+        refreshSelectpicker($vendorPartNoSelect);
+        state.pickedPackSize = null;
+        $vendorSelect.find('option').prop('hidden', false);
+        refreshSelectpicker($vendorSelect);
         $vendorSelect.val(vid);
         refreshSelectpicker($vendorSelect);
         applyVendorFilter();       // scope parts to this vendor
