@@ -172,6 +172,51 @@ class PurchaseActionHandler {
         );
     }
 
+    /**
+     * States in which a document (RFQ or PO) accepts new items, edits
+     * to existing items, and deletions. Terminal states (cancelled,
+     * converted for RFQ; cancelled, partially_received, received for
+     * PO) reject all item-level mutations.
+     *
+     * Single source of truth for the state guard — the edit page, the
+     * AJAX endpoints, and any future state-transition UI all branch on
+     * this. Adding a new state means one place to update.
+     *
+     *   RFQ: editable until converted (the conversion to PO is the last
+     *        write; once converted, no further edits).
+     *   PO:  editable until confirmed — partial / full receipts freeze
+     *        the line items so receipt history stays consistent. (See
+     *        document-item-update.php for the quantity_received floor
+     *        check on edits while partially_received.)
+     */
+    public static function allowedEditStates(string $type): array {
+        switch ($type) {
+            case 'rfq': return ['draft', 'sent', 'responded'];
+            case 'po':  return ['draft', 'sent', 'confirmed'];
+            default:
+                throw new \InvalidArgumentException(
+                    "type must be 'rfq' or 'po', got: {$type}"
+                );
+        }
+    }
+
+    /**
+     * Returns the item repository for the given document type. Lets
+     * callers (cart-create-document.php, the AJAX endpoints) stay
+     * agnostic of which class backs each table — the type stays in
+     * one place instead of leaking into every caller.
+     */
+    public function itemRepository(string $type) {
+        switch ($type) {
+            case 'rfq': return new RFQItemRepository($this->MsaDB);
+            case 'po':  return new PurchaseOrderItemRepository($this->MsaDB);
+            default:
+                throw new \InvalidArgumentException(
+                    "type must be 'rfq' or 'po', got: {$type}"
+                );
+        }
+    }
+
     public function computeLastKnownPrice(int $vendorPartId, ?string $currency = null): ?float {
         $MsaDB = $this->MsaDB;
         try {
