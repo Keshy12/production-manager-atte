@@ -148,7 +148,7 @@ $(function () {
 
         // Swap comment cell with a textarea.
         $tr.find('td.doc-cell-comment').empty().append(
-            '<textarea rows="2" class="form-control form-control-sm doc-edit-comment" placeholder="Komentarz do pozycji...">' + escapeHtml(comment) + '</textarea>'
+            '<textarea rows="2" class="form-control form-control-sm doc-edit-comment" placeholder="Komentarz pozycji...">' + escapeHtml(comment) + '</textarea>'
         );
 
         // Swap actions cell — show only Save + Cancel while editing.
@@ -508,7 +508,7 @@ $(function () {
         const cur = $tr.attr('data-vp-comment') || '';
         const $line = $btn.closest('.doc-row-vp-comment-line');
         $line.html(
-            '<textarea rows="2" class="form-control form-control-sm doc-row-vp-comment-input" placeholder="Komentarz do pozycji...">' +
+            '<textarea rows="2" class="form-control form-control-sm doc-row-vp-comment-input" placeholder="Uwagi do artykułu...">' +
             escapeHtml(cur) +
             '</textarea>' +
             '<div class="mt-1">' +

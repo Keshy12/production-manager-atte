@@ -1,4 +1,4 @@
-// Koszyk — cascading vendor/part pickers plus a search modal that land
+﻿// Koszyk — cascading vendor/part pickers plus a search modal that land
 // items in a shared cart grouped by vendor (client-side state).
 //
 // Flow:
@@ -1269,7 +1269,7 @@
                 if (item.description) {
                     partCell += '<div><small class="text-muted">' + escapeHtml(item.description) + '</small></div>';
                 }
-                // Variant-level "Komentarz artykułu" — read live so pen-edits show
+                // Variant-level "Uwagi do artykułu" — read live so pen-edits show
                 // up in cart rows immediately. Pen icon swaps the line
                 // into an inline editor.
                 let vpLive = getVpById(item.vendor_part_id);
@@ -1318,7 +1318,7 @@
                                   : '')) +
                     '</td>' +
                     '<td style="white-space: nowrap;">' + docBadges + '</td>' +
-                    // Uwagi do pozycji — its own column (sits before Akcje).
+                    // Komentarz pozycji — its own column (sits before Akcje).
                     // Travels to purchase__rfq_item.comment /
                     // purchase__order_item.comment. Editable inline like
                     // the RFQ pattern (qty/price/uwagi). nl2br so
@@ -1411,7 +1411,7 @@
                 quantity          : qty,
                 unit_price        : unitPrice,
                 currency          : currency,
-                // "Uwagi do pozycji" — captured from the picker at add
+                // "Komentarz pozycji" — captured from the picker at add
                 // time; travels to purchase__rfq_item.comment /
                 // purchase__order_item.comment. Trimmed + blank→null so
                 // empty entries don't waste TEXT storage.
@@ -1422,7 +1422,7 @@
         // Reset qty + price, clear the part picker (vendor stays selected
         // so the user can queue the next part from the same vendor).
         // Currency stays sticky — usually several items in a row share it.
-        // Uwagi do pozycji is per-line, so it resets too — a comment
+        // Komentarz pozycji is per-line, so it resets too — a comment
         // captured for the previous line shouldn't leak onto the next.
 $cartQty.val('');
             $cartPrice.val('');
@@ -1968,7 +1968,7 @@ $cartQty.val('');
         let $line = $btn.closest('.cart-row-comment-line');
         let cur = vp.private_comment || '';
         $line.html(
-            '<textarea rows="2" class="form-control form-control-sm cart-row-comment-input" placeholder="Komentarz do pozycji...">' +
+            '<textarea rows="2" class="form-control form-control-sm cart-row-comment-input" placeholder="Uwagi do artykułu...">' +
             escapeHtml(cur) +
             '</textarea>' +
             '<div class="mt-1">' +
@@ -2148,7 +2148,7 @@ $cartQty.val('');
 
         // Swap comment cell with a textarea.
         $tr.find('td.cart-cell-comment').empty().append(
-            '<textarea rows="2" class="form-control form-control-sm cart-edit-comment" placeholder="Uwagi do pozycji...">' + escapeHtml(item.line_comment || '') + '</textarea>'
+            '<textarea rows="2" class="form-control form-control-sm cart-edit-comment" placeholder="Komentarz pozycji...">' + escapeHtml(item.line_comment || '') + '</textarea>'
         );
 
         // Swap actions cell — Save + Cancel only.
@@ -2442,7 +2442,7 @@ $cartQty.val('');
                     unit_price      : i.unit_price,
                     currency        : i.currency || 'PLN',
                     picked_pack_size: i.picked_pack_size !== undefined ? i.picked_pack_size : null,
-                    // "Uwagi do pozycji" — travels to
+                    // "Komentarz pozycji" — travels to
                     // purchase__rfq_item.comment / purchase__order_item.comment.
                     // Null when blank (server trims empty → null).
                     comment         : i.line_comment || ''

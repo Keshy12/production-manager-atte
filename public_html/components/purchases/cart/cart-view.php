@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 use Atte\DB\MsaDB;
 
 if(!isset($_SESSION['isAdmin']) || $_SESSION['isAdmin'] !== true) {
@@ -166,7 +166,7 @@ $units = $MsaDB->query(
                     <div id="variantInfoRow" class="mt-1" style="display:none">
                         <span id="variantCommentDisplay" class="text-muted small">
                             <i class="bi bi-journal-text"></i>
-                            <strong>Komentarz artykułu:</strong>
+                            <strong>Uwagi do artykułu:</strong>
                             <em id="variantCommentText" class="ml-1">Brak komentarza</em>
                             <a href="#" id="variantCommentEdit" class="text-muted ml-1"
                                title="Edytuj komentarz — zapisze się od razu na karcie artykułu"><i class="bi bi-pencil"></i></a>
@@ -247,16 +247,16 @@ $units = $MsaDB->query(
                         <option value="USD">USD</option>
                     </select>
                 </div>
-                <!-- "Uwagi do pozycji" — per-line comment captured at pick
+                <!-- "Komentarz pozycji" — per-line comment captured at pick
                      time and travels into purchase__rfq_item.comment /
                      purchase__order_item.comment. Distinct from the
-                     variant/catalog "Komentarz artykułu" above: this one
+                     variant/catalog "Uwagi do artykułu" above: this one
                      is one-shot per cart line, not stored on the article.
                      Lives next to Cena/Waluta so the user captures it as
                      part of building the cart line, not only later via
                      the Edytuj pozycję modal. -->
                 <div class="col-md-7" id="cartLineCommentWrap">
-                    <label for="cartLineComment">Uwagi do pozycji:</label>
+                    <label for="cartLineComment">Komentarz pozycji:</label>
                     <input type="text" id="cartLineComment" class="form-control" maxlength="500"
                            placeholder="Jednorazowe uwagi — trafią do RFQ / zamówienia">
                 </div>

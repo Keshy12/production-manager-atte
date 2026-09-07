@@ -221,7 +221,7 @@ function formatPrice($v) {
                             <?php if ($type === 'po'): ?>
                                 <th class="text-right">Odebrane</th>
                             <?php endif; ?>
-                            <th>Artykuł</th>
+                            <th>Komentarz pozycji:</th>
                             <?php if ($allowedEdit): ?>
                                 <th class="text-right">Akcje</th>
                             <?php endif; ?>
