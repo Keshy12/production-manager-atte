@@ -433,4 +433,4 @@ $units = $MsaDB->query(
 <script>
     const VENDOR_PARTS_INDEX = <?= json_encode($vendorPartsIndex, JSON_UNESCAPED_UNICODE) ?>;
 </script>
-<script src="<?= asset('public_html/components/purchases/cart/cart-view.js') ?>"></script>
+<script src="<?= asset('public_html/components/purchases/cart/cart-view.js') ?>&v=<?= @filemtime(ROOT_DIRECTORY . '/public_html/components/purchases/cart/cart-view.js') ?>"></script>
