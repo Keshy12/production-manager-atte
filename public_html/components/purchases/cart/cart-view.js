@@ -1227,7 +1227,7 @@
                     '<th>Cena</th>' +
                     '<th>Wartość</th>' +
                     '<th>Aktywne dok.</th>' +
-                    '<th>Uwagi</th>' +
+                    '<th>Komentarz pozycji:</th>' +
                     '<th>Akcje</th>' +
                 '</tr>' +
                 '</thead><tbody>';
@@ -1276,7 +1276,7 @@
                 let liveCmt = vpLive ? (vpLive.private_comment || '') : '';
                 partCell += '<div class="cart-row-comment-line">' +
                     '<small class="text-muted">' +
-                    '<i class="bi bi-journal-text"></i> Komentarz: ' +
+                    '<i class="bi bi-journal-text"></i> Uwagi do artykułu: ' +
                     (liveCmt ? escapeHtml(liveCmt) : '<em>Brak</em>') +
                     '</small> ' +
                     '<button type="button" class="btn btn-link btn-sm p-0 ml-1 cart-row-comment-edit" ' +
