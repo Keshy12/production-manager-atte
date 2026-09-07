@@ -16,9 +16,12 @@ class PurchaseOrderItem {
     public ?string $comment;
     public ?string $vendorName;
     public ?string $producerName;
+    public ?string $producerPartNo;
     public ?string $partName;
+    public ?string $partDescription;
     public ?string $unitName;
     public ?string $vendorPartNo;
+    public ?string $vendorPartComment;
 
     public function __construct(array $row){        $this->id = (int)$row['id'];
         $this->poId = (int)$row['poId'];
@@ -34,8 +37,11 @@ class PurchaseOrderItem {
         $this->comment = $row['comment'] ?? null;
         $this->vendorName = $row['vendorName'] ?? null;
         $this->producerName = $row['producerName'] ?? null;
+        $this->producerPartNo = $row['producerPartNo'] ?? null;
         $this->partName = $row['partName'] ?? null;
+        $this->partDescription = $row['partDescription'] ?? null;
         $this->unitName = $row['unitName'] ?? null;
         $this->vendorPartNo = $row['vendorPartNo'] ?? null;
+        $this->vendorPartComment = $row['vendorPartComment'] ?? null;
     }
 }

@@ -213,24 +213,32 @@ function formatPrice($v) {
                     <thead class="thead-light">
                         <tr>
                             <th>Część</th>
-                            <th>Nr u dostawcy</th>
+                            <th>Producent</th>
                             <th class="text-right">Ilość</th>
-                            <th>JM</th>
-                            <th class="text-right">Cena / szt</th>
+                            <th class="text-right">Cena / JM</th>
                             <th>Waluta</th>
                             <th class="text-right">Wartość</th>
                             <?php if ($type === 'po'): ?>
                                 <th class="text-right">Odebrane</th>
                             <?php endif; ?>
-                            <th>Komentarz</th>
+                            <th>Artykuł</th>
                             <?php if ($allowedEdit): ?>
                                 <th class="text-right">Akcje</th>
                             <?php endif; ?>
                         </tr>
                     </thead>
-                    <tbody id="doc-items-tbody">
+                    <?php
+                        // Column count for the empty-state row (and for
+                        // the JS append-empty-row fallback after delete).
+                        // RFQ: 8 with edit, 7 without. PO: 9 with edit,
+                        // 8 without (extra Odebrane column).
+                        $colspan = $type === 'po'
+                            ? ($allowedEdit ? 9 : 8)
+                            : ($allowedEdit ? 8 : 7);
+                    ?>
+                    <tbody id="doc-items-tbody" data-colspan="<?= $colspan ?>">
                     <?php if (empty($items)): ?>
-                        <tr><td colspan="<?= $type === 'po' ? ($allowedEdit ? 10 : 9) : ($allowedEdit ? 9 : 8) ?>" class="text-center text-muted">Brak pozycji.</td></tr>
+                        <tr><td colspan="<?= $colspan ?>" class="text-center text-muted">Brak pozycji.</td></tr>
                     <?php else: foreach ($items as $i): ?>
                         <tr data-doc-item-id="<?= (int)$i->id ?>"
                             data-vendor-part-id="<?= (int)$i->vendorPartId ?>"
@@ -271,16 +279,16 @@ function formatPrice($v) {
                                 <?php $vpCmt = $i->vendorPartComment ?? ''; ?>
                                 <div class="doc-row-vp-comment-line">
                                     <small class="text-muted">
-                                        <i class="bi bi-journal-text"></i> Komentarz: <?= $vpCmt !== '' ? htmlspecialchars($vpCmt) : '<em>Brak</em>' ?>
+                                        <i class="bi bi-journal-text"></i> Uwagi do artykułu: <?= $vpCmt !== '' ? htmlspecialchars($vpCmt) : '<em>Brak</em>' ?>
                                     </small>
                                     <button type="button" class="btn btn-link btn-sm p-0 ml-1 doc-row-vp-comment-edit"
                                             data-vp-id="<?= (int)$i->vendorPartId ?>"
-                                            title="<?= $vpCmt !== '' ? 'Edytuj komentarz' : 'Dodaj komentarz' ?>">
+                                            title="<?= $vpCmt !== '' ? 'Edytuj uwagi' : 'Dodaj uwagi' ?>">
                                         <i class="bi bi-pencil"></i>
                                     </button>
                                 </div>
                             </td>
-                            <td><?= htmlspecialchars($i->vendorPartNo ?? '—') ?></td>
+                            <td><?= htmlspecialchars($i->producerName ?? '—') ?></td>
                             <td class="text-right doc-cell-qty">
                                 <?= htmlspecialchars(formatQty($i->quantity)) ?>
                                 <?php
@@ -308,7 +316,6 @@ function formatPrice($v) {
                                     <div><small class="text-muted"><?= htmlspecialchars($i->unitName) ?></small></div>
                                 <?php endif; ?>
                             </td>
-                            <td><?= htmlspecialchars($i->unitName ?? '—') ?></td>
                             <td class="text-right doc-cell-price">
                                 <?php if ($i->unitPrice !== null): ?>
                                     <?= htmlspecialchars(formatPrice($i->unitPrice)) ?>

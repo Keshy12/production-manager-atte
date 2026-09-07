@@ -452,7 +452,7 @@ $(function () {
                 $(this).remove();
                 // If the table just went empty, swap in the empty-state row.
                 if ($tbody.find('tr').length === 0) {
-                    $tbody.append('<tr><td colspan="7" class="text-center text-muted">Brak pozycji.</td></tr>');
+                    $tbody.append('<tr><td colspan="' + ($tbody.data('colspan') || 7) + '" class="text-center text-muted">Brak pozycji.</td></tr>');
                 }
             });
             $('#docItemDeleteModal').modal('hide');
