@@ -789,7 +789,12 @@
 
         $cartQty.prop('disabled', !resolved);
         $cartPrice.prop('disabled', !resolved);
-        $cartCurrency.prop('disabled', !resolved);
+        // Waluta stays enabled when the variant is unresolved — the cart
+        // JS pre-selects the vendor's default currency on vendor change,
+        // and the operator may want to override it before a variant is
+        // picked. The whole #cartPriceRow is hidden until `resolved`
+        // anyway, so the field is invisible-but-editable in that state.
+        $cartCurrency.prop('disabled', false);
 
         if (!resolved) {
             $cartQty.val('');
@@ -1583,6 +1588,17 @@ $cartQty.val('');
         applyVendorFilter();
         refreshVendorPartRow();
         loadSelectionDocs();
+        // Pre-select the vendor's default currency so the next picked
+        // line auto-fills with the right code. Server-renders each
+        // vendor option with `data-default-currency="<code>"` (joined
+        // from list__vendor.default_currency → list__currency.code).
+        // User can still override per-line after this.
+        const $opt = $vendorSelect.find('option:selected');
+        const defCur = ($opt.attr('data-default-currency') || 'PLN').toString();
+        try {
+            $cartCurrency.selectpicker('val', defCur);
+            refreshSelectpicker($cartCurrency);
+        } catch (e) { /* unknown code → silent no-op */ }
     });
 
     $partSelect.on('change', function () {

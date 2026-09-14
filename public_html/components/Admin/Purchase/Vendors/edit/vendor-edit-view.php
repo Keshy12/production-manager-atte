@@ -12,6 +12,8 @@
  *
  * Vendor form fields (mirror list__vendor):
  *   - name (required), address, additional_data, lead_time_days,
+ *     default_currency (FK → list__currency.id; the form sends the
+ *     3-letter ISO code which the repository resolves to the id),
  *     comment, isActive radio.
  *
  * In EDIT mode the page also renders:
@@ -31,6 +33,7 @@ use Atte\DB\MsaDB;
 use Atte\Utils\Purchase\Master\VendorRepository;
 use Atte\Utils\Purchase\Master\VendorSupplierRepository;
 use Atte\Utils\Purchase\Master\VendorPartRepository;
+use Atte\Utils\Purchase\Master\CurrencyRepository;
 
 if (!isset($_SESSION['isAdmin']) || $_SESSION['isAdmin'] !== true) {
     header("Location: http://" . BASEURL . "/");
@@ -40,15 +43,16 @@ if (!isset($_SESSION['isAdmin']) || $_SESSION['isAdmin'] !== true) {
 $id = (int)($_GET['id'] ?? 0);
 $isEditMode = $id > 0;
 $vendor = null;
-$vendorName           = '';
-$vendorAddress        = '';
-$vendorAdditionalData = '';
-$vendorLeadTimeDays   = '';
-$vendorComment        = '';
-$vendorIsActive       = true;   // default: Aktywny (only meaningful in create mode)
-$suppliers            = [];     // supplier rows for inline CRUD
-$vendorPartCount      = 0;      // for the edit-mode hint
-$vendorParts          = [];     // read-only VP list (active + inactive)
+$vendorName             = '';
+$vendorAddress          = '';
+$vendorAdditionalData   = '';
+$vendorLeadTimeDays     = '';
+$vendorDefaultCurrency  = 'PLN';
+$vendorComment          = '';
+$vendorIsActive         = true;   // default: Aktywny (only meaningful in create mode)
+$suppliers              = [];     // supplier rows for inline CRUD
+$vendorPartCount        = 0;      // for the edit-mode hint
+$vendorParts            = [];     // read-only VP list (active + inactive)
 
 if ($isEditMode) {
     $MsaDB = MsaDB::getInstance();
@@ -62,13 +66,16 @@ if ($isEditMode) {
            . '</div>';
         return;
     }
-    $vendorName           = $vendor->name;
-    $vendorAddress        = $vendor->address        ?? '';
-    $vendorAdditionalData = $vendor->additionalData ?? '';
-    $vendorLeadTimeDays   = $vendor->leadTimeDays   ?? '';
-    $vendorComment        = $vendor->comment        ?? '';
-    $vendorIsActive       = $vendor->isActive;
-    $vendorPartCount      = $repo->countVendorParts($id);
+    $vendorName             = $vendor->name;
+    $vendorAddress          = $vendor->address          ?? '';
+    $vendorAdditionalData   = $vendor->additionalData   ?? '';
+    $vendorLeadTimeDays     = $vendor->leadTimeDays     ?? '';
+    // Prefer the joined code (string); fall back to 'PLN' if the JOIN
+    // somehow missed (e.g. the FK points at an inactive currency row).
+    $vendorDefaultCurrency  = $vendor->defaultCurrencyCode ?: 'PLN';
+    $vendorComment          = $vendor->comment          ?? '';
+    $vendorIsActive         = $vendor->isActive;
+    $vendorPartCount        = $repo->countVendorParts($id);
 
     // Inline supplier CRUD — fetch all suppliers (active + inactive)
     // and hydrate them as JS-readable JSON so the edit-page JS can
@@ -81,6 +88,16 @@ if ($isEditMode) {
     $vpRepo     = new VendorPartRepository($MsaDB);
     $vendorParts = $vpRepo->getByVendor($id, false);
 }
+
+// Currency dropdown — always loaded so CREATE mode also offers the
+// canonical list. getActiveEnsuring() brings back a stale/inactive
+// vendor currency into view rather than rendering a blank select.
+// $MsaDB must exist; in edit mode it's set above; in create mode we
+// instantiate it now (cheap singleton).
+if (!isset($MsaDB)) {
+    $MsaDB = MsaDB::getInstance();
+}
+$currencies = (new CurrencyRepository($MsaDB))->getActiveEnsuring($vendorDefaultCurrency);
 
 $backUrl = 'http://' . BASEURL . '/admin/purchase/vendors';
 
@@ -207,6 +224,34 @@ function vr_render_packs(array $packs): string {
                         <input type="number" id="vr_edit_lead_time" name="lead_time_days"
                                class="form-control" min="0" step="1"
                                value="<?= htmlspecialchars((string)$vendorLeadTimeDays, ENT_QUOTES) ?>">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group col-md-4">
+                        <label for="vr_edit_currency">Domyślna waluta:</label>
+                        <div id="vrCurrencyCell">
+                            <select id="vr_edit_currency" name="default_currency"
+                                    class="selectpicker form-control"
+                                    data-width="100%"
+                                    data-container="#vrCurrencyCell"
+                                    data-live-search="true"
+                                    title="Wybierz walutę…">
+                                <?php foreach ($currencies as $cur):
+                                    $code = (string)$cur['code'];
+                                    $name = (string)$cur['name'];
+                                    $isSelected = ($code === $vendorDefaultCurrency);
+                                ?>
+                                    <option value="<?= htmlspecialchars($code, ENT_QUOTES) ?>"
+                                            <?= $isSelected ? 'selected' : '' ?>>
+                                        <?= htmlspecialchars($code, ENT_QUOTES) ?> — <?= htmlspecialchars($name, ENT_QUOTES) ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <small class="form-text text-muted">
+                            Domyślna waluta dla nowych zamówień u tego dostawcy.
+                        </small>
                     </div>
                 </div>
 

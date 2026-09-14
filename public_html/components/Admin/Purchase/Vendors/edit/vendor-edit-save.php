@@ -45,13 +45,14 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 // --- Read & sanitise inputs --------------------------------------------
-$id             = (int)($_POST['id']             ?? 0);
-$name           = trim((string)($_POST['name']   ?? ''));
-$address        = $_POST['address']              ?? null;
-$additionalData = $_POST['additional_data']      ?? null;
-$leadTimeDays   = $_POST['lead_time_days']       ?? null;
-$comment        = $_POST['comment']              ?? null;
-$isActiveRaw    = $_POST['isActive']             ?? null;
+$id               = (int)($_POST['id']                 ?? 0);
+$name             = trim((string)($_POST['name']       ?? ''));
+$address          = $_POST['address']                  ?? null;
+$additionalData   = $_POST['additional_data']          ?? null;
+$leadTimeDays     = $_POST['lead_time_days']           ?? null;
+$defaultCurrency  = $_POST['default_currency']         ?? null;
+$comment          = $_POST['comment']                  ?? null;
+$isActiveRaw      = $_POST['isActive']                 ?? null;
 
 // Trim + null-ify the optional string fields.
 foreach (['address' => &$address, 'additional_data' => &$additionalData, 'comment' => &$comment] as $k => &$v) {
@@ -73,6 +74,23 @@ if ($leadTimeDays !== null && $leadTimeDays !== '') {
     $leadTimeDays = null;
 }
 
+// default_currency: required by the schema (NOT NULL) but the column
+// has a DB-side DEFAULT 'PLN' so we accept empty input and let the
+// repository normalise it. Trim + cap at 8 chars (column width) and
+// fall back to 'PLN' so the value is always safe to insert.
+if ($defaultCurrency === null) {
+    $defaultCurrency = '';
+}
+$defaultCurrency = trim((string)$defaultCurrency);
+if ($defaultCurrency === '') {
+    $defaultCurrency = 'PLN';
+}
+if (mb_strlen($defaultCurrency) > 8) {
+    echo json_encode(['success' => false, 'error' => 'Waluta może mieć maksymalnie 8 znaków.']);
+    exit();
+}
+$defaultCurrency = strtoupper($defaultCurrency);
+
 // --- Validation --------------------------------------------------------
 if ($name === '') {
     echo json_encode(['success' => false, 'error' => 'Nazwa dostawcy jest wymagana.']);
@@ -93,7 +111,7 @@ try {
         // schema level (per docs/procurement/PLAN.md the schema was
         // never given a UNIQUE index on `name`); we accept duplicates
         // silently. Operators can deduplicate via the listing.
-        $newId = $repo->create($name, $address, $additionalData, $leadTimeDays, $comment);
+        $newId = $repo->create($name, $address, $additionalData, $leadTimeDays, $comment, $defaultCurrency);
         echo json_encode([
             'success'  => true,
             'message'  => 'Dostawca dodany pomyślnie.',
@@ -104,9 +122,9 @@ try {
     }
 
     // UPDATE — update name + address + additionalData + leadTimeDays
-    // + comment, then flip isActive via toggleActive so we don't
-    // need to extend the repo's update() signature.
-    $ok = $repo->update($id, $name, $address, $additionalData, $leadTimeDays, $comment);
+    // + comment + default_currency, then flip isActive via toggleActive
+    // so we don't need to extend the repo's update() signature.
+    $ok = $repo->update($id, $name, $address, $additionalData, $leadTimeDays, $comment, $defaultCurrency);
     $repo->toggleActive($id, $isActive);
 
     if (!$ok && $repo->getById($id) === null) {

@@ -1,5 +1,6 @@
 ﻿<?php
 use Atte\DB\MsaDB;
+use Atte\Utils\Purchase\Master\CurrencyRepository;
 
 if(!isset($_SESSION['isAdmin']) || $_SESSION['isAdmin'] !== true) {
     header("Location: http://".BASEURL."/");
@@ -8,15 +9,44 @@ if(!isset($_SESSION['isAdmin']) || $_SESSION['isAdmin'] !== true) {
 
 $MsaDB = MsaDB::getInstance();
 
-// Vendors with their parts_ids (only active vendors, only active VendorParts)
+// Vendors with their parts_ids (only active vendors, only active VendorParts).
+// `default_currency_code` is JOINed from list__currency so the cart JS can
+// pre-select the vendor's preferred currency on vendor change (matches the
+// "Domyślna waluta" picker on /admin/purchase/vendors/edit). lead_time_days
+// and comment drive the Dostawca picker's subtext line (below the vendor
+// name, which itself carries the currency as a Bootstrap badge via
+// data-content). Sorted by currency code then vendor name so the PHP
+// group-by below produces alphabetical optgroups without a re-sort.
 $vendorsWithParts = $MsaDB->query(
-    "SELECT v.id, v.name, GROUP_CONCAT(vp.parts_id) AS parts_ids
+    "SELECT v.id, v.name,
+            v.lead_time_days,
+            v.comment,
+            c.code AS default_currency_code,
+            GROUP_CONCAT(vp.parts_id) AS parts_ids
        FROM `list__vendor` v
        LEFT JOIN `list__vendor_part` vp ON vp.vendor_id = v.id AND vp.isActive = 1
+       LEFT JOIN `list__currency`    c ON c.id = v.default_currency
       WHERE v.isActive = 1
-      GROUP BY v.id, v.name
-      ORDER BY v.name ASC"
+      GROUP BY v.id, v.name, v.lead_time_days, v.comment, c.code
+      ORDER BY c.code ASC, v.name ASC"
 );
+
+// Group by currency code for <optgroup> rendering. Defensive fallback
+// to 'PLN' for any vendor whose FK happens to point at a missing row
+// (shouldn't happen post-migration, but keeps the dropdown safe).
+$vendorsByCurrency = [];
+foreach ($vendorsWithParts as $v) {
+    $code = (string)($v['default_currency_code'] ?? '') ?: 'PLN';
+    if (!isset($vendorsByCurrency[$code])) {
+        $vendorsByCurrency[$code] = [];
+    }
+    $vendorsByCurrency[$code][] = $v;
+}
+ksort($vendorsByCurrency);
+
+// Active currencies for the Waluta selectpicker. Same shape as on
+// /admin/purchase/vendors/edit — code is the value, name is the label.
+$currencies = (new CurrencyRepository($MsaDB))->getActive();
 
 // Parts with their vendors_ids
 $partsWithVendors = $MsaDB->query(
@@ -123,13 +153,55 @@ $units = $MsaDB->query(
             <div class="row">
                 <div class="col-md-6" id="vendorCell">
                     <label for="vendorSelect">Dostawca:</label>
-                    <select id="vendorSelect" class="selectpicker form-control" data-live-search="true" data-width="100%" data-container="#vendorCell" title="Wybierz dostawcę...">
-                        <?php foreach ($vendorsWithParts as $v): ?>
-                            <option value="<?= (int)$v['id'] ?>"
-                                    data-name="<?= htmlspecialchars($v['name']) ?>"
-                                    data-parts='<?= htmlspecialchars(json_encode($v['parts_ids'] === null ? [] : array_map('intval', explode(',', $v['parts_ids']))), ENT_QUOTES) ?>'>
-                                <?= htmlspecialchars($v['name']) ?>
-                            </option>
+                    <!--
+                        Per bs-select 1.13.x docs, custom HTML for an option
+                        goes in `data-content` (rendered as HTML in both the
+                        dropdown row and the selected button via the built-in
+                        sanitizer). Inner `<option>` text is plain — used for
+                        search tokens / data-normalized-text / fallback.
+                        Putting rich HTML inside the option tag itself breaks
+                        subtext rendering in this version; data-content keeps
+                        subtext (data-subtext) intact.
+                    -->
+                    <select id="vendorSelect" class="selectpicker form-control"
+                            data-live-search="true" data-width="100%"
+                            data-container="#vendorCell"
+                            data-show-subtext="true"
+                            title="Wybierz dostawcę...">
+                        <?php foreach ($vendorsByCurrency as $currencyCode => $vendors):
+                            $curEsc = htmlspecialchars($currencyCode, ENT_QUOTES);
+                        ?>
+                            <optgroup label="<?= $curEsc ?>">
+                                <?php foreach ($vendors as $v):
+                                    $cmt = trim((string)($v['comment'] ?? ''));
+                                    $vendorNameEsc = htmlspecialchars($v['name'], ENT_QUOTES);
+
+                                    // Subtext line (lead time + comment). Comment
+                                    // is truncated to keep the subtext on one line
+                                    // even in narrow viewports.
+                                    $subtextParts = [];
+                                    if ($v['lead_time_days'] !== null && (int)$v['lead_time_days'] > 0) {
+                                        $subtextParts[] = ((int)$v['lead_time_days']) . ' dni';
+                                    }
+                                    if ($cmt !== '') {
+                                        $subtextParts[] = htmlspecialchars(
+                                            mb_strlen($cmt) > 60
+                                                ? mb_substr($cmt, 0, 60) . '…'
+                                                : $cmt,
+                                            ENT_QUOTES
+                                        );
+                                    }
+                                    $subtext = implode(' · ', $subtextParts);
+                                ?>
+                                    <option value="<?= (int)$v['id'] ?>"
+                                            data-name="<?= $vendorNameEsc ?>"
+                                            data-subtext="<?= htmlspecialchars($subtext, ENT_QUOTES) ?>"
+                                            data-default-currency="<?= $curEsc ?>"
+                                            data-parts='<?= htmlspecialchars(json_encode($v['parts_ids'] === null ? [] : array_map('intval', explode(',', $v['parts_ids']))), ENT_QUOTES) ?>'>
+                                        <?= $vendorNameEsc ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </optgroup>
                         <?php endforeach; ?>
                     </select>
                 </div>
@@ -241,11 +313,25 @@ $units = $MsaDB->query(
                 </div>
                 <div class="col-md-2" id="cartCurrencyWrap">
                     <label for="cartCurrency">Waluta:</label>
-                    <select id="cartCurrency" class="form-control">
-                        <option value="PLN" selected>PLN</option>
-                        <option value="EUR">EUR</option>
-                        <option value="USD">USD</option>
-                    </select>
+                    <div id="cartCurrencyCell">
+                        <select id="cartCurrency" name="cartCurrency"
+                                class="selectpicker form-control"
+                                data-width="100%"
+                                data-container="#cartCurrencyCell"
+                                data-live-search="true"
+                                title="Wybierz walutę…">
+                            <?php foreach ($currencies as $cur):
+                                $code = (string)$cur['code'];
+                                $name = (string)$cur['name'];
+                                $isSelected = ($code === 'PLN'); // initial default; JS overrides on vendor change
+                            ?>
+                                <option value="<?= htmlspecialchars($code, ENT_QUOTES) ?>"
+                                        <?= $isSelected ? 'selected' : '' ?>>
+                                    <?= htmlspecialchars($code, ENT_QUOTES) ?> — <?= htmlspecialchars($name, ENT_QUOTES) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
                 </div>
                 <!-- "Komentarz pozycji" — per-line comment captured at pick
                      time and travels into purchase__rfq_item.comment /

@@ -12,17 +12,20 @@ class VendorRepository {
 
     public function getById(int $id): ?Vendor {
         $MsaDB = $this->MsaDB;
-        $sql = "SELECT id,
-                       name,
-                       address,
-                       additional_data AS additionalData,
-                       lead_time_days AS leadTimeDays,
-                       isActive,
-                       comment,
-                       created_at AS createdAt,
-                       updated_at AS updatedAt
-                FROM `list__vendor`
-                WHERE id = ?";
+        $sql = "SELECT v.id,
+                       v.name,
+                       v.address,
+                       v.additional_data AS additionalData,
+                       v.lead_time_days AS leadTimeDays,
+                       v.default_currency AS defaultCurrency,
+                       c.code AS defaultCurrencyCode,
+                       v.isActive,
+                       v.comment,
+                       v.created_at AS createdAt,
+                       v.updated_at AS updatedAt
+                FROM `list__vendor` v
+                LEFT JOIN `list__currency` c ON c.id = v.default_currency
+                WHERE v.id = ?";
         $stmt = $MsaDB->db->prepare($sql);
         $stmt->execute([$id]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -31,19 +34,22 @@ class VendorRepository {
 
     public function getAll(bool $onlyActive = false): array {
         $MsaDB = $this->MsaDB;
-        $where = $onlyActive ? "WHERE isActive = 1" : "";
-        $sql = "SELECT id,
-                       name,
-                       address,
-                       additional_data AS additionalData,
-                       lead_time_days AS leadTimeDays,
-                       isActive,
-                       comment,
-                       created_at AS createdAt,
-                       updated_at AS updatedAt
-                FROM `list__vendor`
+        $where = $onlyActive ? "WHERE v.isActive = 1" : "";
+        $sql = "SELECT v.id,
+                       v.name,
+                       v.address,
+                       v.additional_data AS additionalData,
+                       v.lead_time_days AS leadTimeDays,
+                       v.default_currency AS defaultCurrency,
+                       c.code AS defaultCurrencyCode,
+                       v.isActive,
+                       v.comment,
+                       v.created_at AS createdAt,
+                       v.updated_at AS updatedAt
+                FROM `list__vendor` v
+                LEFT JOIN `list__currency` c ON c.id = v.default_currency
                 {$where}
-                ORDER BY name ASC";
+                ORDER BY v.name ASC";
         $stmt = $MsaDB->db->prepare($sql);
         $stmt->execute();
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
@@ -54,25 +60,27 @@ class VendorRepository {
         return $result;
     }
 
-    public function create(string $name, ?string $address = null, ?string $additionalData = null, ?int $leadTimeDays = null, ?string $comment = null): int {
+    public function create(string $name, ?string $address = null, ?string $additionalData = null, ?int $leadTimeDays = null, ?string $comment = null, string $defaultCurrencyCode = 'PLN'): int {
         $MsaDB = $this->MsaDB;
         $name = trim($name);
         if ($name === '') {
             throw new \InvalidArgumentException("Vendor name cannot be empty.");
         }
+        $defaultCurrencyId = $this->resolveCurrencyId($defaultCurrencyCode);
         return $MsaDB->insert(
             'list__vendor',
-            ['name', 'address', 'additional_data', 'lead_time_days', 'isActive', 'comment'],
-            [$name, $address, $additionalData, $leadTimeDays, 1, $comment]
+            ['name', 'address', 'additional_data', 'lead_time_days', 'default_currency', 'isActive', 'comment'],
+            [$name, $address, $additionalData, $leadTimeDays, $defaultCurrencyId, 1, $comment]
         );
     }
 
-    public function update(int $id, string $name, ?string $address, ?string $additionalData, ?int $leadTimeDays, ?string $comment): bool {
+    public function update(int $id, string $name, ?string $address, ?string $additionalData, ?int $leadTimeDays, ?string $comment, string $defaultCurrencyCode = 'PLN'): bool {
         $MsaDB = $this->MsaDB;
         $name = trim($name);
         if ($name === '') {
             throw new \InvalidArgumentException("Vendor name cannot be empty.");
         }
+        $defaultCurrencyId = $this->resolveCurrencyId($defaultCurrencyCode);
         return $MsaDB->update(
             'list__vendor',
             [
@@ -80,11 +88,34 @@ class VendorRepository {
                 'address' => $address,
                 'additional_data' => $additionalData,
                 'lead_time_days' => $leadTimeDays,
+                'default_currency' => $defaultCurrencyId,
                 'comment' => $comment,
             ],
             'id',
             $id
         );
+    }
+
+    /**
+     * Resolve a currency CODE (3-letter ISO) to the integer id used by
+     * `list__vendor.default_currency` (FK → list__currency.id). Empty
+     * input falls back to 'PLN'. Throws when the code doesn't match
+     * any active row — the calling form should validate before submit.
+     */
+    private function resolveCurrencyId(string $code): int {
+        $code = strtoupper(trim($code));
+        if ($code === '') {
+            $code = 'PLN';
+        }
+        $stmt = $this->MsaDB->db->prepare(
+            "SELECT id FROM `list__currency` WHERE code = ? AND isActive = 1"
+        );
+        $stmt->execute([$code]);
+        $id = (int)$stmt->fetchColumn();
+        if ($id === 0) {
+            throw new \InvalidArgumentException("Unknown or inactive currency code: '{$code}'.");
+        }
+        return $id;
     }
 
     public function toggleActive(int $id, bool $isActive): bool {
@@ -224,10 +255,13 @@ class VendorRepository {
             $spCount = "(SELECT COUNT(*) FROM `list__vendor_supplier` WHERE vendor_id = v.id) AS supplierCount";
             $vpCount = "(SELECT COUNT(*) FROM `list__vendor_part`    WHERE vendor_id = v.id) AS vendorPartCount";
             $pageSql = "SELECT v.id, v.name, v.address, v.additional_data AS additionalData,"
-                     . " v.lead_time_days AS leadTimeDays, v.isActive, v.comment,"
+                     . " v.lead_time_days AS leadTimeDays, v.default_currency AS defaultCurrency,"
+                     . " c.code AS defaultCurrencyCode,"
+                     . " v.isActive, v.comment,"
                      . " v.created_at AS createdAt, v.updated_at AS updatedAt,"
                      . " {$spCount}, {$vpCount}"
                      . " FROM `list__vendor` v"
+                     . " LEFT JOIN `list__currency` c ON c.id = v.default_currency"
                      . " {$whereSql}"
                      . " ORDER BY v.name ASC"
                      . " LIMIT {$itemsPerPage} OFFSET {$offset}";
