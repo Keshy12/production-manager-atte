@@ -1179,10 +1179,6 @@
         $selectionDocsCard.show();
         updateSelectionDocsBadge();
     }
-        $selectionDocsContent.html(html);
-        $selectionDocsCard.show();
-        updateSelectionDocsBadge();
-    }
 
     // Header badge reflects the *specific* VendorPart currently picked
     // in "Numer u dostawcy" — not the combo-wide total.
@@ -1324,94 +1320,9 @@
                 }
                 html += '<tr class="cart-item-row" data-idx="' + x.idx + '"><td>' + partCell + '</td><td class="cart-cell-qty">' + qtyCell + '</td><td class="cart-cell-price">' + (item.unit_price === null || item.unit_price === undefined ? '<span class="text-muted">\u2014</span>' : formatPrice(item.unit_price) + '<div><small class="text-muted">' + escapeHtml(item.currency) + '/' + escapeHtml(item.unit_name) + '</small></div>') + '</td><td class="cart-cell-line-total">' + (item.unit_price === null || item.unit_price === undefined ? '<span class="text-muted">\u2014</span>' : formatPrice(item.unit_price * item.quantity) + (item.currency ? '<div><small class="text-muted">' + escapeHtml(item.currency) + '</small></div>' : '')) + '</td><td style="white-space: nowrap; min-width: 120px;">' + docBadges + '</td><td class="cart-cell-comment cart-row-line-comment-cell">' + (item.line_comment ? nl2brSafe(escapeHtml(item.line_comment)) : '<span class="text-muted">\u2014</span>') + '</td><td class="cart-cell-akcze" style="white-space: nowrap;"><button type="button" class="btn btn-sm btn-outline-primary edit-item-btn mr-1" data-idx="' + x.idx + '"' + (cart.activeDocsLoaded ? '' : ' disabled') + ' title="' + (cart.activeDocsLoaded ? 'Edytuj ilo\u015b\u0107 / cen\u0119 / uwagi' : '\u0141adowanie aktywnych dokument\u00f3w\u2026') + '"><i class="bi bi-pencil"></i></button><button type="button" class="btn btn-sm btn-danger remove-item-btn" data-idx="' + x.idx + '" title="Usu\u0144 pozycj\u0119"><i class="bi bi-trash"></i></button></td></tr>';
             });
-                    if (!docBadges) {
-                        docBadges = '<span class="text-muted">—</span>';
-                    }
-                }
 
-                // Część cell carries prefixed sub-lines: vendor/producer
+// Część cell carries prefixed sub-lines: vendor/producer
                 // numbers (merged when identical) and the description.
-                let vn = item.vendor_part_no || '';
-                let pn = item.producer_part_no || '';
-                let partCell = escapeHtml(item.part_name);
-                if (vn && pn && vn === pn) {
-                    partCell += '<div><small class="text-muted">Nr dost./prod.: <span class="font-weight-bold">' + escapeHtml(vn) + '</span></small></div>';
-                } else {
-                    if (vn) partCell += '<div><small class="text-muted">Nr dost.: <span class="font-weight-bold">' + escapeHtml(vn) + '</span></small></div>';
-                    if (pn) partCell += '<div><small class="text-muted">Nr prod.: <span class="font-weight-bold">' + escapeHtml(pn) + '</span></small></div>';
-                }
-                if (item.description) {
-                    partCell += '<div><small class="text-muted">' + escapeHtml(item.description) + '</small></div>';
-                }
-                // Variant-level "Uwagi do artykułu" — read live so pen-edits show
-                // up in cart rows immediately. Pen icon swaps the line
-                // into an inline editor.
-                let vpLive = getVpById(item.vendor_part_id);
-                let liveCmt = vpLive ? (vpLive.private_comment || '') : '';
-                partCell += '<div class="cart-row-comment-line">' +
-                    '<small class="text-muted">' +
-                    '<i class="bi bi-journal-text"></i> Uwagi do artykułu: ' +
-                    (liveCmt ? escapeHtml(liveCmt) : '<em>Brak</em>') +
-                    '</small> ' +
-                    '<button type="button" class="btn btn-link btn-sm p-0 ml-1 cart-row-comment-edit" ' +
-                    'data-vp-id="' + item.vendor_part_id + '" ' +
-                    'title="' + (liveCmt ? 'Edytuj komentarz' : 'Dodaj komentarz') + '">' +
-                    '<i class="bi bi-pencil"></i>' +
-                    '</button>' +
-                    '</div>';
-                // Ilość cell carries the package count as a sub-line
-                // (yellow when qty doesn't match whole packages) plus
-                // the badge showing the chosen pack size for this line.
-                let qtyCell = formatQty(item.quantity);
-                let pickedPack = itemPickedPackSize(item);
-                if (item.full_pack_quantity && item.full_pack_quantity > 0) {
-                    let pkgs = item.quantity / item.full_pack_quantity;
-                    let evenPkgs = Math.abs(pkgs - Math.round(pkgs)) < 1e-9;
-                    qtyCell += '<div><small class="' + (evenPkgs ? 'text-muted' : 'text-warning') + '">' +
-                        parseFloat(pkgs.toFixed(2)) + ' opak.</small>';
-                    if (pickedPack !== null) {
-                        qtyCell += '<span class="badge badge-light border text-monospace ml-1" title="Wybrana wielkość opakowania">opak. ' + formatQty(pickedPack) + '</span>';
-                    }
-                    qtyCell += '</div>';
-                } else if (pickedPack !== null) {
-                    qtyCell += '<div><span class="badge badge-light border text-monospace ml-1" title="Wybrana wielkość opakowania">opak. ' + formatQty(pickedPack) + '</span></div>';
-                }
-                html += '<tr class="cart-item-row" data-idx="' + x.idx + '">' +
-                    '<td>' + partCell + '</td>' +
-                    '<td class="cart-cell-qty">' + qtyCell + '</td>' +
-                    '<td class="cart-cell-price">' + (item.unit_price === null || item.unit_price === undefined
-                        ? '<span class="text-muted">—</span>'
-                        : formatPrice(item.unit_price) +
-                          '<div><small class="text-muted">' + escapeHtml(item.currency) + '/' + escapeHtml(item.unit_name) + '</small></div>') + '</td>' +
-                    '<td class="cart-cell-line-total">' +
-                        (item.unit_price === null || item.unit_price === undefined
-                            ? '<span class="text-muted">—</span>'
-                            : formatPrice(item.unit_price * item.quantity) +
-                              (item.currency
-                                  ? '<div><small class="text-muted">' + escapeHtml(item.currency) + '</small></div>'
-                                  : '')) +
-                    '</td>' +
-                    '<td style="white-space: nowrap;">' + docBadges + '</td>' +
-                    // Komentarz pozycji — its own column (sits before Akcje).
-                    // Travels to purchase__rfq_item.comment /
-                    // purchase__order_item.comment. Editable inline like
-                    // the RFQ pattern (qty/price/uwagi). nl2br so
-                    // multi-line notes render on screen without losing
-                    // newlines.
-                    '<td class="cart-cell-comment cart-row-line-comment-cell">' +
-                        (item.line_comment
-                            ? nl2brSafe(escapeHtml(item.line_comment))
-                            : '<span class="text-muted">—</span>') +
-                    '</td>' +
-                    '<td class="cart-cell-akcje" style="white-space: nowrap;">' +
-                        '<button type="button" class="btn btn-sm btn-outline-primary edit-item-btn mr-1" data-idx="' + x.idx + '"' +
-                            (cart.activeDocsLoaded ? '' : ' disabled') +
-                            ' title="' + (cart.activeDocsLoaded ? 'Edytuj ilość / cenę / uwagi' : 'Ładowanie aktywnych dokumentów…') + '"><i class="bi bi-pencil"></i></button>' +
-                        '<button type="button" class="btn btn-sm btn-danger remove-item-btn" data-idx="' + x.idx + '" title="Usuń pozycję">' +
-                            '<i class="bi bi-trash"></i></button>' +
-                    '</td>' +
-                    '</tr>';
-            });
 
             html += '</tbody></table></div>' +
                 '</div>';
