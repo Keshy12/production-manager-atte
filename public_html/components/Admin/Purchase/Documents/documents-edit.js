@@ -606,6 +606,11 @@ $(function () {
     const addState = {
         vendorId:       parseInt($addWrapper.attr('data-vendor-id'), 10),
         vendorName:     $addWrapper.attr('data-vendor-name') || '',
+        // Vendor's preferred currency — pre-selects the Waluta dropdown
+        // at form open and after each cascade reset. Mirrors cart-view.js
+        // lines 1591–1601 where the picker follows the vendor's default
+        // from list__vendor.default_currency → list__currency.code.
+        defaultCurrency: $addWrapper.attr('data-default-currency') || 'PLN',
         docId:          parseInt($addWrapper.attr('data-doc-id'), 10),
         vpsByPart:      JSON.parse($addWrapper.attr('data-vps-by-part') || '{}'),
         selectedVp:     null,
@@ -653,6 +658,30 @@ $(function () {
     // the user always sees which vendor this RFQ belongs to without
     // needing a picker (vendor is fixed for the duration of the RFQ).
     $vendorName.text(addState.vendorName || '—');
+
+    // ---- Selectpicker helpers ----
+    // Mirror cart-view.js's refreshSelectpicker so we keep the
+    // bootstrap-select trigger width + dropdown menu in sync after we
+    // mutate the underlying <select> programmatically.
+    function refreshSelectpicker($el) {
+        try { $el.selectpicker('refresh'); } catch (e) { /* swallow */ }
+    }
+
+    // Set the currency picker to the given code, falling back to the
+    // vendor's default (then 'PLN') if the code isn't in the dropdown.
+    // Mirrors the cart's pattern at cart-view.js lines 1596–1601 —
+    // unknown codes are a silent no-op so a stale vendor default
+    // can't crash the form.
+    function setDocCurrency(code) {
+        const target = (code || addState.defaultCurrency || 'PLN').toString();
+        try {
+            $currencyInp.selectpicker('val', target);
+        } catch (e) {
+            // Code not in dropdown (e.g. vendor's default was
+            // deactivated post-render). Leave whatever is selected.
+        }
+        refreshSelectpicker($currencyInp);
+    }
 
     // ---- Helpers ----
 
@@ -768,7 +797,7 @@ $(function () {
         // Price / currency / comment reset.
         $priceRow.hide();
         $priceInput.val('');
-        $currencyInp.val('PLN');
+        setDocCurrency(addState.defaultCurrency);
         $commentInp.val('');
 
         // Actions reset.
@@ -833,7 +862,7 @@ $(function () {
         $packNext.prop('disabled', true);
         $priceRow.hide();
         $priceInput.val('');
-        $currencyInp.val('PLN');
+        setDocCurrency(addState.defaultCurrency);
         $commentInp.val('');
         $actionsRow.hide();
         $saveBtn.prop('disabled', true);
@@ -931,7 +960,7 @@ $(function () {
         $qtyInput.val('').trigger('focus');
         $priceRow.show();
         $priceInput.val('');
-        $currencyInp.val('PLN');
+        setDocCurrency(addState.defaultCurrency);
         $commentInp.val('');
         $actionsRow.show();
         refreshSaveEnabled();

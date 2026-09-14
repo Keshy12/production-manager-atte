@@ -31,6 +31,7 @@ use Atte\Utils\Purchase\Order\RFQRepository;
 use Atte\Utils\Purchase\Order\RFQItemRepository;
 use Atte\Utils\Purchase\Order\PurchaseOrderRepository;
 use Atte\Utils\Purchase\Order\PurchaseOrderItemRepository;
+use Atte\Utils\Purchase\Master\CurrencyRepository;
 
 if(!isset($_SESSION['isAdmin']) || $_SESSION['isAdmin'] !== true) {
     header("Location: http://".BASEURL."/");
@@ -93,6 +94,23 @@ if ($type === 'po') {
 
 // State guard: single source of truth lives on the action handler.
 $allowedEdit = in_array($doc->state, PurchaseActionHandler::allowedEditStates($type), true);
+
+// Vendor's preferred currency — pre-selects the Waluta picker in the
+// "Dodaj pozycję" form. Mirrors the cart pattern (cart-view.php
+// lines 13–19 / 47–49): active-currency list comes from list__currency,
+// per-vendor default is JOINed from list__vendor.default_currency.
+// `getActiveEnsuring()` guarantees the vendor's code is present in the
+// dropdown even if it was deactivated — see CurrencyRepository.
+$vendorDefaultCurStmt = $MsaDB->db->prepare(
+    "SELECT c.code
+       FROM `list__vendor` v
+  LEFT JOIN `list__currency` c ON c.id = v.default_currency
+      WHERE v.id = ?
+      LIMIT 1"
+);
+$vendorDefaultCurStmt->execute([$doc->vendorId]);
+$vendorDefaultCurrencyCode = (string)($vendorDefaultCurStmt->fetchColumn() ?: 'PLN');
+$currencies = (new CurrencyRepository($MsaDB))->getActiveEnsuring($vendorDefaultCurrencyCode);
 
 // State badge map. Each type has its own state set; keeping both
 // maps in one file avoids drift between the two legacy pages.
@@ -444,6 +462,7 @@ function formatPrice($v) {
          data-doc-id="<?= (int)$doc->id ?>"
          data-vendor-id="<?= (int)$doc->vendorId ?>"
          data-vendor-name="<?= htmlspecialchars($doc->vendorName ?? '', ENT_QUOTES, 'UTF-8') ?>"
+         data-default-currency="<?= htmlspecialchars($vendorDefaultCurrencyCode, ENT_QUOTES, 'UTF-8') ?>"
          data-vps-by-part="<?= $vpsByPartJson ?>"
          data-add-url="document-item-add.php"
          data-update-url="document-item-update.php"
@@ -520,9 +539,30 @@ function formatPrice($v) {
                         <label class="small mb-1" for="doc-add-price">Cena</label>
                         <input type="number" step="any" min="0" id="doc-add-price" class="form-control form-control-sm" placeholder="opcjonalnie">
                     </div>
-                    <div class="form-group col-md-2 mb-2">
+                    <div class="form-group col-md-2 mb-2" id="doc-add-currency-cell" style="min-width: 0;">
                         <label class="small mb-1" for="doc-add-currency">Waluta</label>
-                        <input type="text" id="doc-add-currency" class="form-control form-control-sm" value="PLN" maxlength="8">
+                        <select id="doc-add-currency" name="doc-add-currency"
+                                class="selectpicker form-control"
+                                data-width="100%"
+                                data-container="#doc-add-currency-cell"
+                                data-live-search="true"
+                                title="Wybierz walutę…">
+                            <?php foreach ($currencies as $cur):
+                                $code = (string)$cur['code'];
+                                $name = (string)$cur['name'];
+                                // Initial default = vendor's preferred
+                                // currency. JS reset sites (resetAddForm /
+                                // refreshDocVendorPartRow / selectDocVendorPart)
+                                // call setDocCurrency(addState.defaultCurrency)
+                                // to re-apply on every cascade reset.
+                                $isSelected = ($code === $vendorDefaultCurrencyCode);
+                            ?>
+                                <option value="<?= htmlspecialchars($code, ENT_QUOTES) ?>"
+                                        <?= $isSelected ? 'selected' : '' ?>>
+                                    <?= htmlspecialchars($code, ENT_QUOTES) ?> — <?= htmlspecialchars($name, ENT_QUOTES) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
                     </div>
                     <div class="form-group col-md-7 mb-2">
                         <label class="small mb-1" for="doc-add-comment">Komentarz</label>
