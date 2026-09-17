@@ -43,6 +43,8 @@ $("#uploadBomInput").change(function () {
                 deviceId: THTBomFlat["deviceId"],
                 deviceName: THTBomFlat["deviceName"],
                 deviceVersion: THTBomFlat["deviceVersion"],
+                defaultBomId: THTBomFlat["defaultBomId"],
+                defaultBomVersion: THTBomFlat["defaultBomVersion"],
                 bomFlat: THTBomFlat["csv"]
             }));
             $("#sendBom").attr("data-smd", JSON.stringify(hasSMD ? {
@@ -52,6 +54,9 @@ $("#uploadBomInput").change(function () {
                 laminateName: SMDBomFlat["laminateName"],
                 deviceName: SMDBomFlat["deviceName"],
                 deviceVersion: SMDBomFlat["deviceVersion"],
+                defaultBomId: SMDBomFlat["defaultBomId"],
+                defaultBomVersion: SMDBomFlat["defaultBomVersion"],
+                defaultBomLaminate: SMDBomFlat["defaultBomLaminate"],
                 bomFlat: SMDBomFlat["csv"]
             } : {}));
 
@@ -312,24 +317,57 @@ $(document).on("click", ".bom-filter__btn", function () {
 $("#sendBom").click(function () {
     const thtData = $(this).attr("data-tht");
     const smdData = $(this).attr("data-smd");
+    const thtInfo = JSON.parse(thtData);
     const smdInfo = smdData ? JSON.parse(smdData) : null;
 
-    if (smdInfo && smdInfo.deviceId) {
-        $("#setDefaultSmdMessage").text("Ustawić jako domyślny BOM dla " + smdInfo.deviceName + "?");
+    // Check if uploaded BOM is not already the default
+    const thtNeedsDefault = thtInfo.bomId && thtInfo.bomId !== thtInfo.defaultBomId;
+    const smdNeedsDefault = smdInfo && smdInfo.deviceId && smdInfo.bomId && smdInfo.bomId !== smdInfo.defaultBomId;
+
+    if (thtNeedsDefault || smdNeedsDefault) {
+        // Populate THT row
+        if (thtNeedsDefault) {
+            $("#thtDeviceName").text(thtInfo.deviceName);
+            $("#thtCurrentDefault").text(thtInfo.defaultBomVersion || "brak");
+            $("#thtNewVersion").text(thtInfo.deviceVersion);
+            $("#defaultThtRow").show().removeClass("is-disabled");
+            $("#setDefaultThtCheck").prop("checked", true);
+        } else {
+            $("#defaultThtRow").hide();
+        }
+
+        // Populate SMD row (show laminate + version)
+        if (smdNeedsDefault) {
+            $("#smdDeviceName").text(smdInfo.deviceName);
+            const currentDefault = smdInfo.defaultBomId 
+                ? (smdInfo.defaultBomLaminate || "?") + " / " + (smdInfo.defaultBomVersion || "?")
+                : "brak";
+            const newVersion = (smdInfo.laminateName || "?") + " / " + (smdInfo.deviceVersion || "?");
+            $("#smdCurrentDefault").text(currentDefault);
+            $("#smdNewVersion").text(newVersion);
+            $("#defaultSmdRow").show().removeClass("is-disabled");
+            $("#setDefaultSmdCheck").prop("checked", true);
+        } else {
+            $("#defaultSmdRow").hide();
+        }
+
+        // Toggle greyed state on checkbox change
+        $("#setDefaultThtCheck, #setDefaultSmdCheck").off("change").on("change", function() {
+            $(this).closest(".custom-control").toggleClass("is-disabled", !$(this).is(":checked"));
+        });
+
         $("#setDefaultSmdModal").modal("show");
 
-        let smdDefaultChosen = null;
-
-        $("#setDefaultSmdYes").off("click").on("click", function () {
-            smdDefaultChosen = true;
+        // Confirm button - read checkboxes and submit
+        $("#setDefaultConfirm").off("click").on("click", function () {
+            const setDefaultTht = thtNeedsDefault && $("#setDefaultThtCheck").is(":checked");
+            const setDefaultSmd = smdNeedsDefault && $("#setDefaultSmdCheck").is(":checked");
             $("#setDefaultSmdModal").modal("hide");
-        });
-
-        $("#setDefaultSmdModal").off("hidden.bs.modal").on("hidden.bs.modal", function () {
-            submitBom(thtData, smdData, smdDefaultChosen === true, $("#setDefaultTht").is(":checked"));
+            submitBom(thtData, smdData, setDefaultSmd, setDefaultTht);
         });
     } else {
-        submitBom(thtData, smdData, false, $("#setDefaultTht").is(":checked"));
+        // Neither needs default, submit directly
+        submitBom(thtData, smdData, false, false);
     }
 });
 
