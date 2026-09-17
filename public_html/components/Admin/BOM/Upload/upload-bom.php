@@ -24,9 +24,23 @@ try{
     if($smdData['bomId'] == null) {
         $smdData['bomId'] = insertBomSMDItem($MsaDB, $smdData['deviceId'], $smdData['laminateId'], $smdData['deviceVersion']);
     }
-    
+
+    // Set default BOM flags
+    $setDefaultSmd = isset($_POST['setDefaultSmd']) && $_POST['setDefaultSmd'] === 'true';
+    $setDefaultTht = isset($_POST['setDefaultTht']) && $_POST['setDefaultTht'] === 'true';
+
+    // Update default_bom_id for SMD if flag is set
+    if ($setDefaultSmd && $smdData['bomId']) {
+        $MsaDB->query("UPDATE list__smd SET default_bom_id = {$smdData['bomId']} WHERE id = {$smdData['deviceId']}");
+    }
+
+    // Update default_bom_id for THT if flag is set
+    if ($setDefaultTht && $thtData['bomId']) {
+        $MsaDB->query("UPDATE list__tht SET default_bom_id = {$thtData['bomId']} WHERE id = {$thtData['deviceId']}");
+    }
+
     insertBomTHT($MsaDB, $thtData);
-    insertBomSMD($MsaDB, $smdData);  
+    insertBomSMD($MsaDB, $smdData);
     $MsaDB -> db -> commit(); 
 
     // Recalculate prices for both BOMs
