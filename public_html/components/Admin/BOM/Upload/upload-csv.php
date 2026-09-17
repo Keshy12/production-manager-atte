@@ -94,11 +94,45 @@ $dbSMDBomFlat = array_map($addComponentDetails, $dbSMDBomFlat);
 $csvTHTBomFlat = array_map($addComponentDetails, $csvTHTBomFlat);
 $csvSMDBomFlat = array_map($addComponentDetails, $csvSMDBomFlat);
 
+// Fetch current default_bom_id for THT
+$defaultBomIdTHT = null;
+if ($dbTHTId) {
+    $result = $MsaDB->query("SELECT default_bom_id FROM list__tht WHERE id = {$dbTHTId}", PDO::FETCH_COLUMN);
+    $defaultBomIdTHT = !empty($result) ? $result[0] : null;
+}
+
+// Fetch current default_bom_id for SMD
+$defaultBomIdSMD = null;
+if ($dbSMDId) {
+    $result = $MsaDB->query("SELECT default_bom_id FROM list__smd WHERE id = {$dbSMDId}", PDO::FETCH_COLUMN);
+    $defaultBomIdSMD = !empty($result) ? $result[0] : null;
+}
+
+// Fetch default BOM version for THT
+$defaultBomVersionTHT = null;
+if ($defaultBomIdTHT) {
+    $result = $MsaDB->query("SELECT version FROM bom__tht WHERE id = {$defaultBomIdTHT}", PDO::FETCH_COLUMN);
+    $defaultBomVersionTHT = !empty($result) ? $result[0] : null;
+}
+
+// Fetch default BOM version and laminate for SMD
+$defaultBomVersionSMD = null;
+$defaultBomLaminateSMD = null;
+if ($defaultBomIdSMD) {
+    $result = $MsaDB->query("SELECT bs.version, l.name as laminate_name FROM bom__smd bs LEFT JOIN list__laminate l ON bs.laminate_id = l.id WHERE bs.id = {$defaultBomIdSMD}", PDO::FETCH_ASSOC);
+    if (!empty($result)) {
+        $defaultBomVersionSMD = $result[0]['version'];
+        $defaultBomLaminateSMD = $result[0]['laminate_name'];
+    }
+}
+
 $THTFlatBoms = [
-    "bomId" => $dbTHTBomId, 
+    "bomId" => $dbTHTBomId,
     "deviceId" => $dbTHTId,
     "deviceName" => $csvTHTItem['name'],
     "deviceVersion" => $csvTHTItem['version'],
+    "defaultBomId" => $defaultBomIdTHT,
+    "defaultBomVersion" => $defaultBomVersionTHT,
     "db" => $dbTHTBomFlat,
     "csv" => $csvTHTBomFlat
 ];
@@ -106,16 +140,19 @@ $SMDFlatBoms = [];
 if($csvHasSMD)
 {
     $SMDFlatBoms = [
-        "bomId" => $dbSMDBomId, 
+        "bomId" => $dbSMDBomId,
         "deviceId" => $dbSMDId,
         "laminateId" => $dbLaminateId,
         "deviceName" => $csvSMDItem['name'],
         "laminateName" => $csvSMDItem['laminateName'],
         "deviceVersion" => $csvSMDItem['version'],
+        "defaultBomId" => $defaultBomIdSMD,
+        "defaultBomVersion" => $defaultBomVersionSMD,
+        "defaultBomLaminate" => $defaultBomLaminateSMD,
         "db" => $dbSMDBomFlat,
         "csv" => $csvSMDBomFlat
     ];
-    
+
 }
 
 echo json_encode([$fatalErrors, $nonFatalErrors, $THTFlatBoms, $SMDFlatBoms]
