@@ -81,7 +81,17 @@ class OrderReceiptRepository {
         return $result;
     }
 
-    public function create(int $poId, int $receivedBy, ?string $documentNumber = null, ?string $comment = null): int {
+    /**
+     * Create a receipt header.
+     *
+     * `$receivedAt` overrides the column's CURRENT_TIMESTAMP default when
+     * supplied (e.g. when the operator backdates a delivery). When null the
+     * DEFAULT CURRENT_TIMESTAMP() on `received_at` fires, so MySQL stamps
+     * the insert time. Newer callers (the goods-receiving UI) pass an
+     * explicit datetime so the receipt date and the inventory__parts
+     * ledger date stay in sync.
+     */
+    public function create(int $poId, int $receivedBy, ?string $documentNumber = null, ?string $comment = null, ?string $receivedAt = null): int {
         $MsaDB = $this->MsaDB;
         if ($poId <= 0)      throw new \InvalidArgumentException("OrderReceipt poId must be positive.");
         if ($receivedBy <= 0) throw new \InvalidArgumentException("OrderReceipt receivedBy must be positive.");
@@ -93,11 +103,20 @@ class OrderReceiptRepository {
             $comment = trim($comment);
             if ($comment === '') $comment = null;
         }
-        return $MsaDB->insert(
-            'purchase__order_receipt',
-            ['po_id', 'document_number', 'received_by', 'comment'],
-            [$poId, $documentNumber, $receivedBy, $comment]
-        );
+        if ($receivedAt !== null) {
+            $receivedAt = trim($receivedAt);
+            if ($receivedAt === '') $receivedAt = null;
+        }
+        // Build the column/value lists dynamically so passing null on
+        // $receivedAt keeps the existing DEFAULT CURRENT_TIMESTAMP()
+        // behaviour for older callers (backward compatible).
+        $columns = ['po_id', 'document_number', 'received_by', 'comment'];
+        $values  = [$poId, $documentNumber, $receivedBy, $comment];
+        if ($receivedAt !== null) {
+            $columns[] = 'received_at';
+            $values[]  = $receivedAt;
+        }
+        return $MsaDB->insert('purchase__order_receipt', $columns, $values);
     }
 
     public function delete(int $id): bool {

@@ -1,0 +1,64 @@
+/* Przyjęcia (goods receiving) — tylko te reguły, na które Bootstrap 4
+   nie ma klasy narzędziowej. Wszystko inne zostaje jako utility
+   w markupie.
+
+   Ładowane razem z ../cart/purchases.css, które daje:
+     .packages-uneven            — wspólne ostrzeżenie „ilość nie dzieli
+                                   się na pełne opakowania" (ten sam
+                                   wygląd co w koszyku), używane przez
+                                   parę Opak./Ilość w formularzu.
+     .flex-grow-1/.bootstrap-select { min-width: 0 }
+                                 — fix szerokości bootstrap-select. */
+
+
+/* ---- Kolejka ------------------------------------------------------ */
+
+/* BS4 .progress ma 1rem wysokości — o wiele za dużo w komórce tabeli.
+   Ten pasek jest wskazówką „na rzut oka", nie kontrolką. */
+.progress-thin { height: .3rem; }
+
+/* Tylko wiersze, które faktycznie coś otwierają, dostają wskaźnik
+   klikalności. Wiersze `sent` (.queue-row-pending) są nieklikalne —
+   dawniej miały ten sam cursor: pointer, co obiecywało akcję, której
+   nie było. */
+.queue-row:not(.queue-row-pending),
+.receipt-row { cursor: pointer; }
+
+/* PO w stanie `sent` czeka na potwierdzenie dostawcy: wiersz przygaszony,
+   ale przycisk „Potwierdź odbiór" w środku pozostaje w pełni czytelny.
+   Wcześniej było to inline style="opacity:.65" wstawiane z JS. */
+.queue-row-pending > td { opacity: .65; }
+.queue-row-pending > td .btn { opacity: 1; }
+
+
+/* ---- Formularz przyjęcia ------------------------------------------ */
+
+/* Pasek akcji na dole: operator przewija dostawę na 20+ pozycji, więc
+   podsumowanie i przycisk zapisu jadą razem z nim. BS4 ma tylko
+   .sticky-top. */
+.receipt-actionbar { position: sticky; bottom: 0; z-index: 1020; }
+
+/* Kolumny z danymi do wpisania nie mogą się zwijać, a długie nazwy
+   części biorą tyle miejsca, ile zostanie. */
+.receipt-lines-table th,
+.receipt-lines-table td { vertical-align: middle; }
+.receipt-lines-table .receipt-col-num  { width: 8rem; }
+.receipt-lines-table .receipt-col-qty  { width: 8.5rem; }
+.receipt-lines-table .receipt-col-mag  { width: 11rem; }
+.receipt-lines-table .receipt-col-note { width: 12rem; }
+
+/* Pozycje bez reszty do przyjęcia zostają czytelne, ale widocznie poza
+   grą — wyszarzone, nie ukryte, żeby operator widział, że pozycja
+   istnieje na zamówieniu. */
+.receipt-line-done { opacity: .55; }
+
+
+/* ---- Historia ----------------------------------------------------- */
+
+/* Podświetlenie świeżo zapisanego przyjęcia po dołożeniu go na górę
+   historii, żeby operator zobaczył, gdzie wylądowało. */
+@keyframes receiptRowFlash {
+    0%   { background-color: rgba(40,167,69,.30); }
+    100% { background-color: transparent; }
+}
+.receipt-row-new > td { animation: receiptRowFlash 2s ease-out 1; }

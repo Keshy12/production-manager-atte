@@ -386,6 +386,148 @@ foreach ($columnAdds as $table => $cols) {
 
 echo "\n";
 
+// ── Widen purchase__number_counter.type to include 'pz' ──────────────
+// Goods-receiving (PurchaseActionHandler::createReceipt) auto-allocates
+// PZ/<year>/<seq> numbers from the same counter table used by RFQ/PO.
+// The original CREATE TABLE bakes in enum('rfq','po'), so fresh DBs
+// land without the new variant — this step widens the column. MODIFY on
+// an ENUM whose member set is unchanged is a no-op for already-migrated
+// DBs, but we still gate on a LIKE check against information_schema so
+// the log stays quiet (only "updated" prints when a real change happens).
+$counterTypeCol = (string) $db->query("
+    SELECT COLUMN_TYPE
+      FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME   = 'purchase__number_counter'
+       AND COLUMN_NAME  = 'type'
+")->fetchColumn();
+if ($counterTypeCol === '' || strpos($counterTypeCol, "'pz'") === false) {
+    try {
+        $db->exec("ALTER TABLE `purchase__number_counter`
+                   MODIFY `type` ENUM('rfq','po','pz') NOT NULL");
+        echo "✓ purchase__number_counter.type: widened to include 'pz'\n";
+        $created++;
+    } catch (\PDOException $e) {
+        fwrite(STDERR, "✗ purchase__number_counter.type widen: " . $e->getMessage() . "\n");
+        $failed++;
+    }
+} else {
+    echo "= purchase__number_counter.type: already includes 'pz' (skipped)\n";
+    $skipped++;
+}
+
+echo "\n";
+
+// ── Add responded_at / responded_by to purchase__rfq ─────────────────
+// PurchaseActionHandler::markRfqResponded() transitions an RFQ from
+// `sent` to `responded` and stamps these two columns. The CREATE TABLE
+// block above (line ~188) does NOT include them — they were added after
+// the original schema was finalised. Both already-migrated DBs and
+// freshly-CREATEd ones need an idempotent ALTER so re-runs of this
+// script remain safe. Index + FK guard against orphan responders and
+// keep the lookup cheap for "who responded to what" reporting.
+$rfqResponseColumns = [
+    'responded_at' => "ADD COLUMN `responded_at` DATETIME DEFAULT NULL AFTER `sent_at`",
+    'responded_by' => "ADD COLUMN `responded_by` INT DEFAULT NULL AFTER `responded_at`",
+];
+foreach ($rfqResponseColumns as $colName => $addDDL) {
+    $colExistsStmt->execute(['purchase__rfq', $colName]);
+    if ($colExistsStmt->fetchColumn()) {
+        echo "= purchase__rfq.{$colName}: already exists (skipped)\n";
+        $skipped++;
+        continue;
+    }
+    try {
+        $db->exec("ALTER TABLE `purchase__rfq` {$addDDL}");
+        echo "✓ purchase__rfq.{$colName}: added\n";
+        $created++;
+    } catch (\PDOException $e) {
+        fwrite(STDERR, "✗ purchase__rfq.{$colName}: " . $e->getMessage() . "\n");
+        $failed++;
+    }
+}
+// Index + FK on responded_by — only after the column itself exists.
+$idxExists = (int) $db->query("
+    SELECT COUNT(*)
+      FROM information_schema.STATISTICS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME   = 'purchase__rfq'
+       AND INDEX_NAME   = 'idx_rfq_responder'
+")->fetchColumn();
+if ($idxExists === 0) {
+    try {
+        $db->exec("ALTER TABLE `purchase__rfq`
+                   ADD KEY `idx_rfq_responder` (`responded_by`),
+                   ADD CONSTRAINT `fk_rfq_responder`
+                       FOREIGN KEY (`responded_by`) REFERENCES `user`(`user_id`)");
+        echo "✓ purchase__rfq: idx_rfq_responder + fk_rfq_responder added\n";
+        $created++;
+    } catch (\PDOException $e) {
+        fwrite(STDERR, "✗ purchase__rfq responded_by index/FK: " . $e->getMessage() . "\n");
+        $failed++;
+    }
+} else {
+    echo "= purchase__rfq.idx_rfq_responder: already exists (skipped)\n";
+    $skipped++;
+}
+
+// ── Safety MODIFY on purchase__rfq.state ENUM ────────────────────────
+// The CREATE TABLE block above (line ~188) already declares
+// `state ENUM('draft','sent','responded','cancelled','converted')` —
+// the live enum is the same shape. This MODIFY is a no-op against
+// databases built from the current schema dump, but covers legacy
+// installs where the column was created without the `responded` value
+// (the original CREATE TABLE used ENUM('draft','sent','cancelled',
+// 'converted') before `responded` was added). The LIKE check on
+// information_schema.COLUMNS keeps the log quiet when nothing needs
+// to change — only "updated" prints when a real change happens.
+$rfqStateCol = (string) $db->query("
+    SELECT COLUMN_TYPE
+      FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME   = 'purchase__rfq'
+       AND COLUMN_NAME  = 'state'
+")->fetchColumn();
+if ($rfqStateCol === '' || strpos($rfqStateCol, "'responded'") === false) {
+    try {
+        $db->exec("ALTER TABLE `purchase__rfq`
+                   MODIFY COLUMN `state`
+                   ENUM('draft','sent','responded','cancelled','converted') NOT NULL DEFAULT 'draft'");
+        echo "✓ purchase__rfq.state: widened to include 'responded'\n";
+        $created++;
+    } catch (\PDOException $e) {
+        fwrite(STDERR, "✗ purchase__rfq.state widen: " . $e->getMessage() . "\n");
+        $failed++;
+    }
+} else {
+    echo "= purchase__rfq.state: already includes 'responded' (skipped)\n";
+    $skipped++;
+}
+
+// ── Add is_primary to list__vendor_supplier ──────────────────────────
+// VendorSupplierRepository::listByVendor() / setPrimary() sort and
+// toggle a per-vendor "primary contact" flag. The CREATE TABLE block
+// above (line ~163) doesn't include the column. Idempotent — gate on
+// information_schema.COLUMNS like the other ALTERs. The composite
+// (vendor_id, is_primary) index lets the "find the primary contact for
+// vendor X" lookup skip the table scan.
+$colExistsStmt->execute(['list__vendor_supplier', 'is_primary']);
+if ($colExistsStmt->fetchColumn()) {
+    echo "= list__vendor_supplier.is_primary: already exists (skipped)\n";
+    $skipped++;
+} else {
+    try {
+        $db->exec("ALTER TABLE `list__vendor_supplier`
+                   ADD COLUMN `is_primary` TINYINT(1) NOT NULL DEFAULT 0 AFTER `isActive`,
+                   ADD KEY `idx_vs_primary` (`vendor_id`, `is_primary`)");
+        echo "✓ list__vendor_supplier.is_primary: added (with idx_vs_primary)\n";
+        $created++;
+    } catch (\PDOException $e) {
+        fwrite(STDERR, "✗ list__vendor_supplier.is_primary: " . $e->getMessage() . "\n");
+        $failed++;
+    }
+}
+
 // ── State-aware conversion: list__vendor.default_currency → INT FK ───
 // Target shape: `default_currency INT(11) NOT NULL` with FK to
 // `list__currency(id)`. The CREATE TABLE block above produces this
@@ -596,10 +738,11 @@ echo ($missing
 //   list__currency (0) + list__producer (0) + list__vendor (1, since
 //     default_currency → list__currency.id) + list__vendor_part (4) +
 //   list__vendor_part_pack (1) + list__vendor_supplier (1) +
-//   purchase__number_counter (0) + purchase__rfq (2) +
+//   purchase__number_counter (0) + purchase__rfq (3 — vendor_id, created_by,
+//     responded_by) +
 //   purchase__rfq_item (3) + purchase__order (3) +
 //   purchase__order_item (3) + purchase__order_receipt (2) +
-//   purchase__order_receipt_item (3) = 23
+//   purchase__order_receipt_item (3) = 24
 $fkStmt = $db->prepare(
     "SELECT COUNT(*)
        FROM information_schema.KEY_COLUMN_USAGE
@@ -609,7 +752,7 @@ $fkStmt = $db->prepare(
 );
 $fkStmt->execute($expectedTables);
 $fkCount = (int) $fkStmt->fetchColumn();
-echo "FKs on new tables: {$fkCount} (expected 23) " . ($fkCount === 23 ? '✓' : '✗') . "\n";
+echo "FKs on new tables: {$fkCount} (expected 24) " . ($fkCount === 24 ? '✓' : '✗') . "\n";
 
 $slugCount = (int) $db->query(
     "SELECT COUNT(*)
@@ -678,6 +821,57 @@ $vendorCurrencyFk = (int) $db->query("
 echo "list__vendor.default_currency FK → list__currency: "
    . ($vendorCurrencyFk > 0 ? "present ✓" : "MISSING ✗") . "\n";
 
+// purchase__number_counter.type must include 'pz' for the goods-receiving
+// flow (PurchaseActionHandler::createReceipt allocates PZ numbers from
+// this counter inside the same transaction as the receipt header insert).
+$counterTypeNow = (string) $db->query("
+    SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME   = 'purchase__number_counter'
+       AND COLUMN_NAME  = 'type'
+")->fetchColumn();
+echo "purchase__number_counter.type: "
+   . ($counterTypeNow !== '' && strpos($counterTypeNow, "'pz'") !== false
+       ? "includes 'pz' ✓"
+       : "missing 'pz' ✗ (got {$counterTypeNow})")
+   . "\n";
+
+// purchase__rfq.responded_at / responded_by — used by
+// PurchaseActionHandler::markRfqResponded(). Fresh DBs get them via the
+// ALTER block above; we verify they're both present.
+$rfqResponseMissing = [];
+foreach (['responded_at', 'responded_by'] as $col) {
+    $colExistsStmt->execute(['purchase__rfq', $col]);
+    if (!$colExistsStmt->fetchColumn()) {
+        $rfqResponseMissing[] = "purchase__rfq.{$col}";
+    }
+}
+echo "purchase__rfq.responded_at / responded_by: "
+   . ($rfqResponseMissing ? "MISSING " . implode(', ', $rfqResponseMissing) . " ✗" : "both present ✓")
+   . "\n";
+
+// FK responded_by → user.user_id — defensive check for the migration
+// path where the ALTER ran before the user table existed (shouldn't
+// happen because user predates this script, but cheap to verify).
+$rfqResponderFk = (int) $db->query("
+    SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = 'purchase__rfq'
+       AND COLUMN_NAME = 'responded_by'
+       AND REFERENCED_TABLE_NAME = 'user'
+")->fetchColumn();
+echo "purchase__rfq.responded_by FK → user: "
+   . ($rfqResponderFk > 0 ? "present ✓" : "MISSING ✗")
+   . "\n";
+
+// list__vendor_supplier.is_primary — used by VendorSupplierRepository
+// to sort and toggle the per-vendor primary contact.
+$colExistsStmt->execute(['list__vendor_supplier', 'is_primary']);
+$vendorSupplierPrimaryCol = (bool) $colExistsStmt->fetchColumn();
+echo "list__vendor_supplier.is_primary: "
+   . ($vendorSupplierPrimaryCol ? "present ✓" : "MISSING ✗")
+   . "\n";
+
 echo "\nDone. Created: {$created}, Skipped: {$skipped}, Failed: {$failed}.\n";
 
 $ok = $failed === 0
@@ -688,5 +882,11 @@ $ok = $failed === 0
     && $vendorCurrencyCol
     && $vendorCurrencyType === 'int'
     && $vendorCurrencyFk > 0
-    && $currencySeedCount >= 13;
+    && $currencySeedCount >= 13
+    && $counterTypeNow !== ''
+    && strpos($counterTypeNow, "'pz'") !== false
+    && $fkCount === 24
+    && empty($rfqResponseMissing)
+    && $rfqResponderFk > 0
+    && $vendorSupplierPrimaryCol;
 exit($ok ? 0 : 2);

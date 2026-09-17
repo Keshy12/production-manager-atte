@@ -9,7 +9,13 @@ if(!isset($_SESSION['isAdmin']) || $_SESSION['isAdmin'] !== true) {
     exit();
 }
 
-$id = (int)($_GET['id'] ?? 0);
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    echo json_encode(['success' => false, 'error' => 'Metoda nieobsługiwana.']);
+    exit();
+}
+
+$id = (int)($_POST['id'] ?? 0);
 if ($id <= 0) {
     echo json_encode(['success' => false, 'error' => 'Nieprawidłowe ID przyjęcia']);
     exit;

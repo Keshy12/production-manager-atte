@@ -173,6 +173,27 @@ class PurchaseOrderRepository {
         );
     }
 
+    /**
+     * Oznacza dokument jako "czeka na prawdziwy PDF" — ustawia
+     * `pdf_generated_at` na NOW() i `pdf_path` na placeholder
+     * `'(placeholder)'`. Używane przez sendPo() przy wysyłce, kiedy
+     * prawdziwy PDF jeszcze nie istnieje (operator wysłał dokument
+     * mailem/papierowo, PDF dojdzie później). Aktualizacja jest
+     * bezwarunkowa — wywołujący kontroluje, kiedy ją wykonać.
+     */
+    public function setPdfPlaceholder(int $id): bool {
+        $MsaDB = $this->MsaDB;
+        return $MsaDB->update(
+            'purchase__order',
+            [
+                'pdf_generated_at' => date('Y-m-d H:i:s'),
+                'pdf_path'         => '(placeholder)',
+            ],
+            'id',
+            $id
+        );
+    }
+
     public function delete(int $id): bool {
         $MsaDB = $this->MsaDB;
         $stmt = $MsaDB->db->prepare("DELETE FROM `purchase__order` WHERE id = ?");
