@@ -1,173 +1,369 @@
-$("#uploadBomInput").change(function(){
-    let fileName = $(this).val().split("\\").pop();
-    $("#uploadBomLabel").html(fileName);
-    $("#submitUploadBom").prop('disabled', false);
+/* ------------------------------------------------------------------
+ *  BOM upload — DB vs CSV comparison view
+ * ------------------------------------------------------------------ */
 
-    let $form = $("#uploadBomForm");
-    let actionUrl = $form.attr('action');
-    let formData = new FormData($form[0]);
-    $("#errorsContainer, #thtTBody, #smdTBody").empty();
-    $("#tableContainer").css('visibility', 'hidden');
-    $("#thtName, #thtVersion, #smdName, #smdLaminate, #smdVersion").empty();
+const BOM_SECTIONS = {
+    tht: { tag: 'THT', accent: '#5a6876' },
+    smd: { tag: 'SMD', accent: '#2f6f7e' }
+};
+
+/* ---------------------------------------------------------- Upload */
+
+$("#uploadBomInput").change(function () {
+    const fileName = $(this).val().split("\\").pop();
+    $("#uploadBomLabel").text(fileName || "Wybierz plik...");
+
+    const $form = $("#uploadBomForm");
+    const formData = new FormData($form[0]);
+
+    resetComparison();
+
     $.ajax({
         type: "POST",
-        url: actionUrl,
+        url: $form.attr('action'),
         data: formData,
         cache: false,
         contentType: false,
         processData: false,
-        success: function(data)
-        {
-            const $thtTBody = $('#thtTBody');
-            const $smdTBody = $('#smdTBody');
-            let result = data;
-            let fatalErrors = result[0];
-            let nonFatalErrors = result[1];
-            let THTBomFlat = result[2];
-            let SMDBomFlat = result[3];
-            $.each(fatalErrors, function(index, errorMessage) {
-                let alertDiv = $('<div class="alert alert-danger alert-dismissible show fade" role="alert"></div>');
-                alertDiv.append('<button type="button" class="close" data-dismiss="alert" aria-label="Close">&times;</button>');
-                alertDiv.append(errorMessage);
-                $('#errorsContainer').append(alertDiv);
-            });
-            $.each(nonFatalErrors, function(index, errorMessage) {
-                let alertDiv = $('<div class="alert alert-warning alert-dismissible show fade" role="alert"></div>');
-                alertDiv.append('<button type="button" class="close" data-dismiss="alert" aria-label="Close">&times;</button>');
-                alertDiv.append(errorMessage);
-                $('#errorsContainer').append(alertDiv);
-            });
-            if(Object.keys(fatalErrors).length !== 0) {
-                return;
-            }
+        success: function (result) {
+            const fatalErrors = result[0];
+            const nonFatalErrors = result[1];
+            const THTBomFlat = result[2];
+            const SMDBomFlat = result[3];
 
-            const THTInfo = {
+            renderErrors(fatalErrors, 'alert-danger');
+            renderErrors(nonFatalErrors, 'alert-warning');
+
+            if (Object.keys(fatalErrors).length !== 0) return;
+
+            const hasSMD = Object.keys(SMDBomFlat).length !== 0;
+
+            $("#sendBom").attr("data-tht", JSON.stringify({
                 bomId: THTBomFlat["bomId"],
                 deviceId: THTBomFlat["deviceId"],
+                deviceName: THTBomFlat["deviceName"],
                 deviceVersion: THTBomFlat["deviceVersion"],
                 bomFlat: THTBomFlat["csv"]
-            };
-            const SMDInfo = {
+            }));
+            $("#sendBom").attr("data-smd", JSON.stringify(hasSMD ? {
                 bomId: SMDBomFlat["bomId"],
                 deviceId: SMDBomFlat["deviceId"],
                 laminateId: SMDBomFlat["laminateId"],
                 laminateName: SMDBomFlat["laminateName"],
+                deviceName: SMDBomFlat["deviceName"],
                 deviceVersion: SMDBomFlat["deviceVersion"],
                 bomFlat: SMDBomFlat["csv"]
-            };
-            $("#sendBom").attr("data-tht", JSON.stringify(THTInfo));
-            $("#sendBom").attr("data-smd", JSON.stringify(SMDInfo));
-            $("#tableContainer").css('visibility', 'visible');
-            $("#thtName").text(THTBomFlat["deviceName"]);
-            $("#thtVersion").text(THTBomFlat["deviceVersion"]);
-            generateTableRows($thtTBody, THTBomFlat['db'], THTBomFlat['csv']);
+            } : {}));
 
-            // Return if there is no SMD
-            if(Object.keys(SMDBomFlat).length === 0) {
-                return;
-            }
-            $("#smdName").text(SMDBomFlat["deviceName"]);
-            $("#smdLaminate").text(SMDBomFlat["laminateName"]);
-            $("#smdVersion").text(SMDBomFlat["deviceVersion"]);
-            generateTableRows($smdTBody, SMDBomFlat['db'], SMDBomFlat['csv']);
-
+            renderComparison(THTBomFlat, hasSMD ? SMDBomFlat : null);
+            $("#tableContainer").prop('hidden', false);
+            syncStickyOffsets();
         }
     });
 });
 
-$("#sendBom").click(function(){
-    let thtData = $(this).attr("data-tht");
-    let smdData = $(this).attr("data-smd");
-    $.ajax({
-        type: "POST",
-        url: COMPONENTS_PATH+"/admin/bom/upload/upload-bom.php",
-        data: {thtData: thtData, smdData: smdData}, // serializes the form's elements.
-        success: function(data)
-        {
-            let result = data;
-            let resultMessage = result[0];
-            let wasSuccessful = result[1];
-            let resultAlertType = wasSuccessful ? "alert-success" : "alert-danger";
-            let resultAlert = getAlertString(resultAlertType, resultMessage);
-            $("#ajaxResult").append(resultAlert);
-            if(wasSuccessful) $("#uploadBomInput").change();
-        }
-    });
-});
-
-function getAlertString(alertType, alertMessage)
-{
-    return `<div class="alert `+alertType+` alert-dismissible fade show" role="alert">
-                `+alertMessage+`
-                <button type="button" class="close" data-dismiss="alert" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
-            </div>`;
+function resetComparison() {
+    $("#errorsContainer, #bomTBody").empty();
+    $("#tableContainer").prop('hidden', true);
+    $("#bomTBody").addClass("bom-collapsed");
+    $(".bom-filter__btn").removeClass("is-active")
+        .filter('[data-filter="diff"]').addClass("is-active");
 }
 
-function generateTableRows($tbody, dbBomFlat, csvBomFlat)
-{
-    // Convert object to array for easier manipulation
-    let dbBomFlatArr = Object.values(dbBomFlat);
-    let csvBomFlatArr = Object.values(csvBomFlat);
-
-    dbBomFlatArr.forEach(component1 => {
-        const matchingComponent2 = findAndRemoveMatchingComponent(component1, csvBomFlatArr) || {};
-        const componentName1 = component1.componentName || '';
-        const componentDescription1 = component1.componentDescription || '';
-        const quantity1 = component1.quantity || '';
-        const componentName2 = matchingComponent2.componentName || '';
-        const componentDescription2 = matchingComponent2.componentDescription || '';
-        const quantity2 = matchingComponent2.quantity || '';
-
-        const row = $('<tr>').addClass('text-center');
-
-        const td1 = $('<td>').html(`<b>${componentName1}</b><br><small>${componentDescription1}</small>`);
-        const td2 = $('<td>').text(quantity1);
-        const td3 = $('<td>').html(`<b>${componentName2}</b><br><small>${componentDescription2}</small>`);
-        const td4 = $('<td>').text(quantity2);
-
-        // Highlight mismatched data with red background
-        if (!componentName2 || !quantity2 || componentName1 !== componentName2 || quantity1 !== quantity2) {
-            td1.add(td2).add(td3).add(td4).addClass('table-danger');
-        }
-
-        row.append(td1, td2, td3, td4);
-        $tbody.append(row);
-    });
-
-    // Also check for any components in object2 that weren't in object1 (and remove them)
-    csvBomFlatArr.forEach(component2 => {
-        const componentName1 = '';
-        const componentDescription1 = '';
-        const quantity1 = '';
-        const componentName2 = component2.componentName || '';
-        const componentDescription2 = component2.componentDescription || '';
-        const quantity2 = component2.quantity || '';
-
-        const row = $('<tr>').addClass('text-center');
-
-        const td1 = $('<td>').html(`<b>${componentName1}</b><br><small>${componentDescription1}</small>`).addClass('table-danger');
-        const td2 = $('<td>').text(quantity1).addClass('table-danger');
-        const td3 = $('<td>').html(`<b>${componentName2}</b><br><small>${componentDescription2}</small>`);
-        const td4 = $('<td>').text(quantity2);
-
-        row.append(td1, td2, td3, td4);
-        $tbody.append(row);
+function renderErrors(errors, alertClass) {
+    $.each(errors, function (index, message) {
+        const $alert = $('<div class="alert alert-dismissible show fade" role="alert"></div>')
+            .addClass(alertClass)
+            .append('<button type="button" class="close" data-dismiss="alert" aria-label="Close">&times;</button>')
+            .append(message);
+        $('#errorsContainer').append($alert);
     });
 }
 
-// Helper function to find and remove a matching component in the array
+/* ---------------------------------------------------------- Rendering */
+
+function renderComparison(thtBom, smdBom) {
+    const $tbody = $("#bomTBody");
+    const totals = { same: 0, qty: 0, added: 0, removed: 0 };
+
+    const thtEntries = diffBoms(thtBom['db'], thtBom['csv']);
+    appendSection($tbody, 'tht', thtEntries, false, [
+        { label: 'ver.', value: thtBom['deviceVersion'] }
+    ], thtBom['deviceName']);
+    appendEntries($tbody, thtEntries, totals);
+
+    if (smdBom) {
+        const smdEntries = diffBoms(smdBom['db'], smdBom['csv']);
+        appendSection($tbody, 'smd', smdEntries, true, [
+            { label: 'laminat', value: smdBom['laminateName'] },
+            { label: 'ver.', value: smdBom['deviceVersion'] }
+        ], smdBom['deviceName']);
+        appendEntries($tbody, smdEntries, totals);
+    }
+
+    updateLegend(totals);
+}
+
+/**
+ * Pairs DB components with their CSV counterparts and classifies each pair.
+ * Returns [{ status, db, csv }] in source order (DB first, CSV-only last).
+ */
+function diffBoms(dbBomFlat, csvBomFlat) {
+    const dbArr = Object.values(dbBomFlat || {});
+    const csvArr = Object.values(csvBomFlat || {});
+    const entries = [];
+
+    dbArr.forEach(function (dbComp) {
+        const csvComp = findAndRemoveMatchingComponent(dbComp, csvArr);
+        if (!csvComp) {
+            entries.push({ status: 'removed', db: dbComp, csv: null });
+            return;
+        }
+        const sameQty = normalizeQty(dbComp.quantity) === normalizeQty(csvComp.quantity);
+        entries.push({ status: sameQty ? 'same' : 'qty', db: dbComp, csv: csvComp });
+    });
+
+    csvArr.forEach(function (csvComp) {
+        entries.push({ status: 'added', db: null, csv: csvComp });
+    });
+
+    return entries;
+}
+
+function appendSection($tbody, kind, entries, isSplit, metaParts, deviceName) {
+    const meta = BOM_SECTIONS[kind];
+    const counts = countStatuses(entries);
+
+    const $inner = $('<div class="bom-section__inner">')
+        .css('--bom-section-accent', meta.accent);
+
+    $inner.append($('<span class="bom-section__tag">').text(meta.tag));
+    $inner.append($('<span class="bom-section__title">').text(deviceName || '—'));
+
+    metaParts.forEach(function (part) {
+        if (!part.value) return;
+        $inner.append(
+            $('<span class="bom-section__meta">')
+                .text(part.label + ' ')
+                .append($('<b>').text(part.value))
+        );
+    });
+
+    const $stats = $('<span class="bom-section__stats">');
+    if (counts.qty)     $stats.append(statPill('qty', counts.qty + ' zmian ilości'));
+    if (counts.added)   $stats.append(statPill('added', '+' + counts.added + ' nowych'));
+    if (counts.removed) $stats.append(statPill('removed', '−' + counts.removed + ' brakujących'));
+    if (!counts.qty && !counts.added && !counts.removed) {
+        $stats.append(statPill('clean', 'zgodne — ' + entries.length + ' poz.'));
+    }
+    $inner.append($stats);
+
+    const $row = $('<tr class="bom-section">').toggleClass('bom-section--split', !!isSplit);
+    $row.append($('<td colspan="5">').append($inner));
+    $tbody.append($row);
+
+    // Placeholders for an otherwise empty view
+    if (!entries.length) {
+        $tbody.append(emptyRow('Brak pozycji w tej sekcji.', false));
+    } else if (!counts.qty && !counts.added && !counts.removed) {
+        $tbody.append(emptyRow('Brak różnic — wszystkie pozycje zgodne z bazą.', true));
+    }
+}
+
+function statPill(kind, label) {
+    return $('<span class="bom-section__stat">').addClass('bom-section__stat--' + kind).text(label);
+}
+
+function emptyRow(message, onlyWhenCollapsed) {
+    const $row = $('<tr class="bom-empty">').toggleClass('bom-empty-diff', !!onlyWhenCollapsed);
+    const $cell = $('<td colspan="5">');
+    if (onlyWhenCollapsed) $cell.append('<i class="bi bi-check-circle-fill"></i>');
+    $cell.append(document.createTextNode(message));
+    return $row.append($cell);
+}
+
+function appendEntries($tbody, entries, totals) {
+    entries.forEach(function (entry) {
+        totals[entry.status] += 1;
+        $tbody.append(buildRow(entry));
+    });
+}
+
+function buildRow(entry) {
+    const $row = $('<tr class="bom-row">').addClass('bom-row--' + entry.status);
+
+    $row.append(componentCell(entry.db));
+    $row.append(quantityCell(entry.db, null));
+    $row.append(statusCell(entry.status));
+    $row.append(componentCell(entry.csv));
+    $row.append(quantityCell(entry.csv, entry.status === 'qty' ? entry.db : null));
+
+    return $row;
+}
+
+function componentCell(component) {
+    const $cell = $('<td class="bom-cell-name">');
+    if (!component) {
+        return $cell.append($('<span class="bom-void">').text('—'));
+    }
+    const description = component.componentDescription || '';
+    $cell.append($('<span class="bom-code">').text(component.componentName || '—'));
+    if (description) {
+        $cell.append($('<span class="bom-desc">').attr('title', description).text(description));
+    }
+    return $cell;
+}
+
+function quantityCell(component, compareAgainst) {
+    const $cell = $('<td class="bom-cell-qty">');
+    if (!component || component.quantity === undefined || component.quantity === null || component.quantity === '') {
+        return $cell.append($('<span class="bom-void">').text('—'));
+    }
+
+    $cell.append(document.createTextNode(String(component.quantity)));
+
+    if (compareAgainst) {
+        const delta = normalizeQty(component.quantity) - normalizeQty(compareAgainst.quantity);
+        if (!isNaN(delta) && delta !== 0) {
+            $cell.append(
+                $('<small class="bom-delta">')
+                    .addClass(delta > 0 ? 'bom-delta--up' : 'bom-delta--down')
+                    .text((delta > 0 ? '+' : '−') + Math.abs(delta))
+            );
+        }
+    }
+    return $cell;
+}
+
+const STATUS_MARKS = {
+    same:    { icon: '',                      title: 'Bez zmian' },
+    qty:     { icon: 'bi-arrow-left-right',   title: 'Zmieniona ilość' },
+    added:   { icon: 'bi-plus-lg',            title: 'Nowa pozycja — jest tylko w pliku CSV' },
+    removed: { icon: 'bi-dash-lg',            title: 'Brak w pliku CSV — zostanie usunięta' }
+};
+
+function statusCell(status) {
+    const mark = STATUS_MARKS[status];
+    const $mark = $('<span class="bom-mark">')
+        .addClass('bom-mark--' + status)
+        .attr('title', mark.title);
+    if (mark.icon) $mark.append($('<i>').addClass('bi ' + mark.icon));
+    return $('<td class="bom-cell-status">').append($mark);
+}
+
+function countStatuses(entries) {
+    const counts = { same: 0, qty: 0, added: 0, removed: 0 };
+    entries.forEach(function (entry) { counts[entry.status] += 1; });
+    return counts;
+}
+
+function updateLegend(totals) {
+    const map = { changed: totals.qty, added: totals.added, removed: totals.removed, same: totals.same };
+    $('#bomLegend .bom-chip').each(function () {
+        const value = map[$(this).data('count')] || 0;
+        $(this).find('b').text(value);
+        $(this).toggleClass('is-zero', value === 0);
+    });
+}
+
+function normalizeQty(value) {
+    const num = parseFloat(value);
+    return isNaN(num) ? String(value === undefined || value === null ? '' : value) : num;
+}
+
+// Finds and removes a matching component from the array
 function findAndRemoveMatchingComponent(component, array) {
-    const index = array.findIndex(item => 
+    const index = array.findIndex(item =>
         item.type === component.type &&
         item.componentId === component.componentId &&
         item.componentName === component.componentName
     );
 
-    if (index !== -1) {
-        return array.splice(index, 1)[0];
-    }
-
+    if (index !== -1) return array.splice(index, 1)[0];
     return null;
+}
+
+/* ---------------------------------------------------------- Sticky offsets */
+
+function syncStickyOffsets() {
+    const $headRows = $('#bomTable thead tr');
+    if (!$headRows.length) return;
+    const row1 = Math.round($headRows.eq(0).outerHeight() || 36);
+    const row2 = Math.round($headRows.eq(1).outerHeight() || 36);
+    const root = document.getElementById('bomUpload');
+    if (!root) return;
+    root.style.setProperty('--bom-row1-h', row1 + 'px');
+    root.style.setProperty('--bom-head-h', (row1 + row2) + 'px');
+}
+
+$(window).on('resize', syncStickyOffsets);
+
+/* ---------------------------------------------------------- Filter */
+
+$(document).on("click", ".bom-filter__btn", function () {
+    const showAll = $(this).data("filter") === "all";
+    $(".bom-filter__btn").removeClass("is-active");
+    $(this).addClass("is-active");
+    $("#bomTBody").toggleClass("bom-collapsed", !showAll);
+});
+
+/* ---------------------------------------------------------- Submit */
+
+$("#sendBom").click(function () {
+    const thtData = $(this).attr("data-tht");
+    const smdData = $(this).attr("data-smd");
+    const smdInfo = smdData ? JSON.parse(smdData) : null;
+
+    if (smdInfo && smdInfo.deviceId) {
+        $("#setDefaultSmdMessage").text("Ustawić jako domyślny BOM dla " + smdInfo.deviceName + "?");
+        $("#setDefaultSmdModal").modal("show");
+
+        let smdDefaultChosen = null;
+
+        $("#setDefaultSmdYes").off("click").on("click", function () {
+            smdDefaultChosen = true;
+            $("#setDefaultSmdModal").modal("hide");
+        });
+
+        $("#setDefaultSmdModal").off("hidden.bs.modal").on("hidden.bs.modal", function () {
+            submitBom(thtData, smdData, smdDefaultChosen === true, $("#setDefaultTht").is(":checked"));
+        });
+    } else {
+        submitBom(thtData, smdData, false, $("#setDefaultTht").is(":checked"));
+    }
+});
+
+function submitBom(thtData, smdData, setDefaultSmd, setDefaultTht) {
+    const $button = $("#sendBom");
+    $button.prop("disabled", true);
+
+    $.ajax({
+        type: "POST",
+        url: COMPONENTS_PATH + "/admin/bom/upload/upload-bom.php",
+        data: { thtData: thtData, smdData: smdData, setDefaultSmd: setDefaultSmd, setDefaultTht: setDefaultTht },
+        success: function (result) {
+            const resultMessage = result[0];
+            const wasSuccessful = result[1];
+            showToast(wasSuccessful ? "alert-success" : "alert-danger", resultMessage);
+            if (wasSuccessful) $("#uploadBomInput").change();
+        },
+        complete: function () {
+            $button.prop("disabled", false);
+        }
+    });
+}
+
+function showToast(alertType, alertMessage) {
+    const $alert = $(getAlertString(alertType, alertMessage));
+    $("#ajaxResult").append($alert);
+    setTimeout(function () { $alert.alert('close'); }, 6000);
+}
+
+function getAlertString(alertType, alertMessage) {
+    return `<div class="alert ` + alertType + ` alert-dismissible fade show" role="alert">
+                ` + alertMessage + `
+                <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>`;
 }
