@@ -95,6 +95,36 @@ if ($type === 'po') {
 // State guard: single source of truth lives on the action handler.
 $allowedEdit = in_array($doc->state, PurchaseActionHandler::allowedEditStates($type), true);
 
+// "Wyślij dokument" / "Wyślij ponownie" / "Oznacz odpowiedź" —
+// jeden button w prawym górnym rogu headera, obok "Wróć". Mapa
+// stanów specyfikacji: draft → Wyślij dokument; PO sent / confirmed
+// → Wyślij ponownie; RFQ sent → Oznacz odpowiedź; RFQ responded
+// → Wyślij ponownie; inne stany → brak buttona.
+$sendButton = null;
+if ($type === 'rfq') {
+    if ($doc->state === 'draft') {
+        $sendButton = ['label' => 'Wyślij dokument',  'icon' => 'bi-send'];
+    } elseif ($doc->state === 'sent') {
+        $sendButton = ['label' => 'Oznacz odpowiedź',  'icon' => 'bi-reply'];
+    } elseif ($doc->state === 'responded') {
+        $sendButton = ['label' => 'Wyślij ponownie',  'icon' => 'bi-arrow-clockwise'];
+    }
+} else { // po
+    if ($doc->state === 'draft') {
+        $sendButton = ['label' => 'Wyślij dokument',  'icon' => 'bi-send'];
+    } elseif ($doc->state === 'sent') {
+        // sent → confirmation is the natural next step. Re-send is rarely
+        // useful before vendor confirmation, so make "Potwierdź odbiór"
+        // the primary CTA. Click triggers the shared confirm modal
+        // (see confirm-po-modal.php). The 'action' discriminator tells
+        // the rendered HTML to emit a <button data-action="confirm-po">
+        // instead of the wizard <a>.
+        $sendButton = ['label' => 'Potwierdź odbiór', 'icon' => 'bi-check2-square', 'action' => 'confirm-po'];
+    } elseif ($doc->state === 'confirmed') {
+        $sendButton = ['label' => 'Wyślij ponownie',  'icon' => 'bi-arrow-clockwise'];
+    }
+}
+
 // Vendor's preferred currency — pre-selects the Waluta picker in the
 // "Dodaj pozycję" form. Mirrors the cart pattern (cart-view.php
 // lines 13–19 / 47–49): active-currency list comes from list__currency,
@@ -160,9 +190,48 @@ function formatPrice($v) {
             <span class="font-weight-bold"><?= htmlspecialchars($docNumber) ?></span>
             <span class="badge <?= $stateBadgeClass[$doc->state] ?? 'badge-secondary' ?> ml-2"><?= htmlspecialchars($stateBadgeLabel[$doc->state] ?? $doc->state) ?></span>
         </h2>
-        <a href="http://<?= BASEURL ?>/purchase/cart" class="btn btn-outline-secondary btn-sm">
-            <i class="bi bi-arrow-left"></i> Wróć do koszyka
-        </a>
+        <!--
+            "Wróć" + (opcjonalny) "Wyślij / Oznacz" — oba buttony razem
+            w jednym .d-flex, żeby wizard-CTA siedział tuż obok
+            "Wróć". "Wróć" używa history.back() kiedy jest dokąd
+            wracać (Cart / Documents / direct URL); w ostateczności
+            ląduje na /purchase/documents jako fallback po otwarciu w
+            pustej karcie. Button wysyłki jest warunkowy — patrz
+            mapa stanów przy definicji $sendButton powyżej.
+
+            Specjalny przypadek: PO w stanie `sent` → akcja
+            "Potwierdź odbiór" otwiera współdzielony modal
+            (confirm-po-modal.php). Dlatego $sendButton['action'] ===
+            'confirm-po' renderuje <button> z data-* zamiast <a>
+            do wizarda — klik nie nawiguje, lecz triggeruje modal.
+        -->
+        <div class="d-flex align-items-center" style="gap: .5rem;">
+            <?php if ($sendButton !== null): ?>
+                <?php if (($sendButton['action'] ?? '') === 'confirm-po'): ?>
+                    <button type="button"
+                            class="btn btn-primary btn-sm"
+                            data-action="confirm-po"
+                            data-po-id="<?= (int)$doc->id ?>"
+                            data-po-number="<?= htmlspecialchars((string)($doc->poNumber ?? ''), ENT_QUOTES) ?>"
+                            data-vendor-name="<?= htmlspecialchars((string)($doc->vendorName ?? ''), ENT_QUOTES) ?>"
+                            data-vendor-po-number="<?= htmlspecialchars((string)($doc->vendorPoNumber ?? ''), ENT_QUOTES) ?>">
+                        <i class="<?= htmlspecialchars($sendButton['icon']) ?>"></i>
+                        <?= htmlspecialchars($sendButton['label']) ?>
+                    </button>
+                <?php else: ?>
+                    <a href="http://<?= BASEURL ?>/admin/purchase/documents/send?id=<?= (int)$doc->id ?>&amp;type=<?= htmlspecialchars($type, ENT_QUOTES) ?>"
+                       class="btn btn-primary btn-sm">
+                        <i class="<?= htmlspecialchars($sendButton['icon']) ?>"></i>
+                        <?= htmlspecialchars($sendButton['label']) ?>
+                    </a>
+                <?php endif; ?>
+            <?php endif; ?>
+            <a href="http://<?= BASEURL ?>/purchase/documents"
+               class="btn btn-outline-secondary btn-sm"
+               onclick="if (history.length > 1) { history.back(); return false; }">
+                <i class="bi bi-arrow-left"></i> Wróć
+            </a>
+        </div>
     </div>
 
     <div class="card mb-3">
@@ -687,3 +756,15 @@ function formatPrice($v) {
 </style>
 
 <script src="<?= htmlspecialchars(asset('public_html/components/Admin/Purchase/Documents/documents-edit.js')) ?>"></script>
+
+<?php
+    // Współdzielony modal "Potwierdź odbiór PO" — renderowany RAZ na
+    // stronie, bo JS jest zdarzeniowy (delegacja na document). Dwa
+    // miejsca wpinania: tu (header CTA na PO w stanie `sent`) oraz
+    // /purchase/receipts (kolejka). Ścieżka liczona względem __DIR__
+    // dokumentu (Admin/Purchase/Documents/) — trzy poziomy w górę do
+    // public_html/components/, potem w dół do purchases/documents/.
+    include __DIR__ . '/../../../purchases/documents/confirm-po-modal.php';
+?>
+<link rel="stylesheet" href="<?= htmlspecialchars(asset('public_html/components/purchases/documents/confirm-po-modal.css'), ENT_QUOTES) ?>">
+<script src="<?= htmlspecialchars(asset('public_html/components/purchases/documents/confirm-po-modal.js'), ENT_QUOTES) ?>"></script>

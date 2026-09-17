@@ -1,0 +1,488 @@
+/*
+ * Wizard "Wyślij dokument" — karta po karcie, krok po kroku.
+ *
+ * Bootstrap 4 sam pokrywa większość layoutu (card, card-header / -body /
+ * -footer, badge, alert, spinner-border, breadcrumb). Ten arkusz
+ * dodaje tylko to, czego utility-klasy BS4 nie mają:
+ *
+ *   .send-step              — kontener pojedynczego kroku; domyślnie
+ *                             hidden (display: none), `.is-active`
+ *                             pokazuje i podświetla ramkę.
+ *   .contact-card           — karta-checkboxa kontaktu dostawcy
+ *                             (Step 2). Hover + selected states.
+ *   .pdf-preview-placeholder — szary box z ikoną PDF (Step 3).
+ *   .summary-recap          — duże liczby / wyróżniony tekst w Step 4.
+ *   .action-bar-sticky      — sticky bottom bar w panelu kroku 4.
+ *   .send-success-alert     — pełnoekranowy alert po commicie.
+ *
+ * Żadnych wartości w px tam, gdzie BS4 ma utility — używamy utility
+ * (`d-flex`, `justify-content-between` itd.) już w HTML-u, a w CSS
+ * tylko rzeczy naprawdę poza utility-set.
+ */
+
+/* --- Step wrapper + stepper -------------------------------------- */
+
+#send-wizard-root .send-step {
+    margin-bottom: 1rem;
+}
+
+/* Aktywny panel: delikatne podświetlenie ramki karty wewnątrz. */
+#send-wizard-root .send-step.is-active .send-step-card {
+    border-color: #80bdff;
+    box-shadow: 0 0 0 .2rem rgba(0, 123, 255, .10);
+}
+
+/* Stepper: numer kroku w kółku + aktywny wyróżniony. */
+#send-wizard-root .send-stepper {
+    background-color: #f8f9fa;
+    padding: .5rem .75rem;
+    border-radius: .25rem;
+}
+#send-wizard-root .send-stepper .breadcrumb-item {
+    color: #6c757d;
+}
+#send-wizard-root .send-stepper .breadcrumb-item.is-active {
+    color: #212529;
+    font-weight: 600;
+}
+#send-wizard-root .send-stepper .breadcrumb-item.is-done::before {
+    content: "\F26B"; /* bi-check2-circle — bootstrap-icons */
+    font-family: "bootstrap-icons";
+    color: #28a745;
+    margin-right: .25rem;
+}
+#send-wizard-root .send-stepper .send-stepper-num {
+    display: inline-block;
+    width: 1.5rem;
+    height: 1.5rem;
+    line-height: 1.5rem;
+    text-align: center;
+    border-radius: 50%;
+    background-color: #dee2e6;
+    color: #495057;
+    font-size: .8rem;
+    margin-right: .25rem;
+}
+#send-wizard-root .send-stepper .breadcrumb-item.is-active .send-stepper-num {
+    background-color: #007bff;
+    color: #fff;
+}
+#send-wizard-root .send-stepper .breadcrumb-item.is-done .send-stepper-num {
+    background-color: #28a745;
+    color: #fff;
+}
+
+/* Numer kroku w nagłówku karty (ten sam co w stepperze, mniejszy). */
+#send-wizard-root .send-step-num {
+    display: inline-block;
+    min-width: 1.6rem;
+    height: 1.6rem;
+    line-height: 1.6rem;
+    text-align: center;
+    border-radius: 50%;
+    background-color: #e9ecef;
+    color: #495057;
+    font-size: .85rem;
+    margin-right: .35rem;
+}
+#send-wizard-root .send-step.is-active .send-step-num {
+    background-color: #007bff;
+    color: #fff;
+}
+
+/* Wyróżnij kartę ostatniego kroku (commit). */
+#send-wizard-root .send-step-card-final .card-header {
+    background-color: #d4edda;
+}
+
+/* --- Step 1: tabelka pozycji ------------------------------------- */
+
+#send-wizard-root #send-step-1-body .table th {
+    background-color: #f8f9fa;
+    font-size: .85rem;
+    border-top: 0;
+}
+#send-wizard-root #send-step-1-body .doc-line-producer {
+    color: #6c757d;
+    font-size: .8rem;
+}
+#send-wizard-root #send-step-1-body .doc-line-vp {
+    color: #6c757d;
+    font-size: .8rem;
+}
+#send-wizard-root #send-step-1-body .doc-line-value-cell {
+    white-space: nowrap;
+}
+#send-wizard-root #send-step-1-body .doc-line-muted {
+    color: #adb5bd;
+    font-size: .75rem;
+}
+
+/* Backdate toggle: input datetime-local, mniejszy niż default,
+   obok opisu. */
+#send-wizard-root .send-backdate-toggle {
+    cursor: pointer;
+    user-select: none;
+}
+#send-wizard-root .send-backdate-toggle:hover {
+    text-decoration: underline;
+}
+#send-wizard-root .send-backdate-wrap {
+    margin-top: 1rem;
+    padding: .5rem .75rem;
+    background-color: #f8f9fa;
+    border-radius: .25rem;
+    display: none;
+}
+#send-wizard-root .send-backdate-wrap.is-shown {
+    display: block;
+}
+
+/* Re-send warning: mała ramka żółta pojawia się, gdy sent_at jest
+   świeży (<1 min), bo commit nadpisze timestamp. */
+#send-wizard-root .send-resend-warning {
+    border-left: 4px solid #ffc107;
+    background-color: #fff8e1;
+    padding: .5rem .75rem;
+    margin-top: .75rem;
+    border-radius: 0 .25rem .25rem 0;
+}
+#send-wizard-root .send-resend-warning.is-hidden {
+    display: none;
+}
+
+/* --- Step 2: karta kontaktu -------------------------------------- */
+
+#send-wizard-root .contact-card {
+    border: 1px solid #dee2e6;
+    border-radius: .25rem;
+    padding: .85rem 1.1rem;
+    margin-bottom: .5rem;
+    background-color: #fff;
+    cursor: pointer;
+    transition: background-color .15s ease, border-color .15s ease;
+    display: flex;
+    align-items: flex-start;
+    max-width: 32rem;
+    width: fit-content;
+}
+#send-wizard-root .contact-card:hover {
+    background-color: #f1f3f5;
+    border-color: #adb5bd;
+}
+#send-wizard-root .contact-card.is-selected {
+    background-color: #e7f1ff;
+    border-color: #80bdff;
+}
+#send-wizard-root .contact-card.is-filtered-out {
+    display: none;
+}
+#send-wizard-root .contact-card .contact-card-check {
+    margin-right: 1rem;
+    transform: scale(1.25);
+    flex: 0 0 auto;
+    margin-top: .25rem;
+}
+#send-wizard-root .contact-card .contact-card-body {
+    display: block;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+#send-wizard-root .contact-card .contact-card-headline {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: .25rem .4rem;
+}
+#send-wizard-root .contact-card .contact-card-name {
+    font-weight: 600;
+    font-size: 1rem;
+}
+#send-wizard-root .contact-card .contact-card-job {
+    color: #6c757d;
+    font-size: .9rem;
+    margin-left: .35rem;
+}
+#send-wizard-root .contact-card .contact-card-meta {
+    margin-top: .35rem;
+    font-size: .9rem;
+    color: #495057;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .35rem 1rem;
+    align-items: center;
+}
+#send-wizard-root .contact-card .contact-card-meta .contact-meta-item {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+}
+#send-wizard-root .contact-card .contact-card-meta .contact-meta-item i {
+    color: #6c757d;
+    display: inline-block;
+    font-size: 1rem;
+    line-height: 1;
+}
+#send-wizard-root .contact-card .contact-card-comment-row {
+    margin-top: .35rem;
+    display: flex;
+    align-items: flex-start;
+    gap: .4rem;
+    color: #495057;
+    font-size: .9rem;
+}
+#send-wizard-root .contact-card .contact-card-comment-icon {
+    color: #6c757d;
+    flex: 0 0 auto;
+    margin-top: .15rem;
+}
+#send-wizard-root .contact-card .contact-card-comment-text {
+    font-style: italic;
+    word-break: break-word;
+}
+#send-wizard-root .send-copy-btn {
+    background: transparent;
+    border: 0;
+    color: #6c757d;
+    padding: .1rem .25rem;
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+    border-radius: .2rem;
+    transition: background-color .15s ease, color .15s ease, transform .12s ease;
+}
+#send-wizard-root .send-copy-btn:hover {
+    color: #007bff;
+    background-color: rgba(0, 123, 255, .08);
+}
+#send-wizard-root .send-copy-btn:focus {
+    outline: none;
+}
+#send-wizard-root .send-copy-btn.is-copied {
+    color: #28a745;
+    background-color: rgba(40, 167, 69, .12);
+    transform: scale(1.08);
+}
+#send-wizard-root .send-contact-edit-btn {
+    margin-top: .35rem;
+    background: transparent;
+    border: 0;
+    color: #6c757d;
+    padding: 0;
+    cursor: pointer;
+    font-size: .95rem;
+}
+#send-wizard-root .send-contact-edit-btn:hover {
+    color: #007bff;
+}
+#send-wizard-root .send-contact-edit-form-wrap {
+    margin: .25rem 0 .65rem;
+    padding: .65rem .85rem;
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: .25rem;
+}
+#send-wizard-root .send-copy-toast {
+    position: fixed;
+    top: 70px;
+    right: 20px;
+    z-index: 1080;
+    font-size: .9rem;
+    box-shadow: 0 .25rem .5rem rgba(0,0,0,.15);
+}
+
+/* Badge "główny kontakt" — żółty, pinned-at-top dzięki ORDER BY w SQL. */
+#send-wizard-root .contact-card .contact-primary-badge {
+    background-color: #ffc107;
+    color: #212529;
+    font-weight: 600;
+    padding: .2rem .5rem;
+    border-radius: .25rem;
+    font-size: .75rem;
+    margin-right: .5rem;
+}
+
+/* Inline dodawanie kontaktu — toggle + formularz. */
+#send-wizard-root .send-add-contact-link {
+    margin-top: .5rem;
+    padding: .5rem .75rem;
+    background-color: #f8f9fa;
+    border-radius: .25rem;
+    font-size: .9rem;
+}
+#send-wizard-root .send-add-contact-bar {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px dashed #dee2e6;
+}
+#send-wizard-root .send-add-contact-form {
+    display: none;
+    margin-top: 1rem;
+    padding: 1rem 1.25rem;
+    background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: .25rem;
+}
+#send-wizard-root .send-add-contact-form.is-open {
+    display: block;
+}
+#send-wizard-root .send-add-contact-form label {
+    font-size: .85rem;
+    color: #495057;
+    font-weight: 600;
+}
+
+/* --- Step 3: PDF preview placeholder ----------------------------- */
+
+#send-wizard-root .pdf-preview-placeholder {
+    margin-top: 1rem;
+    background-color: #f1f3f5;
+    border: 1px dashed #adb5bd;
+    border-radius: .25rem;
+    padding: 2rem 1rem;
+    text-align: center;
+    color: #6c757d;
+}
+#send-wizard-root .pdf-preview-placeholder .bi-file-earmark-pdf {
+    font-size: 4rem;
+    color: #adb5bd;
+    display: block;
+    margin-bottom: .5rem;
+}
+#send-wizard-root .pdf-preview-placeholder .pdf-preview-meta {
+    font-size: .85rem;
+    color: #868e96;
+}
+#send-wizard-root .pdf-preview-placeholder .pdf-preview-meta strong {
+    color: #495057;
+}
+#send-wizard-root .pdf-radio-card {
+    display: block;
+    border: 1px solid #dee2e6;
+    border-radius: .25rem;
+    padding: 1rem;
+    margin-bottom: .5rem;
+    cursor: pointer;
+    transition: background-color .15s ease, border-color .15s ease;
+}
+#send-wizard-root .pdf-radio-card:hover {
+    background-color: #f1f3f5;
+    border-color: #adb5bd;
+}
+#send-wizard-root .pdf-radio-card.is-selected {
+    background-color: #e7f1ff;
+    border-color: #80bdff;
+}
+#send-wizard-root .pdf-radio-card input[type="radio"] {
+    margin-right: .5rem;
+    transform: scale(1.15);
+    vertical-align: middle;
+}
+
+/* --- Step 4: recapa --------------------------------------------- */
+
+#send-wizard-root .summary-recap {
+    background-color: #f8f9fa;
+    border-radius: .25rem;
+    padding: 1.25rem 1.5rem;
+}
+#send-wizard-root .summary-recap .summary-recap-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: .35rem 0;
+    border-bottom: 1px solid #e9ecef;
+}
+#send-wizard-root .summary-recap .summary-recap-row:last-child {
+    border-bottom: 0;
+}
+#send-wizard-root .summary-recap .summary-recap-label {
+    color: #6c757d;
+    flex-shrink: 0;
+    margin-right: 1rem;
+}
+#send-wizard-root .summary-recap .summary-recap-value {
+    font-weight: 600;
+    text-align: right;
+}
+#send-wizard-root .summary-recap .summary-recap-row-contacts {
+    align-items: flex-start;
+    flex-wrap: wrap;
+}
+#send-wizard-root .summary-recap .summary-recap-row-contacts .summary-recap-label {
+    align-self: flex-start;
+    padding-top: .35rem;
+}
+#send-wizard-root .summary-recap .summary-recap-contacts {
+    flex: 1 1 100%;
+    width: 100%;
+    margin-top: .5rem;
+    margin-left: 0;
+    padding-top: .5rem;
+    border-top: 1px dashed #dee2e6;
+}
+#send-wizard-root .summary-recap .summary-contact-row {
+    font-size: .95rem;
+    margin-top: .35rem;
+}
+#send-wizard-root .summary-recap .summary-contact-row strong {
+    font-size: 1rem;
+}
+#send-wizard-root .summary-recap .summary-contact-line {
+    font-size: .9rem;
+    color: #495057;
+    margin-top: .15rem;
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+}
+#send-wizard-root .summary-recap .summary-contact-line i {
+    color: #6c757d;
+    width: 1rem;
+    text-align: center;
+}
+#send-wizard-root .summary-recap .summary-contact-line a {
+    color: #495057;
+    word-break: break-word;
+}
+#send-wizard-root .summary-recap .summary-contact-line a:hover {
+    color: #007bff;
+    text-decoration: underline;
+}
+#send-wizard-root .summary-recap .summary-contact-comment {
+    align-items: flex-start;
+}
+#send-wizard-root .summary-recap .summary-contact-comment-text {
+    font-style: italic;
+    color: #6c757d;
+    word-break: break-word;
+}
+#send-wizard-root .summary-recap .summary-recap-value-large {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #007bff;
+}
+
+/* --- Sticky action bar (panel 4) -------------------------------- */
+
+#send-wizard-root .action-bar-sticky {
+    position: sticky;
+    bottom: 0;
+    background-color: #fff;
+    border-top: 1px solid #dee2e6;
+    padding: .75rem 1rem;
+    margin: 0 -1rem -1rem -1rem; /* rozciągnij na pełną szerokość karty */
+    border-radius: 0 0 .25rem .25rem;
+    z-index: 5;
+}
+
+/* --- Sukces ----------------------------------------------------- */
+
+#send-wizard-root + #send-success-wrap .send-success-alert {
+    font-size: 1.05rem;
+    padding: 1.25rem 1.5rem;
+}
+#send-wizard-root + #send-success-wrap .send-success-alert .badge {
+    vertical-align: middle;
+    margin-left: .25rem;
+}

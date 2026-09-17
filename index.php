@@ -186,6 +186,20 @@ switch ($request) {
         includeWithVariables($headerDir, array('title' => 'Edycja dokumentu'));
         require $componentsDir . '/Admin/Purchase/Documents/documents-edit.php';
         break;
+    case 'admin/purchase/documents/send':
+        // Wizard "Wyślij dokument" (wielokrokowy). Designer lane owns
+        // the view (send-view.php + send-view.js + send.css); backend
+        // contract is frozen (see document-send-ajax.php +
+        // document-rfq-respond-ajax.php + document-cancel-ajax.php
+        // in public_html/components/purchases/documents/). The exact
+        // include path below is a placeholder until the designer lane
+        // publishes it; matching convention is
+        //   Admin/Purchase/Documents/documents-send.php
+        // (mirrors documents-edit.php above).
+        requireAdmin();
+        includeWithVariables($headerDir, array('title' => 'Wyślij dokument'));
+        require $componentsDir . '/Admin/Purchase/Documents/documents-send.php';
+        break;
     case 'purchase/cart':
         requireAdmin();
         includeWithVariables($headerDir, array('title' => 'Koszyk zakupowy'));
