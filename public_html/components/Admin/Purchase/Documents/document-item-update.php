@@ -97,9 +97,13 @@ $handler = new PurchaseActionHandler($MsaDB);
 $itemTable = $type === 'po' ? 'purchase__order_item' : 'purchase__rfq_item';
 $docTable  = $type === 'po' ? 'purchase__order'      : 'purchase__rfq';
 $docFkCol  = $type === 'po' ? 'po_id'                : 'rfq_id';
+// RFQ items have no quantity_received column (only PO items do, per
+// the schema in docs/data/DATABASE.md §4j). The PO-only floor check
+// further down is gated by `$type === 'po'` and treats null as 0.
+$receivedCol = $type === 'po' ? 'i.quantity_received' : 'NULL';
 
 $itemStmt = $MsaDB->db->prepare(
-    "SELECT i.{$docFkCol} AS doc_id, i.quantity_received,
+    "SELECT i.{$docFkCol} AS doc_id, {$receivedCol} AS quantity_received,
             d.state
        FROM `{$itemTable}` i
        JOIN `{$docTable}`  d ON d.id = i.{$docFkCol}
