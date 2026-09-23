@@ -61,6 +61,7 @@ SELECT pri.vendor_part_id,
        pr.state       AS state,
        pri.quantity   AS quantity,
        pri.unit_price AS unit_price,
+       pri.currency   AS currency,
        pri.picked_pack_size AS pickedPackSize,
        pr.expected_reply_date AS expected_date
   FROM `purchase__rfq_item` pri
@@ -81,6 +82,7 @@ SELECT poi.vendor_part_id,
        po.state      AS state,
        poi.quantity  AS quantity,
        poi.unit_price AS unit_price,
+       poi.currency   AS currency,
        poi.picked_pack_size AS pickedPackSize,
        po.expected_delivery_date AS expected_date
   FROM `purchase__order_item` poi
@@ -104,6 +106,7 @@ foreach ($rfqRows as $r) {
         'state'           => $r['state'],
         'quantity'        => (float)$r['quantity'],
         'unit_price'      => $r['unit_price'] !== null ? (float)$r['unit_price'] : null,
+        'currency'        => $r['currency'] !== null ? $r['currency'] : null,
         'picked_pack_size'=> $r['pickedPackSize'] === null ? null : (float)$r['pickedPackSize'],
         'expected_date'   => $r['expected_date'],
     ];
@@ -118,6 +121,7 @@ foreach ($poRows as $r) {
         'state'           => $r['state'],
         'quantity'        => (float)$r['quantity'],
         'unit_price'      => $r['unit_price'] !== null ? (float)$r['unit_price'] : null,
+        'currency'        => $r['currency'] !== null ? $r['currency'] : null,
         'picked_pack_size'=> $r['pickedPackSize'] === null ? null : (float)$r['pickedPackSize'],
         'expected_date'   => $r['expected_date'],
     ];

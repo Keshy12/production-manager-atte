@@ -348,9 +348,20 @@
         // Detach any prior handler so repeated calls don't stack.
         $ok.off('click.cartConfirm').one('click.cartConfirm', function () {
             $cartConfirmModal.modal('hide');
+            // Lock the OK button once the click fires — even though
+            // the modal is hiding, this stops any queued click from
+            // a frantic user from triggering onConfirm twice. The
+            // hidden.bs.modal handler below re-enables it for the
+            // next prompt so it doesn't stay disabled if the user
+            // dismisses the modal without confirming.
+            $ok.prop('disabled', true);
             if (typeof opts.onConfirm === 'function') { opts.onConfirm(); }
         });
         $cartConfirmModal.modal('show');
+        // Namespaced so re-calling cartConfirm() doesn't stack handlers.
+        $cartConfirmModal.off('hidden.bs.modal.cartConfirmLock').on('hidden.bs.modal.cartConfirmLock', function () {
+            $ok.prop('disabled', false);
+        });
     }
 
     function escapeHtml(s) {
@@ -1153,7 +1164,12 @@
                 let qtyHtml = '<div>' + escapeHtml(formatQty(d.quantity)) + '</div>';
                 if (pack !== null) { qtyHtml += '<div><span class="badge badge-light border text-monospace" title="Wybrana wielkosc opakowania">opak. ' + escapeHtml(formatQty(pack)) + '</span></div>'; }
                 let priceHtml = (d.unit_price !== null && d.unit_price !== undefined) ? escapeHtml(formatPrice(d.unit_price)) : '<span class="text-muted">\u2014</span>';
-                priceHtml += '<div><small class="text-muted">PLN</small></div>';
+                // Currency comes from the row payload (cart-active-docs.php
+                // SELECTs pri.currency / poi.currency). The DB default is
+                // 'PLN' so older rows still report a code; missing/null
+                // (e.g. a draft doc with no item-level currency yet) shows
+                // a muted dash rather than silently defaulting.
+                priceHtml += '<div><small class="text-muted">' + escapeHtml(d.currency || '\u2014') + '</small></div>';
                 let dateCell = (d.expected_date && d.expected_date !== '') ? escapeHtml(d.expected_date) : '<span class="text-muted">\u2014</span>';
                 let actionCell = editUrl ? '<a href="' + editUrl + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary" title="Otworz edycje w nowej karcie">Edytuj</a>' : '<span class="text-muted">\u2014</span>';
                 html += '<tr>' +
@@ -1231,17 +1247,33 @@
         let html = '';
         Object.keys(byVendor).forEach(function (vid) {
             let group = byVendor[vid];
-            let groupValue = group.items.reduce(function (sum, x) {
-                return sum + (x.item.unit_price ? x.item.unit_price * x.item.quantity : 0);
-            }, 0);
+            // Per-currency line-value totals — a vendor group may span
+            // multiple currencies (PLN + EUR etc.) so a single rolled-up
+            // number would lie. Mirrors the server-side value_breakdown
+            // returned by documents-table.php and rendered by
+            // documents-view.js renderValue(). Falls back to 'PLN' for
+            // legacy cart items without a currency, matching the DB
+            // default on purchase__rfq_item / purchase__order_item.
+            let currencyBreakdown = {};
+            group.items.forEach(function (x) {
+                let cur = x.item.currency || 'PLN';
+                let val = (parseFloat(x.item.quantity) || 0) * (parseFloat(x.item.unit_price) || 0);
+                currencyBreakdown[cur] = (currencyBreakdown[cur] || 0) + val;
+            });
+            let breakdownHtml = Object.keys(currencyBreakdown).sort().map(function (cur) {
+                return '<div>Łącznie ' + escapeHtml(cur) + ': ' + formatPrice(currencyBreakdown[cur]) + '</div>';
+            }).join('');
 
             html += '<div class="vendor-group mb-4" data-vendor-id="' + vid + '">' +
-                '<div class="d-flex justify-content-between align-items-center mb-2">' +
+                '<div class="d-flex justify-content-between align-items-start mb-2">' +
+                '<div>' +
                 '<h6 class="mb-0">' +
                     '<a href="#" class="text-muted select-vendor-link select-vendor-btn mr-1" data-vendor-id="' + vid + '" title="Wybierz tego dostawcę w selektorze, aby dodać kolejne pozycje"><i class="bi bi-plus-circle"></i></a>' +
                     escapeHtml(group.name) +
-                    ' <small class="text-muted">(' + group.items.length + ' poz. · łącznie ' + formatPrice(groupValue) + ')</small>' +
+                    ' <small class="text-muted">(' + group.items.length + ' poz.)</small>' +
                 '</h6>' +
+                '<div class="text-muted small mt-1">' + breakdownHtml + '</div>' +
+                '</div>' +
                 '<div class="btn-group btn-group-sm" role="group" aria-label="Utwórz dokument">' +
                     '<button type="button" class="btn btn-outline-primary create-doc-btn" data-doc-type="rfq" data-vendor-id="' + vid + '" title="Utwórz zapytanie ofertowe (RFQ) jako szkic i otwórz w nowej karcie">' +
                         '<i class="bi bi-question-square"></i> Utwórz zapytanie</button>' +
@@ -2405,19 +2437,26 @@ $cartQty.val('');
         // the dominant one).
         const vendorName = items[0].vendor_name || ('#' + vid);
         const itemCount = items.length;
-        let totalValue = 0;
-        let currency   = items[0].currency || 'PLN';
+        // Per-currency totals — items[0].currency assumed a single
+        // currency, which lied for mixed-currency vendor groups. Sum
+        // per-currency, the same shape as the server's value_breakdown
+        // and the cart's per-vendor header breakdown above.
+        const valueBreakdown = {};
         items.forEach(function (it) {
+            const cur   = it.currency || 'PLN';
             const qty   = parseFloat(it.quantity) || 0;
             const price = parseFloat(it.unit_price) || 0;
-            totalValue += qty * price;
+            valueBreakdown[cur] = (valueBreakdown[cur] || 0) + (qty * price);
         });
+        const breakdownHtml = Object.keys(valueBreakdown).sort().map(function (cur) {
+            return '<br><strong>' + escapeHtml(formatPrice(valueBreakdown[cur])) + ' ' + escapeHtml(cur) + '</strong>';
+        }).join('');
         const isRfq = (docType === 'rfq');
         cartConfirm({
             title: isRfq ? 'Utworzyć zapytanie?' : 'Utworzyć zamówienie?',
             body: '<p>Dostawca: <strong>' + escapeHtml(vendorName) + '</strong></p>' +
-                  '<p>Pozycji: <strong>' + itemCount + '</strong><br>' +
-                  'Łączna wartość: <strong>' + escapeHtml(formatPrice(totalValue)) + ' ' + escapeHtml(currency) + '</strong></p>' +
+                  '<p>Pozycji: <strong>' + itemCount + '</strong></p>' +
+                  '<p>Łączna wartość:' + breakdownHtml + '</p>' +
                   '<p class="text-muted small mb-0">Dokument zostanie utworzony jako szkic i otwarty w nowej karcie.</p>',
             okLabel: isRfq ? 'Utwórz zapytanie' : 'Utwórz zamówienie',
             okClass: 'btn-success',
@@ -2452,6 +2491,18 @@ $cartQty.val('');
                 };
             })
         };
+
+        // In-flight lock — disable the whole per-vendor button group
+        // and show a spinner on the clicked button. Without this a
+        // double-click fires the POST twice and the server commits
+        // two duplicate documents. The matching restore lives in
+        // the .always() handler below so the button comes back even
+        // when the AJAX errors out.
+        const $group = $btn.closest('.btn-group');
+        const $buttons = $group.length ? $group.find('button') : $btn;
+        const originalHtml = $btn.html();
+        $buttons.prop('disabled', true);
+        $btn.html('<span class="spinner-border spinner-border-sm mr-1"></span> Tworzę…');
 
         $.ajax({
             url: COMPONENTS_PATH + '/purchases/cart/cart-create-document.php',
@@ -2490,6 +2541,13 @@ $cartQty.val('');
                 if (m) msg = m[1];
             }
             setAlert(msg, 'danger');
+        }).always(function () {
+            // Restore the per-vendor button group after the AJAX
+            // settles — done and fail are mutually exclusive but both
+            // leave the AJAX finished, so the unlock belongs here
+            // rather than duplicated in each branch.
+            $buttons.prop('disabled', false);
+            $btn.html(originalHtml);
         });
     }
 
