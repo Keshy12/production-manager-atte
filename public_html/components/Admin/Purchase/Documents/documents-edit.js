@@ -254,14 +254,12 @@ $(function () {
         const comment = ($commentInput.val() || '').toString();
 
         if (isNaN(qty) || qty <= 0) {
-            if (typeof setAlert === 'function') { setAlert('Ilość musi być > 0.', 'warning'); }
-            else { alert('Ilość musi być > 0.'); }
+            setAlert('Ilość musi być > 0.', 'warning');
             $qtyInput.trigger('focus');
             return;
         }
         if (unitPrice !== null && (isNaN(unitPrice) || unitPrice < 0)) {
-            if (typeof setAlert === 'function') { setAlert('Cena nie może być ujemna.', 'warning'); }
-            else { alert('Cena nie może być ujemna.'); }
+            setAlert('Cena nie może być ujemna.', 'warning');
             $priceInput.trigger('focus');
             return;
         }
@@ -287,8 +285,7 @@ $(function () {
         })
         .done(function (r) {
             if (!r || !r.success) {
-                if (typeof setAlert === 'function') { setAlert((r && r.error) || 'Błąd zapisu.', 'danger'); }
-                else { alert((r && r.error) || 'Błąd zapisu.'); }
+                setAlert((r && r.error) || 'Błąd zapisu.', 'danger');
                 $tr.find('.doc-row-save, .doc-row-cancel').prop('disabled', false);
                 return;
             }
@@ -358,12 +355,11 @@ $(function () {
             $tr.removeData('doc-editing');
             $tr.removeData(['orig-qty-html', 'orig-price-html', 'orig-comment-html', 'orig-akcje-html', 'doc-edit-pack']);
 
-            if (typeof setAlert === 'function') { setAlert(r.message || 'Zapisano.', 'success'); }
+            setAlert(r.message || 'Zapisano.', 'success');
         })
         .fail(function (xhr, status) {
             const msg = (xhr && xhr.responseJSON && xhr.responseJSON.error) || status || 'Błąd sieci.';
-            if (typeof setAlert === 'function') { setAlert(msg, 'danger'); }
-            else { alert(msg); }
+            setAlert(msg, 'danger');
             $tr.find('.doc-row-save, .doc-row-cancel').prop('disabled', false);
         });
     });
@@ -375,7 +371,7 @@ $(function () {
     $tbody.on('click', '.doc-row-delete', function () {
         const $tr = $(this).closest('tr');
         if ($tr.data('doc-editing')) {
-            if (typeof setAlert === 'function') { setAlert('Najpierw zakończ edycję pozycji.', 'warning'); }
+            setAlert('Najpierw zakończ edycję pozycji.', 'warning');
             return;
         }
         // Pull each piece of the row's identity from dedicated data-*
@@ -445,8 +441,7 @@ $(function () {
         .done(function (r) {
             $btn.prop('disabled', false);
             if (!r || !r.success) {
-                if (typeof setAlert === 'function') { setAlert((r && r.error) || 'Błąd usuwania.', 'danger'); }
-                else { alert((r && r.error) || 'Błąd usuwania.'); }
+                setAlert((r && r.error) || 'Błąd usuwania.', 'danger');
                 return;
             }
             $tr.fadeOut(200, function () {
@@ -458,13 +453,12 @@ $(function () {
             });
             $('#docItemDeleteModal').modal('hide');
             $pendingDeleteRow = null;
-            if (typeof setAlert === 'function') { setAlert(r.message || 'Pozycja usunięta.', 'success'); }
+            setAlert(r.message || 'Pozycja usunięta.', 'success');
         })
         .fail(function (xhr, status) {
             $btn.prop('disabled', false);
             const msg = (xhr && xhr.responseJSON && xhr.responseJSON.error) || status || 'Błąd sieci.';
-            if (typeof setAlert === 'function') { setAlert(msg, 'danger'); }
-            else { alert(msg); }
+            setAlert(msg, 'danger');
         });
     });
 
@@ -554,21 +548,18 @@ $(function () {
                 // sees the same starting text.
                 $tr.attr('data-vp-comment', val);
                 $line.replaceWith(renderVpCommentLine(vpId, val));
-                if (typeof setAlert === 'function') { setAlert('Komentarz zapisany.', 'success'); }
+                setAlert('Komentarz zapisany.', 'success');
             } else {
                 $btn.prop('disabled', false);
                 $line.find('.doc-row-vp-comment-cancel').prop('disabled', false);
-                if (typeof setAlert === 'function') {
-                    setAlert('Błąd zapisu komentarza: ' + ((resp && resp.error) || 'nieznany'), 'danger');
-                }
+                setAlert('Błąd zapisu komentarza: ' + ((resp && resp.error) || 'nieznany'), 'danger');
             }
         })
         .fail(function (xhr, status) {
             $btn.prop('disabled', false);
             $line.find('.doc-row-vp-comment-cancel').prop('disabled', false);
             const msg = (xhr && xhr.responseJSON && xhr.responseJSON.error) || status || 'Błąd sieci.';
-            if (typeof setAlert === 'function') { setAlert(msg, 'danger'); }
-            else { alert(msg); }
+            setAlert(msg, 'danger');
         });
     });
 
@@ -1143,8 +1134,7 @@ $(function () {
 
         // ---- validation ----
         if (isNaN(qty) || qty <= 0) {
-            if (typeof setAlert === 'function') { setAlert('Ilość musi być > 0.', 'warning'); }
-            else { alert('Ilość musi być > 0.'); }
+            setAlert('Ilość musi być > 0.', 'warning');
             $qtyInput.trigger('focus');
             return;
         }
@@ -1153,21 +1143,20 @@ $(function () {
             // pickedPackSize is auto-set to packs[0] > 0 in that branch,
             // so the > 0 check is a defensive guard.
             if (pack === null || isNaN(pack) || pack <= 0) {
-                if (typeof setAlert === 'function') { setAlert('Wielkość opakowania musi być > 0.', 'warning'); }
+                setAlert('Wielkość opakowania musi być > 0.', 'warning');
                 return;
             }
             const pkgs = parseFloat(($packagesInput.val() || '').toString().replace(',', '.'));
             // 0 / NaN = "use qty directly" (packages input left empty).
             // Negative is the only invalid value here.
             if (!isNaN(pkgs) && pkgs < 0) {
-                if (typeof setAlert === 'function') { setAlert('Opakowania nie mogą być ujemne.', 'warning'); }
+                setAlert('Opakowania nie mogą być ujemne.', 'warning');
                 $packagesInput.trigger('focus');
                 return;
             }
         }
         if (unitPrice !== null && (isNaN(unitPrice) || unitPrice < 0)) {
-            if (typeof setAlert === 'function') { setAlert('Cena nie może być ujemna.', 'warning'); }
-            else { alert('Cena nie może być ujemna.'); }
+            setAlert('Cena nie może być ujemna.', 'warning');
             $priceInput.trigger('focus');
             return;
         }
@@ -1196,7 +1185,7 @@ $(function () {
         })
         .done(function (resp) {
             if (resp && resp.success) {
-                if (typeof setAlert === 'function') { setAlert(resp.message || 'Pozycja dodana.', 'success'); }
+                setAlert(resp.message || 'Pozycja dodana.', 'success');
                 // Reload whole page so the new row picks up server-side
                 // formatting (qty trailing-zero strip, Wartość calc,
                 // vendor-part-comment sub-line, JM badge).
@@ -1227,18 +1216,13 @@ $(function () {
 
             $saveBtn.prop('disabled', false);
             $cancelBtn.prop('disabled', false);
-            if (typeof setAlert === 'function') {
-                setAlert((resp && resp.error) || 'Błąd zapisu.', 'danger');
-            } else {
-                alert((resp && resp.error) || 'Błąd zapisu.');
-            }
+            setAlert((resp && resp.error) || 'Błąd zapisu.', 'danger');
         })
         .fail(function (xhr, status) {
             $saveBtn.prop('disabled', false);
             $cancelBtn.prop('disabled', false);
             const msg = (xhr && xhr.responseJSON && xhr.responseJSON.error) || status || 'Błąd sieci.';
-            if (typeof setAlert === 'function') { setAlert(msg, 'danger'); }
-            else { alert(msg); }
+            setAlert(msg, 'danger');
         });
     });
 
@@ -1306,8 +1290,7 @@ $(function () {
         const existingItemId = parseInt($mergeModal.attr('data-existing-item-id'), 10);
         const addQty         = parseFloat($mergeModal.attr('data-proposed-qty'));
         if (!existingItemId || isNaN(addQty) || addQty <= 0) {
-            if (typeof setAlert === 'function') { setAlert('Nieprawidłowe dane połączenia.', 'danger'); }
-            else { alert('Nieprawidłowe dane połączenia.'); }
+            setAlert('Nieprawidłowe dane połączenia.', 'danger');
             $mergeModal.modal('hide');
             return;
         }
@@ -1325,15 +1308,11 @@ $(function () {
         })
         .done(function (resp) {
             if (resp && resp.success) {
-                if (typeof setAlert === 'function') { setAlert(resp.message || 'Pozycje połączone.', 'success'); }
+                setAlert(resp.message || 'Pozycje połączone.', 'success');
                 window.location.reload();
                 return;
             }
-            if (typeof setAlert === 'function') {
-                setAlert((resp && resp.error) || 'Nie udało się połączyć pozycji.', 'danger');
-            } else {
-                alert((resp && resp.error) || 'Nie udało się połączyć pozycji.');
-            }
+            setAlert((resp && resp.error) || 'Nie udało się połączyć pozycji.', 'danger');
             // Re-enable modal buttons + form buttons so the user can retry.
             $btn.prop('disabled', false);
             $cancelBtnM.prop('disabled', false);
@@ -1343,8 +1322,7 @@ $(function () {
         })
         .fail(function (xhr, status) {
             const msg = (xhr && xhr.responseJSON && xhr.responseJSON.error) || status || 'Błąd sieci.';
-            if (typeof setAlert === 'function') { setAlert('Nie udało się połączyć pozycji: ' + msg, 'danger'); }
-            else { alert('Nie udało się połączyć pozycji: ' + msg); }
+            setAlert('Nie udało się połączyć pozycji: ' + msg, 'danger');
             $btn.prop('disabled', false);
             $cancelBtnM.prop('disabled', false);
             $forceBtn.prop('disabled', false);
@@ -1396,15 +1374,11 @@ $(function () {
         })
         .done(function (resp) {
             if (resp && resp.success) {
-                if (typeof setAlert === 'function') { setAlert(resp.message || 'Pozycja dodana.', 'success'); }
+                setAlert(resp.message || 'Pozycja dodana.', 'success');
                 window.location.reload();
                 return;
             }
-            if (typeof setAlert === 'function') {
-                setAlert((resp && resp.error) || 'Nie udało się dodać pozycji.', 'danger');
-            } else {
-                alert((resp && resp.error) || 'Nie udało się dodać pozycji.');
-            }
+            setAlert((resp && resp.error) || 'Nie udało się dodać pozycji.', 'danger');
             $btn.prop('disabled', false);
             $cancelBtnM.prop('disabled', false);
             $confirmBtn.prop('disabled', false);
@@ -1413,13 +1387,59 @@ $(function () {
         })
         .fail(function (xhr, status) {
             const msg = (xhr && xhr.responseJSON && xhr.responseJSON.error) || status || 'Błąd sieci.';
-            if (typeof setAlert === 'function') { setAlert('Nie udało się dodać pozycji: ' + msg, 'danger'); }
-            else { alert('Nie udało się dodać pozycji: ' + msg); }
+            setAlert('Nie udało się dodać pozycji: ' + msg, 'danger');
             $btn.prop('disabled', false);
             $cancelBtnM.prop('disabled', false);
             $confirmBtn.prop('disabled', false);
             $saveBtn.prop('disabled', false);
             $cancelBtn.prop('disabled', false);
+        });
+    });
+
+    // ---- RFQ → PO conversion ---------------------------------------
+    // CTA "Utwórz zamówienie z odpowiedzi" w headerze strony edycji RFQ
+    // (renderowane tylko w stanie `responded`). Klik → POST do
+    // document-rfq-convert-ajax.php → handler tworzy PO i przenosi
+    // RFQ do stanu `converted` → otwieramy nowe PO w osobnej karcie
+    // i przeładowujemy bieżącą stronę, żeby badge stanu się zaktualizował.
+    // Delegacja na `document`, bo button pojawia się dopiero po wyrenderowaniu
+    // strony edycji (osadzany w <body> przez includeWithVariables).
+    $(document).on('click', '#rfq-convert-btn', function () {
+        const $btn  = $(this);
+        const rfqId = parseInt($btn.data('rfq-id'), 10);
+        if (!rfqId || rfqId <= 0) {
+            setAlert('Nieprawidłowe ID RFQ.', 'danger');
+            return;
+        }
+        if ($btn.prop('disabled')) return;
+        $btn.prop('disabled', true);
+
+        $.ajax({
+            url: COMPONENTS_PATH + ENDPOINT_BASE + 'document-rfq-convert-ajax.php',
+            method: 'POST',
+            dataType: 'json',
+            data: { rfq_id: rfqId }
+        })
+        .done(function (resp) {
+            if (resp && resp.success) {
+                setAlert('Utworzono zamówienie', 'success');
+                // Otwórz nowe PO w osobnej karcie, potem przeładuj bieżącą
+                // stronę, żeby badge stanu (`converted`) i disabled
+                // przycisk konwersji się odświeżyły.
+                if (resp.edit_url) {
+                    window.open(resp.edit_url, '_blank');
+                }
+                window.location.reload();
+                return;
+            }
+            $btn.prop('disabled', false);
+            const msg = (resp && resp.error) || 'Nieznany błąd';
+            setAlert(msg, 'danger');
+        })
+        .fail(function (xhr, status) {
+            $btn.prop('disabled', false);
+            const msg = (xhr && xhr.responseJSON && xhr.responseJSON.error) || status || 'Błąd sieci';
+            setAlert(msg, 'danger');
         });
     });
 

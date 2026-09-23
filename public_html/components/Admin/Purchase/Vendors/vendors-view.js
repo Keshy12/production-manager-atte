@@ -31,17 +31,6 @@ $(document).ready(function() {
         return $('<div>').text(str == null ? '' : String(str)).html();
     }
 
-    function setAlert(message, kind) {
-        const $box = $('#alertContainer');
-        if (!message) { $box.empty(); return; }
-        $box.html(
-            '<div class="alert alert-' + (kind || 'info') + ' alert-dismissible fade show" role="alert">' +
-            message +
-            '<button type="button" class="close" data-dismiss="alert"><span aria-hidden="true">&times;</span></button>' +
-            '</div>'
-        );
-    }
-
     function postAjax(endpoint, data) {
         return $.ajax({ url: ajaxBase + endpoint, type: 'POST', data: data, dataType: 'json' });
     }

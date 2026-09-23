@@ -785,7 +785,7 @@ $(function () {
             })
             .done(function (resp) {
                 if (!resp || !resp.success) {
-                    alert((resp && resp.error) || 'Błąd zapisu zmian.');
+                    setAlert((resp && resp.error) || 'Błąd zapisu zmian.', 'danger');
                     $btn.prop('disabled', false);
                     return;
                 }
@@ -818,7 +818,7 @@ $(function () {
                 flashCopyToast('Zapisano');
             })
             .fail(function (xhr, status) {
-                alert((xhr && xhr.responseJSON && xhr.responseJSON.error) || status || 'Błąd komunikacji.');
+                setAlert((xhr && xhr.responseJSON && xhr.responseJSON.error) || status || 'Błąd komunikacji.', 'danger');
                 $btn.prop('disabled', false);
             });
         });
@@ -1254,11 +1254,7 @@ function renderStep4() {
                 state.committing = false;
                 $commitBtn.prop('disabled', false);
                 restoreCommitBtn();
-                if (typeof setAlert === 'function') {
-                    setAlert((r && r.error) || 'Błąd wysyłki.', 'danger');
-                } else {
-                    alert((r && r.error) || 'Błąd wysyłki.');
-                }
+                setAlert((r && r.error) || 'Błąd wysyłki.', 'danger');
                 return;
             }
             // Sukces — pokaż alert w miejscu wizarda i przekieruj za 2 s.
@@ -1284,11 +1280,7 @@ function renderStep4() {
             $commitBtn.prop('disabled', false);
             restoreCommitBtn();
             const msg = (xhr && xhr.responseJSON && xhr.responseJSON.error) || status || 'Błąd sieci.';
-            if (typeof setAlert === 'function') {
-                setAlert(msg, 'danger');
-            } else {
-                alert(msg);
-            }
+            setAlert(msg, 'danger');
         });
     });
 

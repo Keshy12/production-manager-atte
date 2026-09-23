@@ -110,23 +110,9 @@ $(document).ready(function () {
     }
 
     function announceSuccess(msg) {
-        // Wspólny helper sukcesu: preferuj globalną setAlert (gdy
-        // istnieje), w ostateczności inline w modalu. Modal sam się
-        // nie zamyka — czeka na location.reload().
-        if (typeof setAlert === 'function') {
-            try { setAlert(msg, 'success'); return; } catch (e) { /* fall through */ }
-        }
-        // Brak globalnej setAlert → inline banner wewnątrz body
-        // modala. Nadpisujemy ewentualny inline-error (mają inne
-        // kolory BS4 — tu używamy alert-success).
-        $errorBlock
-            .removeClass('text-danger')
-            .addClass('text-success')
-            .html(
-                '<i class="bi bi-check-circle-fill"></i> '
-                + escapeHtml(msg)
-            )
-            .show();
+        // Globalna setAlert jest zawsze dostępna (header.js) — modal
+        // sam się nie zamyka, czeka na location.reload().
+        setAlert(msg, 'success');
     }
 
     // ---- 1) Otwarcie modala z triggera [data-action="confirm-po"] ----
@@ -151,9 +137,7 @@ $(document).ready(function () {
             // otwierać modala, zwróć uwagę operatorowi inline w
             // istniejącym modalu (jeśli był otwarty) + alert globalny.
             showInlineError('Brak identyfikatora zamówienia na przycisku.');
-            if (typeof setAlert === 'function') {
-                setAlert('Brak identyfikatora zamówienia.', 'danger');
-            }
+            setAlert('Brak identyfikatora zamówienia.', 'danger');
             return;
         }
 

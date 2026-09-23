@@ -174,11 +174,7 @@ function loadDocuments() {
         $('#docsSpinner').hide();
         const msg = (xhr && xhr.responseJSON && xhr.responseJSON.error)
             || 'Błąd ładowania dokumentów.';
-        if (typeof setAlert === 'function') {
-            setAlert(msg, 'danger');
-        } else {
-            alert(msg);
-        }
+        setAlert(msg, 'danger');
     });
 }
 

@@ -330,17 +330,6 @@
         }
     }
 
-    function setAlert(msg, kind) {
-        let $box = $('#alertContainer');
-        if (!msg) { $box.empty(); return; }
-        $box.html(
-            '<div class="alert alert-' + (kind || 'info') + ' alert-dismissible fade show" role="alert">' +
-            msg +
-            '<button type="button" class="close" data-dismiss="alert"><span>&times;</span></button>' +
-            '</div>'
-        );
-    }
-
     // Reusable themed confirmation dialog. Replaces native window.confirm
     // so the cart's destructive actions (remove-row, remove-vendor-items,
     // create-doc, clear-cart) use the same Bootstrap-styled prompt.
