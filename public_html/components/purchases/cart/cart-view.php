@@ -139,8 +139,9 @@ $units = $MsaDB->query(
                 filtrują się nawzajem, więc widzisz tylko kombinacje, które istnieją w katalogu.
                 Jeśli dostawca ma kilka numerów katalogowych dla tej samej części, wybierz właściwy
                 z listy &bdquo;Numer u dostawcy&rdquo;. Koszyk grupuje pozycje po dostawcy
-                &mdash; każde zamówienie/zapytanie obejmuje tylko jednego dostawcę. Koszyk
-                jest tymczasowy &mdash; po odświeżeniu strony zostaje wyczyszczony.
+                &mdash; każde zamówienie/zapytanie obejmuje tylko jednego dostawcę. Pozycje
+                w koszyku są zapisywane lokalnie w przeglądarce przez <strong>7 dni</strong>
+                i są czyszczone przyciskiem &bdquo;Wyczyść koszyk&rdquo; albo po utworzeniu dokumentu.
             </p>
             <div id="alertContainer"></div>
         </div>
