@@ -346,7 +346,13 @@ class PurchaseActionHandler {
      * odpowiedź od dostawcy (cennik, termin, alternatywy). Dozwolone
      * wyłącznie ze stanu `sent`. `$respondedAt` opcjonalny — null/empty
      * → NOW(). Po migracji schematu (krok P5+) zapisuje też
-     * `responded_at` + `responded_by`.
+     * `responded_at` + `responded_by`. Pusty `$items` → zachowanie
+     * historyczne (bez aktualizacji pozycji); odpowiedź używana przez
+     * wizarda "Wyślij dokument" przekazuje puste `items`. Wariant z
+     * pozycjami (z cenami od dostawcy) realizuje dedykowana metoda
+     * {@see markRfqRespondedWithPrices} — tam dla każdego wpisu
+     * aktualizowane jest `unit_price`/`currency`/`comment` i dopiero
+     * potem przechodzimy do stanu `responded`.
      *
      * @param int         $rfqId
      * @param int         $userId
@@ -354,9 +360,61 @@ class PurchaseActionHandler {
      * @return bool
      */
     public function markRfqResponded(int $rfqId, int $userId, ?string $respondedAt = null): bool {
-        $MsaDB = $this->MsaDB;
-        $repo = new RFQRepository($MsaDB);
+        return $this->markRfqRespondedWithPrices($rfqId, $userId, [], $respondedAt);
+    }
 
+    /**
+     * Wariant z aktualizacją cen/waluty/uwag z odpowiedzi dostawcy —
+     * używany przez stronę "Oznacz odpowiedź" (documents-respond.php),
+     * gdzie operator ręcznie wpisuje wynegocjowane ceny na każdej
+     * pozycji RFQ. Dla każdego wpisu w `$items` wywołuje
+     * `RFQItemRepository::update()` z istniejącymi polami (vendorPartId,
+     * quantity, quantityUnitId, pickedPackSize) + nowymi trzema
+     * (unit_price/currency/comment). Gdy `$items` jest puste, metoda
+     * zachowuje się jak {@see markRfqResponded} — wizard "Wyślij
+     * dokument" przekazuje `[]`, dedykowana strona odpowiedzi przekazuje
+     * mapę per pozycja.
+     *
+     * Walidacja per pozycja:
+     *   - `item_id` > 0 (wymagane)
+     *   - `unit_price` gdy podane — `>= 0` (ujemna → InvalidArgumentException);
+     *     puste/null/'' → null (cena nie ustalona)
+     *   - `currency` — niepusty string, max 8 znaków (szerokość kolumny
+     *     `purchase__rfq_item.currency` per schema); domyślnie `PLN`
+     *   - `comment` — dowolny string, trim + null gdy pusty
+     *   - pozycja musi należeć do `$rfqId` (walidacja ownership —
+     *     `LogicException`, żeby UI nie dało się oszukać cudzym id)
+     *
+     * Wybór `update()` zamiast dedykowanego `updateResponseFields()`:
+     * repo nie ma metody tylko dla trzech pól, a `update()` jest już
+     * transakcyjny i waliduje (vendorPartId/quantity/quantityUnitId
+     * > 0; pickedPackSize > 0 gdy podane). Cenę/walutę/komentarz
+     * zapisujemy w jednym UPDATE razem z istniejącymi polami — mniej
+     * kodu, mniejsza szansa na rozbieżność (np. że jeden z trzech
+     * pól nie trafi na dysk). Cena jest często częścią tej samej
+     * odpowiedzi co korekty uwag, więc atomowy zapis wszystkich trzech
+     * jest pożądany.
+     *
+     * @param int         $rfqId
+     * @param int         $userId
+     * @param array       $items             lista map per pozycja (pusta = bez aktualizacji pozycji):
+     *                                          ['item_id' => int, 'unit_price' => ?float, 'currency' => string, 'comment' => ?string]
+     * @param string|null $respondedAt       'Y-m-d H:i:s' lub null/empty → NOW()
+     * @return bool
+     */
+    public function markRfqRespondedWithPrices(
+        int $rfqId,
+        int $userId,
+        array $items,
+        ?string $respondedAt = null
+    ): bool {
+        $MsaDB     = $this->MsaDB;
+        $repo      = new RFQRepository($MsaDB);
+        $itemRepo  = new RFQItemRepository($MsaDB);
+
+        // Wczesna walidacja id (zachowana jak w istniejącym markRfqResponded):
+        // zapytanie musi istnieć i być w stanie 'sent'. Stan końcowy po
+        // wywołaniu to zawsze 'responded'.
         $rfq = $repo->getById($rfqId);
         if ($rfq === null) {
             throw new \LogicException("Nie znaleziono zapytania.");
@@ -369,8 +427,95 @@ class PurchaseActionHandler {
 
         $normalisedRespondedAt = $this->normaliseSentAt($respondedAt, "odpowiedzi");
 
+        // Pre-walidacja pozycji: najpierw zbierz wszystkie błędy walidacji,
+        // żeby operator widział pełną listę (albo chociaż pierwszą sensowną)
+        // zamiast fail-at-first. Walidacja musi się odbyć PRZED otwarciem
+        // transakcji, żeby złe dane wejściowe niepotrzebnie nie blokowały
+        // sesji DB. getById na każdej pozycji (poniżej) robi SELECT — przy
+        // N≈kilkunastu pozycjach to koszt pomijalny.
+        foreach ($items as $idx => $it) {
+            if (!is_array($it)) {
+                throw new \InvalidArgumentException("Pozycja #{$idx}: nieprawidłowy format danych.");
+            }
+            $itemId = (int)($it['item_id'] ?? 0);
+            if ($itemId <= 0) {
+                throw new \InvalidArgumentException("Pozycja #{$idx}: brak identyfikatora pozycji.");
+            }
+            // unit_price: nieujemna lub null. Rzucamy InvalidArgumentException
+            // dla jawnego błędu wartości (komunikat po polsku, trafia prosto
+            // do UI przez endpoint AJAX).
+            if (array_key_exists('unit_price', $it) && $it['unit_price'] !== null && $it['unit_price'] !== '') {
+                if (!is_numeric($it['unit_price']) || (float)$it['unit_price'] < 0) {
+                    throw new \InvalidArgumentException(
+                        "Pozycja #{$idx} ({$itemId}): cena jednostkowa musi być liczbą nieujemną."
+                    );
+                }
+            }
+            if (isset($it['currency'])) {
+                if (!is_string($it['currency']) || trim($it['currency']) === '') {
+                    throw new \InvalidArgumentException(
+                        "Pozycja #{$idx} ({$itemId}): waluta nie może być pusta."
+                    );
+                }
+                if (strlen((string)$it['currency']) > 8) {
+                    throw new \InvalidArgumentException(
+                        "Pozycja #{$idx} ({$itemId}): kod waluty jest zbyt długi (max 8 znaków)."
+                    );
+                }
+            }
+        }
+
         $MsaDB->db->beginTransaction();
         try {
+            // Aktualizuj każdą pozycję po kolei. Najpierw pobierz istniejącą
+            // encję (ownership check + odczyt pól, których nie zmieniamy),
+            // potem wywołaj update() z istniejącymi polami i trzema nowymi.
+            // update() wewnętrznie waliduje vendorPartId/quantity/quantityUnitId
+            // > 0 i pickedPackSize > 0 — wszystkie te wartości pochodzą z
+            // istniejącej encji, więc tu nie mogą się zmienić.
+            foreach ($items as $idx => $it) {
+                $itemId = (int)($it['item_id']);
+                $existing = $itemRepo->getById($itemId);
+                if ($existing === null || $existing->rfqId !== $rfqId) {
+                    throw new \LogicException(
+                        "Pozycja #{$idx}: pozycja {$itemId} nie należy do zapytania {$rfqId}."
+                    );
+                }
+
+                // Normalizacja: cena pusty/null → null; w przeciwnym razie float.
+                $unitPrice = null;
+                if (array_key_exists('unit_price', $it) && $it['unit_price'] !== null && $it['unit_price'] !== '') {
+                    $unitPrice = (float)$it['unit_price'];
+                }
+
+                // Waluta: gdy podana, użyj jej; w przeciwnym razie zostaw
+                // istniejącą (operator może chcieć zmienić tylko cenę).
+                $currency = isset($it['currency']) && trim((string)$it['currency']) !== ''
+                    ? (string)$it['currency']
+                    : $existing->currency;
+
+                // Komentarz: trim, pusty → null. Jeśli operator nie podał
+                // klucza w ogóle, zachowaj istniejący (np. żeby formularz
+                // nie nadpisał istniejącego komentarza wartością pustą
+                // przy pustym polu input).
+                $comment = $existing->comment;
+                if (array_key_exists('comment', $it) && $it['comment'] !== null) {
+                    $trimmed = trim((string)$it['comment']);
+                    $comment = $trimmed === '' ? null : $trimmed;
+                }
+
+                $itemRepo->update(
+                    $existing->id,
+                    $existing->vendorPartId,
+                    $existing->quantity,
+                    $existing->quantityUnitId,
+                    $unitPrice,
+                    $currency,
+                    $comment,
+                    $existing->pickedPackSize
+                );
+            }
+
             $repo->setState($rfqId, 'responded');
 
             // responded_at / responded_by zostały dodane migracją P5+
@@ -690,8 +835,13 @@ class PurchaseActionHandler {
         if ($po === null) {
             throw new \LogicException("Nie znaleziono zamówienia.");
         }
-        if (!in_array($po->state, ['confirmed','partially_received'], true)) {
-            throw new \LogicException("Zamówienie musi być potwierdzone lub częściowo odebrane, aby przyjąć towar.");
+        // 'in_progress' is the "operator accepted the receipt header
+        // (vendor doc #, comment, date) but hasn't booked items yet"
+        // state. The handler has to accept it as a starting state
+        // because the natural next step from in_progress is to actually
+        // book the items — that's the entire point of the state.
+        if (!in_array($po->state, ['confirmed','partially_received','in_progress'], true)) {
+            throw new \LogicException("Zamówienie musi być potwierdzone, w trakcie przyjęcia lub częściowo odebrane, aby przyjąć towar.");
         }
 
         // 2. Load PO items; build id-indexed map for ownership + remaining math.
@@ -897,6 +1047,180 @@ class PurchaseActionHandler {
             return $receiptId;
         } catch (\Throwable $e) {
             if ($ownedTransaction && $MsaDB->db->inTransaction()) {
+                $MsaDB->db->rollBack();
+            }
+            throw $e;
+        }
+    }
+
+    /**
+     * Persist receipt-header metadata (vendor doc number, comment, date)
+     * and transition the PO into 'in_progress', without booking any items.
+     *
+     * Storage choice: the header lives in `purchase__order_receipt` as a
+     * DRAFT — a row with no children in `purchase__order_receipt_item`.
+     * No new schema columns, no separate table; the existing 'document_number
+     * is null' convention (allocated only on real save) plus the
+     * "Nr dok. dostawcy: ..." comment prefix (mirrored from receipt-create.php
+     * lines 153-156) carry everything the frontend needs to repaint the
+     * form on the next visit.
+     *
+     * Idempotency: clicking "Akceptuję" twice for the same PO updates the
+     * existing draft (preserving received_by from the original record —
+     * we don't want the "operator who pressed the button last" to
+     * overwrite the audit trail), and only re-runs the state transition
+     * if it's still worth doing (PO currently `confirmed`).
+     *
+     * State machine integration: this method is the SOLE producer of
+     * the `confirmed → in_progress` edge. The reverse + the
+     * `in_progress → partially_received|received` edges are owned by
+     * createReceipt, which now accepts `in_progress` as a starting
+     * state (see the state guard widened above).
+     *
+     * Returns:
+     *   - receiptId: the (new or updated) draft row id
+     *   - state: the PO state after this call ('in_progress' or its
+     *     pre-existing value if the transition was skipped)
+     *   - stateLabel: Polish label for the state (currently hardcoded
+     *     to "W trakcie przyjęcia" for the new state — if more states
+     *     arrive, lift this to a shared map).
+     *   - wasUpdated: true if an existing draft was updated, false if a
+     *     new one was inserted. Frontend can use this to choose between
+     *     "Zapisano" and "Zaktualizowano" wording if it cares.
+     */
+    public function acceptReceiptMetadata(
+        int $poId,
+        int $userId,
+        ?string $vendorDocumentNumber = null,
+        ?string $comment = null,
+        ?string $receivedAt = null
+    ): array {
+        if ($poId   <= 0) throw new \InvalidArgumentException("poId must be positive.");
+        if ($userId <= 0) throw new \InvalidArgumentException("userId must be positive.");
+
+        // Mirror receipt-create.php's trim/null-coerce on the text inputs.
+        if ($vendorDocumentNumber !== null) {
+            $vendorDocumentNumber = trim((string)$vendorDocumentNumber);
+            if ($vendorDocumentNumber === '') $vendorDocumentNumber = null;
+        }
+        if ($comment !== null) {
+            $comment = trim((string)$comment);
+            if ($comment === '') $comment = null;
+        }
+        // receivedAt: same parse + future-tolerance rules as createReceipt.
+        // Null/empty → null (the column's DEFAULT CURRENT_TIMESTAMP() stamps now).
+        if ($receivedAt !== null) {
+            $receivedAt = trim((string)$receivedAt);
+            if ($receivedAt === '') $receivedAt = null;
+        }
+        if ($receivedAt !== null) {
+            $dt = \DateTime::createFromFormat('Y-m-d H:i:s', $receivedAt);
+            $parseErrors = \DateTime::getLastErrors();
+            $hasParseErrors = $parseErrors !== false
+                && ($parseErrors['warning_count'] > 0 || $parseErrors['error_count'] > 0);
+            if ($dt === false || $hasParseErrors) {
+                throw new \InvalidArgumentException("Nieprawidłowy format daty przyjęcia.");
+            }
+            $maxAllowed = (new \DateTime())->modify('+1 day');
+            if ($dt > $maxAllowed) {
+                throw new \InvalidArgumentException("Data przyjęcia nie może być z przyszłości.");
+            }
+            $receivedAt = $dt->format('Y-m-d H:i:s');
+        }
+
+        $MsaDB = $this->MsaDB;
+        $poRepo      = new PurchaseOrderRepository($MsaDB);
+        $receiptRepo = new OrderReceiptRepository($MsaDB);
+
+        // Load PO; state guard. Same message string as receipt-po-get.php
+        // uses — the operator sees this verbatim in the JS alert.
+        $po = $poRepo->getById($poId);
+        if ($po === null) {
+            throw new \LogicException("Nie znaleziono zamówienia.");
+        }
+        // The accept-metadata action is a softer transition than a full
+        // receive: it's allowed from any state that is *receive-eligible*
+        // (i.e. the frontend would have let the operator open the form
+        // for it). 'partially_received' is included so the operator can
+        // re-affirm header metadata on a follow-up partial delivery —
+        // it just won't change the state (already past in_progress).
+        if (!in_array($po->state, ['confirmed','in_progress','partially_received'], true)) {
+            throw new \LogicException("Zamówienie nie jest w stanie pozwalającym na przyjęcie towaru.");
+        }
+
+        // Vendor doc number gets the same "Nr dok. dostawcy: <nr>\n" prefix
+        // convention that receipt-create.php uses (lines 153-156). The
+        // parsing logic in receipt-po-get.php reverses it for prefill.
+        if ($vendorDocumentNumber !== null) {
+            $prefix = 'Nr dok. dostawcy: ' . $vendorDocumentNumber;
+            $comment = $comment === null ? $prefix : ($prefix . "\n" . $comment);
+        }
+
+        $MsaDB->db->beginTransaction();
+        try {
+            // Look for an existing draft for this PO — a receipt row with
+            // zero items. ORDER BY id DESC for "most recent wins" if the
+            // operator somehow has more than one draft (multiple Akceptuję
+            // cycles without ever saving items).
+            $draftId = null;
+            $draftStmt = $MsaDB->db->prepare(
+                "SELECT r.id
+                   FROM `purchase__order_receipt` r
+                   LEFT JOIN `purchase__order_receipt_item` ri ON ri.receipt_id = r.id
+                  WHERE r.po_id = ? AND ri.id IS NULL
+                  ORDER BY r.id DESC
+                  LIMIT 1"
+            );
+            $draftStmt->execute([$poId]);
+            $draftId = $draftStmt->fetchColumn() ?: null;
+
+            if ($draftId !== null) {
+                // Update the existing draft. received_by is intentionally
+                // NOT in the UPDATE — it preserves who first accepted the
+                // PO. received_at is updated to the latest accepted value
+                // (or NOW if the operator didn't open the date toggle).
+                $updateColumns = ['comment'];
+                $updateValues  = [$comment];
+                if ($receivedAt !== null) {
+                    $updateColumns[] = 'received_at';
+                    $updateValues[]  = $receivedAt;
+                }
+                $MsaDB->update(
+                    'purchase__order_receipt',
+                    array_combine($updateColumns, $updateValues),
+                    'id',
+                    $draftId
+                );
+                $wasUpdated = true;
+            } else {
+                // First accept for this PO. documentNumber stays null — PZ
+                // allocation only happens on the real Zapisz save (so we
+                // don't burn numbers on drafts that may never get items).
+                $draftId = $receiptRepo->create($poId, $userId, null, $comment, $receivedAt);
+                $wasUpdated = false;
+            }
+
+            // State transition: ONLY when currently confirmed. The other
+            // allowed starting states (in_progress, partially_received)
+            // already are or have been past this edge, so re-running it
+            // would either be a no-op (in_progress → in_progress) or
+            // would rewind the state machine (partially_received → in_progress
+            // would lie about items already booked). Monotonic.
+            $newState = $po->state;
+            if ($po->state === 'confirmed') {
+                $poRepo->setState($poId, 'in_progress');
+                $newState = 'in_progress';
+            }
+
+            $MsaDB->db->commit();
+            return [
+                'receiptId'  => (int)$draftId,
+                'state'      => $newState,
+                'stateLabel' => 'W trakcie przyjęcia',
+                'wasUpdated' => $wasUpdated,
+            ];
+        } catch (\Throwable $e) {
+            if ($MsaDB->db->inTransaction()) {
                 $MsaDB->db->rollBack();
             }
             throw $e;

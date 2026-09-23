@@ -1,19 +1,35 @@
 <?php
 /**
  * AJAX: oznacza zapytanie ofertowe (RFQ) jako `responded` —
- * operator zarejestrował odpowiedź od dostawcy. Endpoint dla
- * wizarda "Wyślij dokument" (krok po otrzymaniu cennika).
+ * operator zarejestrował odpowiedź od dostawcy. Współdzielony przez:
+ *   - wizard "Wyślij dokument" (Admin/Purchase/Documents/documents-send.php)
+ *     → POST { id, responded_at } bez pozycji, kompatybilność wstecz
+ *   - stronę "Oznacz odpowiedź" (Admin/Purchase/Documents/documents-respond.php)
+ *     → POST { id, responded_at, items[i][item_id|unit_price|currency|comment] }
  *
- * Kontrakt wejścia/wyjścia zamrożony — frontend (send-view.js) z niego
- * korzysta bezpośrednio.
+ * Kontrakt wejścia/wyjścia zamrożony dla wizarda (fronted przez
+ * send-view.js). Wariant z `items` dodaje per-item pola dla dedykowanej
+ * strony odpowiedzi; gdy ich brak, zachowanie jest identyczne z
+ * historycznym (handler dostaje pustą listę pozycji).
  *
  * POST (form-encoded):
- *   id             int                    (wymagane, > 0)
- *   responded_at   'Y-m-d H:i:s' | 'Y-m-d' | ''
- *                                  opcjonalne — data odpowiedzi.
- *                                  'Y-m-d' normalizowane do
- *                                  'Y-m-d 00:00:00'; puste → null,
- *                                  handler użyje NOW().
+ *   id                int                    (wymagane, > 0)
+ *   responded_at      'Y-m-d H:i:s' | 'Y-m-d' | ''
+ *                                     opcjonalne — data odpowiedzi.
+ *                                     'Y-m-d' normalizowane do
+ *                                     'Y-m-d 00:00:00'; puste → null,
+ *                                     handler użyje NOW().
+ *   items[i][item_id]    int                 (wymagane gdy items obecne, > 0)
+ *   items[i][unit_price] string|empty        opcjonalne; akceptujemy '.' lub
+ *                                     ',' jako separator dziesiętny (projekt
+ *                                     miesza locale — patrz audits/DISCREPANCIES),
+ *                                     pusty → null
+ *   items[i][currency]   string              opcjonalne; max 8 znaków
+ *   items[i][comment]    string|empty        opcjonalne; pusty → null
+ *
+ *   jQuery $.ajax({ data: { items: [...] } }) emituje form-encoding
+ *   `items[0][item_id]=…`, PHP parsuje to do $_POST['items'][0]['item_id']
+ *   automatycznie — żadnego JSON po stronie klienta.
  *
  * Odpowiedź sukces:
  *   {
@@ -45,7 +61,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-$id            = (int)($_POST['id'] ?? 0);
+$id             = (int)($_POST['id'] ?? 0);
 $respondedAtRaw = $_POST['responded_at'] ?? null;
 
 if ($id <= 0) {
@@ -67,6 +83,85 @@ if ($respondedAtRaw !== null) {
     }
 }
 
+// Parsowanie per-item pól. items[i] to tablica asocjacyjna
+// (item_id/unit_price/currency/comment) sparsowana przez PHP z
+// form-encoding `items[i][…]`. Akceptujemy zarówno listę (`$_POST['items']`
+// jest indexed array) jak i mapę (asocjacyjna po kluczach item_id —
+// teoretyczny przypadek gdyby frontend wysłał to inaczej); normalizujemy
+// do listy przed walidacją.
+$normalizedItems = [];
+if (isset($_POST['items']) && is_array($_POST['items']) && !empty($_POST['items'])) {
+    // indexed array -> bierzemy wprost; assoc -> przepakowujemy do listy wartości.
+    $isList = array_keys($_POST['items']) === range(0, count($_POST['items']) - 1);
+    $rawItems = $isList ? $_POST['items'] : array_values($_POST['items']);
+    foreach ($rawItems as $idx => $raw) {
+        if (!is_array($raw)) {
+            echo json_encode(['success' => false, 'error' => "Pozycja #{$idx}: nieprawidłowy format danych."]);
+            exit;
+        }
+        $itemId = (int)($raw['item_id'] ?? 0);
+        if ($itemId <= 0) {
+            echo json_encode(['success' => false, 'error' => "Pozycja #{$idx}: brak identyfikatora pozycji."]);
+            exit;
+        }
+
+        // unit_price: akceptujemy '.' albo ',' jako separator dziesiętny
+        // (audyt wskazał, że projekt miesza locale w inputach liczbowych).
+        // Pusty/null → null (cena nie ustalona przez dostawcę).
+        // Trimujemy whitespace; walidujemy is_numeric po normalizacji.
+        $unitPrice = null;
+        if (array_key_exists('unit_price', $raw) && $raw['unit_price'] !== null && $raw['unit_price'] !== '') {
+            $priceRaw = trim((string)$raw['unit_price']);
+            // Zamiana ',' na '.' TYLKO gdy brak '.' już w stringu —
+            // chroni przed przypadkiem „1,234.56" (separator tysięcy + decimal),
+            // choć w naszych inputach to się nie zdarza. Bezpieczniejsze niż
+            // str_replace globalny.
+            if (strpos($priceRaw, ',') !== false && strpos($priceRaw, '.') === false) {
+                $priceRaw = str_replace(',', '.', $priceRaw);
+            }
+            if (!is_numeric($priceRaw)) {
+                echo json_encode([
+                    'success' => false,
+                    'error'   => "Pozycja #{$idx} ({$itemId}): cena jednostkowa musi być liczbą.",
+                ]);
+                exit;
+            }
+            $unitPrice = (float)$priceRaw;
+            if ($unitPrice < 0) {
+                echo json_encode([
+                    'success' => false,
+                    'error'   => "Pozycja #{$idx} ({$itemId}): cena jednostkowa nie może być ujemna.",
+                ]);
+                exit;
+            }
+        }
+
+        // currency: opcjonalne, max 8 znaków. Handler też waliduje, ale
+        // zwrócenie ładniejszego komunikatu tutaj oszczędza wywołania.
+        if (isset($raw['currency']) && $raw['currency'] !== '') {
+            $cur = trim((string)$raw['currency']);
+            if ($cur === '' || strlen($cur) > 8) {
+                echo json_encode([
+                    'success' => false,
+                    'error'   => "Pozycja #{$idx} ({$itemId}): nieprawidłowy kod waluty.",
+                ]);
+                exit;
+            }
+        }
+
+        $normalizedItems[] = [
+            'item_id'    => $itemId,
+            'unit_price' => $unitPrice,
+            'currency'   => isset($raw['currency']) && $raw['currency'] !== ''
+                ? trim((string)$raw['currency'])
+                : null,
+            'comment'    => isset($raw['comment']) && $raw['comment'] !== ''
+                ? (string)$raw['comment']
+                : null,
+        ];
+    }
+}
+
 $userId = (int)($_SESSION['user_id'] ?? 0);
 if ($userId <= 0) {
     echo json_encode(['success' => false, 'error' => 'Brak zalogowanego użytkownika.']);
@@ -77,14 +172,24 @@ $MsaDB   = MsaDB::getInstance();
 $handler = new PurchaseActionHandler($MsaDB);
 
 try {
-    $handler->markRfqResponded($id, $userId, $respondedAt);
+    // Jeden handler obsługuje oba warianty: items=[] zachowuje stare
+    // zachowanie (czysta zmiana stanu, bez ruszania pozycji); items>0
+    // aktualizuje ceny/waluty/uwagi i dopiero potem przechodzi w responded.
+    $handler->markRfqRespondedWithPrices($id, $userId, $normalizedItems, $respondedAt);
 
     echo json_encode([
         'success'     => true,
         'state'       => 'responded',
         'state_label' => 'Odpowiedź',
     ]);
-} catch (\LogicException | \InvalidArgumentException $e) {
+} catch (\InvalidArgumentException $e) {
+    // Osobny catch dla InvalidArgumentException: komunikat jest już po
+    // polsku i skierowany do operatora (np. ujemna cena, za długi kod
+    // waluty). Oddajemy wprost — bez error_log (to nie jest bug).
+    echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+} catch (\LogicException $e) {
+    // Stan dokumentu nie pozwala na operację; komunikat po polsku od
+    // handlera trafia prosto do operatora.
     echo json_encode(['success' => false, 'error' => $e->getMessage()]);
 } catch (\Throwable $e) {
     error_log('document-rfq-respond error: ' . $e->getMessage());

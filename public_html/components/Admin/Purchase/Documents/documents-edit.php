@@ -100,12 +100,23 @@ $allowedEdit = in_array($doc->state, PurchaseActionHandler::allowedEditStates($t
 // stanów specyfikacji: draft → Wyślij dokument; PO sent / confirmed
 // → Wyślij ponownie; RFQ sent → Oznacz odpowiedź; RFQ responded
 // → Wyślij ponownie; inne stany → brak buttona.
+//
+// Klucz 'action' w tablicy to dyskryminator routingu: PO w stanie
+// `sent` triggeruje modal "Potwierdź odbiór" (data-action="confirm-po"),
+// RFQ w stanie `sent` przechodzi do dedykowanej strony
+// "Oznacz odpowiedź" (data-action="respond-rfq"). Pozostałe przypadki
+// prowadzą do klasycznego wizzarda "Wyślij dokument".
 $sendButton = null;
 if ($type === 'rfq') {
     if ($doc->state === 'draft') {
         $sendButton = ['label' => 'Wyślij dokument',  'icon' => 'bi-send'];
     } elseif ($doc->state === 'sent') {
-        $sendButton = ['label' => 'Oznacz odpowiedź',  'icon' => 'bi-reply'];
+        // sent → operator rejestruje odpowiedź dostawcy. Dedykowana
+        // strona documents-respond.php (single-step) zamiast wizzarda
+        // documents-send.php (cztery kroki). Dlatego 'action' ===
+        // 'respond-rfq' renderuje <a> do tej strony zamiast domyślnego
+        // <a> do wizzarda send.
+        $sendButton = ['label' => 'Oznacz odpowiedź',  'icon' => 'bi-reply', 'action' => 'respond-rfq'];
     } elseif ($doc->state === 'responded') {
         $sendButton = ['label' => 'Wyślij ponownie',  'icon' => 'bi-arrow-clockwise'];
     }
@@ -205,6 +216,16 @@ function formatPrice($v) {
             (confirm-po-modal.php). Dlatego $sendButton['action'] ===
             'confirm-po' renderuje <button> z data-* zamiast <a>
             do wizarda — klik nie nawiguje, lecz triggeruje modal.
+
+            Drugi przypadek: RFQ w stanie `sent` → akcja
+            "Oznacz odpowiedź" prowadzi do dedykowanej strony
+            documents-respond.php (jednoetapowy formularz z cenami
+            odpowiedzi), więc 'action' === 'respond-rfq' renderuje
+            <a> do tej strony zamiast do wizzarda documents-send.php.
+            Wybór <a> zamiast <button>: to czysta nawigacja, bez
+            konieczności JS-owego potwierdzenia/spinnera, więc anchor
+            jest najprostszym i najbardziej spójnym z resztą headera
+            rozwiązaniem (zachowuje history.back() w przycisku Wróć).
         -->
         <div class="d-flex align-items-center" style="gap: .5rem;">
             <?php if ($sendButton !== null): ?>
@@ -219,6 +240,12 @@ function formatPrice($v) {
                         <i class="<?= htmlspecialchars($sendButton['icon']) ?>"></i>
                         <?= htmlspecialchars($sendButton['label']) ?>
                     </button>
+                <?php elseif (($sendButton['action'] ?? '') === 'respond-rfq'): ?>
+                    <a href="http://<?= BASEURL ?>/admin/purchase/documents/respond?id=<?= (int)$doc->id ?>&amp;type=rfq"
+                       class="btn btn-primary btn-sm">
+                        <i class="<?= htmlspecialchars($sendButton['icon']) ?>"></i>
+                        <?= htmlspecialchars($sendButton['label']) ?>
+                    </a>
                 <?php else: ?>
                     <a href="http://<?= BASEURL ?>/admin/purchase/documents/send?id=<?= (int)$doc->id ?>&amp;type=<?= htmlspecialchars($type, ENT_QUOTES) ?>"
                        class="btn btn-primary btn-sm">

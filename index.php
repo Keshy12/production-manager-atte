@@ -200,6 +200,16 @@ switch ($request) {
         includeWithVariables($headerDir, array('title' => 'Wyślij dokument'));
         require $componentsDir . '/Admin/Purchase/Documents/documents-send.php';
         break;
+    case 'admin/purchase/documents/respond':
+        // Dedykowana jednoetapowa strona "Oznacz odpowiedź" dla RFQ
+        // w stanie `sent` — operator wpisuje wynegocjowane ceny/waluty/uwagi
+        // i klika Zapisz. Następca "kroku odpowiedź" wyodrębniony z
+        // wizzarda documents-send.php, który jest wieloetapowy i zbyt
+        // ciężki dla tego flow. Wymaga admina (jak reszta admin/purchase/*).
+        requireAdmin();
+        includeWithVariables($headerDir, array('title' => 'Oznacz odpowiedź'));
+        require $componentsDir . '/Admin/Purchase/Documents/documents-respond.php';
+        break;
     case 'purchase/cart':
         requireAdmin();
         includeWithVariables($headerDir, array('title' => 'Koszyk zakupowy'));
@@ -209,6 +219,18 @@ switch ($request) {
         requireAdmin();
         includeWithVariables($headerDir, array('title' => 'Przyjęcia'));
         require $componentsDir . '/purchases/receipts/receipts-view.php';
+        break;
+    case 'purchase/receipts/receive':
+        // Standalone "Przyjęcie towaru" — wyodrębnione z receipts-view
+        // (osobna trasa zamiast panelu przełączanego d-none). Spina się
+        // z kolejką przez `?po_id=N` i wraca do /purchase/receipts po
+        // zapisie (z query stringiem niosącym info o sukcesie —
+        // receipts-view.js czyta je i wyświetla alert + podświetla nowy
+        // wiersz w historii). Konwencja mirroruje
+        // admin/purchase/documents/edit (id+type w URL).
+        requireAdmin();
+        includeWithVariables($headerDir, array('title' => 'Przyjęcie towaru'));
+        require $componentsDir . '/purchases/receipts/receive-page.php';
         break;
     case 'purchase/documents':
         requireAdmin();
