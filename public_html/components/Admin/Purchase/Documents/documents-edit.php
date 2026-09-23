@@ -254,6 +254,40 @@ function formatPrice($v) {
                     </a>
                 <?php endif; ?>
             <?php endif; ?>
+            <?php if ($type === 'po' && $doc->state === 'confirmed'): ?>
+                <!--
+                    Przyjęcie towaru: dostępne dla PO w stanie `confirmed`.
+                    Klik prowadzi do /purchase/receipts/receive?po_id=N, gdzie
+                    operator wpisuje faktycznie dostarczone ilości per pozycja.
+                    Receive handler (PurchaseActionHandler::createReceipt)
+                    akceptuje też stany in_progress / partially_received, więc
+                    jeśli chcesz pokazać ten button także w nich — wystarczy
+                    rozszerzyć warunek. Na ten moment trzymamy się zakresu
+                    zgłoszonego przez operatora (tylko `confirmed`).
+                -->
+                <a href="http://<?= BASEURL ?>/purchase/receipts/receive?po_id=<?= (int)$doc->id ?>"
+                   class="btn btn-success btn-sm">
+                    <i class="bi bi-box-arrow-in-down"></i> Przyjmij towar
+                </a>
+            <?php endif; ?>
+            <?php if ($type === 'rfq' && $doc->state === 'responded'): ?>
+                <!--
+                    Konwersja RFQ → PO: dostępna wyłącznie w stanie
+                    `responded` (operator odnotował odpowiedź dostawcy,
+                    ale jeszcze nie utworzył zamówienia). Po sukcesie
+                    handler PurchaseActionHandler::createPoFromRfq()
+                    przenosi RFQ do stanu terminalnego `converted`, więc
+                    ten button znika po odświeżeniu strony. Ikona
+                    bi-cart-check nawiązuje do istniejącego CTA
+                    "Utwórz zamówienie" w koszyku (cart-view.js).
+                -->
+                <button type="button"
+                        id="rfq-convert-btn"
+                        class="btn btn-success btn-sm"
+                        data-rfq-id="<?= (int)$id ?>">
+                    <i class="bi bi-cart-check"></i> Utwórz zamówienie z odpowiedzi
+                </button>
+            <?php endif; ?>
             <a href="http://<?= BASEURL ?>/purchase/documents"
                class="btn btn-outline-secondary btn-sm"
                onclick="if (history.length > 1) { history.back(); return false; }">
