@@ -1,10 +1,17 @@
 <?php
 /**
- * AJAX: create a goods-receipt (PZ) against a confirmed/partially_received PO.
+ * AJAX: create a goods-receipt (PZ) against a confirmed / in_progress /
+ * partially_received PO.
  *
  * Powers the goods-receiving UI on /purchase/receipts. Mirrors the
  * endpoint shape spelled out in AGENTS.md (admin gate, method gate,
  * jQuery form-encoded $_POST, validation-as-JSON-200, transaction).
+ *
+ * 'in_progress' is the logistics state set by receipt-accept.php when
+ * the operator clicks "Akceptuję" (header metadata only, no items). The
+ * natural next step from in_progress is to book items — that's this
+ * endpoint, with the same state-transition output (partially_received
+ * or received) as a confirmed-PO save.
  *
  * POST (form-encoded):
  *   po_id                    int    required

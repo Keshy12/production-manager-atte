@@ -45,6 +45,12 @@ try {
     // $epsilon tolerance (PurchaseActionHandler::createReceipt line ~447)
     // so what the UI counts as "fully received" matches what the handler
     // would consider fully received for state-transition purposes.
+    //
+    // 'in_progress' is included in the state filter so a PO that the
+    // operator has accepted (Akceptuję clicked → receipt header
+    // metadata persisted) but hasn't booked items for yet still shows
+    // up in the queue. canReceive below mirrors the same predicate so
+    // the action column is consistent with the row visibility.
     $sql = "
         SELECT
             po.id                       AS poId,
@@ -61,7 +67,7 @@ try {
         FROM `purchase__order` po
         JOIN `list__vendor` v ON po.vendor_id = v.id
         LEFT JOIN `purchase__order_item` poi ON poi.po_id = po.id
-        WHERE po.state IN ('sent','confirmed','partially_received')
+        WHERE po.state IN ('sent','confirmed','partially_received','in_progress')
         GROUP BY po.id
         ORDER BY (po.expected_delivery_date IS NULL) ASC,
                  po.expected_delivery_date ASC,
@@ -82,10 +88,13 @@ try {
             'vendorPoNumber'       => $r['vendorPoNumber'],
             'vendorName'           => $r['vendorName'],
             'state'                => $state,
-            // Akcja „Przyjmij towar" dostępna tylko dla confirmed i
-            // partially_received (handlery createReceipt / sendPo też
-            // blokują stan sent). sent = czekamy na potwierdzenie.
-            'canReceive'           => in_array($state, ['confirmed','partially_received'], true),
+            // Akcja „Przyjmij towar" dostępna dla confirmed, partially_received
+            // i in_progress (handler acceptReceiptMetadata/createReceipt
+            // blokują stan sent). sent = czekamy na potwierdzenie dostawcy.
+            // 'in_progress' = operator zaakceptował nagłówek PZ (Akceptuję),
+            // ale nie wprowadził jeszcze pozycji — naturalny kolejny krok
+            // to Zapisz z ilościami.
+            'canReceive'           => in_array($state, ['confirmed','partially_received','in_progress'], true),
             'expectedDeliveryDate' => $r['expectedDeliveryDate'],
             'lineCount'            => (int)$r['lineCount'],
             'linesFullyReceived'   => (int)$r['linesFullyReceived'],

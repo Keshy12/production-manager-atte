@@ -120,7 +120,15 @@ class PurchaseOrderRepository {
     }
 
     public function setState(int $id, string $state): bool {
-        $valid = ['draft','sent','confirmed','partially_received','received','cancelled'];
+        // 'in_progress' is a logistics-only state introduced for the goods-
+        // receiving workflow: PO went confirmed → operator accepted the
+        // receipt header (vendor doc number, comment, date) but hasn't
+        // booked any items yet. Transitions back into the receive chain
+        // when items finally arrive (createReceipt moves it to
+        // partially_received / received). The CREATE TABLE enum needs the
+        // value too — see migrate-to-procurement-schema.php for the
+        // safety ALTER.
+        $valid = ['draft','sent','confirmed','partially_received','received','cancelled','in_progress'];
         if (!in_array($state, $valid, true)) {
             throw new \InvalidArgumentException("PurchaseOrder state must be one of: " . implode(', ', $valid));
         }
