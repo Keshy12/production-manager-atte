@@ -36,21 +36,432 @@
 /* Pasek akcji na dole: operator przewija dostawę na 20+ pozycji, więc
    podsumowanie i przycisk zapisu jadą razem z nim. BS4 ma tylko
    .sticky-top. */
-.receipt-actionbar { position: sticky; bottom: 0; z-index: 1020; }
+.receipt-actionbar {
+    position: sticky;
+    bottom: 0;
+    z-index: 1020;
+    border-bottom-left-radius: .25rem;
+    border-bottom-right-radius: .25rem;
+    /* Cień w górę (BS4 .shadow-sm rzuca go w dół) — pasek ma się czytać
+       jako warstwa NAD przewijaną tabelą, a nie jako jej ostatni wiersz. */
+    box-shadow: 0 -.25rem .75rem rgba(0, 0, 0, .07) !important;
+}
+/* Ikona przy podsumowaniu — sam tekst gubił się w pasku o szerokości
+   całego ekranu. */
+.receipt-actionbar-icon { font-size: 1.4rem; line-height: 1; }
+/* Podpowiedź pojawia się i znika (JS ustawia .text()) — stała wysokość
+   slotu trzyma przycisk zapisu w miejscu zamiast podskakiwać o linijkę. */
+.receipt-actionbar-hint { min-height: 1.2rem; }
 
 /* Kolumny z danymi do wpisania nie mogą się zwijać, a długie nazwy
-   części biorą tyle miejsca, ile zostanie. */
-.receipt-lines-table th,
-.receipt-lines-table td { vertical-align: middle; }
-.receipt-lines-table .receipt-col-num  { width: 8rem; }
-.receipt-lines-table .receipt-col-qty  { width: 8.5rem; }
-.receipt-lines-table .receipt-col-mag  { width: 11rem; }
-.receipt-lines-table .receipt-col-note { width: 12rem; }
+   części biorą tyle miejsca, ile zostanie.
+
+   vertical-align: top (nie middle) — inputy w kolumnach Opak./Ilość
+   mają siedzieć na tej samej wysokości w każdym wierszu. Przy middle
+   komórka "Nazwa" z producentem + komentarzem pozycji rosła w pionie
+   i wpychała input niżej niż w wierszach bez tych podlinijek. Top
+   pinuje input do górnej krawędzi wiersza, a sam wiersz zachowuje
+   tę samą wysokość dzięki zarezerwowanemu miejscu na .line-msg
+   (patrz niżej). */
+.receipt-lines-table th { vertical-align: middle; }
+.receipt-lines-table td { vertical-align: top; }
+.receipt-lines-table .receipt-col-num   { width: 8rem; }
+.receipt-lines-table .receipt-col-qty   { width: 8.5rem; }
+.receipt-lines-table .receipt-col-mag   { width: 11rem; }
+.receipt-lines-table .receipt-col-note  { width: 12rem; }
+.receipt-lines-table .receipt-col-toggle { width: 2.75rem; }
+
+/* Mały wskaźnik „całość / część" przy polu Ilość. Pełna reszta =
+   zielony krążek (operator wie, że zamyka pozycję). 0 < qty <
+   remaining = żółty krążek (przyjęcie częściowe). Brak data-state =
+   przezroczysty (puste / 0 / nadwyżka — nie kolorujemy, bo to nie
+   żadna z dwóch kategorii). Chowamy w wierszu pominiętym razem z
+   polami, bo tam operator nie decyduje o ilości. */
+.receipt-amount-indicator {
+    width: .65rem;
+    height: .65rem;
+    border-radius: 50%;
+    background-color: transparent;
+    flex-shrink: 0;
+    display: inline-block;
+    transition: background-color .15s ease-in-out;
+}
+.receipt-amount-indicator[data-state="full"]    { background-color: #28a745; }
+.receipt-amount-indicator[data-state="partial"] { background-color: #ffc107; }
+.receipt-line-skip .receipt-amount-indicator    { display: none; }
 
 /* Pozycje bez reszty do przyjęcia zostają czytelne, ale widocznie poza
    grą — wyszarzone, nie ukryte, żeby operator widział, że pozycja
-   istnieje na zamówieniu. */
-.receipt-line-done { opacity: .55; }
+   istnieje na zamówieniu. .55 gasiło też zielony pasek i plakietkę
+   „Przyjęte w całości" (patrz sekcja redesignu niżej), stąd .65 —
+   wiersz nadal wyraźnie odstaje od aktywnych. */
+.receipt-line-done { opacity: .65; }
+
+/* Pozycja odznaczona checkboxem „Przyjmujesz" — pomijamy ją w tym
+   przyjęciu (partial reception). Wygląda jak wyłączona (ten sam
+   opacity co .receipt-line-done), ale bez zielonej krawędzi po lewej,
+   bo tu nic nie jest „dokończone" — tylko „nieodbierane w tej partii".
+   Szary pasek nadal mówi: ten wiersz jest poza grą, edytuj inne. */
+.receipt-line-skip { opacity: .65; }
+.receipt-line-skip > td:first-child { box-shadow: inset .2rem 0 0 #adb5bd; }
+
+/* Komentarze pod „Nr dostawcy" w wierszu pominiętym — operator tu
+   nie decyduje, więc kolor ostrzegawczo-informacyjny (żółty
+   vendor_part, niebieski PO) nie ma sensu. Obie etykiety przechodzą
+   na text-muted, żeby wizualnie znikły z pierwszego planu. */
+.receipt-line-skip .text-warning,
+.receipt-line-skip .text-info { color: #6c757d !important; }
+
+/* Chowamy wszystkie pola związane z przyjęciem w wierszu pominiętym
+   (opak., etykieta „po N", ilość, magazyn, uwagi, komunikat
+   walidacji). Same <td> zostają w layoucie, żeby nie rozjeżdżać
+   wyrównania kolumn z resztą tabeli — chowamy tylko zawartość.
+   Po ponownym zaznaczeniu klasa znika i pola wracają (display:none
+   jest powiązany z .receipt-line-skip). */
+.receipt-line-skip .line-packages,
+.receipt-line-skip .line-packages + small,
+.receipt-line-skip .line-qty,
+.receipt-line-skip .line-magazine,
+.receipt-line-skip .line-comment,
+.receipt-line-skip .line-msg { display: none; }
+
+
+/* ---- Formularz przyjęcia: redesign -------------------------------- */
+
+/* Pasek nagłówka formularza. BS4 nie ma „page header" — składamy go
+   z karty bez karty: białe tło, cienka ramka, akcent po lewej. Numer PO
+   ma być pierwszą rzeczą, którą widać po wejściu w formularz. */
+.receipt-pagehead {
+    background-color: #fff;
+    border: 1px solid #e3e6ea;
+    border-left: .25rem solid #007bff;
+    border-radius: .25rem;
+    padding: .75rem 1rem;
+    box-shadow: 0 .05rem .2rem rgba(0, 0, 0, .05);
+}
+.receipt-crumbs-sep { font-size: .6rem; opacity: .7; margin: 0 .15rem; }
+.receipt-pagetitle {
+    font-size: 1.5rem;
+    font-weight: 600;
+    letter-spacing: -.01em;
+}
+.receipt-po-number { font-weight: 700; color: #0056b3; }
+/* Plakietka stanu (#receivePoState) jest wstrzykiwana przez JS do środka
+   tytułu — badge liczy rozmiar w % rodzica, więc w h2 urosłaby do
+   rozmiaru nagłówka. */
+.receipt-pagetitle .badge { font-size: .78rem; vertical-align: middle; }
+
+/* Karta „Zamówienie": pionowa lista etykieta-nad-wartością. W wąskiej
+   kolumnie siatka dt/dd (col-sm-2 + col-sm-4) łamała wartości w połowie;
+   tutaj etykieta jest wyraźnie podpisem, a wartość treścią. */
+.receipt-meta dt {
+    font-size: .68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: #8a929b;
+    margin-bottom: .05rem;
+}
+.receipt-meta dd {
+    font-size: .9rem;
+    font-weight: 600;
+    color: #212529;
+    margin-bottom: .6rem;
+    word-break: break-word;
+}
+
+/* Komentarz kupca do zamówienia — operator ma go zauważyć, więc zamiast
+   alert-light dostaje bursztynowy akcent (ten sam język koloru co
+   .packages-uneven: „przeczytaj", nie „błąd"). */
+.receipt-po-comment {
+    background-color: #fff8e1;
+    border-left: 3px solid #ffc107;
+    border-radius: .2rem;
+    padding: .5rem .625rem;
+    word-break: break-word;
+}
+
+/* --- Wyrównanie pól w karcie „Dokument przyjęcia" ---
+   To była reklamacja: kontrolki w trzech kolumnach nie stały na tej samej
+   wysokości. Powód był podwójny: (1) podpowiedzi <small> mają różną
+   długość, więc kolumny kończyły się na różnych wysokościach, (2) kolumna
+   „Data przyjęcia" miała w miejscu kontrolki link, a samo pole pojawiało
+   się dopiero pod nim.
+
+   Rozwiązanie: każde pole to sztywny trójpak
+       .receipt-field-head  → min-height, więc etykiety (z linkiem lub bez)
+                              zajmują zawsze tyle samo,
+       kontrolka            → zawsze .form-control/.bootstrap-select,
+                              czyli identyczna wysokość,
+       .receipt-field-hint  → min-height na dwie linijki, więc różna
+                              długość podpowiedzi nie przesuwa niczego
+                              poniżej ani nie rozjeżdża dolnej krawędzi. */
+.receipt-field-head {
+    display: flex;
+    align-items: baseline;
+    min-height: 1.5rem;
+    margin-bottom: .25rem;
+}
+.receipt-field-label {
+    font-size: .78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    color: #495057;
+}
+/* Link akcji przy etykiecie (np. „Zmień datę przyjęcia"). Zawsze jedna
+   linijka — gdyby się nie mieścił, przycinamy wielokropkiem, bo złamanie
+   go na dwie linijki podniosłoby całą kolumnę i wróciłby problem
+   z wyrównaniem. */
+.receipt-field-action {
+    margin-left: auto;
+    padding-left: .5rem;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.receipt-field-hint { min-height: 2.4rem; }
+
+/* Podgląd „dzisiaj" stoi dokładnie tam, gdzie w pozostałych kolumnach
+   stoi input — dzięki .form-control ma tę samą wysokość i ramkę, ale
+   czyta się jako wartość ustawiona, nie jako pole do wpisania.
+   Gdy JS zdejmie `d-none` z #receivedAtWrap (operator wpisuje dostawę
+   wstecz), podgląd znika — bez linijki JS, samym sąsiedztwem. */
+.receipt-date-today {
+    background-color: #f1f3f5;
+    color: #6c757d;
+    cursor: default;
+}
+#receivedAtWrap:not(.d-none) + .receipt-date-today { display: none; }
+
+/* --- Tabela pozycji: strefy zamiast dziesięciu równorzędnych kolumn ---
+   Kolumna 1 to checkbox „Przyjmujesz", 2-3 identyfikacja pozycji,
+   4-6 stan realizacji, 7-8 pola do wpisania, 9-10 magazyn i uwagi.
+   Nagłówek nadrzędny nazywa strefy, a pionowe linie prowadzą je
+   przez całą tabelę. Liczba kolumn danych (10) się NIE zmienia —
+   JS renderuje wiersze i komunikaty z colspan="10". */
+.receipt-lines-table thead th {
+    font-size: .72rem;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: #495057;
+}
+.receipt-lines-table .receipt-group-row th {
+    border-bottom: 0;
+    padding-bottom: .1rem;
+    font-size: .67rem;
+    font-weight: 600;
+    color: #8a929b;
+}
+.receipt-lines-table .receipt-group-input { color: #0056b3; }
+
+/* Granice stref — nagłówek nadrzędny ma je na styku kolumn colgroup,
+   wiersz szczegółowy i komórki danych na 4., 7. i 9. kolumnie
+   (po dodaniu kolumny „Przyjmujesz" — checkbox na starcie). */
+.receipt-lines-table .receipt-group + .receipt-group,
+.receipt-lines-table thead tr:not(.receipt-group-row) th:nth-child(4),
+.receipt-lines-table thead tr:not(.receipt-group-row) th:nth-child(7),
+.receipt-lines-table thead tr:not(.receipt-group-row) th:nth-child(9),
+.receipt-lines-table tbody tr.receipt-line > td:nth-child(4),
+.receipt-lines-table tbody tr.receipt-line > td:nth-child(7),
+.receipt-lines-table tbody tr.receipt-line > td:nth-child(9) {
+    border-left: 1px solid #e3e6ea;
+}
+
+/* Strefa „Ile przyjmujesz" na delikatnym tle — pola do wpisania mają się
+   odcinać od danych tylko do odczytu. Wiersze w stanie ostrzeżenia/błędu
+   (.table-warning/.table-danger z walidacji) i wiersze domknięte są
+   wyłączone: tam kolor wiersza niesie ważniejszą informację i musi
+   wygrać z tłem strefy. */
+.receipt-lines-table tbody tr.receipt-line:not(.table-warning):not(.table-danger):not(.receipt-line-done):not(.receipt-line-skip) > td:nth-child(7),
+.receipt-lines-table tbody tr.receipt-line:not(.table-warning):not(.table-danger):not(.receipt-line-done):not(.receipt-line-skip) > td:nth-child(8) {
+    background-color: rgba(0, 123, 255, .045);
+}
+/* .table-hover maluje tło na <tr>, a tło strefy siedzi na <td> i by je
+   przykryło — stąd osobny wariant na hover. */
+.receipt-lines-table tbody tr.receipt-line:not(.table-warning):not(.table-danger):not(.receipt-line-done):not(.receipt-line-skip):hover > td:nth-child(7),
+.receipt-lines-table tbody tr.receipt-line:not(.table-warning):not(.table-danger):not(.receipt-line-done):not(.receipt-line-skip):hover > td:nth-child(8) {
+    background-color: rgba(0, 123, 255, .085);
+}
+
+/* Stan wiersza czytelny z odległości: pasek na krawędzi wiersza.
+   `box-shadow: inset` zamiast border-left, bo border zmieniłby szerokość
+   kolumny i rozjechałby nagłówek. */
+.receipt-lines-table tbody tr.table-warning > td:first-child { box-shadow: inset .2rem 0 0 #ffc107; }
+.receipt-lines-table tbody tr.table-danger  > td:first-child { box-shadow: inset .2rem 0 0 #dc3545; }
+.receipt-line-done > td:first-child         { box-shadow: inset .2rem 0 0 #28a745; }
+
+/* Komunikat walidacji pod polem ilości ma `mt-1` z JS. Żeby wiersze
+   BEZ błędu miały tę samą wysokość co wiersze Z błędem (a input
+   Ilości leżał na jednej linii w całej tabeli), zarezerwowane jest
+   ~1.25rem na .line-msg nawet gdy jest pusty — visibility:hidden
+   zachowuje zajmowane miejsce bez rysowania tekstu. */
+.receipt-lines-table .line-msg { min-height: 1.25rem; }
+.receipt-lines-table .line-msg:empty { visibility: hidden; }
+
+/* Plakietka „Przyjęte w całości": zielona zamiast szarej — to jest
+   informacja pozytywna (pozycja domknięta), nie wyłączona kontrolka.
+   !important, bo JS renderuje ją z .text-muted i .border. */
+.receipt-line-done td .badge-light {
+    background-color: #e6f4ea;
+    border-color: #a3d9b4 !important;
+    color: #1e7e34 !important;
+    font-weight: 600;
+}
+
+
+/* ---- Kroki (kreator przyjęcia) ------------------------------------ */
+
+/* Formularz prowadzi przez trzy kroki: ① dokument → ② pozycje → ③ zapis.
+   BS4 nie ma komponentu „stepper", więc składamy go z <ol> ustawionego
+   we flexa: kółko z numerem + etykieta, a między krokami cienka kreska
+   łącząca (pseudoelement ::before na każdym kroku poza pierwszym).
+
+   Stany (klasy nadaje JS → receive-page.js setStep()):
+     domyślny                — krok przed nami: szary,
+     .receipt-step-active    — krok bieżący: niebieski,
+     .receipt-step-completed — krok domknięty: zielony, a numer w kółku
+                               JS podmienia na <i class="bi bi-check2">.
+   Kolory to jedyna rola CSS — żadnej zabawy w content: "\FXXX" z rodziną
+   bootstrap-icons, bo ikonę wstawia JS jako zwykły element. */
+.receipt-stepper {
+    display: flex;
+    align-items: center;
+    list-style: none;
+    padding: 0;
+    margin: 0 0 1rem 0;
+}
+.receipt-step {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    color: #8a929b;
+}
+/* Kreska łącząca zjada całą wolną przestrzeń między krokami, dzięki
+   czemu kółka rozkładają się równomiernie niezależnie od długości
+   etykiet. */
+.receipt-step + .receipt-step::before {
+    content: "";
+    flex: 1;
+    height: 2px;
+    min-width: 1rem;
+    background-color: #e3e6ea;
+    margin: 0 .5rem;
+}
+.receipt-step-num {
+    width: 2rem;
+    height: 2rem;
+    border-radius: 50%;
+    background-color: #fff;
+    border: 2px solid #e3e6ea;
+    color: #8a929b;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: .95rem;
+    line-height: 1;
+    flex-shrink: 0;
+    transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+}
+.receipt-step-label {
+    margin-left: .5rem;
+    font-size: .9rem;
+    font-weight: 500;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.receipt-step-active .receipt-step-num {
+    border-color: #007bff;
+    background-color: #007bff;
+    color: #fff;
+    /* Delikatna aureola — krok bieżący ma się wyłapywać kątem oka. */
+    box-shadow: 0 0 0 .2rem rgba(0, 123, 255, .18);
+}
+.receipt-step-active .receipt-step-label {
+    color: #007bff;
+    font-weight: 600;
+}
+.receipt-step-completed .receipt-step-num {
+    border-color: #28a745;
+    background-color: #28a745;
+    color: #fff;
+}
+.receipt-step-completed .receipt-step-label { color: #28a745; }
+/* Odcinek WYCHODZĄCY z kroku domkniętego też na zielono — widać przebytą
+   drogę. Kreska jest pseudoelementem kroku NASTĘPNEGO, stąd `+`. */
+.receipt-step-completed + .receipt-step::before { background-color: #28a745; }
+
+/* Wąskie ekrany: etykiety trzech kroków nie mieszczą się w jednej
+   linii, a łamanie ich rozpycha pasek na trzy wiersze. Zostaje sam
+   bieżący krok podpisany — reszta to kółka z numerem. */
+@media (max-width: 575.98px) {
+    .receipt-step:not(.receipt-step-active) .receipt-step-label { display: none; }
+    .receipt-step:not(.receipt-step-active) { flex: 0 0 auto; }
+    .receipt-step-label { font-size: .82rem; }
+}
+
+/* Krok zablokowany (karta pozycji przed akceptacją kroku 1). Wygaszony
+   i nieklikalny — samo `disabled` na kilkudziesięciu inputach w tabeli
+   byłoby i wolniejsze, i trzeba by je potem zdejmować z rozróżnieniem
+   na wiersze domknięte (te mają `disabled` z innego powodu). */
+.receipt-step-locked {
+    pointer-events: none;
+    opacity: .55;
+    -webkit-user-select: none;
+    user-select: none;
+    transition: opacity .15s ease;
+}
+
+/* Przełączanie edycja ↔ podsumowanie w karcie „Dokument przyjęcia". */
+#receiptDocumentEdit,
+#receiptDocumentSummary { transition: opacity .15s ease; }
+
+/* Pasek z przyciskiem „Akceptuję" odcięty od pól cienką kreską — to
+   domknięcie kroku, nie kolejne pole formularza. */
+.receipt-step-accept {
+    border-top: 1px solid #e9ecef;
+    padding-top: .75rem;
+    margin-top: .25rem;
+    margin-bottom: .5rem;
+}
+
+/* Podsumowanie kroku 1 — ten sam język typograficzny co .receipt-meta
+   w karcie „Zamówienie": etykieta jako drobny podpis, wartość jako
+   treść. Dzięki temu zwinięta karta czyta się jako dane, nie jako
+   formularz w stanie wyłączonym. */
+.receipt-summary dt {
+    font-size: .68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: #8a929b;
+    padding-top: .15rem;
+}
+.receipt-summary dd {
+    font-size: .9rem;
+    font-weight: 600;
+    color: #212529;
+    word-break: break-word;
+    /* Komentarz bywa wielolinijkowy — zachowujemy złamania wierszy
+       z textarea zamiast sklejać wszystko w jeden akapit. */
+    white-space: pre-wrap;
+}
+
+/* Adnotacja „to nie ty to wpisałeś" pod podsumowaniem kroku 1 przy
+   dostawie częściowej. Bursztyn zamiast szarości — ma zatrzymać oko
+   na chwilę, ale nie krzyczeć jak alert. */
+.receipt-summary-inherited {
+    background-color: #fff8e1;
+    border-left: 3px solid #ffc107;
+    border-radius: .2rem;
+    padding: .4rem .625rem;
+    color: #7a5b00;
+}
 
 
 /* ---- Historia ----------------------------------------------------- */
