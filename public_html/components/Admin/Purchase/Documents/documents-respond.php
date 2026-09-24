@@ -108,6 +108,18 @@ foreach ($currenciesList as $row) {
     $currencies[$row['code']] = $row['name'];
 }
 
+// Units for the per-row qty+unit input-group. Same query as cart-view.php:127-130.
+$unitStmt = $MsaDB->db->query("SELECT id, name FROM `part__unit` ORDER BY name ASC");
+$units = $unitStmt ? $unitStmt->fetchAll(\PDO::FETCH_ASSOC) : [];
+
+// Raw qty formatter for input values — strips the thousands separator.
+// `type="number"` rejects "1 000" (renders blank), so input values
+// must be space-free. The display-only formatter (with space separator)
+// is fine for read-only cells but NOT for input value attributes.
+$rawQty = function ($q) {
+    return rtrim(rtrim(number_format((float)$q, 4, '.', ''), '0'), '.');
+};
+
 $rfqNumber       = $rfq->rfqNumber ?? ('#' . $rfq->id);
 $vendorName      = $rfq->vendorName ?? '—';
 $sentAtLabel     = $rfq->sentAt ?? '—';
@@ -154,96 +166,182 @@ $backUrl         = 'http://' . BASEURL . '/admin/purchase/documents/edit?id=' . 
     <form id="rfq-respond-form" data-rfq-id="<?= (int)$rfq->id ?>">
         <input type="hidden" name="id" value="<?= (int)$rfq->id ?>">
 
-        <div class="card mb-3">
-            <div class="card-header"><strong>Pozycje odpowiedzi</strong></div>
-            <div class="table-responsive">
-                <table class="table table-sm mb-0">
-                    <thead class="thead-light">
-                        <tr>
-                            <th>Część</th>
-                            <th>Nr u dostawcy</th>
-                            <th class="text-right">Ilość</th>
-                            <th>Jednostka</th>
-                            <th class="text-right" style="width: 12rem;">Cena jedn. (z odpowiedzi)</th>
-                            <th style="width: 7rem;">Waluta</th>
-                            <th>Uwagi</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                    <?php foreach ($items as $it): ?>
-                        <tr>
-                            <td>
-                                <?= htmlspecialchars($it->partName ?? '—') ?>
-                                <?php if (!empty($it->vendorPartNo)): ?>
-                                    <div><small class="text-muted"><?= htmlspecialchars($it->vendorPartNo) ?></small></div>
-                                <?php endif; ?>
-                            </td>
-                            <td><?= htmlspecialchars($it->vendorPartNo ?? '—') ?></td>
-                            <td class="text-right">
-                                <?= htmlspecialchars(rtrim(rtrim(number_format((float)$it->quantity, 4, '.', ' '), '0'), '.')) ?>
-                            </td>
-                            <td><?= htmlspecialchars($it->unitName ?? '—') ?></td>
-                            <td>
-                                <input type="number"
-                                       step="0.0001"
-                                       min="0"
-                                       class="form-control form-control-sm text-right"
-                                       name="items[<?= (int)$it->id ?>][unit_price]"
-                                       value="<?= $it->unitPrice === null ? '' : htmlspecialchars((string)$it->unitPrice) ?>"
-                                       placeholder="—">
-                                <input type="hidden"
-                                       name="items[<?= (int)$it->id ?>][item_id]"
-                                       value="<?= (int)$it->id ?>">
-                            </td>
-                            <td>
-                                <select class="selectpicker form-control form-control-sm"
-                                        name="items[<?= (int)$it->id ?>][currency]"
-                                        data-width="100%"
-                                        data-container="#rfq-respond-form">
-                                    <?php foreach ($currencies as $code => $label): ?>
-                                        <option value="<?= htmlspecialchars($code, ENT_QUOTES) ?>"
-                                            <?= $code === ($it->currency ?? 'PLN') ? 'selected' : '' ?>>
-                                            <?= htmlspecialchars($code) ?>
-                                        </option>
-                                    <?php endforeach; ?>
-                                </select>
-                            </td>
-                            <td>
-                                <input type="text"
-                                       class="form-control form-control-sm"
-                                       name="items[<?= (int)$it->id ?>][comment]"
-                                       value="<?= htmlspecialchars($it->comment ?? '', ENT_QUOTES) ?>"
-                                       placeholder="opcjonalne">
-                            </td>
-                        </tr>
-                    <?php endforeach; ?>
-                    </tbody>
-                </table>
+        <!-- ===== Card 1: Pozycje odpowiedzi (mirrors #receiptLinesCard) ===== -->
+        <div class="card">
+            <div class="card-header d-flex flex-wrap align-items-center py-2">
+                <strong class="mr-auto">
+                    <i class="bi bi-reply"></i> Pozycje odpowiedzi
+                </strong>
+                <button type="button" class="btn btn-sm btn-outline-primary mr-2" id="respondFillAllBtn">
+                    <i class="bi bi-arrow-clockwise"></i> Przepisz ilości z zapytania
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="respondClearAllBtn">
+                    <i class="bi bi-eraser"></i> Wyczyść ceny
+                </button>
             </div>
-        </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0 rfq-respond-table" id="rfqRespondTable">
+                        <thead class="thead-light">
+                        <tr class="rfq-respond-group-row">
+                            <th scope="colgroup" colspan="2" class="rfq-respond-group">Pozycja</th>
+                            <th scope="colgroup" colspan="1" class="rfq-respond-group text-right">Zapytano</th>
+                            <th scope="colgroup" colspan="2" class="rfq-respond-group rfq-respond-group-input">
+                                <i class="bi bi-pencil-square"></i> Co oferuje dostawca
+                            </th>
+                            <th scope="colgroup" colspan="1" class="rfq-respond-group">Uwagi do odpowiedzi</th>
+                        </tr>
+                        <tr>
+                            <th scope="col" class="rfq-respond-col-num">Nr dostawcy</th>
+                            <th scope="col">Nazwa</th>
+                            <th scope="col" class="text-right">Ilość</th>
+                            <th scope="col" class="rfq-respond-col-qty">Ilość</th>
+                            <th scope="col" class="rfq-respond-col-price">Cena jedn.</th>
+                            <th scope="col" class="rfq-respond-col-note">Uwagi do odpowiedzi</th>
+                        </tr>
+                        </thead>
+                        <tbody id="rfqRespondBody">
+                        <?php foreach ($items as $it):
+                            $iid      = (int)$it->id;
+                            $unitName = $it->unitName ?? '—';
+                            $pack     = isset($it->pickedPackSize) ? (float)$it->pickedPackSize : null;
+                            $vn       = (string)($it->vendorPartNo ?? '');
+                            $pn       = (string)($it->producerPartNo ?? '');
+                            $askedQty = (float)$it->quantity;
+                            $askedQtyStr = $rawQty($askedQty);
+                            $isUnpriced = ($it->unitPrice === null);
+                            $rowClass = $isUnpriced ? 'rfq-respond-row is-unpriced' : 'rfq-respond-row';
+                        ?>
+                            <tr class="<?= $rowClass ?>"
+                                data-item-id="<?= $iid ?>"
+                                data-pack="<?= ($pack !== null && $pack > 0) ? htmlspecialchars((string)$pack, ENT_QUOTES) : '' ?>"
+                                data-asked-qty="<?= htmlspecialchars($askedQtyStr, ENT_QUOTES) ?>"
+                                data-asked-unit="<?= htmlspecialchars($unitName, ENT_QUOTES) ?>">
 
-        <div class="card mb-3">
-            <div class="card-body py-2">
-                <label for="responded_at" class="mb-1"><strong>Data odpowiedzi</strong></label>
-                <input type="date"
-                       id="responded_at"
-                       name="responded_at"
-                       class="form-control form-control-sm"
-                       style="max-width: 200px;"
-                       value="<?= htmlspecialchars($respondedAtDefault) ?>">
-                <small class="text-muted d-block mt-1">
-                    Domyślnie dzisiejsza data. Możesz cofnąć, jeśli odpowiedź przyszła wcześniej.
-                </small>
+                                <!-- ===== Pozycja (colspan=2): col1 = Nr dostawcy, col2 = Nazwa ===== -->
+                                <!-- Mirrors receive-page.js nameCell/numCell pattern. Col 1 is the
+                                     catalog code (vendor + producer number), col 2 is the human-
+                                     readable part identity (name + description + unit). -->
+                                <td>
+                                    <?php if ($vn !== ''): ?>
+                                        <?= htmlspecialchars($vn) ?>
+                                    <?php else: ?>
+                                        <span class="text-muted">—</span>
+                                    <?php endif; ?>
+                                    <?php if ($pn !== '' && $pn !== $vn): ?>
+                                        <div><small class="text-muted">Nr prod.: <?= htmlspecialchars($pn) ?></small></div>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <div class="font-weight-bold"><?= htmlspecialchars($it->partName ?? '—') ?></div>
+                                    <?php if (!empty($it->partDescription)): ?>
+                                        <div><small class="text-muted"><?= htmlspecialchars($it->partDescription) ?></small></div>
+                                    <?php endif; ?>
+                                    <small class="text-muted d-block"><?= htmlspecialchars($it->unitName ?? '') ?></small>
+                                </td>
+
+                                <!-- ===== Zapytano (colspan=1, read-only reference) ===== -->
+                                <td class="text-right rfq-respond-asked-cell">
+                                    <span class="text-monospace"><?= htmlspecialchars($askedQtyStr) ?></span>
+                                    <small class="text-muted d-block"><?= htmlspecialchars($unitName) ?></small>
+                                </td>
+
+                                <!-- ===== Co oferuje dostawca (colspan=2, EDITABLE — blue) ===== -->
+                                <!-- Layout mirrors documents-edit inline-edit qty cell:
+                                     qty input on its own line, then a flex row with unit
+                                     label + packs input + muted "opak." + pack-size badge. -->
+                                <td>
+                                    <input type="number" inputmode="decimal" step="0.0001" min="0.0001" required
+                                           class="form-control form-control-sm text-right js-qty"
+                                           name="items[<?= $iid ?>][quantity]"
+                                           value="<?= htmlspecialchars($askedQtyStr, ENT_QUOTES) ?>"
+                                           aria-label="Ilość">
+                                    <?php if ($pack !== null && $pack > 0): ?>
+                                    <div class="d-flex align-items-center rfq-respond-qty-sub mt-1" style="gap:.25rem">
+                                        <small class="text-muted"><?= htmlspecialchars($unitName) ?></small>
+                                        <input type="number" inputmode="decimal" step="0.0001" min="0"
+                                               class="form-control form-control-sm text-right text-muted js-packs"
+                                               style="width: 4.5em;"
+                                               aria-label="Opakowania"
+                                               title="Opakowania — dwukierunkowo powiązane z ilością">
+                                        <small class="text-muted">opak.</small>
+                                        <span class="badge badge-light border text-monospace" title="Wielkość opakowania (stała)">× <?= htmlspecialchars(rtrim(rtrim(number_format($pack, 4, '.', ''), '0'), '.')) ?></span>
+                                    </div>
+                                    <?php endif; ?>
+                                    <div class="invalid-feedback js-qty-error"></div>
+                                    <div class="line-msg js-qty-msg"></div>
+                                </td>
+                                <td>
+                                    <div class="input-group input-group-sm">
+                                        <input type="number" inputmode="decimal" step="0.0001" min="0"
+                                               class="form-control text-right js-price"
+                                               name="items[<?= $iid ?>][unit_price]"
+                                               value="<?= ($it->unitPrice === null) ? '' : htmlspecialchars((string)$it->unitPrice, ENT_QUOTES) ?>"
+                                               placeholder="nie wyceniono" aria-label="Cena jednostkowa">
+                                        <div class="input-group-append">
+                                            <select class="custom-select custom-select-sm js-currency"
+                                                    name="items[<?= $iid ?>][currency]"
+                                                    style="max-width: 5rem;" title="Waluta">
+                                                <?php foreach ($currencies as $code => $label): ?>
+                                                    <option value="<?= htmlspecialchars($code, ENT_QUOTES) ?>"
+                                                        <?= ($code === ($it->currency ?? 'PLN')) ? 'selected' : '' ?>>
+                                                        <?= htmlspecialchars($code) ?>
+                                                    </option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="js-line-total text-muted small mt-1 text-right"></div>
+                                    <div class="line-msg js-price-msg"></div>
+                                </td>
+
+                                <!-- ===== Uwagi (colspan=1) ===== -->
+                                <td>
+                                    <input type="text" class="form-control form-control-sm"
+                                           name="items[<?= $iid ?>][comment]"
+                                           value="<?= htmlspecialchars($it->comment ?? '', ENT_QUOTES) ?>"
+                                           placeholder="opcjonalne" aria-label="Uwagi do pozycji">
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
             </div>
-        </div>
-
-        <div class="d-flex" style="gap: .5rem;">
-            <button type="submit" id="respond-submit-btn" class="btn btn-success btn-sm">
-                <i class="bi bi-check2"></i> Zapisz odpowiedź
-            </button>
-            <a href="<?= htmlspecialchars($backUrl, ENT_QUOTES) ?>" class="btn btn-outline-secondary btn-sm">Anuluj</a>
+            <!-- ===== Card-footer: data odpowiedzi + per-currency totals ===== -->
+            <div class="card-footer">
+                <div class="d-flex flex-wrap justify-content-between align-items-end" style="gap: 1rem;">
+                    <div>
+                        <label for="responded_at" class="small text-muted mb-1 d-block">Data odpowiedzi</label>
+                        <input type="date" id="responded_at" name="responded_at"
+                               class="form-control form-control-sm" style="max-width: 11rem;"
+                               value="<?= htmlspecialchars($respondedAtDefault) ?>">
+                        <small class="text-muted d-block mt-1">Domyślnie dzisiejsza. Możesz cofnąć.</small>
+                    </div>
+                    <div class="text-right">
+                        <div class="small text-uppercase text-muted">Wartość odpowiedzi</div>
+                        <div id="respond-totals" class="text-monospace font-weight-bold"><span class="text-muted">—</span></div>
+                        <small id="respond-unpriced" class="text-muted d-block"></small>
+                    </div>
+                </div>
+            </div>
         </div>
     </form>
+
+    <!-- ===== Sticky actionbar (mirrors .receipt-actionbar) ===== -->
+    <div class="rfq-respond-actionbar bg-white border border-top-0 shadow-sm py-2 px-3 d-flex flex-wrap align-items-center">
+        <div class="mr-auto py-1 d-flex align-items-center">
+            <i class="bi bi-reply rfq-respond-actionbar-icon text-primary mr-2"></i>
+            <div>
+                <span class="font-weight-bold d-block" id="respondSummary">Zapisujesz odpowiedź dla 0 z 0 pozycji</span>
+                <small class="text-muted d-block rfq-respond-actionbar-hint" id="respondHint"></small>
+            </div>
+        </div>
+        <a href="<?= htmlspecialchars($backUrl, ENT_QUOTES) ?>" class="btn btn-outline-secondary mr-2" id="respondCancelBtn">Anuluj</a>
+    <button type="submit" form="rfq-respond-form" class="btn btn-success px-4" id="respondSubmitBtn">
+        <i class="bi bi-check2-circle"></i> Zapisz odpowiedź
+    </button>
+    </div>
     <?php endif; ?>
 </div>
 
