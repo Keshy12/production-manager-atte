@@ -504,6 +504,45 @@ if ($rfqStateCol === '' || strpos($rfqStateCol, "'responded'") === false) {
     $skipped++;
 }
 
+// ── Safety MODIFY on purchase__order.state ENUM ──────────────────────
+// Same pattern as the rfq widening above. The CREATE TABLE block at
+// line ~232 still declares the original six values — the live enum is
+// already the new shape on fresh DBs (this migration runs before any
+// PO rows are written), but legacy DBs have the old enum without
+// 'in_progress' and need this ALTER.
+//
+// 'in_progress' is the logistics state introduced for the goods-
+// receiving workflow: PO went confirmed → operator clicked "Akceptuję"
+// on /purchase/receipts/receive to persist receipt-header metadata
+// (vendor doc number, comment, date) but no items yet. Producer: the
+// purchaseActionHandler::acceptReceiptMetadata method, which
+// transitions confirmed → in_progress only and never re-runs on
+// already-in_progress/partially_received/received states. The enum
+// widening on the repo side (PurchaseOrderRepository::setState) was
+// added together with this ALTER so legacy installs stay consistent.
+$poStateCol = (string) $db->query("
+    SELECT COLUMN_TYPE
+      FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME   = 'purchase__order'
+       AND COLUMN_NAME  = 'state'
+")->fetchColumn();
+if ($poStateCol === '' || strpos($poStateCol, "'in_progress'") === false) {
+    try {
+        $db->exec("ALTER TABLE `purchase__order`
+                   MODIFY COLUMN `state`
+                   ENUM('draft','sent','confirmed','partially_received','received','cancelled','in_progress') NOT NULL DEFAULT 'draft'");
+        echo "✓ purchase__order.state: widened to include 'in_progress'\n";
+        $created++;
+    } catch (\PDOException $e) {
+        fwrite(STDERR, "✗ purchase__order.state widen: " . $e->getMessage() . "\n");
+        $failed++;
+    }
+} else {
+    echo "= purchase__order.state: already includes 'in_progress' (skipped)\n";
+    $skipped++;
+}
+
 // ── Add is_primary to list__vendor_supplier ──────────────────────────
 // VendorSupplierRepository::listByVendor() / setPrimary() sort and
 // toggle a per-vendor "primary contact" flag. The CREATE TABLE block
