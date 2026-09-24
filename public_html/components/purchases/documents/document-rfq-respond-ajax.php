@@ -19,13 +19,15 @@
  *                                     'Y-m-d' normalizowane do
  *                                     'Y-m-d 00:00:00'; puste → null,
  *                                     handler użyje NOW().
- *   items[i][item_id]    int                 (wymagane gdy items obecne, > 0)
- *   items[i][unit_price] string|empty        opcjonalne; akceptujemy '.' lub
+ *   items[i][item_id]          int             (wymagane gdy items obecne, > 0)
+ *   items[i][unit_price]       string|empty    opcjonalne; akceptujemy '.' lub
  *                                     ',' jako separator dziesiętny (projekt
  *                                     miesza locale — patrz audits/DISCREPANCIES),
  *                                     pusty → null
- *   items[i][currency]   string              opcjonalne; max 8 znaków
- *   items[i][comment]    string|empty        opcjonalne; pusty → null
+ *   items[i][currency]         string          opcjonalne; max 8 znaków
+ *   items[i][comment]          string|empty    opcjonalne; pusty → null
+ *   items[i][quantity]         string          decimal (locale-tolerant via ,→. normalize) > 0
+ *   items[i][quantity_unit_id] int             > 0
  *
  *   jQuery $.ajax({ data: { items: [...] } }) emituje form-encoding
  *   `items[0][item_id]=…`, PHP parsuje to do $_POST['items'][0]['item_id']
@@ -149,15 +151,74 @@ if (isset($_POST['items']) && is_array($_POST['items']) && !empty($_POST['items'
             }
         }
 
+        // quantity: locale-aware decimal, must be > 0 when present.
+        // Backward compat: jeśli brak → null; handler użyje istniejącej
+        // wartości z wiersza RFQ (czyste zachowanie historyczne dla
+        // send-wizard caller, który nigdy nie wysyła tego pola).
+        $itemQty = null;
+        if (array_key_exists('quantity', $raw) && $raw['quantity'] !== null) {
+            $qtyRaw = trim((string)$raw['quantity']);
+            if ($qtyRaw !== '') {
+                // Akceptujemy '.' albo ',' jako separator dziesiętny (projekt
+                // miesza locale — analogicznie do unit_price powyżej). Chronimy
+                // się przed przypadkiem „1,234.56" (separator tysięcy + decimal)
+                // sprawdzając, czy oba separatory nie współistnieją.
+                if (strpos($qtyRaw, ',') !== false && strpos($qtyRaw, '.') === false) {
+                    $qtyRaw = str_replace(',', '.', $qtyRaw);
+                }
+                if (!is_numeric($qtyRaw)) {
+                    echo json_encode([
+                        'success' => false,
+                        'error'   => "Pozycja #{$idx} ({$itemId}): ilość musi być liczbą.",
+                    ]);
+                    exit;
+                }
+                $itemQty = (float)$qtyRaw;
+                if ($itemQty <= 0) {
+                    echo json_encode([
+                        'success' => false,
+                        'error'   => "Pozycja #{$idx} ({$itemId}): ilość musi być > 0.",
+                    ]);
+                    exit;
+                }
+            }
+        }
+
+        // quantity_unit_id: dodatni int gdy podany; brak → null (fallback
+        // w handlerze). Polityka walidacji spójna z polami wyżej.
+        $itemUnitId = null;
+        if (array_key_exists('quantity_unit_id', $raw) && $raw['quantity_unit_id'] !== null) {
+            $uidRaw = trim((string)$raw['quantity_unit_id']);
+            if ($uidRaw !== '') {
+                if (!ctype_digit($uidRaw)) {
+                    echo json_encode([
+                        'success' => false,
+                        'error'   => "Pozycja #{$idx} ({$itemId}): nieprawidłowa jednostka miary.",
+                    ]);
+                    exit;
+                }
+                $itemUnitId = (int)$uidRaw;
+                if ($itemUnitId <= 0) {
+                    echo json_encode([
+                        'success' => false,
+                        'error'   => "Pozycja #{$idx} ({$itemId}): nieprawidłowa jednostka miary.",
+                    ]);
+                    exit;
+                }
+            }
+        }
+
         $normalizedItems[] = [
-            'item_id'    => $itemId,
-            'unit_price' => $unitPrice,
-            'currency'   => isset($raw['currency']) && $raw['currency'] !== ''
+            'item_id'          => $itemId,
+            'unit_price'       => $unitPrice,
+            'currency'         => isset($raw['currency']) && $raw['currency'] !== ''
                 ? trim((string)$raw['currency'])
                 : null,
-            'comment'    => isset($raw['comment']) && $raw['comment'] !== ''
+            'comment'          => isset($raw['comment']) && $raw['comment'] !== ''
                 ? (string)$raw['comment']
                 : null,
+            'quantity'         => $itemQty,        // null = keep existing (handler fallback)
+            'quantity_unit_id' => $itemUnitId,     // null = keep existing (handler fallback)
         ];
     }
 }

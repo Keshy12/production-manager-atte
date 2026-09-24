@@ -398,7 +398,9 @@ class PurchaseActionHandler {
      * @param int         $rfqId
      * @param int         $userId
      * @param array       $items             lista map per pozycja (pusta = bez aktualizacji pozycji):
-     *                                          ['item_id' => int, 'unit_price' => ?float, 'currency' => string, 'comment' => ?string]
+     *                                          ['item_id' => int, 'unit_price' => ?float, 'currency' => string, 'comment' => ?string,
+     *                                           'quantity' => ?float,         // null = keep existing
+     *                                           'quantity_unit_id' => ?int]   // null = keep existing
      * @param string|null $respondedAt       'Y-m-d H:i:s' lub null/empty → NOW()
      * @return bool
      */
@@ -463,6 +465,28 @@ class PurchaseActionHandler {
                     );
                 }
             }
+            // quantity: opcjonalne; gdy podane musi być numeryczne > 0.
+            // null/absent = fallback do istniejącej wartości w wierszu.
+            if (array_key_exists('quantity', $it) && $it['quantity'] !== null) {
+                if (!is_numeric($it['quantity']) || (float)$it['quantity'] <= 0) {
+                    throw new \InvalidArgumentException(
+                        "Pozycja #{$idx} ({$itemId}): ilość musi być > 0."
+                    );
+                }
+            }
+            // quantity_unit_id: opcjonalne; gdy podane musi być dodatnim intem.
+            // null/absent = fallback do istniejącej wartości w wierszu.
+            if (array_key_exists('quantity_unit_id', $it) && $it['quantity_unit_id'] !== null) {
+                $uidVal = $it['quantity_unit_id'];
+                $uidOk  = is_int($uidVal)
+                    || (is_string($uidVal) && ctype_digit($uidVal))
+                    || (is_numeric($uidVal) && (float)$uidVal == (int)$uidVal);
+                if (!$uidOk || (int)$uidVal <= 0) {
+                    throw new \InvalidArgumentException(
+                        "Pozycja #{$idx} ({$itemId}): nieprawidłowa jednostka miary."
+                    );
+                }
+            }
         }
 
         $MsaDB->db->beginTransaction();
@@ -504,11 +528,23 @@ class PurchaseActionHandler {
                     $comment = $trimmed === '' ? null : $trimmed;
                 }
 
+                // Quantity: użyj podanej gdy obecna i różna od null; w przeciwnym
+                // razie zachowaj istniejącą (send-wizard caller wysyła items=[],
+                // więc ta gałąź się w ogóle nie wykonuje — explicit backward compat).
+                $newQty = (array_key_exists('quantity', $it) && $it['quantity'] !== null)
+                    ? (float)$it['quantity']
+                    : (float)$existing->quantity;
+
+                // Quantity_unit_id: jak wyżej — fallback do istniejącej.
+                $newUnitId = (array_key_exists('quantity_unit_id', $it) && $it['quantity_unit_id'] !== null)
+                    ? (int)$it['quantity_unit_id']
+                    : (int)$existing->quantityUnitId;
+
                 $itemRepo->update(
                     $existing->id,
                     $existing->vendorPartId,
-                    $existing->quantity,
-                    $existing->quantityUnitId,
+                    $newQty,
+                    $newUnitId,
                     $unitPrice,
                     $currency,
                     $comment,
