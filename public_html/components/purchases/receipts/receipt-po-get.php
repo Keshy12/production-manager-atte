@@ -4,25 +4,42 @@
  *
  * GET param: po_id (int, required).
  *
- * Guard: PO must exist AND be in state 'confirmed'|'partially_received'.
- * Otherwise return
+ * Guard: PO must exist AND be in state 'confirmed'|'partially_received'
+ * |'in_progress'. Otherwise return
  *   {success: false, error: 'Zamówienie nie jest w stanie
  *    pozwalającym na przyjęcie towaru.'}
  * with HTTP 200 (no 4xx — the JS side owns the user-visible alert).
+ *
+ * 'in_progress' is the logistics state set by receipt-accept.php when
+ * the operator clicks "Akceptuję" without items yet. Including it in
+ * the guard means the operator can re-open the form, see their
+ * accepted header metadata prefilled, and continue with items.
  *
  * Response:
  *   {success: true,
  *    po: {poId, poNumber, vendorPoNumber, vendorName, state,
  *         expectedDeliveryDate, comment},
  *    items: [{poItemId, vendorPartId, vendorPartNo, producerPartNo,
- *             partName, producerName, unitId, unitName,
+ *             partName, partDescription, vendorPartComment, producerName,
+ *             unitId, unitName,
  *             quantityOrdered, quantityReceived, quantityRemaining,
  *             maxAllowed, pickedPackSize, packQuantities, comment}, ...],
- *    defaultSubMagazineId: int|null}
+ *    defaultSubMagazineId: int|null,
+ *    lastReceipt: {lastReceiptId, documentNumber, vendorDocumentNumber,
+ *                  receivedAt, comment, lastSubMagazineId}|null}
  *
  * - All PO items are returned, including fully-received lines (frontend
  *   greys them out — the spec wants this so the operator can see the
  *   delivery complete in one glance).
+ * - `lastReceipt` describes the MOST RECENT receipt (real or draft)
+ *   already booked against this PO, or null when there is none. The
+ *   receive form uses it to pre-fill and auto-collapse step 1
+ *   ("Dokument przyjęcia") for a follow-up partial delivery or for
+ *   resuming an in_progress PO. `vendorDocumentNumber` is parsed back
+ *   out of the stored comment, where receipt-create.php line ~154 (and
+ *   acceptReceiptMetadata in PurchaseActionHandler) prepends it as
+ *   "Nr dok. dostawcy: <nr>\n<reszta komentarza>"; `comment` is the
+ *   remainder with that prefix line stripped (null when nothing left).
  * - `maxAllowed` = round(quantityRemaining * 1.10, 4) — mirrors the
  *   handler's cap at PurchaseActionHandler::createReceipt line ~485.
  * - `packQuantities` is the full ascending list of pack sizes for the
@@ -33,7 +50,10 @@
  *   (see DEFAULT_RECEIPT_SUB_MAGAZINE_ID below) when that row exists
  *   and is active. Otherwise the lowest active sub_magazine_id, or
  *   null when there are no active magazines at all. The frontend uses
- *   it to pre-select the receive-into magazine on every line.
+ *   it to pre-select the receive-into magazine on every line. Note:
+ *   drafts have no items, so the most recent magazine the operator
+ *   selected is NOT persisted on the draft; the form falls back to
+ *   this default when reopening an in_progress PO.
  */
 
 /**
@@ -88,7 +108,7 @@ try {
         echo json_encode(['success' => false, 'error' => 'Zamówienie nie zostało znalezione.']);
         exit;
     }
-    if (!in_array($hdr['state'], ['confirmed','partially_received'], true)) {
+    if (!in_array($hdr['state'], ['confirmed','partially_received','in_progress'], true)) {
         echo json_encode(['success' => false, 'error' => 'Zamówienie nie jest w stanie pozwalającym na przyjęcie towaru.']);
         exit;
     }
@@ -100,7 +120,9 @@ try {
                 poi.vendor_part_id  AS vendorPartId,
                 vp.vendor_part_no   AS vendorPartNo,
                 vp.producer_part_no AS producerPartNo,
+                vp.comment          AS vendorPartComment,
                 lp.name             AS partName,
+                lp.description      AS partDescription,
                 pr.name             AS producerName,
                 poi.quantity_unit_id AS unitId,
                 u.name              AS unitName,
@@ -157,6 +179,13 @@ try {
             'vendorPartNo'      => $r['vendorPartNo'],
             'producerPartNo'    => $r['producerPartNo'],
             'partName'          => $r['partName'],
+            // Opis urządzenia z list__parts — zawsze pod nazwą części w
+            // formularzu przyjęcia, jeśli niepusty.
+            'partDescription'   => $r['partDescription'],
+            // Uwagi do artykułu u dostawcy z list__vendor_part.comment
+            // ("Uwagi do urządzenia") — wizualnie odróżnialne od uwag
+            // do pozycji PO (item.comment, ten już renderowany).
+            'vendorPartComment' => $r['vendorPartComment'],
             'producerName'      => $r['producerName'],
             'unitId'            => (int)$r['unitId'],
             'unitName'          => $r['unitName'],
@@ -205,6 +234,112 @@ try {
         }
     }
 
+    // 6. Last receipt already booked against this PO (null when none).
+    //
+    // Two sources of "last receipt metadata" for prefill:
+    //   - DRAFT (purchase__order_receipt with zero items): created when
+    //     the operator clicked "Akceptuję" via receipt-accept.php. For
+    //     an in_progress PO this is the only thing in the table — it
+    //     carries the metadata they last accepted, so re-opening the
+    //     form repaints their work.
+    //   - REAL receipt (at least one item): created when items were
+    //     finally booked via receipt-create.php. For partially_received
+    //     this is the most recent save.
+    //
+    // Preference order: drafts win over real receipts. Rationale: the
+    // draft represents "the operator's currently-accepted metadata" —
+    // if they typed something, hit Akceptuję, then walked away, the
+    // draft is what they intended. A real receipt is a *historical*
+    // save; reusing it for prefill would silently override anything the
+    // operator typed after that save. (For partially_received this
+    // almost never matters — there's normally only one receipt, and
+    // by the time you re-open the form the operator's intent IS that
+    // receipt — but the rule stays simple and corner-case-safe.)
+    //
+    // Two queries: first try a draft, fall back to any receipt. Each is
+    // indexed (FK on po_id, the LEFT JOIN is the same shape as the
+    // GET handler in receipt-get.php uses).
+    //
+    // ORDER BY id DESC: drafts share a received_at only when the
+    // operator hits Akceptuję twice within the same second, which is
+    // unusual but possible — id breaks the tie towards the newest.
+    $lastReceipt = null;
+    $rcpStmt = $MsaDB->db->prepare(
+        "SELECT r.id              AS lastReceiptId,
+                r.document_number AS documentNumber,
+                r.received_at     AS receivedAt,
+                r.comment         AS comment
+           FROM `purchase__order_receipt` r
+           LEFT JOIN `purchase__order_receipt_item` ri ON ri.receipt_id = r.id
+          WHERE r.po_id = ? AND ri.id IS NULL
+          ORDER BY r.id DESC
+          LIMIT 1"
+    );
+    $rcpStmt->execute([$poId]);
+    $rcpRow = $rcpStmt->fetch(\PDO::FETCH_ASSOC);
+    if ($rcpRow === false) {
+        // Fallback: any receipt (real, may have items).
+        $rcpStmt = $MsaDB->db->prepare(
+            "SELECT r.id              AS lastReceiptId,
+                    r.document_number AS documentNumber,
+                    r.received_at     AS receivedAt,
+                    r.comment         AS comment
+               FROM `purchase__order_receipt` r
+              WHERE r.po_id = ?
+              ORDER BY r.received_at DESC, r.id DESC
+              LIMIT 1"
+        );
+        $rcpStmt->execute([$poId]);
+        $rcpRow = $rcpStmt->fetch(\PDO::FETCH_ASSOC);
+    }
+
+    if ($rcpRow !== false) {
+        // Split "Nr dok. dostawcy: <nr>\n<reszta>" back into its two parts.
+        // No prefix → vendorDocumentNumber stays null and the whole comment
+        // is passed through untouched.
+        $vendorDocNumber = null;
+        $rawComment      = $rcpRow['comment'];
+        $restComment     = $rawComment;
+        $prefix          = 'Nr dok. dostawcy: ';
+
+        if ($rawComment !== null && strncmp($rawComment, $prefix, strlen($prefix)) === 0) {
+            $afterPrefix = substr($rawComment, strlen($prefix));
+            $nlPos       = strpos($afterPrefix, "\n");
+            if ($nlPos === false) {
+                // Delivery-note number only — no comment body was supplied.
+                $vendorDocNumber = rtrim($afterPrefix, "\r");
+                $restComment     = null;
+            } else {
+                $vendorDocNumber = rtrim(substr($afterPrefix, 0, $nlPos), "\r");
+                $restComment     = substr($afterPrefix, $nlPos + 1);
+            }
+            if ($vendorDocNumber === '')                          $vendorDocNumber = null;
+            if ($restComment !== null && trim($restComment) === '') $restComment = null;
+        }
+
+        // Most-used receive-into magazine of that receipt — pre-selects the
+        // header picker so a follow-up delivery lands where the first one did.
+        $magRow = $MsaDB->db->prepare(
+            "SELECT `sub_magazine_id`
+               FROM `purchase__order_receipt_item`
+              WHERE `receipt_id` = ?
+              GROUP BY `sub_magazine_id`
+              ORDER BY COUNT(*) DESC, `sub_magazine_id` ASC
+              LIMIT 1"
+        );
+        $magRow->execute([(int)$rcpRow['lastReceiptId']]);
+        $lastSubMagazineId = $magRow->fetchColumn();
+
+        $lastReceipt = [
+            'lastReceiptId'        => (int)$rcpRow['lastReceiptId'],
+            'documentNumber'       => $rcpRow['documentNumber'],
+            'vendorDocumentNumber' => $vendorDocNumber,
+            'receivedAt'           => $rcpRow['receivedAt'],
+            'comment'              => $restComment,
+            'lastSubMagazineId'    => $lastSubMagazineId === false ? null : (int)$lastSubMagazineId,
+        ];
+    }
+
     echo json_encode([
         'success' => true,
         'po' => [
@@ -218,6 +353,7 @@ try {
         ],
         'items' => $items,
         'defaultSubMagazineId' => $defaultSubMagazineId,
+        'lastReceipt' => $lastReceipt,
     ]);
 } catch (\Throwable $e) {
     error_log('receipt-po-get error: ' . $e->getMessage());

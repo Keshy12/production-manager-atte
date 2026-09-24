@@ -2,27 +2,18 @@
 /**
  * Przyjęcia towaru — /purchase/receipts.
  *
- * Strona ma DWA widoki najwyższego poziomu, przełączane klasą `d-none`:
- *
- *   #receiptsListView     — nagłówek, zakładki, filtry, obie tabele.
- *                           Szerokość `w-75`, tak jak /purchase/documents
- *                           i /purchase/cart.
- *   #receiptsReceiveView  — formularz przyjęcia (9 kolumn, 4 z nich to
- *                           pola do wpisywania). Szerokość `px-lg-4`,
- *                           czyli praktycznie pełna.
- *
- * Dlaczego dwa kontenery, a nie jeden przełączany: poprzednia wersja
- * trzymała formularz wewnątrz panelu zakładki i na czas edycji zdejmowała
- * `w-75` z kontenera strony (`$main.removeClass('w-75').addClass('px-4')`).
- * Strona dosłownie zmieniała szerokość pod operatorem, a formularz i tak
- * siedział w czterech warstwach paddingu (container → row → col →
- * tab-content → tab-pane). Teraz każdy widok deklaruje własną szerokość
- * raz, a przełączanie to wyłącznie `d-none` — bez mutowania klas układu.
- *
- * Formularz celowo zostaje NA TEJ SAMEJ stronie (nie osobna trasa):
- * po zapisie dokładamy świeże przyjęcie na górę historii z podświetleniem,
- * a to działa tylko wtedy, gdy kolejka, formularz i historia są w jednym
- * dokumencie.
+ * Lista (kolejka + historia). Formularz przyjęcia wyodrębniony do
+ * osobnej trasy /purchase/receipts/receive — patrz receive-page.php +
+ * receive-page.js. Klik w wiersz kolejki (albo w przycisk „Przyjmij
+ * towar") nawiguje na formularz przez
+ *   window.location.origin + ROOT_DIR + '/purchase/receipts/receive?po_id=N'
+ * (ROOT_DIR to prefix ścieżki z header.js). Po zapisie formularz
+ * przekierowuje tu z powrotem, niosąc w query stringu
+ *   ?saved=<doc>&n=<items>&po=<po>&po_state=<state>
+ * a receipts-view.js czyta to przy starcie: wyświetla alert sukcesu
+ * i podświetla świeży wiersz historii (klasa .receipt-row-new,
+ * animacja w receipts.css). Nowy wiersz renderuje PHP w normalnym
+ * cyklu reloadu — JS tylko dokłada klasę migającą.
  *
  * Słownictwo układu skopiowane z /purchase/documents: zwijana karta
  * filtrów (`alert-primary` w nagłówku, czerwone „Wyczyść" przy każdym
@@ -63,18 +54,11 @@ if (!empty($receipts)) {
     }
 }
 
-// Active magazines — the receive form's target-magazine picker (header)
-// and every per-line picker are built from this one list.
-$magazines = $MsaDB->query(
-    "SELECT sub_magazine_id, sub_magazine_name
-       FROM `magazine__list`
-      WHERE isActive = 1
-      ORDER BY sub_magazine_name"
-);
-
-// Name of the logged-in user. Used only to fill the "Przyjął" cell of the
-// row that gets prepended to the history table right after a save, so the
-// operator sees the new receipt without a page reload.
+// Name of the logged-in user. Już nieużywany do wypełniania świeżego
+// wiersza w appendHistoryRow() — formularz po zapisie robi pełny
+// reload na /purchase/receipts, więc dane wiersza pochodzą z PHP,
+// nie z JS. Wystawiamy atrybut na #receiptsListView na wypadek
+// przyszłego użycia (np. tooltip „Przyjmuje: <imię>").
 $currentUserStmt = $MsaDB->db->prepare(
     "SELECT CONCAT(`name`, ' ', `surname`) FROM `user` WHERE `user_id` = ?"
 );
@@ -97,7 +81,7 @@ include __DIR__ . '/../documents/confirm-po-modal.php';
 
 
 <!-- ==================================================================
-     WIDOK 1 — lista (kolejka + historia)
+     LISTA (kolejka + historia)
      ================================================================== -->
 <div class="container-fluid w-75 mt-3" id="receiptsListView"
      data-current-user="<?= htmlspecialchars($currentUserName, ENT_QUOTES) ?>">
@@ -184,6 +168,12 @@ include __DIR__ . '/../documents/confirm-po-modal.php';
                                         data-container="#queueStatesCell">
                                     <option value="sent">Wysłane (czeka na potwierdzenie)</option>
                                     <option value="confirmed">Potwierdzone</option>
+                                    <!-- „W trakcie przyjęcia" = PO, dla którego operator kliknął
+                                         Akceptuję (zapis metadanych) ale jeszcze nie wpisał
+                                         pozycji. Bez tej opcji w filtrze wiersz znika z
+                                         kolejki po akceptacji, jeśli operator ma aktywny
+                                         filtr statusów (applyQueueFilters, receipts-view.js). -->
+                                    <option value="in_progress">W trakcie przyjęcia</option>
                                     <option value="partially_received">Częściowo odebrane</option>
                                 </select>
                             </div>
@@ -382,12 +372,6 @@ include __DIR__ . '/../documents/confirm-po-modal.php';
 
     </div>
 </div>
-
-
-<!-- ==================================================================
-     WIDOK 2 — formularz przyjęcia (osobny kontener, własna szerokość)
-     ================================================================== -->
-<?php include('receive-form.php'); ?>
 
 
 <script src="<?= asset('public_html/components/purchases/receipts/receipts-view.js') ?>"></script>

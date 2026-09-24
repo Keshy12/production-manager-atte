@@ -1,24 +1,27 @@
 // Przyjęcia towaru — /purchase/receipts.
 //
-// Strona ma dwa widoki najwyższego poziomu (patrz receipts-view.php):
-//   #receiptsListView     — kolejka „Do przyjęcia" + historia przyjęć
-//   #receiptsReceiveView  — formularz przyjęcia
-// Przełączanie to wyłącznie `d-none` na tych dwóch elementach. Poprzednia
-// wersja trzymała formularz w panelu zakładki i na czas edycji zdejmowała
-// `w-75` z kontenera strony — strona zmieniała szerokość pod operatorem.
-// Teraz każdy widok ma własną szerokość zadeklarowaną w HTML.
+// Strona renderuje TYLKO listę: zakładka "Do przyjęcia" (kolejka
+// zamówień oczekujących na towar) + zakładka "Historia przyjęć".
+// Formularz przyjęcia wyodrębniony do osobnej strony
+// /purchase/receipts/receive?po_id=N — patrz receive-page.php +
+// receive-page.js.
 //
-// Endpointy (wszystkie POST — .htaccess blokuje GET, AGENTS.md):
+// Konwencja nawigacji do formularza (identyczna z cart-view.js →
+// docEditUrl()): window.location.origin + ROOT_DIR + '/purchase/
+// receipts/receive?po_id=' + poId. ROOT_DIR to prefix ścieżki z
+// header.js (np. "/atte_ms_new"); cart-view.js ma komentarz o tym,
+// dlaczego nie 'http://' + ROOT_DIR (dałoby http:///atte_ms_new/…,
+// martwy link).
+//
+// Po zapisie formularz przekierowuje na /purchase/receipts z query
+// stringiem ?saved=<doc>&n=<items>&po=<po>&po_state=<state>.
+// Ten plik czyta to przy starcie (po applyHistoryView()), wyświetla
+// alert sukcesu i podświetla nowy wiersz historii (klasa
+// .receipt-row-new, animacja w receipts.css).
+//
+// Endpointy (POST, .htaccess blokuje GET, AGENTS.md):
 //   receipts-queue.php   lista zamówień oczekujących na towar
-//   receipt-po-get.php   nagłówek + pozycje jednego zamówienia
-//   receipt-create.php   zapis przyjęcia
 //   receipt-get.php      szczegóły zapisanego przyjęcia (modal)
-// Kontrakty są zamrożone — ten plik tylko je konsumuje.
-//
-// Para Opak./Ilość działa tak samo jak w koszyku (cart-view.js): wpisanie
-// opakowań przelicza ilość, wpisanie ilości przelicza opakowania, a gdy
-// ilość nie dzieli się na pełne opakowania, ostatnio edytowane pole
-// dostaje klasę .packages-uneven (ostrzeżenie, nie blokada).
 
 $(document).ready(function() {
     const ajaxBase = COMPONENTS_PATH + "/purchases/receipts/";
@@ -37,32 +40,6 @@ $(document).ready(function() {
         return $('<div>').text(str == null ? '' : String(str)).html();
     }
 
-    // Escape do WARTOŚCI ATRYBUTU. esc() nie zamienia cudzysłowów, więc
-    // nazwa dostawcy z apostrofem lub cudzysłowem rozwalała atrybut
-    // data-vendor-name (który zasila modal potwierdzenia PO).
-    function escAttr(str) {
-        return String(str == null ? '' : str)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
-    }
-
-    // Alert ląduje w tym kontenerze, który jest aktualnie widoczny —
-    // lista i formularz mają własne (.alert-host), bo to osobne widoki.
-    function showAlert(message, type) {
-        if (!type) type = 'success';
-        const html = '<div class="alert alert-' + type + ' alert-dismissible fade show" role="alert">'
-            + message
-            + '<button type="button" class="close" data-dismiss="alert"><span aria-hidden="true">&times;</span></button>'
-            + '</div>';
-        $('.alert-host').empty();
-        const $host = $('.alert-host').filter(':visible').first();
-        ($host.length ? $host : $('#alertContainer')).html(html);
-        $('html, body').animate({ scrollTop: 0 }, 300);
-    }
-
     function getAjax(endpoint, data) {
         // POST jest wymagany przez .htaccess (AGENTS.md) — GET do AJAX
         // endpointów pod /atte_ms_new/public_html/... jest blokowany i
@@ -70,7 +47,7 @@ $(document).ready(function() {
         return $.ajax({ url: ajaxBase + endpoint, type: 'POST', data: data, dataType: 'json' });
     }
 
-    // Liczby do wyświetlenia (nie do inputów) — separator tysięcy robi
+    // Liczby do wyświetlania (nie do inputów) — separator tysięcy robi
     // realną robotę przy odczycie 5 000 vs 50 000 z tabeli.
     function fmtQty(n) {
         const v = parseFloat(n);
@@ -78,20 +55,12 @@ $(document).ready(function() {
         return v.toLocaleString('pl-PL', { maximumFractionDigits: 4 });
     }
 
-    // Liczba do wpisania w <input type="number"> — kropka dziesiętna,
-    // bez ogonów zmiennoprzecinkowych (0.30000000000000004).
-    function trimNum(v, decimals) {
-        const n = parseFloat(v);
-        if (isNaN(n)) return '';
-        return String(parseFloat(n.toFixed(decimals === undefined ? 6 : decimals)));
-    }
-
     function num(v) {
         const n = parseFloat(v);
         return isNaN(n) ? 0 : n;
     }
 
-    // Ta sama mapa klas co w koszyku (cart-view.js) — stan dokumentu ma
+    // Ta sama mapa klas co w kolejce/historii — stan dokumentu ma
     // wyglądać identycznie w całym module.
     function stateBadgeClass(state) {
         switch (state) {
@@ -117,16 +86,6 @@ $(document).ready(function() {
     // "dzień" ma tylko jedną formę mnogą.
     function dayWord(n) { return n === 1 ? 'dzień' : 'dni'; }
 
-    // 1 pozycję / 2-4 pozycje / 5+ pozycji (z wyjątkiem końcówek 12-14).
-    function pozycjeWord(n) {
-        const abs = Math.abs(n);
-        if (abs === 1) return 'pozycję';
-        const last = abs % 10;
-        const last2 = abs % 100;
-        if (last >= 2 && last <= 4 && (last2 < 12 || last2 > 14)) return 'pozycje';
-        return 'pozycji';
-    }
-
     // 1 zamówienie / 2-4 zamówienia / 5+ zamówień.
     function zamowieniaWord(n) {
         const abs = Math.abs(n);
@@ -139,45 +98,21 @@ $(document).ready(function() {
 
     function pad2(n) { return String(n).length < 2 ? '0' + n : String(n); }
 
-    function todayIso() {
-        const d = new Date();
-        return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
-    }
-
     function nowStamp() {
         const d = new Date();
-        return todayIso() + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds());
+        return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate())
+             + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds());
     }
 
     function hasSelectpicker() { return typeof $.fn.selectpicker === 'function'; }
 
     // Inicjalizacja Bootstrap-select. Bez tego wtyczka zgłasza klasy, ale
-    // nie renderuje pickera — operator widziłby surowy <select multiple>
+    // nie renderuje pickera — operator widziałby surowy <select multiple>
     // (zajmujący pół strony i nieklikalny jak prawdziwy picker).
     // AGENTS.md: data-width="100%" + parent + min-width:0 — już stosowane
     // w markupie; poniższe wywołanie aktywuje sam plugin.
-    $(function() {
-        if (hasSelectpicker()) {
-            $('.selectpicker').selectpicker();
-        }
-    });
-
-    // =====================================================================
-    // Przełączanie widoków
-    // =====================================================================
-
-    const $listView    = $('#receiptsListView');
-    const $receiveView = $('#receiptsReceiveView');
-
-    function showReceiveView() {
-        $listView.addClass('d-none');
-        $receiveView.removeClass('d-none');
-        $('html, body').animate({ scrollTop: 0 }, 200);
-    }
-
-    function showListView() {
-        $receiveView.addClass('d-none');
-        $listView.removeClass('d-none');
+    if (hasSelectpicker()) {
+        $('.selectpicker').selectpicker();
     }
 
     // =====================================================================
@@ -223,6 +158,18 @@ $(document).ready(function() {
         $queueStatus.removeClass('d-none').html(
             '<div class="alert alert-' + type + ' mb-0"><i class="bi bi-info-circle"></i> ' + esc(text) + '</div>'
         );
+    }
+
+    // Escape do WARTOŚCI ATRYBUTU. esc() nie zamienia cudzysłowów, więc
+    // nazwa dostawcy z apostrofem lub cudzysłowem rozwalałaby atrybut
+    // data-vendor-name (który zasila modal potwierdzenia PO).
+    function escAttr(str) {
+        return String(str == null ? '' : str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
 
     // Lista dostawców w filtrze pochodzi z payloadu — tylko ci, którzy
@@ -340,6 +287,11 @@ $(document).ready(function() {
                        + '</small></div>';
         }
 
+        // Klik w wiersz LUB przycisk „Przyjmij towar" → nawigacja na
+        // /purchase/receipts/receive?po_id=N (osobna trasa, formularz
+        // wyodrębniony z tej strony). Wiersze pending (PO w stanie
+        // `sent`) są nieklikalne — akcję niesie przycisk „Potwierdź
+        // odbiór" otwierający współdzielony modal.
         const actionCell = canRx
             ? '<button type="button" class="btn btn-sm btn-primary receive-po-btn" data-po-id="' + poId + '">'
                 + '<i class="bi bi-box-arrow-in-down"></i> Przyjmij towar'
@@ -448,580 +400,32 @@ $(document).ready(function() {
     $('#clearQueueSearch').on('click', function() { $('#queueSearch').val(''); applyQueueFilters(); });
     $('#clearQueueOverdue').on('click', function() { $('#queueOverdueOnly').prop('checked', false); applyQueueFilters(); });
 
-    $(document).on('click', '.receive-po-btn', function(e) {
-        e.stopPropagation();
-        openReceiveForm(parseInt($(this).data('po-id'), 10));
-    });
+    // Klik w wiersz kolejki (z wyjątkiem pending) LUB w przycisk
+    // „Przyjmij towar" → nawigacja na formularz przyjęcia. Ten sam
+    // wzorzec co cart-view.js → docEditUrl(): window.location.origin +
+    // ROOT_DIR + '/purchase/receipts/receive?po_id=' + poId (ROOT_DIR
+    // jest w header.js, np. "/atte_ms_new"; "http://" + ROOT_DIR
+    // dawałoby http:///atte_ms_new/… i martwy link).
+    function goToReceiveForm(poId) {
+        window.location.href = window.location.origin + ROOT_DIR
+            + '/purchase/receipts/receive?po_id=' + encodeURIComponent(poId);
+    }
 
     $(document).on('click', '.queue-row', function() {
         // Wiersze „pending" (PO w stanie `sent`) są nieklikalne — akcję
         // niesie przycisk „Potwierdź odbiór" w środku wiersza.
         if ($(this).hasClass('queue-row-pending')) return;
-        openReceiveForm(parseInt($(this).data('po-id'), 10));
+        goToReceiveForm(parseInt($(this).data('po-id'), 10));
     });
 
-    // =====================================================================
-    // Formularz przyjęcia
-    // =====================================================================
-
-    const $linesBody = $('#receiveLinesBody');
-    const $magSelect = $('#receiptMagazineSelect');
-
-    let receiveState = {
-        poId: null,
-        poNumber: '',
-        vendorName: '',
-        items: [],               // surowe pozycje z receipt-po-get.php
-        headerMagazineId: '',
-        receivedAtOpened: false, // czy ktoś w ogóle otworzył pole daty
-        loading: false,
-        submitting: false
-    };
-
-    // Opcje magazynów renderuje PHP raz, w pickerze nagłówka. Listy przy
-    // pozycjach klonujemy z nich jako zwykłe .custom-select — 20+ widgetów
-    // bootstrap-select w jednej tabeli to niepotrzebny koszt.
-    let magazineOptionsHtml = '';
-    $magSelect.find('option').each(function() {
-        const val = String($(this).attr('value') || '');
-        if (val === '') return;
-        magazineOptionsHtml += '<option value="' + escAttr(val) + '">' + esc($.trim($(this).text())) + '</option>';
+    $(document).on('click', '.receive-po-btn', function(e) {
+        e.stopPropagation();
+        goToReceiveForm(parseInt($(this).data('po-id'), 10));
     });
-
-    function setHeaderMagazine(id) {
-        receiveState.headerMagazineId = String(id == null ? '' : id);
-        if (hasSelectpicker()) {
-            // Kanoniczna sekwencja refresh → val → refresh (jak w koszyku).
-            $magSelect.selectpicker('refresh');
-            try { $magSelect.selectpicker('val', receiveState.headerMagazineId); } catch (e) { /* noop */ }
-            $magSelect.selectpicker('refresh');
-        } else {
-            $magSelect.val(receiveState.headerMagazineId);
-        }
-    }
-
-    function openReceiveForm(poId) {
-        if (!poId || receiveState.loading || receiveState.submitting) return;
-
-        receiveState.loading = true;
-        showReceiveView();
-
-        $('#receivePoNumber').text('');
-        $('#receivePoState').empty();
-        $('#receiveVendorName').text('—');
-        $('#receiveVendorPoNumber').text('—');
-        $('#receiveExpectedDelivery').text('—');
-        $('#receivePoCommentWrap').addClass('d-none');
-        $('#receiveSummary').text('');
-        $('#receiveHint').text('');
-        $('#receiveSubmitBtn').prop('disabled', true);
-        $linesBody.html('<tr><td colspan="9" class="text-center text-muted py-5">'
-            + '<span class="spinner-border spinner-border-sm"></span> Ładowanie pozycji…</td></tr>');
-
-        getAjax('receipt-po-get.php', { po_id: poId })
-            .done(function(r) {
-                receiveState.loading = false;
-                if (!r || !r.success) {
-                    showListView();
-                    showAlert(esc((r && r.error) || 'Nie udało się pobrać zamówienia.'), 'danger');
-                    return;
-                }
-                fillReceiveForm(r);
-            })
-            .fail(function(xhr, status) {
-                receiveState.loading = false;
-                showListView();
-                showAlert(esc((xhr.responseJSON && xhr.responseJSON.error) || status || 'Błąd komunikacji z serwerem'), 'danger');
-            });
-    }
-
-    function fillReceiveForm(r) {
-        const po = r.po || {};
-
-        receiveState.poId       = parseInt(po.poId, 10);
-        receiveState.poNumber   = po.poNumber || ('#' + po.poId);
-        receiveState.vendorName = po.vendorName || '';
-        receiveState.items      = r.items || [];
-        receiveState.receivedAtOpened = false;
-
-        $('#receivePoNumber').text(receiveState.poNumber);
-        $('#receivePoState').html(
-            '<span class="badge ' + stateBadgeClass(po.state) + ' ml-2">'
-            + esc(stateBadgeLabel(po.state)) + '</span>'
-        );
-        $('#receiveVendorName').text(receiveState.vendorName || '—');
-        // vendorPoNumber i comment przychodzą z receipt-po-get.php od
-        // początku, ale poprzednia wersja formularza ich nie pokazywała.
-        $('#receiveVendorPoNumber').text(po.vendorPoNumber || '—');
-        $('#receiveExpectedDelivery').text(po.expectedDeliveryDate || '—');
-        if (po.comment && String(po.comment).trim() !== '') {
-            $('#receivePoComment').text(po.comment);
-            $('#receivePoCommentWrap').removeClass('d-none');
-        } else {
-            $('#receivePoCommentWrap').addClass('d-none');
-        }
-
-        // Nagłówek dokumentu — czysty start przy każdym otwarciu.
-        $('#vendorDocumentNumber').val('');
-        $('#receiptComment').val('');
-        $('#receivedAtWrap').addClass('d-none');
-        $('#receivedAt').val(todayIso());
-        $('#receivedAtHint').text('Domyślnie dzisiejsza data.');
-        $('#toggleReceivedAt').html('<i class="bi bi-calendar-event"></i> Zmień datę przyjęcia').show();
-
-        // Magazyn docelowy — domyślny z odpowiedzi, a gdyby go nie było na
-        // liście aktywnych, pierwszy z brzegu.
-        let def = String(r.defaultSubMagazineId == null ? '' : r.defaultSubMagazineId);
-        if (def === '' || $magSelect.find('option[value="' + def.replace(/"/g, '') + '"]').length === 0) {
-            def = String($magSelect.find('option').first().attr('value') || '');
-        }
-        setHeaderMagazine(def);
-
-        renderReceiveLines();
-    }
-
-    // pickedPackSize === null → dostawca nie ma zdefiniowanej wielkości
-    // opakowania dla tej pozycji; kolumna Opak. pokazuje "—", a Ilość
-    // zostaje polem swobodnym.
-    function packSizeOf(item) {
-        if (!item) return null;
-        const p = parseFloat(item.pickedPackSize);
-        return (!isNaN(p) && p > 0) ? p : null;
-    }
-
-    function itemOfRow($row) {
-        return receiveState.items[parseInt($row.attr('data-idx'), 10)];
-    }
-
-    function isDone(item) { return num(item.quantityRemaining) <= 0; }
-
-    function lineRowHtml(item, idx) {
-        const done      = isDone(item);
-        const remaining = num(item.quantityRemaining);
-        const pack      = packSizeOf(item);
-        const unit      = item.unitName || '';
-
-        // PREFILL: pełna reszta dostawy. Otworzyć i zapisać = potwierdzić
-        // całą pozostałą dostawę; to 90% przypadków.
-        const qtyVal = done ? '' : trimNum(remaining, 6);
-        const pkgVal = (!done && pack !== null) ? trimNum(remaining / pack, 2) : '';
-
-        // Nazwa + podlinijka producenta (jak kolumna Producent w koszyku)
-        // + komentarz z pozycji zamówienia, jeśli kupiec go zostawił.
-        let nameCell = '<span class="font-weight-bold">' + esc(item.partName || '—') + '</span>';
-        const sub = [];
-        if (item.producerName)   sub.push(esc(item.producerName));
-        if (item.producerPartNo) sub.push('<span class="font-weight-bold">' + esc(item.producerPartNo) + '</span>');
-        if (sub.length) {
-            nameCell += '<div><small class="text-muted">' + sub.join(' &middot; ') + '</small></div>';
-        }
-        // item.comment to komentarz z purchase__order_item — endpoint go
-        // zwracał, a formularz go nie pokazywał.
-        if (item.comment && String(item.comment).trim() !== '') {
-            nameCell += '<div><small class="text-info">'
-                      + '<i class="bi bi-chat-left-text"></i> ' + esc(item.comment)
-                      + '</small></div>';
-        }
-
-        let packCell;
-        if (pack === null) {
-            packCell = '<span class="text-muted" title="Brak zdefiniowanej wielkości opakowania">—</span>';
-        } else {
-            packCell = '<input type="number" class="form-control form-control-sm text-right line-packages"'
-                     + ' step="any" min="0" value="' + escAttr(pkgVal) + '"' + (done ? ' disabled' : '') + '>'
-                     + '<small class="text-muted">po ' + esc(fmtQty(pack)) + '</small>';
-        }
-
-        const remainingCell = done
-            ? '<span class="badge badge-light border text-muted">Przyjęte w całości</span>'
-            : '<span class="h6 mb-0 font-weight-bold">' + esc(fmtQty(remaining)) + '</span>'
-              + (unit ? '<div><small class="text-muted">' + esc(unit) + '</small></div>' : '');
-
-        return '<tr class="receipt-line' + (done ? ' receipt-line-done bg-light' : '') + '"'
-             +   ' data-idx="' + idx + '" data-item-id="' + parseInt(item.poItemId, 10) + '">'
-             + '<td class="text-monospace">' + esc(item.vendorPartNo || '—') + '</td>'
-             + '<td>' + nameCell + '</td>'
-             + '<td class="text-right">' + esc(fmtQty(item.quantityOrdered)) + '</td>'
-             + '<td class="text-right">' + esc(fmtQty(item.quantityReceived)) + '</td>'
-             + '<td class="text-right">' + remainingCell + '</td>'
-             + '<td>' + packCell + '</td>'
-             + '<td>'
-             +   '<input type="number" class="form-control form-control-sm text-right line-qty"'
-             +   ' step="any" min="0" value="' + escAttr(qtyVal) + '"' + (done ? ' disabled' : '') + '>'
-             +   '<div class="line-msg small mt-1"></div>'
-             + '</td>'
-             + '<td><select class="custom-select custom-select-sm line-magazine" data-overridden="0"'
-             +   (done ? ' disabled' : '') + '>' + magazineOptionsHtml + '</select></td>'
-             + '<td><input type="text" class="form-control form-control-sm line-comment" maxlength="255"'
-             +   (done ? ' disabled' : '') + '></td>'
-             + '</tr>';
-    }
-
-    function renderReceiveLines() {
-        const items = receiveState.items;
-        $('#receiveLineCount').text(items.length);
-
-        if (items.length === 0) {
-            $linesBody.html('<tr><td colspan="9" class="text-center text-muted py-4">'
-                + 'To zamówienie nie ma pozycji.</td></tr>');
-            refreshSummary();
-            return;
-        }
-
-        let html = '';
-        items.forEach(function(item, idx) { html += lineRowHtml(item, idx); });
-        $linesBody.html(html);
-
-        // Magazyn z nagłówka na start — dopóki użytkownik nie wybierze
-        // czegoś innego, wiersz "dziedziczy" wartość nagłówka.
-        $linesBody.find('.line-magazine').val(receiveState.headerMagazineId).attr('data-overridden', '0');
-
-        // Prefill mógł wyjść nierówny względem opakowania — od razu to
-        // pokazujemy, tak samo jak koszyk po wpisaniu ilości.
-        $linesBody.find('tr.receipt-line').each(function() {
-            const $row = $(this);
-            const item = itemOfRow($row);
-            if (!item || isDone(item)) return;
-            applyEvenWarning($row, $row.find('.line-qty'), num(item.quantityRemaining), packSizeOf(item));
-        });
-
-        refreshSummary();
-    }
-
-    // ---- Opak. <-> Ilość (ta sama logika co w koszyku) ------------------
-
-    // Czy `qty` dzieli się na całkowitą liczbę opakowań `pack`.
-    // Brak/zero/NaN → true: to "jeszcze nic nie wpisano", nie błąd.
-    function isEven(qty, pack) {
-        if (!pack || pack <= 0 || qty == null || isNaN(qty)) return true;
-        return Math.abs(qty / pack - Math.round(qty / pack)) < 1e-9;
-    }
-
-    // Ostrzeżenie .packages-uneven ląduje na ostatnio edytowanym polu;
-    // drugie pole zawsze czyścimy, żeby świeciło tylko jedno.
-    function applyEvenWarning($row, $lastEdited, qty, pack) {
-        const $pkg = $row.find('.line-packages');
-        const $qty = $row.find('.line-qty');
-        $pkg.removeClass('packages-uneven').removeAttr('title');
-        $qty.removeClass('packages-uneven').removeAttr('title');
-        if (isEven(qty, pack)) return;
-        if (!$lastEdited || !$lastEdited.length) return;
-        $lastEdited.addClass('packages-uneven').attr('title',
-            'Uwaga: ilość nie odpowiada pełnej liczbie opakowań (wielkość: ' + fmtQty(pack) + ')');
-    }
-
-    // Opak. → Ilość
-    $linesBody.on('input', '.line-packages', function() {
-        const $row = $(this).closest('tr.receipt-line');
-        const pack = packSizeOf(itemOfRow($row));
-        if (pack === null) return;
-
-        const $qty = $row.find('.line-qty');
-        const pkgs = parseFloat($(this).val());
-        if (isNaN(pkgs) || pkgs < 0) {
-            $qty.val('');
-            applyEvenWarning($row, $(this), NaN, pack);
-            refreshSummary();
-            return;
-        }
-        const qty = pkgs * pack;
-        $qty.val(trimNum(qty, 6));
-        applyEvenWarning($row, $(this), qty, pack);
-        refreshSummary();
-    });
-
-    // Ilość → Opak.
-    $linesBody.on('input', '.line-qty', function() {
-        const $row = $(this).closest('tr.receipt-line');
-        const pack = packSizeOf(itemOfRow($row));
-        if (pack === null) { refreshSummary(); return; }
-
-        const $pkg = $row.find('.line-packages');
-        const qty = parseFloat($(this).val());
-        if (isNaN(qty) || qty < 0) {
-            $pkg.val('');
-            applyEvenWarning($row, $(this), NaN, pack);
-            refreshSummary();
-            return;
-        }
-        $pkg.val(trimNum(qty / pack, 2));
-        applyEvenWarning($row, $(this), qty, pack);
-        refreshSummary();
-    });
-
-    // ---- walidacja na żywo ---------------------------------------------
-
-    // Zwraca 'empty' | 'ok' | 'over' | 'error' i od razu maluje wiersz.
-    function validateRow($row) {
-        const item = itemOfRow($row);
-        const $qty = $row.find('.line-qty');
-        const $msg = $row.find('.line-msg');
-
-        $row.removeClass('table-warning table-danger');
-        $qty.removeClass('is-invalid');
-        $msg.empty();
-
-        if (!item || isDone(item)) return 'empty';
-
-        const raw = $.trim(String($qty.val()));
-        if (raw === '') return 'empty';
-        const qty = parseFloat(raw);
-        if (isNaN(qty) || qty <= 0) return 'empty';
-
-        const remaining = num(item.quantityRemaining);
-        const max       = num(item.maxAllowed);
-        const unit      = item.unitName ? (' ' + item.unitName) : '';
-
-        if (qty > max) {
-            $row.addClass('table-danger');
-            $qty.addClass('is-invalid');
-            $msg.html('<span class="text-danger">Maksymalnie ' + esc(fmtQty(max) + unit) + '.</span>');
-            return 'error';
-        }
-        if (qty > remaining) {
-            $row.addClass('table-warning');
-            $msg.html('<span class="badge badge-warning">nadwyżka (dopuszczalna)</span>');
-            return 'over';
-        }
-        return 'ok';
-    }
-
-    function refreshSummary() {
-        let filled = 0;
-        let errors = 0;
-        let open   = 0;
-
-        $linesBody.find('tr.receipt-line').each(function() {
-            const $row = $(this);
-            const item = itemOfRow($row);
-            if (item && !isDone(item)) open++;
-            const st = validateRow($row);
-            if (st === 'error') errors++;
-            else if (st === 'ok' || st === 'over') filled++;
-        });
-
-        $('#receiveSummary').text('Przyjmujesz ' + filled + ' z ' + open + ' pozycji');
-
-        let hint = '';
-        let ok = true;
-        if (errors > 0) {
-            ok = false;
-            hint = 'Popraw pozycje oznaczone na czerwono — ilość przekracza dopuszczalne maksimum.';
-        } else if (filled === 0) {
-            ok = false;
-            hint = 'Wpisz ilość w co najmniej jednej pozycji.';
-        }
-        $('#receiveHint').text(hint);
-        $('#receiveSubmitBtn').prop('disabled', !ok || receiveState.submitting);
-    }
-
-    // ---- nagłówek formularza -------------------------------------------
-
-    // Zmiana magazynu w nagłówku przestawia tylko te wiersze, w których
-    // nikt sam nie wybrał innego magazynu.
-    $magSelect.on('changed.bs.select change', function() {
-        receiveState.headerMagazineId = String($(this).val() || '');
-        $linesBody.find('.line-magazine').each(function() {
-            if ($(this).attr('data-overridden') === '1') return;
-            $(this).val(receiveState.headerMagazineId);
-        });
-    });
-
-    $linesBody.on('change', '.line-magazine', function() {
-        $(this).attr('data-overridden', '1');
-    });
-
-    $('#toggleReceivedAt').on('click', function(e) {
-        e.preventDefault();
-        const $wrap = $('#receivedAtWrap');
-        const opening = $wrap.hasClass('d-none');
-        $wrap.toggleClass('d-none', !opening);
-        receiveState.receivedAtOpened = opening;
-        if (!opening) $('#receivedAt').val(todayIso());
-        $(this).html(opening
-            ? '<i class="bi bi-x-lg"></i> Użyj dzisiejszej daty'
-            : '<i class="bi bi-calendar-event"></i> Zmień datę przyjęcia');
-        $('#receivedAtHint').text(opening
-            ? 'Dostawa wpisywana wstecz.'
-            : 'Domyślnie dzisiejsza data.');
-        if (opening) $('#receivedAt').trigger('focus');
-    });
-
-    // ---- masowe wypełnianie --------------------------------------------
-
-    $('#receiveFillAllBtn').on('click', function() {
-        $linesBody.find('tr.receipt-line').each(function() {
-            const $row = $(this);
-            const item = itemOfRow($row);
-            if (!item || isDone(item)) return;
-            const pack = packSizeOf(item);
-            const remaining = num(item.quantityRemaining);
-            const $qty = $row.find('.line-qty');
-            $qty.val(trimNum(remaining, 6));
-            if (pack !== null) $row.find('.line-packages').val(trimNum(remaining / pack, 2));
-            applyEvenWarning($row, $qty, remaining, pack);
-        });
-        refreshSummary();
-    });
-
-    $('#receiveClearAllBtn').on('click', function() {
-        $linesBody.find('tr.receipt-line').each(function() {
-            const $row = $(this);
-            $row.find('.line-qty').val('');
-            $row.find('.line-packages').val('');
-            applyEvenWarning($row, null, NaN, null);
-        });
-        refreshSummary();
-    });
-
-    $('#receiveBackBtn, #receiveCancelBtn').on('click', function() {
-        if (receiveState.submitting) return;
-        showListView();
-    });
-
-    // ---- zapis ----------------------------------------------------------
-
-    function setSubmitting(on) {
-        receiveState.submitting = on;
-        $('#receiveSubmitBtn')
-            .prop('disabled', true)
-            .html(on
-                ? '<span class="spinner-border spinner-border-sm"></span> Zapisywanie…'
-                : '<i class="bi bi-check2-circle"></i> Zapisz przyjęcie');
-        $('#receiveCancelBtn, #receiveBackBtn, #receiveFillAllBtn, #receiveClearAllBtn')
-            .prop('disabled', on);
-        if (!on) refreshSummary();
-    }
-
-    $('#receiveSubmitBtn').on('click', function() {
-        if (receiveState.submitting) return;
-
-        const items = [];
-        let blocked = false;
-
-        $linesBody.find('tr.receipt-line').each(function() {
-            const $row = $(this);
-            const item = itemOfRow($row);
-            if (!item || isDone(item)) return;
-
-            const raw = $.trim(String($row.find('.line-qty').val()));
-            if (raw === '') return;
-            const qty = parseFloat(raw);
-            if (isNaN(qty) || qty <= 0) return;      // tylko wypełnione pozycje
-            if (qty > num(item.maxAllowed)) { blocked = true; return; }
-
-            items.push({
-                po_item_id:        parseInt(item.poItemId, 10),
-                quantity_received: qty,
-                sub_magazine_id:   parseInt($row.find('.line-magazine').val(), 10),
-                comment:           $.trim(String($row.find('.line-comment').val() || ''))
-            });
-        });
-
-        if (blocked) {
-            showAlert('Popraw ilości przekraczające dopuszczalne maksimum.', 'danger');
-            return;
-        }
-        if (items.length === 0) {
-            showAlert('Wpisz ilość w co najmniej jednej pozycji.', 'warning');
-            return;
-        }
-
-        // Struktura, nie JSON-string — jQuery wyśle items[0][po_item_id]=…,
-        // dzięki czemu serwer czyta zwykłe $_POST (AGENTS.md).
-        const payload = {
-            po_id:                  receiveState.poId,
-            comment:                $('#receiptComment').val(),
-            vendor_document_number: $.trim(String($('#vendorDocumentNumber').val() || '')),
-            items:                  items
-        };
-        // received_at leci tylko wtedy, gdy ktoś świadomie otworzył pole
-        // daty — inaczej datę ustawia serwer.
-        if (receiveState.receivedAtOpened && $('#receivedAt').val()) {
-            payload.received_at = $('#receivedAt').val();
-        }
-
-        const poNumber   = receiveState.poNumber;
-        const vendorName = receiveState.vendorName;
-
-        setSubmitting(true);
-        $.ajax({
-            url: ajaxBase + 'receipt-create.php',
-            type: 'POST',
-            data: payload,
-            dataType: 'json'
-        })
-            .done(function(r) {
-                setSubmitting(false);
-                if (!r || !r.success) {
-                    showAlert(esc((r && r.error) || 'Nie udało się zapisać przyjęcia.'), 'danger');
-                    return;
-                }
-                onReceiptSaved(r, items, poNumber, vendorName);
-            })
-            .fail(function(xhr, status) {
-                setSubmitting(false);
-                showAlert(esc((xhr.responseJSON && xhr.responseJSON.error) || status || 'Błąd komunikacji z serwerem'), 'danger');
-            });
-    });
-
-    function onReceiptSaved(r, items, poNumber, vendorName) {
-        const n = items.length;
-        const totalQty = items.reduce(function(sum, i) { return sum + i.quantity_received; }, 0);
-
-        showListView();
-        showAlert(
-            'Przyjęto ' + n + ' ' + pozycjeWord(n) + '. '
-            + 'Dokument ' + esc(r.document_number || '—') + '. '
-            + 'Zamówienie ' + esc(poNumber) + ' &rarr; ' + esc(r.po_state_label || r.po_state || '—') + '.',
-            'success'
-        );
-
-        loadQueue();
-        prependHistoryRow(r, n, totalQty, poNumber, vendorName);
-    }
 
     // =====================================================================
     // ZAKŁADKA 2 — historia przyjęć
     // =====================================================================
-
-    // Świeżo zapisane przyjęcie dokładamy na górę historii z danych, które
-    // i tak mamy — bez przeładowania strony. Szablon wiersza pochodzi
-    // z table-row-template.php, żeby kolumny się nie rozjechały.
-    const rowTemplate = $('script[data-template="receiptRowTemplate"]').html() || '';
-
-    function renderTemplate(tpl, data) {
-        return tpl.replace(/\$\{(\w+)\}/g, function(match, key) {
-            return esc(data[key] == null ? '' : data[key]);
-        });
-    }
-
-    function prependHistoryRow(r, itemCount, totalQty, poNumber, vendorName) {
-        if (!rowTemplate) return;
-
-        const stamp = nowStamp();
-        const html = renderTemplate(rowTemplate, {
-            id:             r.receipt_id,
-            documentNumber: r.document_number || '—',
-            poNumber:       poNumber,
-            vendorName:     vendorName || '—',
-            itemCount:      itemCount,
-            totalQty:       totalQty.toFixed(4),
-            receivedByName: $listView.attr('data-current-user') || '',
-            receivedAt:     stamp,
-            receivedDate:   stamp.substring(0, 10)
-        });
-
-        $('#receiptsEmptyAlert').addClass('d-none');
-        $('#receiptsTableWrap').removeClass('d-none');
-        $('#receiptsTable tbody').prepend($($.trim(html)).addClass('receipt-row-new'));
-        // Nowy wiersz ma trafić na pierwszą stronę i zostać policzony —
-        // przerysowanie widoku robi jedno i drugie.
-        historyPage = 1;
-        applyHistoryView();
-    }
-
-    // ---- filtr + paginacja historii -------------------------------------
 
     let historyPage = 1;
 
@@ -1231,7 +635,79 @@ $(document).ready(function() {
             .fail(function() { showAlert('Błąd komunikacji z serwerem', 'danger'); });
     }
 
+    function showAlert(message, type) {
+        if (!type) type = 'success';
+        const html = '<div class="alert alert-' + type + ' alert-dismissible fade show" role="alert">'
+            + message
+            + '<button type="button" class="close" data-dismiss="alert"><span aria-hidden="true">&times;</span></button>'
+            + '</div>';
+        $('#alertContainer').html(html);
+        $('html, body').animate({ scrollTop: 0 }, 300);
+    }
+
     // ---- start ----------------------------------------------------------
+
     loadQueue();
     applyHistoryView();
+
+    // Sukces powrotu z /purchase/receipts/receive — formularz przekierował
+    // tu z query stringiem ?saved=…&n=…&po=…&po_state=… (parametry kodowane
+    // przez encodeURIComponent). Wyświetlamy alert i podświetlamy świeży
+    // wiersz historii (klasa .receipt-row-new, animacja w receipts.css).
+    // URLSearchParams parsuje zarówno ?, jak i # — window.location.search
+    // zwraca tylko część ?, więc fragment hasza nas nie interesuje.
+    const successParams = new URLSearchParams(window.location.search);
+    const savedDoc   = successParams.get('saved');
+    const savedN     = parseInt(successParams.get('n'), 10);
+    const savedPo     = successParams.get('po');
+    const savedState = successParams.get('po_state');
+    if (savedDoc) {
+        const n     = isNaN(savedN) ? 0 : savedN;
+        const word  = n === 1 ? 'pozycję' : (n >= 2 && n <= 4 && !(n >= 12 && n <= 14) ? 'pozycje' : 'pozycji');
+        const stateLabel = ({
+            partially_received: 'częściowo odebrane',
+            received: 'odebrane'
+        })[savedState] || savedState;
+        showAlert(
+            'Przyjęto ' + n + ' ' + word + '. '
+            + 'Dokument <strong>' + esc(savedDoc) + '</strong>. '
+            + 'Zamówienie ' + esc(savedPo || '—') + ' &rarr; ' + esc(stateLabel || '—') + '.',
+            'success'
+        );
+        // Świeży wiersz historii został wyrenderowany przez PHP (reload
+        // strony). Szukamy go po numerze dokumentu w pierwszej komórce
+        // i dokładamy klasę .receipt-row-new — animacja 2s ease-out
+        // (receipts.css) miga zielonym tłem, żeby operator zauważył,
+        // że przyjęcie wylądowało na górze.
+        // Po reloadzie strony historyPage startuje od 1, więc świeży
+        // wiersz (na górze DOM) domyślnie ląduje na pierwszej stronie.
+        // Jeśli filtr go wyklucza, applyHistoryView go ukryje — i tak
+        // nie ma sensu do niego przewijać.
+        const $newRow = $('#receiptsTable tbody tr.receipt-row').filter(function() {
+            return $(this).find('td:first-child .font-weight-bold').text() === savedDoc;
+        }).first();
+        if ($newRow.length) {
+            $newRow.addClass('receipt-row-new');
+            applyHistoryView();
+            // Daj przeglądarce chwilę na reflow po zmianie widoczności
+            // (applyHistoryView właśnie przełączył display:none/table-row)
+            // i dopiero wtedy przewiń — .offset().top na ukrytym wierszu
+            // zwracałoby 0.
+            setTimeout(function() {
+                const $visible = $('#receiptsTable tbody tr.receipt-row:visible')
+                    .filter(function() {
+                        return $(this).find('td:first-child .font-weight-bold').text() === savedDoc;
+                    }).first();
+                const $target = $visible.length ? $visible : $newRow;
+                if ($target.is(':visible')) {
+                    $('html, body').animate({ scrollTop: $target.offset().top - 80 }, 400);
+                }
+            }, 50);
+        }
+        // Czyścimy query string z paska adresu, żeby odświeżenie strony
+        // (F5) nie pokazało alertu ponownie.
+        const cleanUrl = window.location.protocol + '//' + window.location.host
+            + window.location.pathname + window.location.hash;
+        window.history.replaceState({}, '', cleanUrl);
+    }
 });
