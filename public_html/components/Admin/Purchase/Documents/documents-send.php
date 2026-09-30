@@ -199,4 +199,5 @@ $MsaDB = MsaDB::getInstance();
 </div>
 
 <link rel="stylesheet" href="<?= htmlspecialchars(asset('public_html/components/Admin/Purchase/Documents/documents-send.css'), ENT_QUOTES) ?>">
+<script src="<?= htmlspecialchars(asset('public_html/assets/js/shared/items-format.js'), ENT_QUOTES) ?>"></script>
 <script src="<?= htmlspecialchars(asset('public_html/components/Admin/Purchase/Documents/documents-send.js'), ENT_QUOTES) ?>"></script>

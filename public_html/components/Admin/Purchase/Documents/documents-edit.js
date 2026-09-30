@@ -48,12 +48,6 @@ $(function () {
 
     // Mirror the PHP helpers in rfqs-edit.php so success-time cell refresh
     // produces the same display as the initial server render.
-    function formatQty(n) {
-        if (n === null || n === undefined || n === '') return '—';
-        let v = parseFloat(n);
-        if (isNaN(v)) return '—';
-        return String(+parseFloat(parseFloat(v).toFixed(4)).toString());
-    }
     function formatPrice(n) {
         if (n === null || n === undefined || n === '') return '—';
         let v = parseFloat(n);
@@ -124,7 +118,7 @@ $(function () {
                     'style="width:6em" value="' + escapeHtml(parseFloat(currentPkgs.toFixed(2))) + '" ' +
                     'title="Opak. — qty jest wyliczane jako opak. × wielkość">' +
                     '<small class="text-muted">opak.</small>' +
-                    '<span class="badge badge-light border text-monospace" title="Wielkość opakowania (stała)">× ' + escapeHtml(formatQty(pickedPack)) + '</span>' +
+                    '<span class="badge badge-light border text-monospace" title="Wielkość opakowania (stała)">× ' + escapeHtml(AtteItemsFormat.formatQty(pickedPack)) + '</span>' +
                 '</div>'
             );
             if (unitName) {
@@ -196,7 +190,7 @@ $(function () {
         } else {
             $source.addClass('packages-uneven').attr(
                 'title',
-                'Uwaga: ilość nie odpowiada pełnej liczbie opakowań (wielkość: ' + formatQty(pack) + ')'
+                'Uwaga: ilość nie odpowiada pełnej liczbie opakowań (wielkość: ' + AtteItemsFormat.formatQty(pack) + ')'
             );
         }
         const $other = isPackagesSource ? $qtyInput : $packagesInput;
@@ -300,7 +294,7 @@ $(function () {
             // initial display.
             const unitName = $tr.data('unit-name') || '';
             const pack     = parseFloat($tr.data('picked-pack-size'));
-            let qtyCellHtml = escapeHtml(formatQty(r.quantity));
+            let qtyCellHtml = escapeHtml(AtteItemsFormat.formatQty(r.quantity));
             if (!isNaN(pack) && pack > 0) {
                 const qtyVal   = parseFloat(r.quantity) || 0;
                 const pkgs     = qtyVal / pack;
@@ -310,7 +304,7 @@ $(function () {
                         escapeHtml(String(parseFloat(pkgs.toFixed(2)))) + ' opak.' +
                     '</small>' +
                     ' <span class="badge badge-light border text-monospace ml-1" title="Wybrana wielkość opakowania">' +
-                        'opak. ' + escapeHtml(formatQty(pack)) +
+                        'opak. ' + escapeHtml(AtteItemsFormat.formatQty(pack)) +
                     '</span>' +
                     '</div>';
             }
@@ -421,7 +415,7 @@ $(function () {
             $('#docItemDeleteCommentLine').show();
         }
 
-        $('#docItemDeleteMeta').text('Ilość: ' + formatQty(qty) + (unitName ? ' ' + unitName : ''));
+        $('#docItemDeleteMeta').text('Ilość: ' + AtteItemsFormat.formatQty(qty) + (unitName ? ' ' + unitName : ''));
         $pendingDeleteRow = $tr;
         $('#docItemDeleteModal').modal('show');
     });
@@ -695,7 +689,7 @@ $(function () {
     // Build the "= N szt./opak." display text from the current
     // pickedPackSize and the VP's unit name (JM).
     function packSizeDisplayText(picked, unit) {
-        return '= ' + formatQty(picked) + ' ' + (unit || 'szt.') + '/opak.';
+        return '= ' + AtteItemsFormat.formatQty(picked) + ' ' + (unit || 'szt.') + '/opak.';
     }
 
     // Non-blocking unevenness check (cart cart-view.js lines 385–388).
@@ -720,7 +714,7 @@ $(function () {
         if (!lastEdited || !lastEdited.length) return;
         lastEdited.addClass('packages-uneven');
         lastEdited.attr('title',
-            'Uwaga: ilość nie odpowiada pełnej liczbie opakowań (wielkość: ' + formatQty(pack) + ')');
+            'Uwaga: ilość nie odpowiada pełnej liczbie opakowań (wielkość: ' + AtteItemsFormat.formatQty(pack) + ')');
     }
 
     // Render the pack-size UI: the "= N jm/opak." line is shown for
@@ -741,7 +735,7 @@ $(function () {
         }
         const p = parseFloat(picked);
         $packSizeDisplay.text(packSizeDisplayText(p, unit)).show();
-        $packValue.text(formatQty(p));
+        $packValue.text(AtteItemsFormat.formatQty(p));
         $packPrev.prop('disabled', p === parseFloat(packs[0]));
         $packNext.prop('disabled', p === parseFloat(packs[packs.length - 1]));
         $packStepperRow.toggle(packs.length > 1);
@@ -1247,8 +1241,8 @@ $(function () {
         $('#docMergeModalPartName').text(existing.vendor_part_no || '—');
         $('#docMergeModalPriceLine').text('Cena: ' + priceText);
         $('#docMergeModalQuantityLine').text(
-            'Istniejąca ilość: ' + formatQty(existing.quantity)
-            + '   ·   Proponowana ilość: ' + formatQty(proposed.quantity)
+            'Istniejąca ilość: ' + AtteItemsFormat.formatQty(existing.quantity)
+            + '   ·   Proponowana ilość: ' + AtteItemsFormat.formatQty(proposed.quantity)
         );
         $('#docMergeModalBody').html(
             'Część <strong>' + escapeHtml(existing.vendor_part_no || '') + '</strong> jest już na tym dokumencie '
