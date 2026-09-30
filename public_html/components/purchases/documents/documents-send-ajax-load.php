@@ -28,10 +28,14 @@
  *       "respondedAt":          'Y-m-d H:i:s' | null,  // tylko RFQ
  *       "expectedReplyDate":    'Y-m-d' | null,        // tylko RFQ
  *       "expectedDeliveryDate": 'Y-m-d' | null,        // tylko PO
+ *       "createdBy":            int,
+ *       "createdByName":        string | null,    // podpis w szablonie maila (krok 4)
+ *       "comment":              string | null,    // komentarz nagłówka dokumentu
  *       "lines": [
  *         {"vendorPartNo":"…", "producerPartNo":"…", "partName":"…",
- *          "producerName":"…", "unitName":"…", "quantityOrdered":float,
- *          "unitPrice":float|null, "currency":"PLN"}
+ *          "partDescription":"…"|null, "producerName":"…", "unitName":"…",
+ *          "quantityOrdered":float, "unitPrice":float|null, "currency":"PLN",
+ *          "comment":"…"|null, "vendorPartComment":"…"|null}
  *       ],
  *       "valueBreakdown": [{"currency":"PLN","total":float}],
  *       "suppliers": [
@@ -42,6 +46,12 @@
  *       "actionLabel":   'Wyślij zapytanie' | 'Wyślij zapytanie (ponownie)'
  *                       | 'Oznacz jako otrzymaną odpowiedź'
  *                       | 'Wyślij zamówienie' | 'Wyślij zamówienie (ponownie)'
+ *       "preferredEmailDraftSubject": string|null,  // temat szablonu wskazanego przez list__vendor (krok 4); null → fallback do wbudowanego PL domyślnego
+ *       "preferredEmailDraftBody":    string|null,  // treść szablonu wskazanego przez list__vendor (krok 4); null → fallback do wbudowanego PL domyślnego
+ *       "availableEmailDrafts": [                   // katalog aktywnych szablonów przefiltrowany po bieżącym typie dokumentu (krok 4: picker „Szablon wiadomości")
+ *                                                // — tylko te z applies_to = 'rfq' | 'po' | 'both', gdzie 'both' przechodzi zawsze.
+ *         {"id":int, "name":"…", "subject":"…", "body":"…"}
+ *       ]
  *     }
  *   }
  *
@@ -66,6 +76,8 @@ use Atte\Utils\Purchase\Order\RFQItemRepository;
 use Atte\Utils\Purchase\Order\PurchaseOrderRepository;
 use Atte\Utils\Purchase\Order\PurchaseOrderItemRepository;
 use Atte\Utils\Purchase\Master\VendorSupplierRepository;
+use Atte\Utils\Purchase\Master\VendorRepository;
+use Atte\Utils\Purchase\Master\EmailDraftRepository;
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -207,17 +219,27 @@ try {
     // kontrakcie (camelCase; nazwa jawnie mówi "ile zamówiono",
     // ponieważ przy PO istnieje też `quantityReceived`, które tu nie
     // raportujemy — UI etykiety wierszy nie muszą rozróżniać typów).
+    //
+    // `partDescription`, `comment` i `vendorPartComment` są dopisane
+    // (czysto addytywnie — istniejące klucze bez zmian) dla kroku 4
+    // wizarda: kolumna „Komentarz" w tabeli pozycji, kopiowanie
+    // komentarza per wiersz oraz uwagi w szablonie maila. Obie encje
+    // (RFQItem i PurchaseOrderItem) mają te pola, więc gałąź rfq i po
+    // zwracają identyczny kształt.
     $lines = [];
     foreach ($items as $i) {
         $lines[] = [
-            'vendorPartNo'    => $i->vendorPartNo,
-            'producerPartNo'  => $i->producerPartNo,
-            'partName'        => $i->partName,
-            'producerName'    => $i->producerName,
-            'unitName'        => $i->unitName,
-            'quantityOrdered' => (float)$i->quantity,
-            'unitPrice'       => $i->unitPrice === null ? null : (float)$i->unitPrice,
-            'currency'        => (string)($i->currency ?? 'PLN'),
+            'vendorPartNo'      => $i->vendorPartNo,
+            'producerPartNo'    => $i->producerPartNo,
+            'partName'          => $i->partName,
+            'partDescription'   => $i->partDescription,
+            'producerName'      => $i->producerName,
+            'unitName'          => $i->unitName,
+            'quantityOrdered'   => (float)$i->quantity,
+            'unitPrice'         => $i->unitPrice === null ? null : (float)$i->unitPrice,
+            'currency'          => (string)($i->currency ?? 'PLN'),
+            'comment'           => $i->comment,
+            'vendorPartComment' => $i->vendorPartComment,
         ];
     }
 
@@ -270,6 +292,46 @@ try {
         // pokazać tylko podsumowanie z disabled CTA.
     }
 
+    // Resolve the vendor's preferred email draft for this document
+    // type — krok 4 wizarda pre-filli pola "Temat" i "Treść"
+    // wiadomości szablonem z globalnego katalogu `email_draft`
+    // (wskazanym przez list__vendor.preferred_email_draft_rfq_id /
+    // preferred_email_draft_po_id). VendorRepository::resolvePreferredDraft
+    // zwraca `['subject' => …, 'body' => …]` albo `null` gdy vendor
+    // nie ma ustawionej preferencji albo draft został dezaktywowany —
+    // JSON `null` pozwala JS-owi łatwo rozróżnić "brak szablonu"
+    // od pustego stringa.
+    //
+    // Poprzednia iteracja doklejała tu też surowy SELECT
+    // `email_subject_template / email_body_template / address` z
+    // `list__vendor`. Te kolumny zostały usunięte (teraz żyją w
+    // `email_draft`), a `vendorAddress` wypadł z zakresu razem z
+    // resztą inline-edytora szablonów na /admin/purchase/vendors/edit
+    // — nowa architektura korzysta z gotowych szablonów z katalogu,
+    // więc {vendor_address} nie jest już zmienną szablonu.
+    $vendorRepo = new VendorRepository($MsaDB);
+    $preferredDraft = $vendorRepo->resolvePreferredDraft((int)$vendorId, $type);
+    $preferredEmailDraftSubject = $preferredDraft['subject'] ?? null;
+    $preferredEmailDraftBody    = $preferredDraft['body']    ?? null;
+
+    // Cały katalog aktywnych szablonów — krok 4 renderuje z niego picker
+    // „Szablon wiadomości", którym operator może NADPISAĆ preferencję
+    // dostawcy w momencie wysyłki (np. jednorazowy monit, inny język).
+    // Wysyłamy subject+body każdego szablonu, żeby zmiana pickera
+    // przerysowała temat i treść od razu, bez drugiego roundtripu.
+    // Dodatek czysto addytywny: preferredEmailDraft* zostaje domyślną
+    // wartością pickera.
+    //
+    // Filtrujemy po `applies_to` względem bieżącego typu dokumentu:
+    //   - applies_to = 'both'  → widoczny dla RFQ i PO
+    //   - applies_to = 'rfq'   → tylko w wizardzie RFQ
+    //   - applies_to = 'po'    → tylko w wizardzie PO
+    // Dzięki temu operator może przygotować szablon specyficzny dla
+    // jednego typu dokumentu (np. potwierdzenie zamówienia) bez
+    // zaśmiecania pickera w drugim flowie.
+    $emailDraftRepo      = new EmailDraftRepository($MsaDB);
+    $availableEmailDrafts = $emailDraftRepo->getActiveForPicker($type);
+
     echo json_encode([
         'success' => true,
         'doc'     => [
@@ -286,11 +348,26 @@ try {
             'respondedAt'          => $respondedAt,
             'expectedReplyDate'    => $type === 'rfq' ? $expectedDate : null,
             'expectedDeliveryDate' => $type === 'po'  ? $expectedDate : null,
+            // Autor dokumentu — krok 4 podpisuje nim wygenerowany
+            // szablon wiadomości do dostawcy ("Z poważaniem, …").
+            'createdBy'            => (int)$doc->createdBy,
+            'createdByName'        => $doc->createdByName,
+            'comment'              => $doc->comment,
             'lines'                => $lines,
             'valueBreakdown'       => $valueBreakdown,
             'suppliers'            => $suppliers,
             'sendable'             => $sendable,
             'actionLabel'          => $actionLbl,
+            // Vendor's preferred email draft — additive, NULL-preserving.
+            // Gdy oba są NULL, JS używa wbudowanego polskiego
+            // szablonu domyślnego (sprawdzenie `r.doc.preferredEmailDraftBody
+            // === null` w documents-send.js).
+            'preferredEmailDraftSubject' => $preferredEmailDraftSubject,
+            'preferredEmailDraftBody'    => $preferredEmailDraftBody,
+            // Katalog aktywnych szablonów dla pickera w kroku 4. Pusta
+            // tablica (nie null) gdy katalog jest pusty — JS mapuje ją
+            // bez dodatkowego sprawdzenia typu.
+            'availableEmailDrafts'       => $availableEmailDrafts,
         ],
     ]);
 } catch (\Throwable $e) {

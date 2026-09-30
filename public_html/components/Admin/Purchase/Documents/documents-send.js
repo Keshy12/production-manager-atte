@@ -19,10 +19,14 @@
  * Kontrakt GET/POST jest zamrożony (patrz documents-send-get.php,
  * document-send-ajax.php, document-rfq-respond-ajax.php).
  *
- * Konwencje: jQuery + Bootstrap 4 (bez bootstrap-select w tym wizardze
- * — formularze są proste, żaden picker). let/const wyłącznie. setAlert
- * z header.js do ogłaszania błędów sieciowych; własny alert na
- * sukces commita.
+ * Konwencje: jQuery + Bootstrap 4. let/const wyłącznie. setAlert z
+ * header.js do ogłaszania błędów sieciowych; własny alert na sukces
+ * commita.
+ *
+ * Jedyny bootstrap-select w tym kreatorze to picker „Szablon
+ * wiadomości" w kroku 4 (#send-draft-picker) — pozwala nadpisać
+ * preferowany szablon dostawcy na tę jedną wysyłkę. Reszta formularzy
+ * jest na tyle prosta, że nie potrzebuje pluginu.
  */
 $(function () {
 
@@ -67,34 +71,41 @@ $(function () {
         // Lokalny cache kopii filtrującej (nie mutujemy `doc.suppliers`)
         supplierFilter:   '',
         committing:       false,
+        // Krok 4 — kompozytor wiadomości. `null` = "użyj wygenerowanego
+        // szablonu"; string = operator edytował pole ręcznie i jego
+        // wersja ma przetrwać ponowny render kroku 4 (setStep(4) oraz
+        // refreshStep2NextEnabled() renderują panel od nowa).
+        emailSubjectEdited: null,
+        emailBodyEdited:    null,
+        // Krok 4 — który widok treści jest na wierzchu. Domyślnie
+        // 'preview': operator ma zobaczyć gotową wiadomość (z tabelą
+        // pozycji), a nie surowy TSV w textarei. 'edit' włącza się po
+        // kliknięciu „Edytuj" albo w samą treść i trzyma się do
+        // kliknięcia „Gotowe" — przeżywa ponowny render kroku 4.
+        composerView:       'preview',
+        // Krok 4 — picker „Szablon wiadomości". Pozwala nadpisać
+        // preferencję dostawcy w momencie wysyłki. Picker listuje
+        // WYŁĄCZNIE szablony z katalogu — pozycji „wbudowany domyślny"
+        // nie ma, bo zejście do szablonu systemowego nie jest decyzją
+        // operatora, tylko awaryjnym wyjściem przy pustym katalogu.
+        //   null → stan przejściowy przed initSelectedDraftFromDoc();
+        //          po inicjalizacji już nie występuje
+        //   0    → katalog nie ma szablonu dla tego typu dokumentu →
+        //          obowiązuje wbudowany szablon systemowy
+        //   > 0  → id szablonu z doc.availableEmailDrafts
+        selectedDraftId:      null,
+        selectedDraftName:    null,
+        selectedDraftSubject: null,
+        selectedDraftBody:    null,
     };
 
     // ---- Helpers ---------------------------------------------------
 
-    function escapeHtml(s) {
-        return String(s == null ? '' : s)
-            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
-    }
-
-    function formatQty(n) {
-        if (n === null || n === undefined || n === '') return '—';
-        const v = parseFloat(n);
-        if (isNaN(v)) return '—';
-        return String(+parseFloat(parseFloat(v).toFixed(4)).toString());
-    }
-
-    function formatPrice(n) {
-        if (n === null || n === undefined || n === '') return '—';
-        const v = parseFloat(n);
-        if (isNaN(v)) return '—';
-        // Polish convention: space thousand separator, strip trailing
-        // zeros, locale en-US jako w documents-view.js (linie 211-225).
-        let s = v.toLocaleString('en-US', { useGrouping: true, maximumFractionDigits: 10 });
-        s = s.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
-        return s.replace(/,/g, ' ');
-    }
+    // Aliasy do AtteItemsFormat.* — ~80 callsites escapeHtml/formatPrice
+    // w tym pliku, więc trzymamy lokalne referencje zamiast przepisywać
+    // każde wywołanie. Ciała obu funkcji mieszkają teraz w shared.
+    const escapeHtml = AtteItemsFormat.escapeHtml;
+    const formatPrice = AtteItemsFormat.formatPrice;
 
     function copyToClipboard(text) {
         // Bezpieczna kopia tekstu do schowka. Fallback na textarea +
@@ -122,18 +133,36 @@ $(function () {
         + '</div>').appendTo('#send-wizard-root');
         setTimeout(function () { $t.fadeOut(200, function () { $(this).remove(); }); }, 1200);
     }
-    function flashCopyButton($btn) {
+    function flashCopyButton($btn, doneIconClass) {
         // Lokalny feedback na przycisku: ikona → check, kolor → zielony,
         // delikatne „pulse" scale. Po 1.2s wraca do normy. Działa na
         // tej samej klasie .send-copy-btn w kroku 2 i kroku 4.
+        //
+        // `doneIconClass` jest opcjonalny — krok 2 woła bez argumentu i
+        // dostaje dotychczasowe `bi-check-circle-fill`; krok 4 podaje
+        // `bi bi-clipboard-check`, żeby swap ikony czytał się jako
+        // „schowek → schowek z ptaszkiem" (tam icon-swap zastępuje
+        // toast, więc musi być jednoznaczny).
+        //
+        // Oryginalną klasę ikony pamiętamy na elemencie, a nie w
+        // zmiennej lokalnej: przy szybkim podwójnym kliknięciu drugie
+        // wywołanie odczytałoby już klasę „done" i przycisk zostałby
+        // z ptaszkiem na stałe. Poprzedni timer kasujemy z tego samego
+        // powodu.
         const $icon = $btn.find('i');
-        const origClass = $icon.attr('class') || 'bi bi-clipboard';
+        if ($btn.data('copy-orig-icon') === undefined) {
+            $btn.data('copy-orig-icon', $icon.attr('class') || 'bi bi-clipboard');
+        }
+        const origClass = $btn.data('copy-orig-icon');
+        const prevTimer = $btn.data('copy-timer');
+        if (prevTimer) clearTimeout(prevTimer);
         $btn.addClass('is-copied');
-        $icon.attr('class', 'bi bi-check-circle-fill');
-        setTimeout(function () {
+        $icon.attr('class', doneIconClass || 'bi bi-check-circle-fill');
+        $btn.data('copy-timer', setTimeout(function () {
             $icon.attr('class', origClass);
             $btn.removeClass('is-copied');
-        }, 1200);
+            $btn.removeData('copy-timer');
+        }, 1200));
     }
 
     function setStep(n) {
@@ -221,6 +250,7 @@ $(function () {
                 return;
             }
             state.doc = resp.doc;
+            initSelectedDraftFromDoc();
             renderPageFromDoc();
         })
         .fail(function (xhr, status) {
@@ -481,7 +511,7 @@ $(function () {
                         ? '<div class="doc-line-producer">prod. ' + escapeHtml(ln.producerName) + '</div>'
                         : '')
                 + '</td>'
-                + '<td class="text-right">' + escapeHtml(formatQty(ln.quantityOrdered))
+                + '<td class="text-right">' + escapeHtml(AtteItemsFormat.formatQty(ln.quantityOrdered))
                     + (ln.unitName
                         ? '<div class="doc-line-muted">' + escapeHtml(ln.unitName) + '</div>'
                         : '')
@@ -1022,10 +1052,1249 @@ $(function () {
     }
 
     // ---- Step 4: Potwierdzenie ------------------------------------
+    //
+    // Panel 4 to powierzchnia „przejrzyj i wyślij", nie ekran edycji —
+    // gęstszy i spokojniejszy niż kroki 1-3. Kolejność bloków jest
+    // stała i wynika z tego, jak operator faktycznie pracuje:
+    //
+    //   1. blokery (brak kontaktów) + ostrzeżenie o backdate
+    //   2. „Wiadomość do dostawcy" — picker szablonu + gotowa treść
+    //   3. „Podsumowanie zapytania" — jeden rzut oka na dokument
+    //   4. „Parametry wysyłki" (kontakty, data, PDF)     — ZWINIĘTE
+    //   5. „Pozycje" (tabela z kopiowaniem per wiersz)   — ZWINIĘTE
+    //
+    // Punkt 2 stoi najwyżej, bo jest jedyną CZYNNOŚCIĄ w tym kroku —
+    // operator redaguje treść i kopiuje ją do klienta poczty. Punkty
+    // 3-5 to kontrola („czy to ten dokument, te kontakty, te
+    // pozycje?"), więc schodzą pod spód, a 4-5 dodatkowo do zwiniętych
+    // drilldownów (step4CollapsibleCardHtml) — wcześniej 30-wierszowa
+    // tabela pozycji wypychała kompozytor poza ekran.
+    //
+    // WAŻNE: backend nie wysyła maila. W całym repo nie ma mail(), a
+    // przycisk „Wyślij" na sticky barze robi wyłącznie commit stanu
+    // (draft → sent) przez document-send-ajax.php. Dlatego szablon
+    // wiadomości jest w 100% po stronie klienta: operator kopiuje go
+    // przyciskiem „Kopiuj treść maila" i wkleja do własnego klienta
+    // poczty. Kopiowanie jest tu główną interakcją, nie ozdobą.
+    //
+    // Feedback po kopiowaniu: WYŁĄCZNIE swap ikony na przycisku
+    // (bi-clipboard → bi-clipboard-check na 1.2 s). Bez toastu — w
+    // kroku 4 kliknięć „kopiuj" jest kilkanaście, więc toast byłby
+    // spamem. Krok 2 zostaje przy swoim toaście (bez zmian).
 
-function renderStep4() {
+    // Bufor na wartości wieloliniowe. Nie trzymamy ich w atrybutach
+    // data-copy, bo parser HTML normalizuje tam znaki nowej linii.
+    const step4Clip = { items: '' };
+
+    function step4CreatorName() {
+        const n = (state.doc && state.doc.createdByName)
+            ? String(state.doc.createdByName).trim()
+            : '';
+        return n !== '' ? n : 'Dział zakupów';
+    }
+
+    function step4ExpectedDate() {
         const d = state.doc;
-        const typeLabel = DOC_TYPE === 'po' ? 'zamówienie' : 'zapytanie';
+        if (!d) return '';
+        return (DOC_TYPE === 'po' ? d.expectedDeliveryDate : d.expectedReplyDate) || '';
+    }
+
+    function step4ExpectedLabel() {
+        return DOC_TYPE === 'po' ? 'Oczekiwana dostawa' : 'Oczekiwana odpowiedź';
+    }
+
+    function step4SelectedEmails() {
+        // Adresaci do wiersza „Do" w kompozytorze — najpierw kontakty
+        // zaznaczone w kroku 2, a gdy żaden z nich nie ma adresu,
+        // wszystkie aktywne kontakty dostawcy z mailem. Pusta tablica
+        // => zamiast plakietek pokazujemy komunikat o braku adresu.
+        const all = (state.doc && state.doc.suppliers) || [];
+        const sel = new Set(state.selectedSuppliers);
+        const hasMail = function (s) { return s.email && String(s.email).trim() !== ''; };
+        const picked  = all.filter(function (s) { return sel.has(s.id) && hasMail(s); });
+        const pool    = picked.length > 0 ? picked : all.filter(hasMail);
+        return pool.map(function (s) { return String(s.email).trim(); });
+    }
+
+    function copyBtnHtml(opts) {
+        // Jeden generator dla wszystkich ikon-kopiuj w kroku 4. Wartość
+        // przekazujemy jednym z pięciu kanałów:
+        //   copy       — krótki, jednoliniowy tekst w atrybucie data-copy
+        //   target     — selektor inputa/textarea; czytamy .val() dopiero
+        //                przy kliknięciu, więc kopiuje się AKTUALNA
+        //                (edytowana) treść, nie ta z chwili renderu
+        //   key        — klucz w step4Clip dla bloków wieloliniowych
+        //   full       — treść wiadomości z buildComposerBodyText() (bez tematu);
+        //                ten sam payload co przycisk „Kopiuj treść maila"
+        //                w stopce, żeby nie było dwóch definicji „całego maila"
+        //   recipients — adresy e-mail odbiorców wybranych w kroku 2,
+        //                rozdzielone ", "; obsługuje też `disabledWhenEmpty`
+        //                — renderuje wtedy przycisk nieaktywny zamiast
+        //                bezproduktywnego kliku w pustkę
+        const label = opts.label || 'Kopiuj';
+        let attrs = '';
+        if (opts.copy       !== undefined) attrs += ' data-copy="' + escapeHtml(opts.copy) + '"';
+        if (opts.target     !== undefined) attrs += ' data-copy-target="' + escapeHtml(opts.target) + '"';
+        if (opts.key        !== undefined) attrs += ' data-copy-key="' + escapeHtml(opts.key) + '"';
+        if (opts.full)                     attrs += ' data-copy-full="1"';
+        if (opts.recipients)               attrs += ' data-copy-recipients="1"';
+        // `title` opcjonalnie dłuższy niż `label` (aria-label): tam,
+        // gdzie sama nazwa akcji nie mówi, CO dokładnie wyląduje w
+        // schowku. `disabledTitle` osobny, bo na wyłączonym przycisku
+        // sensowniejszy jest komunikat „dlaczego nie działa" niż opis
+        // akcji (której i tak nie da się wykonać).
+        //
+        // `disabled` przepuszczamy z renderera (np. zero odbiorców w
+        // wierszu „Do") — handler delegujący .send-copy-btn pilnuje,
+        // żeby wtedy nie wywoływać copyToClipboard() ani swap-u ikony.
+        const dis = opts.disabled ? ' disabled aria-disabled="true"' : '';
+        const titleText = opts.disabled
+            ? (opts.disabledTitle || opts.title || label)
+            : (opts.title || label);
+        return '<button type="button"'
+            + ' class="send-copy-btn' + (opts.extraClass ? ' ' + opts.extraClass : '') + '"'
+            + attrs
+            + dis
+            + ' title="' + escapeHtml(titleText) + '"'
+            + ' aria-label="' + escapeHtml(label) + '">'
+            + '<i class="bi bi-clipboard" aria-hidden="true"></i>'
+        + '</button>';
+    }
+
+    // ---- Szablony wiadomości (nadpisanie per dostawca) ------------
+    //
+    // Łańcuch fallbacku: szablon dostawcy → szablon systemowy → pusto.
+    // Szablon dostawcy wybiera się z globalnego katalogu
+    // /admin/purchase/email-drafts (FK list__vendor.preferred_email_draft_*
+    // _id) i przyjeżdża w snapshocie jako doc.preferredEmailDraftSubject /
+    // doc.preferredEmailDraftBody. null = brak wskazania / szablon
+    // wyłączony → kreator wraca do szablonu systemowego PL.
+    //
+    // Składnia: {nazwa} — pojedyncze klamry, ściśle małe litery, bez
+    // tolerancji na spacje, identyfikator [a-z][a-z0-9_]{0,31}.
+    // Nieznana zmienna zostaje w tekście jako literał (operator widzi
+    // literówkę w mailu zamiast cichej pustki); znana, ale pusta
+    // renderuje się jako pusty string.
+    //
+    // Ten regex i applyTemplate() są ŚWIADOMIE zduplikowane w
+    // public_html/components/Admin/Purchase/EmailDrafts/edit/email-draft-edit-view.js
+    // (podgląd na żywo w edytorze szablonów). Projekt nie ma systemu
+    // modułów, a oba pliki ładują się na rozłącznych stronach —
+    // duplikat ~15 linii jest tańszy niż wspólny plik i dodatkowy
+    // <script> w headerze. Przy zmianie składni trzeba ruszyć OBA miejsca.
+    const TEMPLATE_VAR_RE = /\{([a-z][a-z0-9_]{0,31})\}/g;
+
+    function applyTemplate(tpl, vars) {
+        if (tpl === null || tpl === undefined) return '';
+        return String(tpl).replace(TEMPLATE_VAR_RE, function (token, name) {
+            // hasOwnProperty, NIE `name in vars` — `in` łapie też
+            // prototyp Object, więc {constructor} czy {tostring}
+            // (oba pasują do regexa!) podstawiłyby śmieci zamiast
+            // zostać literałem.
+            if (!Object.prototype.hasOwnProperty.call(vars, name)) return token;
+            const v = vars[name];
+            return (v === null || v === undefined) ? '' : String(v);
+        });
+    }
+
+    function templateContact() {
+        // {vendor_contact_*}: najpierw pierwszy kontakt zaznaczony w
+        // kroku 2, potem główny (isPrimary), potem pierwszy z brzegu.
+        const all = (state.doc && state.doc.suppliers) || [];
+        if (all.length === 0) return null;
+        const selIds = state.selectedSuppliers || [];
+        for (let i = 0; i < selIds.length; i++) {
+            const hit = all.find(function (s) { return s.id === selIds[i]; });
+            if (hit) return hit;
+        }
+        return all.find(function (s) { return s.isPrimary; }) || all[0];
+    }
+
+    function buildTemplateVars(doc) {
+        const d       = doc || state.doc || {};
+        const lines   = d.lines || [];
+        const contact = templateContact();
+        const isPo    = (DOC_TYPE === 'po');
+        // Pusta/nieznana wartość → pusty string, nigdy "null"/"undefined".
+        const blank = function (v) { return (v === null || v === undefined) ? '' : String(v); };
+
+        return {
+            vendor_name:           blank(d.vendorName),
+            vendor_contact_name:   blank(contact && contact.name),
+            vendor_contact_email:  blank(contact && contact.email),
+            // {vendor_address} usunięte — loader kroku 4 nie zwraca już
+            // d.vendorAddress. Gdyby szablon dostawcy zawierał ten token,
+            // applyTemplate zostawi go w treści jako literał.
+            document_type:         isPo ? 'zamówienie' : 'zapytanie',
+            document_number:       blank(d.number || (d.id ? '#' + d.id : '')),
+            document_comment:      blank(d.comment),
+            expected_reply_date:   blank(d.expectedReplyDate),
+            expected_delivery_date: blank(d.expectedDeliveryDate),
+            created_by_name:       blank(d.createdByName),
+            created_at:            blank(d.createdAt),
+            item_count:            String(lines.length),
+            // Pusty dokument dostaje tekst zastępczy w kolumnie
+            // VendorPartNo (mirror pustego stanu tabeli pozycji w
+            // buildStep4ItemsHtml); obsługa wewnątrz plainText.
+            // Owijamy tabelę markerami — dzięki temu renderComposerPreview
+            // lokalizuje tabelę nawet po edycji komórek (markery stoją
+            // na zewnątrz, edycja wnętrza ich nie psuje).
+            items: AtteItemsFormat.wrapItems(AtteItemsFormat.plainText(
+                lines,
+                { documentNumber: blank(d.number || (d.id ? '#' + d.id : '')) }
+            )),
+        };
+    }
+
+    // ---- Picker szablonu („Szablon wiadomości") --------------------
+    //
+    // Preferencja dostawcy (FK list__vendor.preferred_email_draft_*_id)
+    // jest tylko DOMYŚLNĄ pozycją pickera. Operator może w kroku 4
+    // wybrać dowolny inny szablon z katalogu — wybór żyje wyłącznie
+    // w tej sesji kreatora, nic się nie zapisuje do bazy.
+    //
+    // Pełny łańcuch rozstrzygania: wybór z pickera → preferencja
+    // dostawcy → PIERWSZY szablon z katalogu → szablon systemowy PL
+    // (ten ostatni wyłącznie wtedy, gdy katalog nie ma nic dla
+    // bieżącego typu dokumentu).
+
+    /** Przepisuje wybrany szablon do state; `null` = szablon systemowy. */
+    function applySelectedDraft(dr) {
+        state.selectedDraftId      = dr ? dr.id      : 0;
+        state.selectedDraftName    = dr ? dr.name    : null;
+        state.selectedDraftSubject = dr ? dr.subject : null;
+        state.selectedDraftBody    = dr ? dr.body    : null;
+    }
+
+    function initSelectedDraftFromDoc() {
+        // Domyślne ustawienie pickera po załadowaniu snapshotu.
+        state.selectedDraftId      = null;
+        state.selectedDraftName    = null;
+        state.selectedDraftSubject = null;
+        state.selectedDraftBody    = null;
+
+        const d = state.doc;
+        if (!d) return;
+
+        const drafts = d.availableEmailDrafts || [];
+        // Pusty katalog to JEDYNY przypadek, w którym kreator sięga po
+        // szablon systemowy. Krok 4 pokaże wtedy komunikat zamiast
+        // pickera — patrz buildDraftPickerHtml().
+        if (drafts.length === 0) {
+            applySelectedDraft(null);
+            return;
+        }
+
+        // Preferencja dostawcy — najpierw po id (pewniejsze: dwa
+        // szablony mogą mieć identyczny temat i treść). Gdy loader nie
+        // poda id, dopasowujemy po zawartości; porównanie jest dokładne,
+        // bo oba stringi pochodzą z tego samego wiersza `email_draft`.
+        const prefId = parseInt(d.preferredEmailDraftId, 10);
+        let hit = (prefId > 0)
+            ? drafts.find(function (dr) { return dr.id === prefId; })
+            : null;
+
+        if (!hit) {
+            const prefSubject = d.preferredEmailDraftSubject;
+            const prefBody    = d.preferredEmailDraftBody;
+            if (prefSubject !== null && prefSubject !== undefined) {
+                hit = drafts.find(function (dr) {
+                    return dr.subject === prefSubject && dr.body === prefBody;
+                });
+            }
+        }
+
+        // Brak preferencji — albo preferencja wskazuje szablon spoza
+        // katalogu (dezaktywowany, albo nie dla tego typu dokumentu) →
+        // pierwsza pozycja listy. Dzięki temu picker i treść wiadomości
+        // zawsze pokazują to samo.
+        applySelectedDraft(hit || drafts[0]);
+    }
+
+    function selectedDraftName() {
+        // Nazwa szablonu aktualnie obowiązującego — albo null, gdy
+        // rządzi wbudowany systemowy (albo gdy preferencji dostawcy
+        // nie udało się dopasować do katalogu).
+        return (state.selectedDraftId !== null && state.selectedDraftId > 0)
+            ? (state.selectedDraftName || null)
+            : null;
+    }
+
+    function vendorSubjectTemplate() {
+        // Wybór z pickera wygrywa nad preferencją dostawcy.
+        const picked = state.selectedDraftSubject;
+        if (typeof picked === 'string' && picked.trim() !== '') return picked;
+        // selectedDraftId !== null znaczy „picker jest rozstrzygnięty" —
+        // albo katalog jest pusty (0 → szablon systemowy), albo wybrany
+        // szablon ma to pole puste. W obu przypadkach fallback na
+        // preferencję dostawcy byłby kłamstwem: picker pokazywałby jedno,
+        // a pole treść z czegoś innego.
+        if (state.selectedDraftId !== null) return null;
+        const t = state.doc && state.doc.preferredEmailDraftSubject;
+        return (typeof t === 'string' && t.trim() !== '') ? t : null;
+    }
+    function vendorBodyTemplate() {
+        const picked = state.selectedDraftBody;
+        if (typeof picked === 'string' && picked.trim() !== '') return picked;
+        if (state.selectedDraftId !== null) return null;
+        const t = state.doc && state.doc.preferredEmailDraftBody;
+        return (typeof t === 'string' && t.trim() !== '') ? t : null;
+    }
+    function usesVendorTemplate() {
+        // True, gdy obowiązuje JAKIKOLWIEK szablon z katalogu — wybrany
+        // ręcznie w pickerze albo odziedziczony z preferencji dostawcy.
+        return vendorSubjectTemplate() !== null || vendorBodyTemplate() !== null;
+    }
+
+    function buildEmailSubject() {
+        const tpl = vendorSubjectTemplate();
+        return (tpl === null)
+            ? buildEmailSubjectDefault()
+            : applyTemplate(tpl, buildTemplateVars(state.doc));
+    }
+
+    function buildEmailBody() {
+        const tpl = vendorBodyTemplate();
+        return (tpl === null)
+            ? buildEmailBodyDefault()
+            : applyTemplate(tpl, buildTemplateVars(state.doc));
+    }
+
+    function buildEmailSubjectDefault() {
+        const d = state.doc;
+        const number = d.number || ('#' + d.id);
+        return (DOC_TYPE === 'po' ? 'Zamówienie ' : 'Zapytanie ofertowe ') + number;
+    }
+
+    function buildEmailBodyDefault() {
+        const d       = state.doc;
+        const number  = d.number || ('#' + d.id);
+        const vendor  = d.vendorName || '';
+        const date    = step4ExpectedDate();
+        const isPo    = (DOC_TYPE === 'po');
+
+        // Nagłówek „Dotyczy:" to standardowa polska forma korespondencji
+        // handlowej — mieści numer dokumentu i nazwę dostawcy bez
+        // sztucznego wciskania ich w zdanie powitalne.
+        const parts = [];
+        parts.push('Dotyczy: ' + (isPo ? 'zamówienie ' : 'zapytanie ofertowe ') + number
+            + (vendor ? ' — ' + vendor : ''));
+        parts.push('');
+        parts.push('Szanowni Państwo,');
+        parts.push('');
+        parts.push(isPo
+            ? 'Przesyłamy zamówienie na następujące części:'
+            : 'Zwracamy się z prośbą o ofertę na następujące części:');
+        parts.push('');
+        // Marker `<<<ATTE_ITEMS_TABLE>>>` otacza tabelę — renderComposerPreview
+        // używa go jako kotwicy pozycji, niezależnej od zawartości komórek.
+        parts.push(AtteItemsFormat.wrapItems(AtteItemsFormat.plainText(
+            d.lines || [],
+            { documentNumber: d.number || (d.id ? '#' + d.id : '') }
+        )));
+        parts.push('');
+        if (date) {
+            parts.push((isPo ? 'Oczekiwany termin dostawy: ' : 'Oczekiwany termin odpowiedzi: ')
+                + date + '.');
+            parts.push('');
+        }
+        parts.push('Z poważaniem,');
+        parts.push(step4CreatorName());
+
+        return parts.join('\n');
+    }
+
+    /**
+     * Zwijana karta kroku 4.
+     *
+     * Krok 4 ma dwie powierzchnie pierwszego planu — „Podsumowanie…"
+     * i „Wiadomość do dostawcy" — oraz dwa drilldowny („Parametry
+     * wysyłki", „Pozycje"), które operator otwiera tylko wtedy, gdy
+     * chce coś sprawdzić. Te drugie budujemy tym helperem: nagłówek
+     * jest przyciskiem toggle, a body siedzi w Bootstrapowym .collapse.
+     *
+     * Nagłówek to <div> z <button> w środku, nie <button class="card-header">,
+     * bo karta „Pozycje" trzyma w nagłówku własny przycisk „Kopiuj
+     * pozycje" — przycisk w przycisku jest niepoprawnym HTML-em.
+     * Toggle rozpycha się na całą wolną szerokość (flex: 1), więc
+     * klikalny jest praktycznie cały pasek, a nie sam chevron.
+     *
+     * opts: { id, icon, title, meta, open, headerExtra, bodyHtml }
+     */
+    function step4CollapsibleCardHtml(opts) {
+        const isOpen = (opts.open === true);
+        return '<div class="card send-review-card send-review-card-collapsible mb-3">'
+            + '<div class="card-header send-review-card-header send-review-card-headrow'
+                + (isOpen ? ' is-open' : '') + '">'
+                + '<button type="button" class="send-review-card-toggle" '
+                    + 'data-toggle="collapse" data-target="#' + opts.id + '" '
+                    + 'aria-expanded="' + (isOpen ? 'true' : 'false') + '" '
+                    + 'aria-controls="' + opts.id + '">'
+                    + '<span class="send-review-card-title">'
+                        + '<i class="bi ' + opts.icon + '" aria-hidden="true"></i> '
+                        + escapeHtml(opts.title)
+                        + (opts.meta || '')
+                    + '</span>'
+                    + '<i class="bi ' + (isOpen ? 'bi-chevron-up' : 'bi-chevron-down')
+                        + ' send-review-chevron" aria-hidden="true"></i>'
+                + '</button>'
+                + (opts.headerExtra
+                    ? '<span class="send-review-card-tools">' + opts.headerExtra + '</span>'
+                    : '')
+            + '</div>'
+            + '<div class="collapse' + (isOpen ? ' show' : '') + '" id="' + opts.id + '">'
+                + opts.bodyHtml
+            + '</div>'
+        + '</div>';
+    }
+
+    /**
+     * Podmienia chevrony zwijanych kart kroku 4 na zgodne ze stanem.
+     * Bootstrap 4 nie robi tego sam — bez tego nagłówek pokazuje
+     * „w dół" także przy rozwiniętej karcie i przestaje cokolwiek
+     * znaczyć. Ten sam wzorzec co vrWireChevron() w vendor-edit-view.js.
+     *
+     * Delegacja nie wchodzi w grę: shown/hidden.bs.collapse nie bąbelkują
+     * przez .collapse w sposób, na którym można oprzeć jeden handler na
+     * kontenerze, więc wiążemy je per karta po każdym renderze.
+     */
+    function wireStep4Chevrons($scope) {
+        $scope.find('.collapse').each(function () {
+            const $collapse = $(this);
+            const $toggle   = $scope.find('[data-target="#' + this.id + '"]');
+            const $icon     = $toggle.find('.send-review-chevron');
+            if ($icon.length === 0) return;
+            const $headrow  = $toggle.closest('.send-review-card-headrow');
+            $collapse.off('shown.bs.collapse.step4 hidden.bs.collapse.step4')
+                .on('shown.bs.collapse.step4', function (e) {
+                    if (e.target !== this) return;
+                    $icon.removeClass('bi-chevron-down').addClass('bi-chevron-up');
+                    $toggle.attr('aria-expanded', 'true');
+                    $headrow.addClass('is-open');
+                })
+                .on('hidden.bs.collapse.step4', function (e) {
+                    if (e.target !== this) return;
+                    $icon.removeClass('bi-chevron-up').addClass('bi-chevron-down');
+                    $toggle.attr('aria-expanded', 'false');
+                    $headrow.removeClass('is-open');
+                });
+        });
+    }
+
+    function buildStep4SummaryHtml() {
+        const d          = state.doc;
+        const number     = d.number || ('#' + d.id);
+        const vendorName = d.vendorName || '—';
+        const lines      = d.lines || [];
+        const breakdown  = d.valueBreakdown || [];
+
+        const valueHtml = breakdown.length === 0
+            ? '<span class="text-muted">brak wyceny</span>'
+            : breakdown.map(function (b) {
+                return '<span class="send-review-money">'
+                    + escapeHtml(formatPrice(b.total))
+                    + ' <span class="send-review-money-cur">' + escapeHtml(b.currency) + '</span>'
+                + '</span>';
+              }).join('');
+
+        const facts = [
+            { label: 'Dostawca',
+              value: '<span class="send-review-strong">' + escapeHtml(vendorName) + '</span>'
+                   + copyBtnHtml({ copy: vendorName, label: 'Kopiuj nazwę dostawcy' }) },
+            { label: (DOC_TYPE === 'po' ? 'Numer zamówienia' : 'Numer zapytania'),
+              value: '<span class="send-review-strong">' + escapeHtml(number) + '</span>'
+                   + copyBtnHtml({ copy: number, label: 'Kopiuj numer dokumentu' }) },
+            { label: step4ExpectedLabel(),
+              value: step4ExpectedDate()
+                  ? escapeHtml(step4ExpectedDate())
+                  : '<span class="text-muted">nie podano</span>' },
+            { label: 'Pozycji',
+              value: '<span class="send-review-strong">' + lines.length + '</span>' },
+            { label: 'Wartość', value: valueHtml },
+            { label: 'Utworzył', value: escapeHtml(d.createdByName || '—') },
+            { label: 'Utworzono', value: escapeHtml(d.createdAt || '—') }
+        ];
+
+        const factsHtml = facts.map(function (f) {
+            return '<div class="send-review-fact">'
+                + '<dt class="send-review-fact-label">' + escapeHtml(f.label) + '</dt>'
+                + '<dd class="send-review-fact-value">' + f.value + '</dd>'
+            + '</div>';
+        }).join('');
+
+        const noteHtml = d.comment
+            ? '<div class="send-review-note">'
+                + '<i class="bi bi-chat-left-text" aria-hidden="true"></i>'
+                + '<span>' + escapeHtml(d.comment) + '</span>'
+              + '</div>'
+            : '';
+
+        return '<div class="card send-review-card mb-3">'
+            + '<div class="card-header send-review-card-header">'
+                + '<i class="bi bi-clipboard-data" aria-hidden="true"></i> '
+                + (DOC_TYPE === 'po' ? 'Podsumowanie zamówienia' : 'Podsumowanie zapytania')
+            + '</div>'
+            + '<div class="card-body send-review-card-body">'
+                + '<dl class="send-review-grid mb-0">' + factsHtml + '</dl>'
+                + noteHtml
+            + '</div>'
+        + '</div>';
+    }
+
+    function buildStep4ItemsHtml() {
+        const lines = (state.doc && state.doc.lines) || [];
+        const count = lines.length;
+
+        if (count === 0) {
+            return step4CollapsibleCardHtml({
+                id:    'send-step-4-items-body',
+                icon:  'bi-list-ul',
+                title: 'Pozycje',
+                meta:  ' <span class="send-review-count">0</span>',
+                open:  false,
+                bodyHtml: '<div class="card-body send-review-card-body">'
+                    + '<p class="text-muted mb-0">Dokument nie ma pozycji.</p>'
+                + '</div>'
+            });
+        }
+
+        const rows = lines.map(function (ln) {
+            const prodNo    = ln.producerPartNo   || '';
+            const vendNo    = ln.vendorPartNo     || '';
+            const comment   = ln.comment          || '';
+            const vpComment = ln.vendorPartComment || '';
+
+            // Nr części producenta, a pod nim (gdy inny) nr u dostawcy.
+            // Każdy z własnym „kopiuj" — to numery, które operator
+            // najczęściej wkleja do maila i do sklepu dostawcy, więc
+            // przycisk stoi TUŻ przy wartości, nie na końcu wiersza.
+            let noCell = '';
+            if (prodNo) {
+                noCell += '<span class="send-items-copyrow">'
+                    + '<code class="send-items-no-val">' + escapeHtml(prodNo) + '</code>'
+                    + copyBtnHtml({ copy: prodNo, label: 'Kopiuj numer części producenta' })
+                + '</span>';
+            }
+            if (vendNo && vendNo !== prodNo) {
+                noCell += '<span class="send-items-copyrow send-items-secondary">'
+                    + '<span class="send-items-tag">dost.</span>'
+                    + '<code class="send-items-no-val">' + escapeHtml(vendNo) + '</code>'
+                    + copyBtnHtml({ copy: vendNo, label: 'Kopiuj numer części u dostawcy' })
+                + '</span>';
+            }
+            if (noCell === '') noCell = '<span class="text-muted">—</span>';
+
+            // Kolumna „Komentarz" to WYŁĄCZNIE komentarz pozycji
+            // dokumentu. Komentarz z kartoteki części (vendorPartComment)
+            // opisuje samą część, a nie tę pozycję, więc renderuje się
+            // niżej — w kolumnie „Część", pod opisem.
+            let commentCell = '';
+            if (comment) {
+                commentCell += '<span class="send-items-copyrow">'
+                    + '<span class="send-items-comment-text">' + escapeHtml(comment) + '</span>'
+                    + copyBtnHtml({ copy: comment, label: 'Kopiuj komentarz pozycji' })
+                + '</span>';
+            }
+            if (commentCell === '') commentCell = '<span class="text-muted">—</span>';
+
+            return '<tr>'
+                + '<td class="send-items-part">'
+                    + '<span class="send-items-part-name">' + escapeHtml(ln.partName || '—') + '</span>'
+                    + (ln.partDescription
+                        ? '<span class="send-items-part-desc">' + escapeHtml(ln.partDescription) + '</span>'
+                        : '')
+                    // Komentarz z kartoteki części. Prefiksem jest ikona
+                    // bi-journal-text — ten sam wskaźnik komentarza co w
+                    // /purchase/cart (cart-view.js:1335) — zamiast badge'a
+                    // z napisem „kartoteka". Ikona jest dekoracyjna
+                    // (aria-hidden), więc kontekst dla czytników ekranu
+                    // niosą: sr-only etykieta przed tekstem i nazwa
+                    // przycisku „Kopiuj komentarz z kartoteki części".
+                    + (vpComment
+                        ? '<span class="send-items-part-vpcomment send-items-copyrow">'
+                            + '<i class="bi bi-journal-text send-items-comment-icon" aria-hidden="true"></i>'
+                            + '<span class="sr-only">Komentarz z kartoteki części:</span>'
+                            + '<span>' + escapeHtml(vpComment) + '</span>'
+                            + copyBtnHtml({ copy: vpComment,
+                                            label: 'Kopiuj komentarz z kartoteki części' })
+                          + '</span>'
+                        : '')
+                + '</td>'
+                + '<td class="send-items-producer">' + escapeHtml(ln.producerName || '—') + '</td>'
+                + '<td class="send-items-no">' + noCell + '</td>'
+                + '<td class="text-right send-items-qty">' + escapeHtml(AtteItemsFormat.formatQty(ln.quantityOrdered)) + '</td>'
+                + '<td class="send-items-unit">' + escapeHtml(ln.unitName || '—') + '</td>'
+                + '<td class="send-items-comment">' + commentCell + '</td>'
+            + '</tr>';
+        }).join('');
+
+        // Zwinięta domyślnie: tabela pozycji jest najwyższym blokiem
+        // kroku 4 i przy 30 wierszach wypychała kompozytor wiadomości
+        // poza ekran. Operator zajrzy tu, gdy chce sprawdzić, co
+        // faktycznie leci do dostawcy.
+        return step4CollapsibleCardHtml({
+            id:    'send-step-4-items-body',
+            icon:  'bi-list-ul',
+            title: 'Pozycje',
+            meta:  ' <span class="send-review-count">' + count + '</span>',
+            open:  false,
+            headerExtra: '<button type="button" class="send-copy-block-btn" data-copy-key="items" '
+                + 'title="Kopiuj wszystkie pozycje jako tekst" '
+                + 'aria-label="Kopiuj wszystkie pozycje jako tekst">'
+                + '<i class="bi bi-clipboard" aria-hidden="true"></i> Kopiuj pozycje'
+            + '</button>',
+            bodyHtml: '<div class="table-responsive">'
+                + '<table class="table table-sm send-items-table mb-0">'
+                    + '<thead>'
+                        + '<tr>'
+                            + '<th>Część</th>'
+                            + '<th>Producent</th>'
+                            + '<th>Nr części prod.</th>'
+                            + '<th class="text-right">Ilość</th>'
+                            + '<th>Jedn.</th>'
+                            + '<th>Komentarz</th>'
+                        + '</tr>'
+                    + '</thead>'
+                    + '<tbody>' + rows + '</tbody>'
+                + '</table>'
+            + '</div>'
+        });
+    }
+
+    function tplBadgeTitle() {
+        const name = selectedDraftName();
+        if (name !== null) return 'Używa szablonu: ' + name;
+        // usesVendorTemplate() jest true, ale nazwy nie znamy (szablon
+        // dostawcy nie dopasował się do katalogu aktywnych).
+        if (usesVendorTemplate()) return 'Używa szablonu dostawcy';
+        return 'Używa wbudowanego szablonu domyślnego';
+    }
+
+    /**
+     * Plakietka przy tytule kompozytora — mówi, SKĄD wzięła się treść
+     * poniżej. Złote gwiazdki = szablon z katalogu; wyszarzone zębatki
+     * = szablon wbudowany (katalog nie ma nic dla tego typu dokumentu).
+     */
+    function tplBadgeHtml() {
+        const isCatalog = usesVendorTemplate();
+        const t = escapeHtml(tplBadgeTitle());
+        return ' <i class="bi ' + (isCatalog ? 'bi-stars' : 'bi-gear')
+            + ' send-composer-tpl-badge' + (isCatalog ? '' : ' is-builtin') + '"'
+            + ' id="send-composer-tpl-badge"'
+            + ' title="' + t + '"'
+            + ' aria-label="' + t + '"></i>';
+    }
+
+    /** Adres katalogu szablonów — do linku w komunikacie o pustym katalogu. */
+    function emailDraftsUrl() {
+        // ROOT_DIR to globalny `const` z assets/layout/header.js. Nie
+        // wisi na window (const nie tworzy właściwości globalnej), więc
+        // sprawdzamy go przez typeof, a nie przez window.ROOT_DIR.
+        const root = (typeof ROOT_DIR === 'string') ? ROOT_DIR : '';
+        return root + '/admin/purchase/email-drafts';
+    }
+
+    /**
+     * Pasek „Szablon wiadomości" na górze kompozytora.
+     *
+     * Picker listuje wyłącznie szablony z katalogu — wartością opcji
+     * jest id szablonu. Wybór nadpisuje preferencję dostawcy TYLKO
+     * w tej sesji kreatora; nic nie ląduje w bazie.
+     *
+     * Gdy katalog nie ma szablonu dla bieżącego typu dokumentu, pasek
+     * zamienia się w komunikat — jednoopcyjny, martwy select udawałby
+     * wybór, którego nie ma.
+     *
+     * bootstrap-select: data-width="100%" + własny, wymiarowany
+     * kontener (#send-draft-picker-cell) + data-container na ten sam
+     * kontener — kanoniczny zestaw z AGENTS.md dla pickera, który ma
+     * wypełnić rodzica i przyciąć długie nazwy zamiast go rozpychać.
+     */
+    function buildDraftPickerHtml() {
+        const drafts = (state.doc && state.doc.availableEmailDrafts) || [];
+
+        if (drafts.length === 0) {
+            const href = escapeHtml(emailDraftsUrl());
+            return '<div class="send-composer-tplbar send-composer-tplbar-empty" '
+                    + 'id="send-composer-tplbar">'
+                + '<span class="send-composer-tpl-empty">'
+                    + '<i class="bi bi-exclamation-triangle" aria-hidden="true"></i> '
+                    + 'Brak szablonów dla tego typu dokumentu. Utwórz szablon w '
+                    + '<a href="' + href + '" target="_blank" rel="noopener">'
+                        + '/admin/purchase/email-drafts'
+                    + '</a>. '
+                    + 'Poniżej wstawiono wbudowany szablon domyślny.'
+                + '</span>'
+            + '</div>';
+        }
+
+        // Po initSelectedDraftFromDoc() / applyDraftPick() wybór zawsze
+        // wskazuje istniejącą pozycję. `selectedId` domyka przypadek
+        // brzegowy (id spoza listy), żeby picker nigdy nie stanął pusty.
+        const known = drafts.some(function (dr) {
+            return dr.id === state.selectedDraftId;
+        });
+        const selectedId = known ? state.selectedDraftId : drafts[0].id;
+
+        const optionsHtml = drafts.map(function (dr) {
+            return '<option value="' + dr.id + '"'
+                + (selectedId === dr.id ? ' selected' : '') + '>'
+                + escapeHtml(dr.name)
+            + '</option>';
+        }).join('');
+
+        return '<div class="send-composer-tplbar" id="send-composer-tplbar">'
+            + '<label class="send-composer-key send-composer-tpl-key" for="send-draft-picker">'
+                + 'Szablon wiadomości'
+            + '</label>'
+            + '<div class="send-composer-tpl-cell" id="send-draft-picker-cell">'
+                + '<select class="selectpicker" id="send-draft-picker" '
+                    + 'data-width="100%" '
+                    + 'data-container="#send-draft-picker-cell" '
+                    + 'aria-label="Szablon wiadomości">'
+                    + optionsHtml
+                + '</select>'
+            + '</div>'
+            + '<span class="send-composer-tpl-hint">'
+                + '<i class="bi bi-info-circle" aria-hidden="true"></i> '
+                + 'Tylko na tę wysyłkę — preferencja dostawcy zostaje bez zmian.'
+            + '</span>'
+        + '</div>';
+    }
+
+    function buildStep4ComposerHtml() {
+        // Temat i treść: jeśli operator coś zmienił (state.email*Edited
+        // != null), jego wersja wygrywa nad wygenerowanym szablonem —
+        // panel 4 renderuje się od nowa przy każdym wejściu i przy
+        // każdej zmianie zaznaczenia w kroku 2, więc bez tego edycje
+        // znikałyby.
+        const subject = (state.emailSubjectEdited !== null)
+            ? state.emailSubjectEdited : buildEmailSubject();
+        const body = (state.emailBodyEdited !== null)
+            ? state.emailBodyEdited : buildEmailBody();
+        const emails  = step4SelectedEmails();
+        const isDirty = (state.emailSubjectEdited !== null || state.emailBodyEdited !== null);
+
+        const toHtml = emails.length > 0
+            ? emails.map(function (e) {
+                return '<span class="send-composer-chip">' + escapeHtml(e) + '</span>';
+              }).join('')
+            : '<span class="text-muted">brak adresu e-mail w kontaktach dostawcy</span>';
+
+        // Jedno wyjście z kompozytora: cała wiadomość (temat + treść)
+        // do schowka. Renderuje się ZAWSZE — kopiowanie nie potrzebuje
+        // adresatów, a schowek nie ma limitu długości, który psuł
+        // poprzednie „Otwórz w mailu" (mailto: ucinało dłuższe treści).
+        const copyMailHtml = '<button type="button" class="btn btn-primary btn-sm" '
+                + 'id="send-copy-mail-btn" '
+                + 'title="Kopiuj całą wiadomość (temat + treść) do schowka" '
+                + 'aria-label="Kopiuj treść maila">'
+                + '<i class="bi bi-clipboard" aria-hidden="true"></i> Kopiuj treść maila'
+            + '</button>';
+
+        // Znacznik „skąd jest ta treść" — istotne, gdy wiadomość wygląda
+        // inaczej niż operator pamięta z innych dostawców. Tooltip
+        // nazywa konkretny szablon, jeśli go znamy.
+        const tplBadge = tplBadgeHtml();
+
+        // Ile adresów w wierszu „Do"? Ikona kopiuj gaśnie przy zerze.
+        const recipientsCount = emails.length;
+
+        return '<div class="card send-review-card send-composer mb-3">'
+            + '<div class="card-header send-review-card-header d-flex justify-content-between align-items-center">'
+                + '<span id="send-composer-title">'
+                    + '<i class="bi bi-envelope-paper" aria-hidden="true"></i> Wiadomość do dostawcy'
+                    + tplBadge
+                + '</span>'
+                + '<button type="button" id="send-email-reset" '
+                    + 'class="send-composer-reset' + (isDirty ? '' : ' is-hidden') + '" '
+                    + 'title="Przywróć wygenerowany szablon" '
+                    + 'aria-label="Przywróć wygenerowany szablon">'
+                    + '<i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i> Przywróć szablon'
+                + '</button>'
+            + '</div>'
+            + buildDraftPickerHtml()
+            // Ikona „kopiuj" przy każdym z trzech wierszy nagłówka
+            // stoi PO LEWEJ od etykiety, dzięki czego wszystkie trzy
+            // (Do / Temat / Treść) tworzą jedną kolumnę na krawędzi
+            // karty. Przy „Do" kopiują się adresy odbiorców, przy
+            // „Temat" sam temat, przy „Treść" cała wiadomość —
+            // ikona jest na wysokości tego, co skopiuje, licząc od tego
+            // wiersza w dół. Ikona przy „Do" gaśnie, gdy brak
+            // odbiorców z adresem e-mail (chip po prawej też jest
+            // wtedy zastąpiony komunikatem „brak adresu…").
+            + '<div class="send-composer-head">'
+                + '<div class="send-composer-field">'
+                    + copyBtnHtml({ recipients: true,
+                                    label: 'Kopiuj adresy odbiorców',
+                                    title: 'Kopiuj adresy e-mail odbiorców (oddzielone przecinkami)',
+                                    disabled: recipientsCount === 0,
+                                    disabledTitle: recipientsCount === 0
+                                        ? 'Wybierz co najmniej jednego odbiorcę (krok 2)'
+                                        : undefined,
+                                    extraClass: 'send-composer-row-copy mr-2' })
+                    + '<span class="send-composer-key">Do</span>'
+                    + '<span class="send-composer-to">' + toHtml + '</span>'
+                + '</div>'
+                + '<div class="send-composer-field send-composer-field-subject">'
+                    + copyBtnHtml({ target: '#send-email-subject', label: 'Kopiuj temat',
+                                    extraClass: 'send-composer-row-copy mr-2' })
+                    + '<label class="send-composer-key" for="send-email-subject">Temat</label>'
+                    + '<input type="text" id="send-email-subject" readonly '
+                        + 'class="send-composer-subject" value="' + escapeHtml(subject) + '">'
+                + '</div>'
+            + '</div>'
+            // Blok treści ma DWA widoki i pokazuje zawsze dokładnie
+            // jeden — data-view na tym wrapperze przestawia oba przez
+            // selektory [data-show-in] w CSS, bez dotykania styli w JS.
+            //
+            // Domyślnie 'preview': operator widzi wiadomość taką, jaka
+            // pójdzie do Gmaila (tabela pozycji, nie surowy TSV).
+            // Textarea to narzędzie edycji, nie „prawdziwa" treść —
+            // dlatego nagłówek mówi „Treść", a nie „Podgląd".
+            //
+            // Klik w sam podgląd NIE przełącza trybu — jedyną drogą
+            // do edycji jest przycisk „Edytuj". To zapobiega przypadkowym
+            // przeskokom (klik w treść podczas czytania zamierza ustawiać
+            // kursor tekstowy, nie wyrzucać z podglądu). W zamian
+            // sam przycisk jest wyraźny i zawsze dostępny w pasku narzędzi.
+            + '<div class="send-composer-body" data-view="'
+                + (state.composerView === 'edit' ? 'edit' : 'preview') + '">'
+                + buildComposerBodyBarHtml()
+                + '<div class="send-composer-body-preview" id="send-email-body-preview"'
+                    + ' data-show-in="preview" aria-hidden="false"></div>'
+                + '<textarea id="send-email-body" class="send-composer-body-textarea"'
+                    + ' rows="10" data-show-in="edit"'
+                    + ' aria-label="Treść wiadomości"'
+                    + ' placeholder="Treść wiadomości…">'
+                    + escapeHtml(body)
+                + '</textarea>'
+            + '</div>'
+            + '<div class="send-composer-foot">'
+                + copyMailHtml
+                + '<span class="send-composer-hint">'
+                    + '<i class="bi bi-info-circle" aria-hidden="true"></i> '
+                    + 'System nie wysyła e-maili. Skopiuj wiadomość do swojego klienta poczty — '
+                    + 'przycisk „Wyślij” poniżej zmienia wyłącznie stan dokumentu.'
+                + '</span>'
+            + '</div>'
+        + '</div>';
+    }
+
+    /**
+     * Renderuje widok „Treść" — treść wiadomości z tabelą HTML w
+     * miejscu pozycji. Inaczej niż w email-draft-edit (gdzie token
+     * {items} przeżywa do podglądu) — tu {items} jest już podstawiony
+     * na TSV na etapie generowania treści (buildTemplateVars /
+     * buildEmailBodyDefault), więc treść w textarei nigdy nie ma
+     * literału {items}. Podgląd szuka więc dokładnie TEGO SAMEGO
+     * stringu TSV (ten sam ctx.documentNumber co przy generowaniu) i
+     * podaje go jako trzeci argument AtteItemsFormat.previewBody() —
+     * ta sama funkcja, co w email-draft-edit, inny marker do podziału.
+     *
+     * Brak dopasowania (operator ręcznie zmienił blok pozycji) →
+     * cała treść wraca jako czysty tekst, bez zgadywania.
+     *
+     * Temat NIE jest tu powtarzany — ma własny, zawsze widoczny
+     * wiersz nad blokiem treści; drugi raz byłby szumem.
+     */
+    function renderComposerPreview() {
+        try {
+            const $previewBody = $('#send-email-body-preview');
+            if ($previewBody.length === 0) return;   // markup jeszcze nie wstrzyknięty
+            // Normalizacja CRLF → LF: niektóre przeglądarki / schowek mogą
+            // wstawić \r\n do textarei, a MARKER_END z wrapItems() ma zawsze
+            // same \n — bez normalizacji indexOf nie trafi.
+            const body = ($('#send-email-body').val() || '').toString().replace(/\r\n?/g, '\n');
+            // Pusta treść (szablon nie wypełnił nic) — zamiast pustej,
+            // niczego nie mówiącej płaszczyzny podpowiadamy, co zrobić.
+            if (body.trim() === '') {
+                $previewBody.html('<span class="send-composer-body-empty">'
+                    + 'Brak treści — kliknij, aby zacząć pisać.'
+                + '</span>');
+                return;
+            }
+            const d       = state.doc || {};
+            const ctx     = { documentNumber: d.number || (d.id ? '#' + d.id : '') };
+            // Edycje operatora w komórkach (5000→5500) muszą być widoczne
+            // w podglądzie — więc tabela pochodzi z TEJ SAMEJ ścieżki co
+            // „Kopiuj pozycje": parsujemy pipe-table z textarei. Fallback
+            // do kanonicznego state.doc.lines (gdy brak markerów albo
+            // parsowanie nie zwróciło żadnego wiersza) — wtedy preview
+            // pokazuje oryginał, ale schowek i tak kopiuje kanoniczny
+            // (patrz click.copyStep4 branch „items"). `headers` z parsera
+            // idą do htmlTable, więc zmiana „Price" na „Prices" też
+            // odbija się w podglądzie.
+            const fromBody = AtteItemsFormat.clipboardItemsFromBody(body, ctx);
+            const lines = (fromBody && fromBody.parsed)
+                ? fromBody.parsed
+                : (d.lines || []);
+            const itemsHtml = AtteItemsFormat.htmlTable(lines, ctx,
+                fromBody && fromBody.headers);
+            // Markery `<<<ATTE_ITEMS_TABLE>>>` / `<<<END_ATTE_ITEMS_TABLE>>>`
+            // otaczają tabelę w body — lokalizują jej pozycję. previewBodyMarked
+            // robi split na spanie między nimi i wkleja HTML w to samo miejsce.
+            // Brak markerów → escape całości + HTML na końcu.
+            $previewBody.html(AtteItemsFormat.previewBodyMarked(body, itemsHtml));
+        } catch (err) {
+            // Ciche przełknięcie — podgląd jest informacyjny; przy
+            // błędzie zostaje poprzednia zawartość (lub pusty DOM).
+        }
+    }
+
+    function refreshTplBadge() {
+        // Plakietka „bi-stars" żyje w nagłówku karty kompozytora, ale
+        // zmienia się przy każdym wyborze w pickerze — podmieniamy ją
+        // w miejscu, bez przerysowywania całej karty (to zamknęłoby
+        // rozwinięte karty niżej i zniszczyło picker w trakcie klikania).
+        const $titleEl = $('#send-composer-title');
+        if ($titleEl.length === 0) return;
+        $titleEl.find('#send-composer-tpl-badge').remove();
+        $titleEl.append(tplBadgeHtml());
+    }
+
+    /**
+     * Reakcja na zmianę pickera „Szablon wiadomości".
+     * `id` to id szablonu z katalogu. Wartość spoza katalogu (albo 0
+     * z degradacji pickera do zwykłego selecta) spada na PIERWSZY
+     * szablon — wbudowany domyślny nie jest już pozycją do wyboru,
+     * tylko wyjściem awaryjnym przy pustym katalogu.
+     */
+    function applyDraftPick(id) {
+        const drafts = (state.doc && state.doc.availableEmailDrafts) || [];
+        const hit = drafts.find(function (dr) { return dr.id === id; })
+                 || drafts[0]
+                 || null;
+
+        applySelectedDraft(hit);
+
+        // Ręczne edycje muszą odpaść: przypięta wersja operatora wygrywa
+        // nad wygenerowaną (patrz buildStep4ComposerHtml), więc bez tego
+        // wybór nowego szablonu nie zmieniłby nic w treści. Mówimy o tym
+        // wprost toastem, żeby utrata pracy nie była cicha.
+        const hadEdits = (state.emailSubjectEdited !== null || state.emailBodyEdited !== null);
+        state.emailSubjectEdited = null;
+        state.emailBodyEdited    = null;
+        $('#send-email-reset').addClass('is-hidden');
+
+        // Temat + treść z nowego szablonu. Podmieniamy wartości pól, a
+        // nie cały markup — przyciski „Kopiuj temat" / „Kopiuj treść
+        // wiadomości" i tak czytają .val() dopiero przy kliknięciu,
+        // więc kopiują aktualną wersję bez żadnej dodatkowej pracy.
+        $('#send-email-subject').val(buildEmailSubject());
+        $('#send-email-body').val(buildEmailBody());
+
+        refreshTplBadge();
+        renderComposerPreview();
+
+        if (hadEdits) {
+            flashCopyToast('Szablon podmieniony — ręczne zmiany nadpisane');
+        }
+    }
+
+    // ---- „Wstaw zmienną" — inserter wartości z dokumentu -----------
+    //
+    // MIRROR OF $edVarCatalog in
+    // public_html/components/Admin/Purchase/EmailDrafts/edit/email-draft-edit-view.php
+    // (tam to katalog TOKENÓW do wstawiania w szablon; tutaj katalog
+    // WARTOŚCI do wstawiania w gotową wiadomość). Ta sama lista nazw,
+    // te same etykiety, ta sama kolejność grup — operator, który zna
+    // edytor szablonów, znajdzie tu dokładnie to samo menu.
+    //
+    // Projekt nie ma systemu modułów, a PHP-owy katalog nie jest
+    // eksportowany do JS — duplikat 12 wierszy jest tańszy niż nowy
+    // endpoint albo wstrzykiwanie JSON-a do markupu. Przy dodaniu
+    // zmiennej trzeba ruszyć TRZY miejsca: $edVarCatalog, ten katalog
+    // i buildTemplateVars() wyżej.
+    //
+    // {vendor_address} celowo nie ma tu wpisu — loader kroku 4 nie
+    // zwraca adresu dostawcy, więc buildTemplateVars() go nie zna.
+    const STEP4_VAR_CATALOG = [
+        { group: 'Dostawca', name: 'vendor_name',            label: 'Nazwa dostawcy' },
+        { group: 'Dostawca', name: 'vendor_contact_name',    label: 'Imię i nazwisko osoby kontaktowej' },
+        { group: 'Dostawca', name: 'vendor_contact_email',   label: 'E-mail osoby kontaktowej' },
+        { group: 'Dokument', name: 'document_type',          label: 'Typ dokumentu' },
+        { group: 'Dokument', name: 'document_number',        label: 'Numer dokumentu' },
+        { group: 'Dokument', name: 'document_comment',       label: 'Komentarz z nagłówka dokumentu' },
+        { group: 'Daty',     name: 'expected_reply_date',    label: 'Oczekiwany termin odpowiedzi' },
+        { group: 'Daty',     name: 'expected_delivery_date', label: 'Oczekiwany termin dostawy' },
+        { group: 'Daty',     name: 'created_at',             label: 'Data utworzenia dokumentu' },
+        { group: 'Pozycje',  name: 'items',                  label: 'Lista pozycji — blok wieloliniowy' },
+        { group: 'Pozycje',  name: 'item_count',             label: 'Liczba pozycji' },
+        { group: 'Meta',     name: 'created_by_name',        label: 'Osoba, która utworzyła dokument' },
+    ];
+
+    /** Bieżąca wartość zmiennej jako string; '' gdy nieznana/pusta. */
+    function step4VarValue(vars, name) {
+        if (!Object.prototype.hasOwnProperty.call(vars, name)) return '';
+        const v = vars[name];
+        return (v === null || v === undefined) ? '' : String(v);
+    }
+
+    /**
+     * Jednoliniowy podgląd wartości do menu. Zwija białe znaki (blok
+     * {items} ma kilkanaście linii) i przycina do 40 znaków — menu ma
+     * podpowiadać, CO się wstawi, a nie pokazywać całą treść.
+     */
+    function step4VarPreview(value) {
+        const flat = String(value).replace(/\s+/g, ' ').trim();
+        return flat.length > 40 ? flat.slice(0, 39) + '…' : flat;
+    }
+
+    /**
+     * Wstawia `text` w miejscu kursora w polu $field (zaznaczenie
+     * zostaje podmienione). Bliźniak insertAtCursor() z
+     * email-draft-edit-view.js — tam wstawia token {zmienna}, tutaj
+     * jego rozwiniętą wartość.
+     *
+     * `asBlock` obsługuje {items}: blok wieloliniowy musi stanąć w
+     * osobnej linii, inaczej skleiłby się z akapitem, w który wpadł
+     * kursor.
+     *
+     * DOM-friendly: preferuje document.execCommand('insertText') — to
+     * jedyny sposób, żeby wstawka trafiła do NATURALNEGO undo stacku
+     * textarei. Prosty `$field.val(newValue)` (jQuery setter) NIM nie
+     * jest podpięty — Ctrl+Z po „Wstaw zmienną" cofał tylko ręczne
+     * znaki, ale nie samą wstawkę.
+     */
+    function insertAtCursor($field, text, asBlock) {
+        const el = $field.get(0);
+        if (!el) return;
+
+        // selectionStart/End przeżywają utratę fokusu w nowoczesnych
+        // przeglądarkach (Chrome/Edge/Firefox), więc pozycja kursora
+        // ustawiona przez ostatnie kliknięcie w textarea jest nadal
+        // znana — ale sam element fokusu nie ma, bo kliknięcie w
+        // przycisk „Wstaw zmienną" przeniosło go na button. execCommand
+        // wymaga fokusu na textarei, więc zawsze go przywracamy PRZED
+        // sprawdzeniem aktywnego elementu — inaczej wpadamy w gałąź
+        // fallback, która niszczy historię undo.
+        const hasSel = (typeof el.selectionStart === 'number'
+                     && typeof el.selectionEnd === 'number');
+        const value = el.value || '';
+        const start = hasSel ? el.selectionStart : value.length;
+        const end   = hasSel ? el.selectionEnd   : value.length;
+
+        let chunk = String(text);
+        if (asBlock) {
+            if (start > 0 && value.charAt(start - 1) !== '\n') chunk = '\n' + chunk;
+            if (end < value.length && value.charAt(end) !== '\n') chunk = chunk + '\n';
+        }
+
+        // Przywróć fokus i selekcję — execCommand musi działać na aktywnym
+        // elemencie z poprawną pozycją kursora.
+        if (document.activeElement !== el) {
+            el.focus();
+        }
+        if (hasSel) {
+            el.setSelectionRange(start, end);
+        }
+
+        // Ścieżka „undo-friendly": execCommand('insertText') jest jedynym
+        // sposobem, żeby wstawka trafiła do NATURALNEGO undo stacku
+        // textarei. Zwykły `el.value = …` tego nie robi — Ctrl+Z cofa
+        // tylko ręczne znaki, ale nie samą wstawkę.
+        if (document.execCommand) {
+            const ok = document.execCommand('insertText', false, chunk);
+            if (ok) return;     // execCommand sam emituje `input`
+        }
+
+        // Fallback (przeglądarki bez execCommand): ręczny splice + trigger.
+        // Niszczy undo, ale zachowuje treść i `input`.
+        el.value = value.slice(0, start) + chunk + value.slice(end);
+        const caret = start + chunk.length;
+        if (hasSel) { el.setSelectionRange(caret, caret); }
+        // `input` ręcznie — bezpośrednie ustawienie el.value go nie
+        // odpala, a od niego zależy przypięcie edycji operatora
+        // (state.emailBodyEdited) i pokazanie przycisku „Przywróć
+        // szablon".
+        $field.trigger('input');
+    }
+
+    /**
+     * Pasek nad treścią wiadomości: ikona kopiuj + etykieta „Treść" +
+     * (z drugiej strony) rozwijane menu „Wstaw zmienną".
+     *
+     * Ikona kopiuj na lewej krawędzi lustrznie odbija układ wierszy
+     * „Do" i „Temat" — wszystkie trzy tworzą jedną kolumnę na
+     * krawędzi karty. Payload = buildComposerBodyText(), ten sam co ikona
+     * przy „Do" w poprzednim wcieleniu i przycisk w stopce:
+     * redundancja dla odkrywalności, jeden payload dla wszystkich
+     * trzech kopii.
+     *
+     * Menu po prawej pokazuje ROZWIĄZANE wartości, nie tokeny — w
+     * kroku 4 nie ma już czego parsować, wiadomość jest gotowa. Token
+     * w monospace zostaje tylko jako etykieta, żeby operator znający
+     * edytor szablonów rozpoznał wiersz po tej samej nazwie.
+     *
+     * Pusta wartość (np. brak komentarza) zostaje w menu jako pozycja
+     * wyłączona z dopiskiem „(brak)" — zniknięcie wiersza kazałoby
+     * operatorowi zgadywać, czy zmienna nie istnieje, czy tylko nie ma
+     * wartości.
+     */
+    function buildComposerBodyBarHtml() {
+        const vars = buildTemplateVars(state.doc);
+
+        let itemsHtml = '';
+        let lastGroup = null;
+        STEP4_VAR_CATALOG.forEach(function (v) {
+            if (v.group !== lastGroup) {
+                if (lastGroup !== null) itemsHtml += '<div class="dropdown-divider"></div>';
+                itemsHtml += '<h6 class="dropdown-header send-var-group">'
+                    + escapeHtml(v.group)
+                + '</h6>';
+                lastGroup = v.group;
+            }
+            const value   = step4VarValue(vars, v.name);
+            const isEmpty = value.trim() === '';
+            const preview = isEmpty ? '(brak)' : step4VarPreview(value);
+            const tip     = isEmpty
+                ? v.label + ' — brak wartości w tym dokumencie'
+                : v.label + ' — wstawi: ' + step4VarPreview(value);
+
+            itemsHtml += '<button type="button" role="menuitem"'
+                + ' class="dropdown-item send-var-item' + (isEmpty ? ' disabled' : '') + '"'
+                + (isEmpty ? ' disabled' : ' data-var-name="' + escapeHtml(v.name) + '"')
+                + ' title="' + escapeHtml(tip) + '">'
+                + '<span class="send-var-line">'
+                    + '<code class="send-var-token">{' + escapeHtml(v.name) + '}</code>'
+                    + '<span class="send-var-label">' + escapeHtml(v.label) + '</span>'
+                + '</span>'
+                + '<span class="send-var-preview' + (isEmpty ? ' is-empty' : '') + '">'
+                    + escapeHtml(preview)
+                + '</span>'
+            + '</button>';
+        });
+
+        // Etykieta to <span>, nie <label for>: textarea bywa ukryta
+        // (tryb „Treść"), a etykieta opisuje CAŁY blok treści — i
+        // podgląd, i edytor. Textarea ma własne aria-label.
+        //
+        // „Wstaw zmienną" ma data-show-in="edit" — wstawia w miejscu
+        // kursora w textarei, więc w trybie podglądu nie ma czego
+        // robić. Ukrywa je CSS po data-view na rodzicu, bez JS.
+        return '<div class="send-composer-body-bar">'
+            + copyBtnHtml({ full: true, label: 'Kopiuj treść wiadomości',
+                            title: 'Kopiuj treść wiadomości do schowka',
+                            extraClass: 'send-composer-row-copy mr-2' })
+            + '<span class="send-composer-key send-composer-body-label">Treść</span>'
+            + '<div class="send-composer-body-tools">'
+                + '<div class="dropdown send-var-dropdown" data-show-in="edit">'
+                    + '<button type="button" class="btn btn-outline-secondary btn-sm send-var-btn"'
+                        + ' id="send-var-insert-btn" data-toggle="dropdown"'
+                        + ' aria-haspopup="true" aria-expanded="false"'
+                        + ' title="Wstaw wartość zmiennej w miejscu kursora"'
+                        + ' aria-label="Wstaw zmienną z dokumentu">'
+                        + '<i class="bi bi-braces" aria-hidden="true"></i> Wstaw zmienną'
+                    + '</button>'
+                    + '<div class="dropdown-menu dropdown-menu-right send-var-dropdown-menu"'
+                        + ' role="menu" aria-labelledby="send-var-insert-btn">'
+                        + itemsHtml
+                    + '</div>'
+                + '</div>'
+                + composerToggleBtnHtml(state.composerView)
+            + '</div>'
+        + '</div>';
+    }
+
+    /**
+     * Jeden przycisk w obie strony — nie zakładka, nie para radio.
+     * `view` to widok AKTUALNY; `data-target-view` mówi, gdzie
+     * przycisk zabierze po kliknięciu.
+     *
+     *   podgląd → „Edytuj"  (ołówek)  → włącza textareę
+     *   edycja  → „Gotowe"  (fajka)   → wraca do podglądu
+     */
+    function composerToggleBtnHtml(view) {
+        const toEdit = (view !== 'edit');
+        return '<button type="button" class="btn btn-sm btn-outline-secondary send-composer-toggle"'
+            + ' data-target-view="' + (toEdit ? 'edit' : 'preview') + '"'
+            + ' title="' + (toEdit
+                ? 'Edytuj treść wiadomości'
+                : 'Zakończ edycję i wróć do widoku wiadomości') + '">'
+            + (toEdit
+                ? '<i class="bi bi-pencil" aria-hidden="true"></i> Edytuj'
+                : '<i class="bi bi-check-lg" aria-hidden="true"></i> Gotowe')
+        + '</button>';
+    }
+
+    /**
+     * Przestawia kompozytor między „Treść" (podgląd) i edycją.
+     * Atrybut data-view na .send-composer-body jest JEDYNYM przełącznikiem
+     * widoczności — reszta to selektory [data-show-in] w CSS.
+     */
+    function setComposerView(view) {
+        const next = (view === 'edit') ? 'edit' : 'preview';
+        state.composerView = next;
+        const $wrap = $('#send-step-4-body .send-composer-body');
+        if ($wrap.length === 0) return;
+        $wrap.attr('data-view', next);
+        $wrap.find('.send-composer-toggle').replaceWith(composerToggleBtnHtml(next));
+        if (next === 'edit') {
+            // Kursor od razu w treści — kliknięcie w podgląd ma być
+            // jednym ruchem do pisania, bez drugiego kliknięcia.
+            $('#send-email-body').trigger('focus');
+        } else {
+            // Powrót do podglądu przerysowuje treść, żeby zmiany z
+            // textarei były widoczne także wtedy, gdy `input` nie
+            // zdążył odpalić (wklejenie przez menu kontekstowe itp.).
+            renderComposerPreview();
+        }
+    }
+
+    /**
+     * Buduje payload CAŁEGO BODY dla przycisków kopiujących treść maila
+     * („Kopiuj treść maila" w stopce + ikona przy wierszu „Treść").
+     * Zwraca OBIE wersje:
+     *   - `html` — body z `<table>` inline (zamiast pipe-text między
+     *     markerami). Gmail renderuje jako prawdziwą tabelę.
+     *   - `plainText` — body z pipe-text (markery usunięte). Fallback
+     *     dla przeglądarki bez ClipboardItem / dla paste-as-plain-text.
+     *
+     * Edycje operatora w komórkach tabeli zachowane w obu wersjach:
+     * parser pipe-table → htmlTable() bierze aktualną zawartość textarei.
+     */
+    function buildComposerBodyPayload() {
+        const body = ($('#send-email-body').val() || '').toString();
+        const ctx  = { documentNumber: state.doc ? (state.doc.number || (state.doc.id ? '#' + state.doc.id : '')) : '' };
+        return AtteItemsFormat.clipboardBodyFromText(body, ctx);
+    }
+
+    /**
+     * Wspólny handler dla „kopiuj treść maila" — wywoływany przez stopkę
+     * (`#send-copy-mail-btn`) i przez ikonę `.send-copy-btn` z
+     * `data-copy-full="1"`. Woła ClipboardItem z text/html + text/plain,
+     * a przeglądarki bez wsparcia dostają sam plain text przez
+     * `copyToClipboard()`.
+     */
+    async function copyBodyAsMail($btn) {
+        const payload = buildComposerBodyPayload();
+        if (navigator.clipboard && window.ClipboardItem) {
+            try {
+                await navigator.clipboard.write([
+                    new ClipboardItem({
+                        'text/html':   new Blob([payload.html],       { type: 'text/html' }),
+                        'text/plain':  new Blob([payload.plainText],  { type: 'text/plain' }),
+                    }),
+                ]);
+                flashCopyButton($btn, 'bi bi-clipboard-check');
+                return;
+            } catch (err) {
+                // Fallthrough do copyToClipboard.
+            }
+        }
+        copyToClipboard(payload.plainText);
+        flashCopyButton($btn, 'bi bi-clipboard-check');
+    }
+
+    /** Plain-text fallback dla „Kopiuj treść maila" — używane też przez
+     * inne ścieżki, które nie chcą schowka HTML (np. „Otwórz w mailu"). */
+    function buildComposerBodyText() {
+        return buildComposerBodyPayload().plainText;
+    }
+
+    function renderStep4() {
+        const d = state.doc;
         const isRespondMode = (DOC_TYPE === 'rfq' && d.state === 'sent');
 
         // Trzy wiersze recapa. W trybie respond trzeci wiersz jest
@@ -1062,7 +2331,8 @@ function renderStep4() {
                                 + escapeHtml(s.email)
                             + '</a>'
                             + '<button type="button" class="send-copy-btn" data-copy="' + escapeHtml(s.email) + '" '
-                                + 'title="Skopiuj email"><i class="bi bi-clipboard"></i></button>'
+                                + 'title="Kopiuj adres e-mail" aria-label="Kopiuj adres e-mail">'
+                                + '<i class="bi bi-clipboard" aria-hidden="true"></i></button>'
                             + '</div>'
                         );
                     }
@@ -1074,7 +2344,8 @@ function renderStep4() {
                                 + escapeHtml(s.phone)
                             + '</a>'
                             + '<button type="button" class="send-copy-btn" data-copy="' + escapeHtml(s.phone) + '" '
-                                + 'title="Skopiuj telefon"><i class="bi bi-clipboard"></i></button>'
+                                + 'title="Kopiuj numer telefonu" aria-label="Kopiuj numer telefonu">'
+                                + '<i class="bi bi-clipboard" aria-hidden="true"></i></button>'
                             + '</div>'
                         );
                     }
@@ -1086,7 +2357,8 @@ function renderStep4() {
                                 + escapeHtml(s.comment)
                             + '</span>'
                             + '<button type="button" class="send-copy-btn" data-copy="' + escapeHtml(s.comment) + '" '
-                                + 'title="Skopiuj komentarz"><i class="bi bi-clipboard"></i></button>'
+                                + 'title="Kopiuj komentarz kontaktu" aria-label="Kopiuj komentarz kontaktu">'
+                                + '<i class="bi bi-clipboard" aria-hidden="true"></i></button>'
                             + '</div>'
                         );
                     }
@@ -1104,16 +2376,21 @@ function renderStep4() {
                 + '<span class="text-danger">brak</span>'
               + '</span>';
 
-        const recapHtml =
-            '<div class="summary-recap mb-3">'
-            + '<div class="summary-recap-row">'
-                + '<span class="summary-recap-label">Dokument:</span>'
-                + '<span class="summary-recap-value">'
-                    + '<span class="summary-recap-value-large">'
-                        + escapeHtml(typeLabel) + ' ' + escapeHtml(d.number || ('#' + d.id))
-                    + '</span>'
-                + '</span>'
-            + '</div>'
+        // Parametry wysyłki. Wiersz „Dokument" wypadł — numer i typ
+        // pokazuje teraz karta „Podsumowanie…", a powtarzanie go tutaj
+        // tylko rozmywało hierarchię.
+        //
+        // Karta jest zwinięta domyślnie: to rekapitulacja decyzji z
+        // kroków 1-3, które operator właśnie podjął. Liczbę adresatów
+        // (najważniejszą wartość) pokazujemy w nagłówku, więc bez
+        // rozwijania też widać, czy jest do kogo wysyłać.
+        const recapMeta = (supplierCount > 0)
+            ? ' <span class="send-review-count">' + supplierCount + '</span>'
+            : ' <span class="send-review-count send-review-count-danger">brak</span>';
+
+        const recapBodyHtml =
+            '<div class="card-body send-review-card-body">'
+            + '<div class="summary-recap">'
             + '<div class="summary-recap-row summary-recap-row-contacts">'
                 + '<span class="summary-recap-label">Wysyłane do:</span>'
                 + contactsCell
@@ -1132,7 +2409,17 @@ function renderStep4() {
                         + (state.generatePdf ? 'Tak — placeholder' : 'Nie')
                     + '</span>'
                   + '</div>')
+            + '</div>'
             + '</div>';
+
+        const recapHtml = step4CollapsibleCardHtml({
+            id:    'send-step-4-params-body',
+            icon:  'bi-send',
+            title: 'Parametry wysyłki',
+            meta:  recapMeta,
+            open:  false,
+            bodyHtml: recapBodyHtml
+        });
 
         // Brak kontaktów → blokuj commit + alert z CTA do kroku 2.
         const noSuppliersHtml = (supplierCount === 0)
@@ -1154,23 +2441,213 @@ function renderStep4() {
               + '</div>'
             : '';
 
-        $('#send-step-4-body').html(recapHtml + backdateHtml + noSuppliersHtml);
+        // Pozycje trzymamy w buforze jako obiekt { plainText, htmlTable } —
+        // handler click.copyStep4 używa obu wariantów przez ClipboardItem
+        // (Gmail dostaje tabelę HTML, plain-text jest fallbackiem dla
+        // przeglądarek bez ClipboardItem lub bez HTTPS).
+        step4Clip.items = {
+            plainText: AtteItemsFormat.plainText(
+                d.lines || [],
+                { documentNumber: d.number || (d.id ? '#' + d.id : '') }
+            ),
+            htmlTable: AtteItemsFormat.htmlTable(
+                d.lines || [],
+                { documentNumber: d.number || (d.id ? '#' + d.id : '') }
+            ),
+        };
 
-        // Step 4: copy buttons dla każdego pola kontaktu. Delegujemy
-        // pod #send-step-4-body bo markup jest właśnie wstrzyknięty.
-        $('#send-step-4-body').off('click.copyStep4').on('click.copyStep4', '.send-copy-btn', function (e) {
-            e.preventDefault();
-            const $btn = $(this);
-            const text = ($btn.attr('data-copy') || '').toString();
-            if (!text) return;
-            copyToClipboard(text);
-            flashCopyButton($btn);
-            flashCopyToast(text);
-        });
+        // Hierarchia panelu: blokery → wiadomość → podsumowanie →
+        // parametry wysyłki → pozycje.
+        //
+        // Kompozytor idzie PIERWSZY, bo w kroku 4 to on jest realną
+        // pracą: operator redaguje treść, kopiuje ją i dopiero potem
+        // klika „Wyślij". Podsumowanie schodzi pod niego — to kontrola
+        // („czy to na pewno ten dokument?"), a nie czynność.
+        // „Parametry wysyłki" i „Pozycje" zostają zwiniętymi
+        // drilldownami: dane weryfikowane raz, a wcześniej rozpychały
+        // kompozytor na drugi ekran (tabela 30 pozycji potrafiła zająć
+        // całą wysokość okna).
+        //
+        // Sticky action bar zostaje poza tym kontenerem (jest w
+        // PHP-owym szkielecie kroku 4).
+        const $body = $('#send-step-4-body');
+        $body.html(
+            noSuppliersHtml
+            + backdateHtml
+            + buildStep4ComposerHtml()
+            + buildStep4SummaryHtml()
+            + recapHtml
+            + buildStep4ItemsHtml()
+        );
+
+        // Widok „Treść" wypełniamy od razu po wstrzyknięciu markupu —
+        // to on jest domyślnie na wierzchu, więc musi mieć zawartość
+        // przed pierwszym malowaniem, a nie po pierwszej edycji.
+        renderComposerPreview();
+
+        // Chevrony zwijanych kart („Parametry wysyłki", „Pozycje").
+        wireStep4Chevrons($body);
+
+        // ---- Picker szablonu wiadomości ---------------------------
+        // Init po wstrzyknięciu markupu — plugin musi zobaczyć <select>
+        // w drzewie, żeby policzyć szerokość dla data-width="100%".
+        // size: 8 nie pozwala rosnącemu katalogowi zasłonić kompozytora;
+        // liveSearch — ten sam wybór co picker preferencji na
+        // /admin/purchase/vendors/edit (vendor-edit-view.js:399).
+        const $draftPicker = $('#send-draft-picker');
+        if ($draftPicker.length > 0 && typeof $draftPicker.selectpicker === 'function') {
+            $draftPicker.selectpicker({
+                style: 'btn-light border',
+                size: 8,
+                liveSearch: true,
+                liveSearchPlaceholder: 'Szukaj szablonu…',
+                noneResultsText: 'Brak szablonu pasującego do {0}',
+            });
+        }
+
+        // Nasłuch na natywnym `change`, nie na `changed.bs.select` —
+        // bootstrap-select i tak wyzwala `change` na oryginalnym
+        // <select>, a dzięki temu picker działa też, gdyby plugin się
+        // nie wczytał (degraduje do zwykłego selecta).
+        $body.off('change.draftPicker')
+            .on('change.draftPicker', '#send-draft-picker', function () {
+                applyDraftPick(parseInt($(this).val(), 10) || 0);
+            });
+
+        // ---- Kopiowanie (jedyny feedback: swap ikony) --------------
+        // Delegujemy pod #send-step-4-body, bo markup jest właśnie
+        // wstrzyknięty. Pięć kanałów wartości — patrz copyBtnHtml().
+        $body.off('click.copyStep4')
+            .on('click.copyStep4', '.send-copy-btn, .send-copy-block-btn', async function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                const $btn   = $(this);
+                if ($btn.prop('disabled')) return;   // ikona wyłączona (brak odbiorców itp.)
+                const target     = $btn.attr('data-copy-target');
+                const key        = $btn.attr('data-copy-key');
+                const full       = $btn.attr('data-copy-full');
+                const recipients = $btn.attr('data-copy-recipients');
+                // Specjalny kanał „items": schowek dostaje zarówno HTML
+                // (Gmail renderuje tabelę), jak i plainText (fallback).
+                // ClipboardItem (Chrome 76+, FF 127+, Safari 13.1+) —
+                // wcześniejsze przeglądarki lub brak HTTPS dostają sam
+                // tekst przez copyToClipboard().
+                //
+                // WAŻNE: payload NIE pochodzi ze step4Clip.items (który
+                // jest kanoniczny i nie odzwierciedla edycji operatora
+                // w textarei). Czyta AKTUALNĄ treść textarei, parsuje
+                // pipe-table między markerami <<<ATTE_ITEMS_TABLE>>>
+                // i renderuje HTML z tego, co operator siedzi w polu
+                // edycji. Fallback (markery usunięte / parsowanie
+                // nieudane) — kanoniczny step4Clip.items.
+                if (key === 'items' && step4Clip.items && typeof step4Clip.items === 'object') {
+                    const body = ($('#send-email-body').val() || '').toString().replace(/\r\n?/g, '\n');
+                    const ctx  = { documentNumber: state.doc ? (state.doc.number || (state.doc.id ? '#' + state.doc.id : '')) : '' };
+                    const fromBody = AtteItemsFormat.clipboardItemsFromBody(body, ctx);
+                    const payload  = fromBody || step4Clip.items;
+                    const html = payload.htmlTable || '';
+                    const text = payload.plainText || '';
+                    if (navigator.clipboard && window.ClipboardItem) {
+                        try {
+                            await navigator.clipboard.write([
+                                new ClipboardItem({
+                                    'text/html': new Blob([html], { type: 'text/html' }),
+                                    'text/plain': new Blob([text], { type: 'text/plain' }),
+                                }),
+                            ]);
+                            flashCopyButton($btn, 'bi bi-clipboard-check');
+                            return;
+                        } catch (err) {
+                            // fall through do copyToClipboard(text)
+                        }
+                    }
+                    copyToClipboard(text);
+                    // Bez flashCopyToast — w kroku 4 przycisków „kopiuj"
+                    // są dziesiątki, toast byłby spamem. Sam swap ikony.
+                    flashCopyButton($btn, 'bi bi-clipboard-check');
+                    return;
+                }
+                let text = '';
+                if (full) {
+                    // Ikona „kopiuj" przy wierszu „Treść" — ten sam
+                    // ClipboardItem HTML flow co stopka, żeby Gmail też
+                    // dostał tabelę zamiast pipe-text.
+                    copyBodyAsMail($btn);
+                    return;
+                }
+                else if (recipients)      text = step4SelectedEmails().join(', ');
+                else if (target)          text = ($(target).val() || '').toString();
+                else if (key)             text = (step4Clip[key] || '').toString();
+                else                      text = ($btn.attr('data-copy') || '').toString();
+                if (text === '') return;
+                copyToClipboard(text);
+                // Bez flashCopyToast — w kroku 4 przycisków „kopiuj"
+                // są dziesiątki, toast byłby spamem. Sam swap ikony.
+                flashCopyButton($btn, 'bi bi-clipboard-check');
+            });
+
+        // ---- Kompozytor wiadomości --------------------------------
+        // Każda edycja treści „przypina" wersję operatora w state, żeby
+        // przetrwała ponowny render panelu; „Przywróć szablon" czyści
+        // przypięcie i renderuje krok 4 od zera.
+        $body.off('input.composer')
+            .on('input.composer', '#send-email-body', function () {
+                state.emailBodyEdited = ($(this).val() || '').toString();
+                $('#send-email-reset').removeClass('is-hidden');
+                renderComposerPreview();
+            });
+        // ---- Przełącznik „Treść" ↔ edycja -------------------------
+        // Jedyna droga do edycji: przycisk „Edytuj" / „Gotowe". Klik w
+        // sam podgląd jest celowo ignorowany — operator czyta wiadomość
+        // i klika w losowe miejsca tekstu, licząc na zaznaczenie, a nie
+        // na przeskok do edycji.
+        $body.off('click.composerToggle')
+            .on('click.composerToggle', '.send-composer-toggle', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                setComposerView($(this).attr('data-target-view'));
+            });
+
+        $body.off('click.composerReset')
+            .on('click.composerReset', '#send-email-reset', function (e) {
+                e.preventDefault();
+                state.emailSubjectEdited = null;
+                state.emailBodyEdited    = null;
+                renderStep4();
+            });
+
+        // „Kopiuj treść maila" w stopce — własny handler, bo to
+        // btn-primary, a nie ikona .send-copy-btn. Używa copyBodyAsMail
+        // (ClipboardItem z text/html + text/plain) — Gmail renderuje
+        // tabelę zamiast surowego pipe-text.
+        $body.off('click.copyMail')
+            .on('click.copyMail', '#send-copy-mail-btn', function (e) {
+                e.preventDefault();
+                copyBodyAsMail($(this));
+            });
+
+        // ---- „Wstaw zmienną" --------------------------------------
+        // Wstawiamy WARTOŚĆ, nie token — w kroku 4 wiadomość jest już
+        // rozwiązana, więc {vendor_name} w treści zostałby literałem.
+        // Wartości czytamy przy kliknięciu, nie przy renderze: operator
+        // mógł w międzyczasie wrócić do kroku 2 i zmienić kontakty.
+        //
+        // Dropdown zamyka sam Bootstrap (globalny listener na document),
+        // więc nie ma tu stopPropagation ani ręcznego .dropdown('hide').
+        $body.off('click.varInsert')
+            .on('click.varInsert', '.send-var-item', function (e) {
+                e.preventDefault();
+                const name = $(this).attr('data-var-name');
+                if (!name) return;                       // pozycja „(brak)"
+                const text = step4VarValue(buildTemplateVars(state.doc), name);
+                if (text === '') return;
+                // Blok wieloliniowy ({items}) dostaje własne linie.
+                insertAtCursor($('#send-email-body'), text, text.indexOf('\n') !== -1);
+            });
 
         // Włącz / wyłącz commit + reakcja na „wróć do kroku 2".
         $commitBtn.prop('disabled', supplierCount === 0 || state.committing);
-        $('#send-step-4-body').find('[data-go]').on('click', function () {
+        $body.find('[data-go]').on('click', function () {
             const go = parseInt($(this).attr('data-go'), 10);
             if (go >= 1 && go <= 4) setStep(go);
         });

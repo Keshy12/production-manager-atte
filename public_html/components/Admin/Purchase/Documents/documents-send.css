@@ -463,6 +463,814 @@
     color: #007bff;
 }
 
+/* --- Step 4: powierzchnia „przejrzyj i wyślij" -------------------
+ *
+ * Krok 4 celowo jest ciaśniejszy i cichszy niż kroki 1-3: to ekran
+ * przeglądania, nie edycji. Stąd mniejszy base font, chłodniejsze
+ * nagłówki kart i brak niebieskich akcentów poza wartościami, które
+ * naprawdę trzeba złapać wzrokiem.
+ *
+ * Kolejność bloków (renderowana przez renderStep4 w documents-send.js):
+ *   1. „Podsumowanie…"      (.send-review-card, otwarte)
+ *   2. „Wiadomość…"         (.send-composer, otwarte)
+ *   3. „Parametry wysyłki"  (.send-review-card-collapsible, zwinięte)
+ *   4. „Pozycje"            (.send-review-card-collapsible, zwinięte)
+ *
+ * Pierwsze dwie karty to powierzchnia pracy, dwie kolejne to
+ * drilldowny — stąd podział na karty statyczne i zwijane.
+ */
+
+#send-wizard-root #send-step-4-body.send-review {
+    padding: .85rem;
+    font-size: .925rem;
+}
+
+/* Karta sekcji. Nagłówek jasnoszary — nadrzędny
+   `.send-step-card-final .card-header` (zielony) dotyczy tylko karty
+   całego kroku, nie kart w środku. */
+#send-wizard-root #send-step-4-body .send-review-card {
+    border-color: #e3e6ea;
+    box-shadow: none;
+}
+#send-wizard-root .send-step-card-final .send-review-card-header {
+    background-color: #f6f7f9;
+    border-bottom: 1px solid #e3e6ea;
+    padding: .5rem .85rem;
+    font-weight: 600;
+    font-size: .875rem;
+    letter-spacing: .01em;
+    color: #495057;
+}
+#send-wizard-root #send-step-4-body .send-review-card-header .bi {
+    color: #868e96;
+    margin-right: .15rem;
+}
+#send-wizard-root #send-step-4-body .send-review-card-body {
+    padding: .85rem;
+}
+#send-wizard-root #send-step-4-body .send-review-count {
+    display: inline-block;
+    min-width: 1.5rem;
+    padding: 0 .4rem;
+    border-radius: .75rem;
+    background-color: #e3e6ea;
+    color: #495057;
+    font-size: .75rem;
+    line-height: 1.25rem;
+    text-align: center;
+}
+/* Plakietka „brak" w nagłówku „Parametry wysyłki" — zero adresatów
+   blokuje commit, więc musi krzyczeć także przy zwiniętej karcie. */
+#send-wizard-root #send-step-4-body .send-review-count-danger {
+    background-color: #f8d7da;
+    color: #a3242f;
+    font-weight: 600;
+}
+
+/* --- Step 4: karty zwijane („Parametry wysyłki", „Pozycje") ------
+ *
+ * Nagłówek to <div> (flex row) z <button>em toggle w środku, a nie
+ * <button class="card-header">, bo karta „Pozycje" trzyma w nagłówku
+ * osobny przycisk „Kopiuj pozycje" — przycisk w przycisku jest
+ * niepoprawnym HTML-em. Padding zjeżdża z nagłówka na sam toggle,
+ * żeby klikalny był cały pasek, nie tylko tekst.
+ */
+#send-wizard-root .send-step-card-final .send-review-card-headrow {
+    display: flex;
+    align-items: center;
+    padding: 0;
+    /* Tło hoveru toggle'a przycinamy promieniem nagłówka, żeby nie
+       wystawało poza zaokrąglony górny róg karty. */
+    overflow: hidden;
+}
+/* Zwinięta karta to SAM nagłówek: jego dolna krawędź stykałaby się z
+   krawędzią karty i dawała podwójną linię. `is-open` dokłada ją z
+   powrotem — klasę przestawia wireStep4Chevrons() razem z chevronem. */
+#send-wizard-root #send-step-4-body .send-review-card-collapsible .send-review-card-headrow {
+    border-bottom-color: transparent;
+    transition: border-bottom-color .15s ease;
+}
+#send-wizard-root #send-step-4-body .send-review-card-collapsible .send-review-card-headrow.is-open {
+    border-bottom-color: #e3e6ea;
+}
+#send-wizard-root #send-step-4-body .send-review-card-toggle {
+    display: flex;
+    align-items: center;
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: .5rem .85rem;
+    background: transparent;
+    border: 0;
+    border-radius: .25rem 0 0 0;
+    color: inherit;
+    font: inherit;
+    letter-spacing: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color .15s ease, color .15s ease;
+}
+#send-wizard-root #send-step-4-body .send-review-card-toggle:hover {
+    background-color: #eef0f3;
+    color: #212529;
+}
+#send-wizard-root #send-step-4-body .send-review-card-toggle:focus {
+    outline: none;
+    box-shadow: inset 0 0 0 .15rem rgba(0, 123, 255, .3);
+}
+#send-wizard-root #send-step-4-body .send-review-card-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+/* Chevron dociśnięty do prawej krawędzi toggle'a — przy karcie
+   „Pozycje" ląduje tuż przed „Kopiuj pozycje", co czyta się jako
+   jeden pasek narzędzi. */
+#send-wizard-root #send-step-4-body .send-review-chevron {
+    margin-left: auto;
+    padding-left: .75rem;
+    font-size: .8rem;
+}
+#send-wizard-root #send-step-4-body .send-review-card-tools {
+    flex: 0 0 auto;
+    padding: 0 .85rem 0 .25rem;
+}
+
+/* Podsumowanie: siatka faktów. auto-fit trzyma 2-4 kolumny zależnie od
+   szerokości, bez media queries i bez wartości breakpointowych. */
+#send-wizard-root #send-step-4-body .send-review-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    gap: .65rem 1.25rem;
+}
+#send-wizard-root #send-step-4-body .send-review-fact {
+    min-width: 0;
+}
+#send-wizard-root #send-step-4-body .send-review-fact-label {
+    display: block;
+    margin: 0 0 .1rem;
+    font-size: .725rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: #9aa0a6;
+}
+#send-wizard-root #send-step-4-body .send-review-fact-value {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: .15rem .35rem;
+    margin: 0;
+    color: #212529;
+    word-break: break-word;
+}
+#send-wizard-root #send-step-4-body .send-review-strong {
+    font-weight: 600;
+    font-size: 1.02rem;
+}
+#send-wizard-root #send-step-4-body .send-review-money {
+    display: block;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+#send-wizard-root #send-step-4-body .send-review-money-cur {
+    font-weight: 400;
+    font-size: .8rem;
+    color: #868e96;
+}
+#send-wizard-root #send-step-4-body .send-review-note {
+    display: flex;
+    align-items: flex-start;
+    gap: .4rem;
+    margin-top: .85rem;
+    padding-top: .65rem;
+    border-top: 1px dashed #e3e6ea;
+    font-size: .875rem;
+    font-style: italic;
+    color: #6c757d;
+}
+
+/* Parametry wysyłki — recapa bez własnego tła (opakowana już kartą). */
+#send-wizard-root #send-step-4-body .summary-recap {
+    background-color: transparent;
+    padding: 0;
+}
+
+/* --- Step 4: tabela pozycji -------------------------------------- */
+
+#send-wizard-root #send-step-4-body .send-items-table {
+    font-size: .875rem;
+}
+#send-wizard-root #send-step-4-body .send-items-table thead th {
+    background-color: #fbfbfc;
+    border-top: 0;
+    border-bottom: 1px solid #e3e6ea;
+    padding: .4rem .65rem;
+    font-size: .7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: #9aa0a6;
+    white-space: nowrap;
+}
+#send-wizard-root #send-step-4-body .send-items-table tbody td {
+    padding: .4rem .65rem;
+    border-top: 1px solid #f0f1f3;
+    vertical-align: top;
+}
+#send-wizard-root #send-step-4-body .send-items-table tbody tr:hover {
+    background-color: #f8f9fb;
+}
+#send-wizard-root #send-step-4-body .send-items-part-name {
+    display: block;
+    font-weight: 600;
+    color: #212529;
+}
+#send-wizard-root #send-step-4-body .send-items-part-desc,
+#send-wizard-root #send-step-4-body .send-items-producer {
+    display: block;
+    font-size: .8rem;
+    color: #868e96;
+}
+/* Komentarz z kartoteki części — siedzi w kolumnie „Część" pod opisem,
+   bo opisuje samą część, a nie pozycję dokumentu (kolumna „Komentarz"
+   zostaje dla komentarza pozycji). Wygląd jak .send-items-part-desc,
+   tylko z tagiem „kartoteka" i przyciskiem kopiowania. */
+#send-wizard-root #send-step-4-body .send-items-part-vpcomment {
+    margin-top: .1rem;
+    font-size: .8rem;
+    color: #868e96;
+    word-break: break-word;
+}
+/* Ikona-wskaźnik komentarza: nie kurczy się w flexie i trzyma tę samą
+   wysokość wiersza co muted tekst obok. */
+#send-wizard-root #send-step-4-body .send-items-comment-icon {
+    flex: 0 0 auto;
+    line-height: inherit;
+    color: #adb5bd;
+}
+
+#send-wizard-root #send-step-4-body .send-items-qty {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    white-space: nowrap;
+}
+#send-wizard-root #send-step-4-body .send-items-unit {
+    color: #6c757d;
+    white-space: nowrap;
+}
+#send-wizard-root #send-step-4-body .send-items-no-val {
+    padding: 0;
+    background: transparent;
+    color: #212529;
+    font-size: .85rem;
+    word-break: break-all;
+}
+#send-wizard-root #send-step-4-body .send-items-comment-text {
+    color: #495057;
+    word-break: break-word;
+}
+/* Wiersz „wartość + kopiuj" — przycisk stoi TUŻ przy wartości, nie na
+   końcu wiersza tabeli, bo to on jest tu główną akcją. */
+#send-wizard-root #send-step-4-body .send-items-copyrow {
+    display: flex;
+    align-items: flex-start;
+    gap: .2rem;
+}
+#send-wizard-root #send-step-4-body .send-items-copyrow + .send-items-copyrow {
+    margin-top: .15rem;
+}
+#send-wizard-root #send-step-4-body .send-items-secondary,
+#send-wizard-root #send-step-4-body .send-items-secondary .send-items-no-val,
+#send-wizard-root #send-step-4-body .send-items-secondary .send-items-comment-text {
+    font-size: .78rem;
+    color: #9aa0a6;
+}
+#send-wizard-root #send-step-4-body .send-items-tag {
+    flex: 0 0 auto;
+    padding: 0 .25rem;
+    border-radius: .15rem;
+    background-color: #eef0f2;
+    color: #868e96;
+    font-size: .65rem;
+    line-height: 1.15rem;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+}
+
+/* Ikony „kopiuj" w tabeli: przygaszone, ale ZAWSZE widoczne (żadnego
+   chowania pod menu ani opacity:0) — pełna siła na hover wiersza i na
+   focus klawiaturowy. */
+#send-wizard-root #send-step-4-body .send-items-table .send-copy-btn {
+    opacity: .4;
+    padding: 0 .2rem;
+    font-size: .875rem;
+    transition: opacity .12s ease, color .15s ease, background-color .15s ease;
+}
+#send-wizard-root #send-step-4-body .send-items-table tr:hover .send-copy-btn,
+#send-wizard-root #send-step-4-body .send-items-table .send-copy-btn:hover,
+#send-wizard-root #send-step-4-body .send-items-table .send-copy-btn:focus,
+#send-wizard-root #send-step-4-body .send-items-table .send-copy-btn.is-copied {
+    opacity: 1;
+}
+/* Urządzenia bez hovera nie mają jak „odsłonić" przycisku. */
+@media (hover: none) {
+    #send-wizard-root #send-step-4-body .send-items-table .send-copy-btn {
+        opacity: 1;
+    }
+}
+
+/* Widoczny focus dla ikon-przycisków (globalne `outline: none` przy
+   .send-copy-btn:focus wyłącza domyślny pierścień). */
+#send-wizard-root #send-step-4-body .send-copy-btn:focus,
+#send-wizard-root #send-step-4-body .send-copy-block-btn:focus,
+#send-wizard-root #send-step-4-body .send-composer-reset:focus {
+    outline: none;
+    box-shadow: 0 0 0 .15rem rgba(0, 123, 255, .35);
+}
+#send-wizard-root #send-step-4-body .send-copy-btn.is-copied {
+    color: #28a745;
+    background-color: rgba(40, 167, 69, .12);
+}
+
+/* Przycisk z etykietą („Kopiuj pozycje") — ten sam handler, inny ciężar
+   wizualny niż ikony w wierszach. */
+#send-wizard-root #send-step-4-body .send-copy-block-btn {
+    background-color: #fff;
+    border: 1px solid #ced4da;
+    border-radius: .2rem;
+    padding: .1rem .5rem;
+    color: #495057;
+    font-size: .775rem;
+    line-height: 1.5;
+    cursor: pointer;
+    transition: border-color .15s ease, color .15s ease, background-color .15s ease;
+}
+#send-wizard-root #send-step-4-body .send-copy-block-btn:hover {
+    border-color: #007bff;
+    color: #007bff;
+}
+#send-wizard-root #send-step-4-body .send-copy-block-btn.is-copied {
+    border-color: #28a745;
+    background-color: #eaf7ee;
+    color: #28a745;
+}
+
+/* --- Step 4: kompozytor wiadomości ------------------------------- */
+/* Blok ma czytać się jak szkic w kliencie poczty: pasek nagłówków
+   (Do / Temat) oddzielony linią od monospace'owej treści. */
+
+/* Znacznik „szablon dostawcy". Nadpisuje szary kolor ikon w nagłówku
+   karty (.send-review-card-header .bi), bo to jedyna ikona w tym
+   miejscu, która niesie informację, a nie tylko dekoruje tytuł. */
+#send-wizard-root #send-step-4-body .send-composer-tpl-badge {
+    color: #e0a800;
+    cursor: help;
+}
+/* Wariant dla szablonu wbudowanego: ta sama pozycja, wyciszony kolor.
+   Nie ma tu nic wyjątkowego do zasygnalizowania — plakietka tylko
+   odpowiada na pytanie „skąd ta treść?". */
+#send-wizard-root #send-step-4-body .send-composer-tpl-badge.is-builtin {
+    color: #adb5bd;
+}
+
+#send-wizard-root #send-step-4-body .send-composer-head {
+    padding: .5rem .85rem;
+    background-color: #fbfbfc;
+    border-bottom: 1px solid #e3e6ea;
+}
+#send-wizard-root #send-step-4-body .send-composer-field {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .2rem 0;
+}
+#send-wizard-root #send-step-4-body .send-composer-field + .send-composer-field {
+    border-top: 1px solid #edeef0;
+}
+/* Ikony „kopiuj" na lewej krawędzi wierszy „Do" i „Temat".
+   Ujemny margines wciąga je pod padding paska nagłówków, żeby optyczna
+   krawędź ikony stanęła w jednej linii z etykietą „Szablon wiadomości"
+   w pasku wyżej — sam .send-copy-btn ma .25rem własnego paddingu.
+   flex-shrink: 0, bo przy długiej liście adresatów wiersz „Do" zawija
+   się i bez tego ikona zostałaby zgnieciona do zera. */
+#send-wizard-root #send-step-4-body .send-composer-row-copy {
+    flex: 0 0 auto;
+    align-self: center;
+    margin-left: -.25rem;
+}
+/* Wyłączona ikona kopiuj (np. wiersz „Do" bez odbiorców z e-mailem)
+   nie ma reagować na hover — jej klik jest martwy, więc i podpowiedź
+   kolorystyczna byłaby myląca. Tooltip z wyjaśnieniem i tak wisi. */
+#send-wizard-root #send-step-4-body .send-composer-row-copy:disabled,
+#send-wizard-root #send-step-4-body .send-composer-row-copy[disabled] {
+    cursor: not-allowed;
+    opacity: .45;
+}
+#send-wizard-root #send-step-4-body .send-composer-row-copy:disabled:hover,
+#send-wizard-root #send-step-4-body .send-composer-row-copy[disabled]:hover {
+    color: #6c757d;
+    background-color: transparent;
+}
+#send-wizard-root #send-step-4-body .send-composer-key {
+    flex: 0 0 3.5rem;
+    margin: 0;
+    font-size: .7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: #9aa0a6;
+}
+#send-wizard-root #send-step-4-body .send-composer-to {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .25rem;
+    min-width: 0;
+    font-size: .85rem;
+}
+#send-wizard-root #send-step-4-body .send-composer-chip {
+    padding: .05rem .45rem;
+    border-radius: .75rem;
+    background-color: #e7f1ff;
+    color: #0b5ed7;
+    font-size: .78rem;
+    word-break: break-all;
+}
+/* Temat: pole readonly bez ramki — ma wyglądać jak wiersz nagłówka
+   maila, a nie jak formularz do wypełnienia. */
+#send-wizard-root #send-step-4-body .send-composer-subject {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0;
+    background: transparent;
+    border: 0;
+    color: #212529;
+    font-size: .95rem;
+    font-weight: 600;
+}
+#send-wizard-root #send-step-4-body .send-composer-subject:focus {
+    outline: none;
+}
+/* --- Step 4: picker „Szablon wiadomości" ------------------------
+ *
+ * Pasek nad nagłówkami maila (Do / Temat): to wybór, który zmienia
+ * WSZYSTKO poniżej, więc stoi najwyżej w karcie i ma białe tło,
+ * żeby odciąć się od szarego paska nagłówków.
+ */
+#send-wizard-root #send-step-4-body .send-composer-tplbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: .35rem .75rem;
+    padding: .5rem .85rem;
+    background-color: #fff;
+    border-bottom: 1px solid #e3e6ea;
+}
+/* Nadpisuje flex: 0 0 3.5rem z .send-composer-key — „Szablon
+   wiadomości" nie mieści się w szerokości etykiety „Do". */
+#send-wizard-root #send-step-4-body .send-composer-tpl-key {
+    flex: 0 0 auto;
+}
+/* Wymiarowany kontener pickera = także jego data-container.
+   min-width: 0 jest obowiązkowe: bez niego flex-item rozpycha się do
+   szerokości najdłuższej nazwy szablonu i łamie data-width="100%"
+   (patrz AGENTS.md, sekcja o bootstrap-select). */
+#send-wizard-root #send-step-4-body .send-composer-tpl-cell {
+    flex: 1 1 14rem;
+    min-width: 0;
+    max-width: 24rem;
+}
+#send-wizard-root #send-step-4-body .send-composer-tpl-cell .bootstrap-select {
+    min-width: 0;
+}
+/* Trigger pickera dopasowany do „cichej" typografii kroku 4 — bez
+   tego przycisk bootstrap-select jest o klasę większy niż wszystko
+   wokół i przeciąga na siebie uwagę. */
+#send-wizard-root #send-step-4-body .send-composer-tpl-cell .btn.dropdown-toggle {
+    padding: .15rem .5rem;
+    background-color: #fff;
+    color: #212529;
+    font-size: .8rem;
+    line-height: 1.6;
+}
+#send-wizard-root #send-step-4-body .send-composer-tpl-cell .dropdown-menu {
+    font-size: .8rem;
+}
+#send-wizard-root #send-step-4-body .send-composer-tpl-hint {
+    flex: 1 1 12rem;
+    font-size: .75rem;
+    color: #868e96;
+}
+/* Katalog bez szablonu dla tego typu dokumentu: pasek zamienia się
+   w komunikat. Ciepłe tło odcina go od białego paska z pickerem — to
+   stan do naprawienia w katalogu, a nie wybór operatora. */
+#send-wizard-root #send-step-4-body .send-composer-tplbar-empty {
+    background-color: #fff9e6;
+}
+#send-wizard-root #send-step-4-body .send-composer-tpl-empty {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: .78rem;
+    line-height: 1.5;
+    color: #856404;
+}
+#send-wizard-root #send-step-4-body .send-composer-tpl-empty .bi-exclamation-triangle {
+    color: #e0a800;
+}
+#send-wizard-root #send-step-4-body .send-composer-tpl-empty a {
+    font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: .74rem;
+    color: #856404;
+    text-decoration: underline;
+}
+#send-wizard-root #send-step-4-body .send-composer-tpl-empty a:hover {
+    color: #533f03;
+}
+
+/* --- Step 4: blok treści — dwa widoki, jeden naraz ---------------
+ *
+ * .send-composer-body trzyma cały blok: pasek nagłówka, widok „Treść"
+ * (wyrenderowana wiadomość) i textareę do edycji. Atrybut data-view
+ * jest JEDYNYM przełącznikiem — dwie reguły niżej zdejmują z widoku
+ * to, co do danego trybu nie należy, więc JS nie rusza żadnych styli
+ * ani klas, tylko przestawia jeden atrybut.
+ */
+#send-wizard-root #send-step-4-body .send-composer-body {
+    position: relative;
+}
+#send-wizard-root #send-step-4-body .send-composer-body[data-view="preview"] [data-show-in="edit"] {
+    display: none !important;
+}
+#send-wizard-root #send-step-4-body .send-composer-body[data-view="edit"] [data-show-in="preview"] {
+    display: none !important;
+}
+
+/* --- Step 4: pasek nad treścią + inserter zmiennych --------------
+ *
+ * Trzeci wiersz nagłówków maila (po „Do" i „Temat"), ale już na białym
+ * tle — należy do bloku treści, nie do szarego paska adresowego.
+ * Etykieta „Treść" jest <span>, nie <label for>: opisuje cały blok
+ * (podgląd + edytor), a textarea bywa ukryta i ma własne aria-label.
+ */
+#send-wizard-root #send-step-4-body .send-composer-body-bar {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .3rem .85rem;
+    background-color: #fff;
+    border-bottom: 1px solid #edeef0;
+}
+/* Narzędzia dociśnięte do prawej krawędzi — „Wstaw zmienną" i
+   „Edytuj / Gotowe" są narzędziami, nie treścią, więc nie zaczynają
+   wiersza. W trybie podglądu zostaje tu sam przełącznik. */
+#send-wizard-root #send-step-4-body .send-composer-body-tools {
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+    margin-left: auto;
+}
+#send-wizard-root #send-step-4-body .send-composer-toggle {
+    padding: .1rem .5rem;
+    font-size: .75rem;
+    line-height: 1.6;
+    border-color: #d3d8de;
+    color: #6c757d;
+    white-space: nowrap;
+}
+#send-wizard-root #send-step-4-body .send-composer-toggle:hover,
+#send-wizard-root #send-step-4-body .send-composer-toggle:focus {
+    background-color: #e7f1ff;
+    border-color: #9ec5fe;
+    color: #0b5ed7;
+}
+#send-wizard-root #send-step-4-body .send-composer-toggle .bi {
+    margin-right: .15rem;
+}
+#send-wizard-root #send-step-4-body .send-var-btn {
+    padding: .1rem .5rem;
+    font-size: .75rem;
+    line-height: 1.6;
+    border-color: #d3d8de;
+    color: #6c757d;
+}
+#send-wizard-root #send-step-4-body .send-var-btn:hover,
+#send-wizard-root #send-step-4-body .send-var-btn:focus {
+    background-color: #e7f1ff;
+    border-color: #9ec5fe;
+    color: #0b5ed7;
+}
+#send-wizard-root #send-step-4-body .send-var-btn .bi {
+    margin-right: .15rem;
+}
+
+/* Menu: 12 pozycji w pięciu grupach. max-height trzyma je w oknie,
+   zamiast wypychać dropdown poza dolną krawędź kompozytora. */
+#send-wizard-root #send-step-4-body .send-var-dropdown-menu {
+    max-height: 280px;
+    overflow-y: auto;
+    min-width: 22rem;
+    padding: .25rem 0;
+    font-size: .8rem;
+}
+#send-wizard-root #send-step-4-body .send-var-group {
+    margin: 0;
+    padding: .35rem .75rem .15rem;
+    font-size: .65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: #adb5bd;
+}
+/* Pozycja jest dwuwierszowa: token + etykieta u góry, podgląd wartości
+   pod spodem. Jeden wiersz nie pomieściłby obu bez agresywnego
+   przycinania etykiet („Imię i nazwisko osoby kontaktowej"). */
+#send-wizard-root #send-step-4-body .send-var-item {
+    display: block;
+    width: 100%;
+    padding: .3rem .75rem;
+    white-space: normal;
+    text-align: left;
+    cursor: pointer;
+}
+#send-wizard-root #send-step-4-body .send-var-line {
+    display: flex;
+    align-items: baseline;
+    gap: .4rem;
+    min-width: 0;
+}
+#send-wizard-root #send-step-4-body .send-var-token {
+    flex: 0 0 auto;
+    padding: 0;
+    background: transparent;
+    font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: .72rem;
+    color: #0b5ed7;
+}
+#send-wizard-root #send-step-4-body .send-var-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: .74rem;
+    color: #6c757d;
+}
+/* Podgląd wartości — to jest właściwa informacja („co dokładnie
+   wleci w treść"), więc ciemniejszy niż etykieta nad nim. */
+#send-wizard-root #send-step-4-body .send-var-preview {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: .78rem;
+    color: #212529;
+}
+#send-wizard-root #send-step-4-body .send-var-preview::before {
+    content: "→ ";
+    color: #ced4da;
+}
+#send-wizard-root #send-step-4-body .send-var-preview.is-empty {
+    font-style: italic;
+    color: #adb5bd;
+}
+/* Wyłączona pozycja zostaje widoczna (operator ma wiedzieć, że
+   zmienna istnieje), ale nie udaje klikalnej. */
+#send-wizard-root #send-step-4-body .send-var-item.disabled,
+#send-wizard-root #send-step-4-body .send-var-item:disabled {
+    cursor: default;
+    opacity: .65;
+    /* Bootstrap gasi tu pointer-events, przez co nie da się najechać
+       na tooltip wyjaśniający „(brak)". Klik i tak nie przejdzie —
+       <button disabled> nie emituje zdarzenia click. */
+    pointer-events: auto;
+}
+#send-wizard-root #send-step-4-body .send-var-item:not(.disabled):hover,
+#send-wizard-root #send-step-4-body .send-var-item:not(.disabled):focus {
+    background-color: #e7f1ff;
+}
+#send-wizard-root #send-step-4-body .send-var-item:not(.disabled):hover .send-var-label {
+    color: #495057;
+}
+/* Textarea — narzędzie edycji, widoczne tylko w trybie 'edit'.
+   Monospace zostaje: tu operator patrzy na surowy tekst, w którym
+   liczą się tabulatory bloku pozycji. min-height równe podglądowi,
+   żeby przeskok między widokami był jak najmniejszy. */
+#send-wizard-root #send-step-4-body .send-composer-body-textarea {
+    display: block;
+    width: 100%;
+    min-height: 14rem;
+    /* Równy margines ze wszystkich stron — ikona „kopiuj" nie siedzi
+       już w prawym górnym rogu textarei, więc nie trzeba dla niej
+       rezerwować 2.4rem po prawej. */
+    padding: .85rem;
+    background-color: #fff;
+    border: 0;
+    border-radius: 0;
+    color: #212529;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: .82rem;
+    line-height: 1.65;
+    resize: vertical;
+}
+#send-wizard-root #send-step-4-body .send-composer-body-textarea:focus {
+    outline: none;
+    box-shadow: none;
+    background-color: #fffdf7;
+}
+
+/* --- Step 4: widok „Treść" ---------------------------------------
+ *
+ * To NIE jest podgląd obok edytora — to domyślna postać treści.
+ * Operator ma widzieć wiadomość tak, jak wyląduje w Gmailu (tabela
+ * pozycji, proporcjonalny krój), a nie surowy TSV. Textarea włącza
+ * się dopiero na „Edytuj".
+ *
+ * Podgląd jest celowo NIEklikalny — jedyną drogą do edycji jest
+ * przycisk „Edytuj". Cursor: default (nie text), brak podświetlenia
+ * hover, brak ramki focus — to nie jest control, to render maila.
+ * Ramka wokół treści maila byłaby fałszem (to nie osobna karta, to
+ * treść tej karty).
+ */
+#send-wizard-root #send-step-4-body .send-composer-body-preview {
+    min-height: 14rem;
+    padding: 1rem;
+    background-color: #fff;
+    overflow-x: auto;
+    color: #212529;
+    font-size: .85rem;
+    line-height: 1.65;
+    white-space: pre-wrap;
+    word-break: break-word;
+    cursor: default;
+}
+/* Tabela pozycji. htmlTable() niesie inline border="1" cellpadding="4"
+   dla Gmaila — tutaj nadpisujemy to na czytelniejszą siatkę, bez
+   ruszania samego generatora (ten sam HTML leci do schowka). */
+#send-wizard-root #send-step-4-body .send-composer-body-preview table {
+    border-collapse: collapse;
+    margin: .55rem 0;
+    font-size: .78rem;
+    line-height: 1.45;
+    white-space: normal;
+}
+#send-wizard-root #send-step-4-body .send-composer-body-preview th,
+#send-wizard-root #send-step-4-body .send-composer-body-preview td {
+    padding: .25rem .5rem;
+    border: 1px solid #dee2e6;
+    vertical-align: top;
+}
+#send-wizard-root #send-step-4-body .send-composer-body-preview th {
+    background-color: #f6f7f9;
+    font-weight: 600;
+    white-space: nowrap;
+    color: #495057;
+}
+/* Pusta treść — hint zamiast pustej płaszczyzny, która nie mówi, czy
+   to błąd, czy stan wyjściowy. */
+#send-wizard-root #send-step-4-body .send-composer-body-empty {
+    display: block;
+    padding: 3.5rem 1rem;
+    text-align: center;
+    font-style: italic;
+    color: #adb5bd;
+}
+
+#send-wizard-root #send-step-4-body .send-composer-foot {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: .35rem .75rem;
+    padding: .55rem .85rem;
+    background-color: #fbfbfc;
+    border-top: 1px solid #e3e6ea;
+}
+#send-wizard-root #send-step-4-body .send-composer-hint {
+    flex: 1 1 16rem;
+    font-size: .775rem;
+    color: #868e96;
+}
+/* „Kopiuj treść maila" w stopce kompozytora. Dziedziczy .btn-primary,
+   więc potrzebuje własnego stanu „skopiowano" — .send-copy-btn.is-copied
+   go nie obejmuje (to nie jest ikona-przycisk, tylko pełny btn). */
+#send-wizard-root #send-step-4-body #send-copy-mail-btn.is-copied {
+    background-color: #28a745;
+    border-color: #28a745;
+}
+#send-wizard-root #send-step-4-body .send-composer-reset {
+    background: transparent;
+    border: 0;
+    padding: 0 .25rem;
+    color: #868e96;
+    font-size: .75rem;
+    cursor: pointer;
+}
+#send-wizard-root #send-step-4-body .send-composer-reset:hover {
+    color: #007bff;
+}
+#send-wizard-root #send-step-4-body .send-composer-reset.is-hidden {
+    display: none;
+}
+
 /* --- Sticky action bar (panel 4) -------------------------------- */
 
 #send-wizard-root .action-bar-sticky {

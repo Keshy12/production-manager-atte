@@ -10,10 +10,23 @@
  *      do zarządzania listą kontaktów.
  *   3. PDF               radio Tak/Nie z placeholder-preview. Tylko
  *      Toggle; prawdziwy PDF pojawi się w przyszłości.
- *   4. POTWIERDZENIE     recapa + sticky action bar z dwoma przyciskami
- *      (Wróć do dokumentu / Wyślij…). Jedyny moment, w którym stan
- *      dokumentu się zmienia — POST do document-send-ajax.php albo
- *      document-rfq-respond-ajax.php (dla rfq+sent), potem redirect.
+ *   4. POTWIERDZENIE     powierzchnia „przejrzyj i wyślij". Dwie karty
+ *      otwarte, w tej kolejności: kompozytor wiadomości do dostawcy
+ *      (picker szablonu + temat + edytowalna treść + „Kopiuj treść
+ *      maila") i pod nim podsumowanie (dostawca / numer / termin /
+ *      liczba pozycji / wartość per waluta / autor). Kompozytor stoi
+ *      wyżej, bo to jedyna czynność w tym kroku — reszta jest do
+ *      przejrzenia. Pod nimi dwa zwinięte drilldowny: „Parametry
+ *      wysyłki" i tabela „Pozycje" z kopiowaniem per wiersz.
+ *      Całość renderuje JS do #send-step-4-body. Na dole sticky action bar z dwoma
+ *      przyciskami (Wróć do dokumentu / Wyślij…). Jedyny moment, w
+ *      którym stan dokumentu się zmienia — POST do
+ *      document-send-ajax.php albo document-rfq-respond-ajax.php
+ *      (dla rfq+sent), potem redirect.
+ *
+ *      UWAGA: kompozytor NIE wysyła maila. W repo nie ma mail(); to
+ *      szablon po stronie klienta — operator kopiuje temat i treść do
+ *      schowka i wkleja je do własnego klienta poczty.
  *
  * Kontrakt GET-ender (loader snapshotu dokumentu) jest w
  * public_html/components/purchases/documents/documents-send-get.php.
@@ -168,7 +181,12 @@ $MsaDB = MsaDB::getInstance();
                     <span class="sr-only">Ładowanie…</span>
                 </div>
             </div>
-            <div class="card-body send-step-body" id="send-step-4-body">
+            <!--
+                .send-review — hook dla ciaśniejszej, „spokojniejszej"
+                typografii kroku 4 (ekran przeglądania, nie edycji).
+                Zawartość wstrzykuje renderStep4() z documents-send.js.
+            -->
+            <div class="card-body send-step-body send-review" id="send-step-4-body">
                 <p class="text-muted mb-0">Ładowanie…</p>
             </div>
             <!--
