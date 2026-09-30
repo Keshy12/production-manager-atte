@@ -21,6 +21,8 @@ class VendorRepository {
                        c.code AS defaultCurrencyCode,
                        v.isActive,
                        v.comment,
+                       v.preferred_email_draft_rfq_id AS preferredEmailDraftRfqId,
+                       v.preferred_email_draft_po_id  AS preferredEmailDraftPoId,
                        v.created_at AS createdAt,
                        v.updated_at AS updatedAt
                 FROM `list__vendor` v
@@ -60,27 +62,57 @@ class VendorRepository {
         return $result;
     }
 
-    public function create(string $name, ?string $address = null, ?string $additionalData = null, ?int $leadTimeDays = null, ?string $comment = null, string $defaultCurrencyCode = 'PLN'): int {
+    /**
+     * Create a new vendor row.
+     *
+     * @param string              $name
+     * @param string|null         $address
+     * @param string|null         $additionalData
+     * @param int|null            $leadTimeDays
+     * @param string|null         $comment
+     * @param string              $defaultCurrencyCode  ISO 4217 code (defaults to 'PLN')
+     * @param int|null            $preferredEmailDraftRfqId  FK → email_draft.id; 0 / null → NULL
+     * @param int|null            $preferredEmailDraftPoId   FK → email_draft.id; 0 / null → NULL
+     */
+    public function create(string $name, ?string $address = null, ?string $additionalData = null, ?int $leadTimeDays = null, ?string $comment = null, string $defaultCurrencyCode = 'PLN', ?int $preferredEmailDraftRfqId = null, ?int $preferredEmailDraftPoId = null): int {
         $MsaDB = $this->MsaDB;
         $name = trim($name);
         if ($name === '') {
             throw new \InvalidArgumentException("Vendor name cannot be empty.");
         }
         $defaultCurrencyId = $this->resolveCurrencyId($defaultCurrencyCode);
+        // 0 (from a stale form / "no selection" radio) → NULL so the
+        // column reflects "no preferred draft" rather than a dangling
+        // FK to row 0 (which doesn't exist and would break the FK
+        // constraint on insert).
+        $preferredEmailDraftRfqId = ($preferredEmailDraftRfqId === null || $preferredEmailDraftRfqId <= 0) ? null : $preferredEmailDraftRfqId;
+        $preferredEmailDraftPoId  = ($preferredEmailDraftPoId  === null || $preferredEmailDraftPoId  <= 0) ? null : $preferredEmailDraftPoId;
         return $MsaDB->insert(
             'list__vendor',
-            ['name', 'address', 'additional_data', 'lead_time_days', 'default_currency', 'isActive', 'comment'],
-            [$name, $address, $additionalData, $leadTimeDays, $defaultCurrencyId, 1, $comment]
+            ['name', 'address', 'additional_data', 'lead_time_days', 'default_currency', 'isActive', 'comment', 'preferred_email_draft_rfq_id', 'preferred_email_draft_po_id'],
+            [$name, $address, $additionalData, $leadTimeDays, $defaultCurrencyId, 1, $comment, $preferredEmailDraftRfqId, $preferredEmailDraftPoId]
         );
     }
 
-    public function update(int $id, string $name, ?string $address, ?string $additionalData, ?int $leadTimeDays, ?string $comment, string $defaultCurrencyCode = 'PLN'): bool {
+    /**
+     * Update an existing vendor row.
+     *
+     * @param int $preferredEmailDraftRfqId  0 / null → NULL (clear the preference)
+     * @param int $preferredEmailDraftPoId   0 / null → NULL (clear the preference)
+     */
+    public function update(int $id, string $name, ?string $address, ?string $additionalData, ?int $leadTimeDays, ?string $comment, string $defaultCurrencyCode = 'PLN', ?int $preferredEmailDraftRfqId = null, ?int $preferredEmailDraftPoId = null): bool {
         $MsaDB = $this->MsaDB;
         $name = trim($name);
         if ($name === '') {
             throw new \InvalidArgumentException("Vendor name cannot be empty.");
         }
         $defaultCurrencyId = $this->resolveCurrencyId($defaultCurrencyCode);
+        // 0 (from a "no selection" / cleared picker) → NULL. Same
+        // rationale as create(): a 0 would violate the FK constraint
+        // (no email_draft with id = 0) and short-circuit the wizard's
+        // NULL → fallback path.
+        $preferredEmailDraftRfqId = ($preferredEmailDraftRfqId === null || $preferredEmailDraftRfqId <= 0) ? null : $preferredEmailDraftRfqId;
+        $preferredEmailDraftPoId  = ($preferredEmailDraftPoId  === null || $preferredEmailDraftPoId  <= 0) ? null : $preferredEmailDraftPoId;
         return $MsaDB->update(
             'list__vendor',
             [
@@ -90,10 +122,75 @@ class VendorRepository {
                 'lead_time_days' => $leadTimeDays,
                 'default_currency' => $defaultCurrencyId,
                 'comment' => $comment,
+                'preferred_email_draft_rfq_id' => $preferredEmailDraftRfqId,
+                'preferred_email_draft_po_id'  => $preferredEmailDraftPoId,
             ],
             'id',
             $id
         );
+    }
+
+    /**
+     * Return the lightweight id+name list of every active email
+     * draft, for the vendor edit page's `<select>` picker.
+     *
+     * Delegates to EmailDraftRepository so the catalogue lives in one
+     * place — this method exists only because the vendor edit page
+     * is rendered server-side (PHP) and the repository needs a
+     * convenient hook for "give me the picker options".
+     *
+     * @return array<int, \stdClass> Each: {id:int, name:string}
+     */
+    public function getActiveEmailDrafts(): array {
+        $repo = new EmailDraftRepository($this->MsaDB);
+        return $repo->getActiveIdNameList();
+    }
+
+    /**
+     * Resolve the preferred email draft (subject + body) for a vendor
+     * + document type combo, or null when no preference is set / the
+     * referenced draft was deactivated.
+     *
+     * Used by documents-send-ajax-load.php to enrich the wizard's
+     * step 4 snapshot with the template the JS side will then run
+     * through applyTemplate() (the same parser used by the live
+     * preview on the email-drafts editor page).
+     *
+     * One SELECT joins `email_draft` to `list__vendor` by matching
+     * either the RFQ FK column or the PO FK column against the
+     * requested document type. The OR-condition is gated by the
+     * :type parameter, so only the relevant column is considered per
+     * call. `is_active = 1` ensures deactivated drafts don't leak into
+     * outgoing emails even if the vendor FK still points at them.
+     *
+     * @param string $docType  'rfq' | 'po'
+     * @return array{subject: string, body: string}|null
+     */
+    public function resolvePreferredDraft(int $vendorId, string $docType): ?array {
+        if (!in_array($docType, ['rfq', 'po'], true)) {
+            throw new \InvalidArgumentException("docType must be 'rfq' or 'po', got '{$docType}'.");
+        }
+        $MsaDB = $this->MsaDB;
+        $sql = "SELECT ed.subject AS subject,
+                       ed.body    AS body
+                  FROM `email_draft` ed
+                  JOIN `list__vendor` v ON (
+                       (v.preferred_email_draft_rfq_id = ed.id AND :type = 'rfq')
+                    OR (v.preferred_email_draft_po_id  = ed.id AND :type = 'po')
+                  )
+                 WHERE v.id = :vendorId
+                   AND ed.is_active = 1
+                 LIMIT 1";
+        $stmt = $MsaDB->db->prepare($sql);
+        $stmt->execute([':type' => $docType, ':vendorId' => $vendorId]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        if ($row === false) {
+            return null;
+        }
+        return [
+            'subject' => (string)$row['subject'],
+            'body'    => (string)$row['body'],
+        ];
     }
 
     /**

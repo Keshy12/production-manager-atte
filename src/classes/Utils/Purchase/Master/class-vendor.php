@@ -18,6 +18,14 @@ class Vendor {
     public ?string $defaultCurrencyCode = null;
     public bool $isActive;
     public ?string $comment;
+    // FK → email_draft.id (the "preferred RFQ template" for this
+    // vendor). NULL when the vendor has no preferred draft — the
+    // /admin/purchase/documents/send step 4 wizard then falls back to
+    // its hardcoded Polish default. Picked on the vendor edit page.
+    public ?int $preferredEmailDraftRfqId;
+    // FK → email_draft.id (the "preferred PO template" for this
+    // vendor). Same NULL-fallback semantics as the RFQ column above.
+    public ?int $preferredEmailDraftPoId;
     public ?string $createdAt;
     public ?string $updatedAt;
     // Hydrated by VendorRepository::search() so the listing can show
@@ -36,6 +44,8 @@ class Vendor {
         $this->defaultCurrencyCode = isset($row['defaultCurrencyCode']) ? (string)$row['defaultCurrencyCode'] : null;
         $this->isActive = (bool)(int)($row['isActive'] ?? 0);
         $this->comment = $row['comment'] ?? null;
+        $this->preferredEmailDraftRfqId = isset($row['preferredEmailDraftRfqId']) ? (int)$row['preferredEmailDraftRfqId'] : null;
+        $this->preferredEmailDraftPoId  = isset($row['preferredEmailDraftPoId'])  ? (int)$row['preferredEmailDraftPoId']  : null;
         $this->createdAt = $row['createdAt'] ?? null;
         $this->updatedAt = $row['updatedAt'] ?? null;
         $this->supplierCount = (int)($row['supplierCount'] ?? 0);
