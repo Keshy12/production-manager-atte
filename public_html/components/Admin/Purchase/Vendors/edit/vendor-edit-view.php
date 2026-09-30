@@ -14,7 +14,11 @@
  *   - name (required), address, additional_data, lead_time_days,
  *     default_currency (FK → list__currency.id; the form sends the
  *     3-letter ISO code which the repository resolves to the id),
- *     comment, isActive radio.
+ *     comment, isActive radio,
+ *   - preferred_email_draft_rfq_id / preferred_email_draft_po_id
+ *     (FK → email_draft.id; 0 = brak preferencji). Sam szablon
+ *     edytuje się w osobnym module /admin/purchase/email-drafts —
+ *     tutaj wskazuje się tylko, którego użyć.
  *
  * In EDIT mode the page also renders:
  *   - Inline supplier CRUD (form + list) — replaces the old
@@ -53,6 +57,8 @@ $vendorIsActive         = true;   // default: Aktywny (only meaningful in create
 $suppliers              = [];     // supplier rows for inline CRUD
 $vendorPartCount        = 0;      // for the edit-mode hint
 $vendorParts            = [];     // read-only VP list (active + inactive)
+$vendorPreferredRfqId   = 0;      // FK → email_draft.id (RFQ); 0 = brak
+$vendorPreferredPoId    = 0;      // FK → email_draft.id (PO);  0 = brak
 
 if ($isEditMode) {
     $MsaDB = MsaDB::getInstance();
@@ -77,6 +83,11 @@ if ($isEditMode) {
     $vendorIsActive         = $vendor->isActive;
     $vendorPartCount        = $repo->countVendorParts($id);
 
+    // Preferowane szablony wiadomości — same wskaźniki (FK), nie treść.
+    // Treść żyje w globalnym katalogu /admin/purchase/email-drafts.
+    $vendorPreferredRfqId   = (int)($vendor->preferredEmailDraftRfqId ?? 0);
+    $vendorPreferredPoId    = (int)($vendor->preferredEmailDraftPoId  ?? 0);
+
     // Inline supplier CRUD — fetch all suppliers (active + inactive)
     // and hydrate them as JS-readable JSON so the edit-page JS can
     // populate the shared form when "Edytuj" is clicked on a row.
@@ -98,6 +109,21 @@ if (!isset($MsaDB)) {
     $MsaDB = MsaDB::getInstance();
 }
 $currencies = (new CurrencyRepository($MsaDB))->getActiveEnsuring($vendorDefaultCurrency);
+
+// Preferowane szablony wiadomości — lekka projekcja {id, name} dla
+// pickerów. Ładowana także w trybie tworzenia, bo preferencję da się
+// ustawić od razu przy zakładaniu dostawcy (create() w repozytorium
+// przyjmuje oba FK). Lista zawiera wyłącznie aktywne szablony; jeśli
+// dostawca wskazuje szablon, który ktoś w międzyczasie wyłączył, jego
+// id nie ma w opcjach i picker pokaże „— brak —”. To jest zgodne
+// z zachowaniem kreatora wysyłki, który dla nieaktywnego szablonu i
+// tak wraca do domyślnego systemowego.
+if (!isset($repo)) {
+    $repo = new VendorRepository($MsaDB);
+}
+$emailDrafts = $repo->getActiveEmailDrafts();
+$vendorPreferredCount = ($vendorPreferredRfqId > 0 ? 1 : 0)
+                      + ($vendorPreferredPoId  > 0 ? 1 : 0);
 
 $backUrl = 'http://' . BASEURL . '/admin/purchase/vendors';
 
@@ -121,6 +147,7 @@ function vr_render_packs(array $packs): string {
     }
     return $badges;
 }
+
 ?>
 <style>
     /* Match the rest of the admin cards — alert-primary header +
@@ -181,6 +208,58 @@ function vr_render_packs(array $packs): string {
     /* Editing mode visually hints which row the form is targeting. */
     tr.vr-supplier-row--editing {
         background-color: #fff3cd !important;
+    }
+
+    /* ---- Preferowane szablony wiadomości ------------------------ */
+    /* Zagnieżdżona karta w ciele formularza: nagłówek klikalny jak
+       w karcie osób kontaktowych, ale bez własnego marginesu z boku,
+       żeby nie wyglądała na osobną sekcję strony. */
+    #vrDraftCard .card-header {
+        cursor: pointer;
+    }
+    /* Picker wypełnia kolumnę: kontener ma szerokość kolumny, a
+       min-width:0 zdejmuje intrinsic min-width flexa, przez który
+       najdłuższa nazwa szablonu rozpychałaby kolumnę mimo width:100%.
+       Patrz AGENTS.md — sekcja o bootstrap-select. */
+    .vr-draft-cell,
+    .vr-draft-cell .bootstrap-select {
+        min-width: 0;
+    }
+    /* Dwuliniowa etykieta pickera: linia 1 to stała fraza („dla czego"),
+       linia 2 niesie różnicę między RFQ a PO — para czyta się wtedy
+       jak przełącznik, a nie jak dwa niezależne pola. */
+    .vr-draft-label {
+        display: block;
+        margin-bottom: 0.25rem;
+        line-height: 1.25;
+    }
+    .vr-draft-label-lead {
+        display: block;
+        font-size: 0.72rem;
+        font-weight: 400;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #adb5bd;
+    }
+    .vr-draft-label-main {
+        display: block;
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: #495057;
+    }
+    .vr-draft-label-main .vr-draft-label-abbr {
+        font-size: 0.78rem;
+        font-weight: 500;
+        color: #6c757d;
+    }
+    /* Podpowiedź przy tytule karty — ikona ma być zaczepem dla
+       tooltipa, nie kolejnym akcentem kolorystycznym. */
+    .vr-draft-info {
+        color: #6c757d;
+        cursor: help;
+    }
+    .vr-draft-info:hover {
+        color: #0d6efd;
     }
 </style>
 
@@ -291,6 +370,124 @@ function vr_render_packs(array $packs): string {
                         Nieaktywni dostawcy nie pojawiają się w domyślnym widoku listy ani w wyszukiwarkach
                         artykułów u dostawców.
                     </small>
+                </div>
+
+                <!-- ================================================================
+                     Preferowane szablony wiadomości
+                     Dostawca tylko WSKAZUJE szablon z globalnego katalogu
+                     (/admin/purchase/email-drafts) — treści nie edytuje się
+                     tutaj. Krok 4 kreatora wysyłki rozwiązuje ten FK i
+                     podstawia zmienne; przy braku wskazania albo gdy szablon
+                     jest wyłączony, wraca do szablonu systemowego.
+
+                     Karta jest zagnieżdżona WEWNĄTRZ #vrEditForm, więc
+                     $form.serialize() widzi oba selecty i nie trzeba ich
+                     doklejać ręcznie do POST-a.
+                     ================================================================ -->
+                <div class="card mt-4 mb-0" id="vrDraftCard">
+                    <div class="card-header alert-secondary" data-toggle="collapse" data-target="#vrDraftCollapse" aria-expanded="false">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h6 class="mb-0">
+                                <i class="bi bi-envelope-paper"></i>
+                                Preferowane szablony wiadomości
+                                <i class="bi bi-info-circle vr-draft-info ml-1"
+                                   data-toggle="tooltip"
+                                   data-placement="top"
+                                   title="Szablon używany w kroku 4 wysyłki zapytania. Pozostaw puste, aby użyć wbudowanego domyślnego."></i>
+                                <?php if ($vendorPreferredCount > 0): ?>
+                                    <span class="badge badge-success ml-1"><?= (int)$vendorPreferredCount ?> z 2</span>
+                                <?php else: ?>
+                                    <span class="badge badge-light ml-1">domyślne</span>
+                                <?php endif; ?>
+                            </h6>
+                            <i class="bi bi-chevron-down"></i>
+                        </div>
+                    </div>
+                    <div id="vrDraftCollapse" class="collapse">
+                        <div class="card-body">
+
+                            <p class="text-muted small">
+                                Wybierz szablon, którego kreator wysyłki ma użyć dla tego dostawcy.
+                                Brak wyboru oznacza szablon systemowy.
+                                Treść szablonów edytuje się w module
+                                <a href="<?= 'http://' . BASEURL . '/admin/purchase/email-drafts' ?>">Szablony wiadomości</a>.
+                            </p>
+
+                            <?php
+                            // Pickery renderują się ZAWSZE — także przy pustym
+                            // katalogu. Pusty katalog sygnalizuje niewybieralna
+                            // opcja w środku, a nie osobny blok alertu: operator
+                            // widzi wtedy, gdzie ta wartość ma trafić, zamiast
+                            // patrzeć na dziurę w formularzu.
+                            $vrDraftPickers = [
+                                [
+                                    'id'    => 'vr_pref_draft_rfq',
+                                    'cell'  => 'vrDraftRfqCell',
+                                    'name'  => 'preferred_email_draft_rfq_id',
+                                    'main'  => 'zapytań ofertowych',
+                                    'abbr'  => 'RFQ',
+                                    'value' => $vendorPreferredRfqId,
+                                    'col'   => 'col-md-6 mb-md-0',
+                                ],
+                                [
+                                    'id'    => 'vr_pref_draft_po',
+                                    'cell'  => 'vrDraftPoCell',
+                                    'name'  => 'preferred_email_draft_po_id',
+                                    'main'  => 'zamówień',
+                                    'abbr'  => 'PO',
+                                    'value' => $vendorPreferredPoId,
+                                    'col'   => 'col-md-6 mb-0',
+                                ],
+                            ];
+                            ?>
+                            <div class="form-row">
+                                <?php foreach ($vrDraftPickers as $p): ?>
+                                    <div class="form-group <?= $p['col'] ?>">
+                                        <label class="vr-draft-label" for="<?= $p['id'] ?>">
+                                            <span class="vr-draft-label-lead">Preferowany szablon dla</span>
+                                            <span class="vr-draft-label-main">
+                                                <?= htmlspecialchars($p['main'], ENT_QUOTES) ?>
+                                                <span class="vr-draft-label-abbr">(<?= $p['abbr'] ?>)</span>
+                                            </span>
+                                        </label>
+                                        <div class="vr-draft-cell" id="<?= $p['cell'] ?>">
+                                            <select id="<?= $p['id'] ?>"
+                                                    name="<?= $p['name'] ?>"
+                                                    class="selectpicker form-control"
+                                                    data-width="100%"
+                                                    data-container="#<?= $p['cell'] ?>"
+                                                    data-live-search="true"
+                                                    title="— brak —">
+                                                <option value="0" <?= $p['value'] === 0 ? 'selected' : '' ?>>— brak —</option>
+                                                <?php if ($emailDrafts === []): ?>
+                                                    <option value="0" disabled>
+                                                        -- brak zdefiniowanych szablonów — utwórz w /admin/purchase/email-drafts --
+                                                    </option>
+                                                <?php else: ?>
+                                                    <?php foreach ($emailDrafts as $d): ?>
+                                                        <option value="<?= (int)$d->id ?>"
+                                                                <?= ((int)$d->id === $p['value']) ? 'selected' : '' ?>>
+                                                            <?= htmlspecialchars($d->name, ENT_QUOTES) ?>
+                                                        </option>
+                                                    <?php endforeach; ?>
+                                                <?php endif; ?>
+                                            </select>
+                                        </div>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+
+                            <?php if ($emailDrafts === []): ?>
+                                <small class="form-text text-muted mt-2">
+                                    <i class="bi bi-info-circle"></i>
+                                    Katalog szablonów jest pusty —
+                                    <a href="<?= 'http://' . BASEURL . '/admin/purchase/email-drafts/edit' ?>">dodaj pierwszy szablon</a>,
+                                    aby móc go tu wskazać.
+                                </small>
+                            <?php endif; ?>
+
+                        </div>
+                    </div>
                 </div>
 
                 <?php if ($isEditMode): ?>

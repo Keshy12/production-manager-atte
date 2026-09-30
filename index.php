@@ -143,6 +143,26 @@ switch ($request) {
         includeWithVariables($headerDir, array('title' => 'Edytuj dostawcę'));
         require $componentsDir . '/Admin/Purchase/Vendors/edit/vendor-edit-view.php';
         break;
+    case 'admin/purchase/email-drafts':
+        // Katalog globalnych szablonów wiadomości e-mail. Lista jest
+        // renderowana po stronie serwera (katalog jest mały), więc nie
+        // ma tu osobnego endpointu AJAX ani paginacji.
+        requireAdmin();
+        includeWithVariables($headerDir, array('title' => 'Szablony wiadomości'));
+        require $componentsDir . '/Admin/Purchase/EmailDrafts/email-drafts-view.php';
+        break;
+    case 'admin/purchase/email-drafts/edit':
+        // Strona edycji/tworzenia pojedynczego szablonu. Id przez ?id=N
+        // (mirror vendors/edit i producers/edit). Brak lub zero → tryb
+        // tworzenia; dodatnie → tryb edycji. Formularz POST-uje do
+        // osobnego pliku (edit/email-draft-edit-save.php), bo reguła
+        // POST w .htaccess blokuje POST-y na adresy obsługiwane tylko
+        // przez router — serwowane są wyłącznie realne pliki pod
+        // components/. Patrz AGENTS.md „AJAX endpoints (component-side)".
+        requireAdmin();
+        includeWithVariables($headerDir, array('title' => 'Edytuj szablon wiadomości'));
+        require $componentsDir . '/Admin/Purchase/EmailDrafts/edit/email-draft-edit-view.php';
+        break;
     case 'admin/purchase/producers':
         requireAdmin();
         includeWithVariables($headerDir, array('title' => 'Producenci'));

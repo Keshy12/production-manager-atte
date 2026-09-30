@@ -45,14 +45,16 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 // --- Read & sanitise inputs --------------------------------------------
-$id               = (int)($_POST['id']                 ?? 0);
-$name             = trim((string)($_POST['name']       ?? ''));
-$address          = $_POST['address']                  ?? null;
-$additionalData   = $_POST['additional_data']          ?? null;
-$leadTimeDays     = $_POST['lead_time_days']           ?? null;
-$defaultCurrency  = $_POST['default_currency']         ?? null;
-$comment          = $_POST['comment']                  ?? null;
-$isActiveRaw      = $_POST['isActive']                 ?? null;
+$id                 = (int)($_POST['id']                          ?? 0);
+$name               = trim((string)($_POST['name']                ?? ''));
+$address            = $_POST['address']                           ?? null;
+$additionalData     = $_POST['additional_data']                   ?? null;
+$leadTimeDays       = $_POST['lead_time_days']                    ?? null;
+$defaultCurrency    = $_POST['default_currency']                  ?? null;
+$comment            = $_POST['comment']                           ?? null;
+$preferredRfqDraft  = $_POST['preferred_email_draft_rfq_id']      ?? null;
+$preferredPoDraft   = $_POST['preferred_email_draft_po_id']       ?? null;
+$isActiveRaw        = $_POST['isActive']                          ?? null;
 
 // Trim + null-ify the optional string fields.
 foreach (['address' => &$address, 'additional_data' => &$additionalData, 'comment' => &$comment] as $k => &$v) {
@@ -91,6 +93,26 @@ if (mb_strlen($defaultCurrency) > 8) {
 }
 $defaultCurrency = strtoupper($defaultCurrency);
 
+// Preferred email drafts (RFQ + PO) — FK pointers into the global
+// `email_draft` catalogue. The `<select>` pickers on the form submit
+// either a positive id (a real draft) or '' (no preference). Treat
+// '' / null / 0 as NULL so the repository can short-circuit to the
+// wizard's system default. We do NOT validate that the id actually
+// exists — the FK constraint on `list__vendor` will reject a stale
+// or tampered value with a DB error that the catch block surfaces
+// verbatim (same trust-the-DB stance as the rest of the handler).
+foreach ([
+    'preferred_email_draft_rfq_id' => &$preferredRfqDraft,
+    'preferred_email_draft_po_id'  => &$preferredPoDraft,
+] as $fieldKey => &$fk) {
+    if ($fk === null || $fk === '' || (int)$fk <= 0) {
+        $fk = null;
+    } else {
+        $fk = (int)$fk;
+    }
+}
+unset($fk);
+
 // --- Validation --------------------------------------------------------
 if ($name === '') {
     echo json_encode(['success' => false, 'error' => 'Nazwa dostawcy jest wymagana.']);
@@ -111,7 +133,7 @@ try {
         // schema level (per docs/procurement/PLAN.md the schema was
         // never given a UNIQUE index on `name`); we accept duplicates
         // silently. Operators can deduplicate via the listing.
-        $newId = $repo->create($name, $address, $additionalData, $leadTimeDays, $comment, $defaultCurrency);
+        $newId = $repo->create($name, $address, $additionalData, $leadTimeDays, $comment, $defaultCurrency, $preferredRfqDraft, $preferredPoDraft);
         echo json_encode([
             'success'  => true,
             'message'  => 'Dostawca dodany pomyślnie.',
@@ -122,9 +144,10 @@ try {
     }
 
     // UPDATE — update name + address + additionalData + leadTimeDays
-    // + comment + default_currency, then flip isActive via toggleActive
-    // so we don't need to extend the repo's update() signature.
-    $ok = $repo->update($id, $name, $address, $additionalData, $leadTimeDays, $comment, $defaultCurrency);
+    // + comment + default_currency + preferred draft FKs, then flip
+    // isActive via toggleActive so we don't need to extend the
+    // repo's update() signature for that flag.
+    $ok = $repo->update($id, $name, $address, $additionalData, $leadTimeDays, $comment, $defaultCurrency, $preferredRfqDraft, $preferredPoDraft);
     $repo->toggleActive($id, $isActive);
 
     if (!$ok && $repo->getById($id) === null) {
