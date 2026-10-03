@@ -19,7 +19,9 @@
  *                                     'Y-m-d' normalizowane do
  *                                     'Y-m-d 00:00:00'; puste → null,
  *                                     handler użyje NOW().
- *   items[i][item_id]          int             (wymagane gdy items obecne, > 0)
+ *   items[i][item_id]          int             (wymagane gdy items obecne, > 0;
+ *                                     gdy brak — kluczem `i` jest id pozycji,
+ *                                     tak jak wysyła documents-respond.js)
  *   items[i][unit_price]       string|empty    opcjonalne; akceptujemy '.' lub
  *                                     ',' jako separator dziesiętny (projekt
  *                                     miesza locale — patrz audits/DISCREPANCIES),
@@ -93,15 +95,19 @@ if ($respondedAtRaw !== null) {
 // do listy przed walidacją.
 $normalizedItems = [];
 if (isset($_POST['items']) && is_array($_POST['items']) && !empty($_POST['items'])) {
-    // indexed array -> bierzemy wprost; assoc -> przepakowujemy do listy wartości.
-    $isList = array_keys($_POST['items']) === range(0, count($_POST['items']) - 1);
-    $rawItems = $isList ? $_POST['items'] : array_values($_POST['items']);
-    foreach ($rawItems as $idx => $raw) {
+    // Strona documents-respond serializuje formularz jako items[<item_id>][pole]
+    // (klucz = id pozycji, brak osobnego pola item_id); wizard/inni wołający
+    // mogą słać items[i][item_id]. Iterujemy z kluczami i gdy item_id brak
+    // w wierszu — używamy klucza.
+    foreach ($_POST['items'] as $idx => $raw) {
         if (!is_array($raw)) {
             echo json_encode(['success' => false, 'error' => "Pozycja #{$idx}: nieprawidłowy format danych."]);
             exit;
         }
         $itemId = (int)($raw['item_id'] ?? 0);
+        if ($itemId <= 0 && is_int($idx)) {
+            $itemId = $idx;
+        }
         if ($itemId <= 0) {
             echo json_encode(['success' => false, 'error' => "Pozycja #{$idx}: brak identyfikatora pozycji."]);
             exit;
