@@ -586,6 +586,7 @@ $(document).ready(function() {
              +     '<input type="number" class="form-control form-control-sm text-right line-qty flex-grow-1"'
              +     ' step="any" min="0" value="' + escAttr(qtyVal) + '"' + (done ? ' disabled' : '') + '>'
              +   '</div>'
+             +   '<div class="line-diff small mt-1 text-right"></div>'
              +   '<div class="line-msg small mt-1"></div>'
              + '</td>'
              + '<td><select class="custom-select custom-select-sm line-magazine" data-overridden="0"'
@@ -773,6 +774,7 @@ $(document).ready(function() {
         $row.removeClass('table-warning table-danger');
         $qty.removeClass('is-invalid');
         $msg.empty();
+        const $diff = $row.find('.line-diff').empty();
 
         if (!item || isDone(item)) return 'empty';
         if (!$row.find('.line-receive-toggle').is(':checked')) return 'empty';
@@ -795,7 +797,13 @@ $(document).ready(function() {
         if (qty > remaining) {
             $row.addClass('table-warning');
             $msg.html('<span class="badge badge-warning">nadwyżka (dopuszczalna)</span>');
+            $diff.html('<span class="text-warning font-weight-bold">Nadwyżka: +'
+                + esc(fmtQty(qty - remaining) + unit) + '</span>');
             return 'over';
+        }
+        if (remaining - qty > 1e-9) {
+            $diff.html('<span class="text-muted">Brakuje: <span class="font-weight-bold">'
+                + esc(fmtQty(remaining - qty) + unit) + '</span></span>');
         }
         return 'ok';
     }
