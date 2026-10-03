@@ -8,19 +8,27 @@
  *   2. KONTAKTY          checkbox cards: aktywne osoby kontaktowe
  *      dostawcy (z odznaczeniem głównego), filtr substringiem, link
  *      do zarządzania listą kontaktów.
- *   3. PDF               radio Tak/Nie z placeholder-preview. Tylko
- *      Toggle; prawdziwy PDF pojawi się w przyszłości.
- *   4. POTWIERDZENIE     powierzchnia „przejrzyj i wyślij". Dwie karty
- *      otwarte, w tej kolejności: kompozytor wiadomości do dostawcy
- *      (picker szablonu + temat + edytowalna treść + „Kopiuj treść
- *      maila") i pod nim podsumowanie (dostawca / numer / termin /
- *      liczba pozycji / wartość per waluta / autor). Kompozytor stoi
- *      wyżej, bo to jedyna czynność w tym kroku — reszta jest do
- *      przejrzenia. Pod nimi dwa zwinięte drilldowny: „Parametry
- *      wysyłki" i tabela „Pozycje" z kopiowaniem per wiersz.
- *      Całość renderuje JS do #send-step-4-body. Na dole sticky action bar z dwoma
- *      przyciskami (Wróć do dokumentu / Wyślij…). Jedyny moment, w
- *      którym stan dokumentu się zmienia — POST do
+ *   3. TERMIN            opcjonalna data: RFQ „Oczekiwana odpowiedź",
+ *      PO „Planowana dostawa" (podpowiedź: data wysłania + lead time
+ *      dostawcy). Zapisywana dopiero przy finalnym „Oznacz jako
+ *      wysłane".
+ *   4. POTWIERDZENIE     powierzchnia „przejrzyj i oznacz jako
+ *      wysłane" — bez własnej karty/nagłówka (krok nazywa stepper).
+ *      Kontener rozszerza się na czas kroku 4 (.is-step-4 na
+ *      #send-wizard-root). Kolejność bloków (renderStep4 w JS):
+ *        - alert „brak kontaktów" (tylko gdy dotyczy),
+ *        - pasek kontekstu: dostawca / numer / pozycje / wartość per
+ *          waluta / termin (jedna linia, tylko do odczytu),
+ *        - >= lg dwie kolumny: lewa — karta „E-mail" (Do / Temat /
+ *          Treść, kompaktowy picker „Szablon:", „Kopiuj wiadomość")
+ *          i pod nią zwinięte „Szczegóły" (notatka, kontakty, tabela
+ *          pozycji); prawa — karta „PDF" (sticky; placeholder do czasu
+ *          endpointu PDF). Węziej jedno pod drugim.
+ *      Tryb respond (rfq+sent): bez kompozytora i PDF — tylko pasek
+ *      kontekstu, jednozdaniowe wyjaśnienie i „Szczegóły".
+ *      Na dole sticky action bar: Wróć do dokumentu / „Oznacz jako
+ *      wysłane" (+ notka o dacie wstecz, gdy ustawiona). Jedyny
+ *      moment, w którym stan dokumentu się zmienia — POST do
  *      document-send-ajax.php albo document-rfq-respond-ajax.php
  *      (dla rfq+sent), potem redirect.
  *
@@ -95,7 +103,7 @@ $MsaDB = MsaDB::getInstance();
             <span class="send-stepper-num">2</span> Kontakty
         </li>
         <li class="breadcrumb-item" data-step="3">
-            <span class="send-stepper-num">3</span> PDF
+            <span class="send-stepper-num">3</span> <?= $type === 'po' ? 'Termin dostawy' : 'Termin odpowiedzi' ?>
         </li>
         <li class="breadcrumb-item" data-step="4">
             <span class="send-stepper-num">4</span> Potwierdzenie
@@ -103,11 +111,12 @@ $MsaDB = MsaDB::getInstance();
     </ol>
 
     <!--
-        Cztery panele. Tylko jeden .is-active naraz. Wewnątrz każdego:
-        - header (tytuł + numer kroku) + spinner w prawym górnym
-          - body (zawartość renderowana przez JS)
-        - footer z przyciskami Dalej / Wstecz (poza panelem 4, który ma
-          sticky action bar)
+        Cztery panele. Tylko jeden .is-active naraz. Panele 1-3:
+        - header (tytuł + numer kroku) + spinner w prawym górnym rogu
+        - body (zawartość renderowana przez JS)
+        - footer z przyciskami Dalej / Wstecz
+        Panel 4 nie ma nagłówka ani stopki — tylko body i sticky
+        action bar.
     -->
     <div class="send-step is-active" data-step="1" id="send-step-1">
         <div class="card send-step-card">
@@ -154,7 +163,7 @@ $MsaDB = MsaDB::getInstance();
     <div class="send-step" data-step="3" id="send-step-3" style="display: none;">
         <div class="card send-step-card">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <strong><span class="send-step-num">3</span> Wygenerować PDF?</strong>
+                <strong><span class="send-step-num">3</span> <?= $type === 'po' ? 'Planowana dostawa' : 'Oczekiwana odpowiedź' ?></strong>
                 <div class="spinner-border spinner-border-sm text-primary send-step-spinner" role="status" style="display: none;">
                     <span class="sr-only">Ładowanie…</span>
                 </div>
@@ -173,35 +182,40 @@ $MsaDB = MsaDB::getInstance();
         </div>
     </div>
 
+    <!--
+        Krok 4 nie ma własnej karty ani nagłówka — stepper już nazywa
+        krok, a karty „E-mail" / „PDF" / „Szczegóły" w środku są
+        powierzchniami pierwszego planu (bez zagnieżdżania karta w
+        karcie). Spinner nie jest tu potrzebny: JS pokazuje spinner
+        tylko w kroku 1 (ładowanie snapshotu).
+    -->
     <div class="send-step" data-step="4" id="send-step-4" style="display: none;">
-        <div class="card send-step-card send-step-card-final">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <strong><span class="send-step-num">4</span> Potwierdzenie i wysyłka</strong>
-                <div class="spinner-border spinner-border-sm text-primary send-step-spinner" role="status" style="display: none;">
-                    <span class="sr-only">Ładowanie…</span>
-                </div>
-            </div>
+        <div class="send-step-card-final">
             <!--
                 .send-review — hook dla ciaśniejszej, „spokojniejszej"
                 typografii kroku 4 (ekran przeglądania, nie edycji).
                 Zawartość wstrzykuje renderStep4() z documents-send.js.
             -->
-            <div class="card-body send-step-body send-review" id="send-step-4-body">
+            <div class="send-step-body send-review" id="send-step-4-body">
                 <p class="text-muted mb-0">Ładowanie…</p>
             </div>
             <!--
-                Sticky action bar — wyrenderowany inline (nie jako osobny
-                modal / osobny .container-fluid), bo sam panel 4 ma być
-                samodzielną stroną wizualnie. position: sticky + bottom:0
-                trzyma go na dole widoku po scrollu panelu.
+                Sticky action bar. position: sticky + bottom:0 trzyma go
+                na dole widoku przy przewijaniu. #send-commit-note —
+                krótka notka o dacie ustawionej wstecz (wypełnia
+                renderStep4, pusta = ukryta).
             -->
             <div class="action-bar-sticky d-flex justify-content-between align-items-center">
                 <a href="#" id="send-back-to-doc" class="btn btn-outline-secondary">
                     <i class="bi bi-arrow-left"></i> Wróć do dokumentu
                 </a>
-                <button type="button" class="btn btn-success" id="send-commit-btn" disabled>
-                    <i class="bi bi-send"></i> <span id="send-commit-btn-label">Wyślij</span>
-                </button>
+                <div class="d-flex align-items-center send-commit-group">
+                    <span id="send-commit-note" class="send-commit-note d-none"></span>
+                    <button type="button" class="btn btn-success" id="send-commit-btn" disabled
+                            title="System nie wysyła e-maili — ta akcja tylko zmienia stan dokumentu na „wysłany”. Skopiuj wiadomość do swojego klienta poczty.">
+                        <i class="bi bi-check2-circle"></i> <span id="send-commit-btn-label">Oznacz jako wysłane</span>
+                    </button>
+                </div>
             </div>
         </div>
     </div>

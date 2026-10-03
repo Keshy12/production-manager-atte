@@ -13,8 +13,11 @@
  *                      pierwszy kontakt" (backend POST /purchases/
  *                      admin/contacts/add do dorobienia przez fixer).
  *   3. PDF           — radio Tak/Nie, placeholder-preview.
- *   4. Potwierdzenie — recapa + commit (POST do document-send-ajax.php
- *                      albo document-rfq-respond-ajax.php dla rfq+sent).
+ *   4. Potwierdzenie — pasek kontekstu, kompozytor „E-mail" + karta
+ *                      „PDF" (placeholder) obok, zwinięte „Szczegóły";
+ *                      commit „Oznacz jako wysłane" (POST do
+ *                      document-send-ajax.php albo
+ *                      document-rfq-respond-ajax.php dla rfq+sent).
  *
  * Kontrakt GET/POST jest zamrożony (patrz documents-send-get.php,
  * document-send-ajax.php, document-rfq-respond-ajax.php).
@@ -23,8 +26,8 @@
  * header.js do ogłaszania błędów sieciowych; własny alert na sukces
  * commita.
  *
- * Jedyny bootstrap-select w tym kreatorze to picker „Szablon
- * wiadomości" w kroku 4 (#send-draft-picker) — pozwala nadpisać
+ * Jedyny bootstrap-select w tym kreatorze to kompaktowy picker
+ * „Szablon:" w nagłówku karty „E-mail" w kroku 4 (#send-draft-picker) — pozwala nadpisać
  * preferowany szablon dostawcy na tę jedną wysyłkę. Reszta formularzy
  * jest na tyle prosta, że nie potrzebuje pluginu.
  */
@@ -67,7 +70,13 @@ $(function () {
         backdatedAt:      null,    // string 'Y-m-d H:i:s' albo null (= "teraz")
         resendWarnAck:    false,   // czy kliknięto "rozumiem" w ostrzeżeniu re-send
         selectedSuppliers: [],     // [id, id, ...]
-        generatePdf:      true,    // radio: Tak/Nie w kroku 3
+        // Krok 3 — oczekiwana data ('Y-m-d' albo ''): RFQ → odpowiedź,
+        // PO → dostawa. Zapisywana dopiero przy finalnym „Oznacz jako wysłane".
+        // `expectedDateTouched` = operator zmienił pole ręcznie; dopóki
+        // false, wartość jest wyliczana na nowo (data z dokumentu albo,
+        // dla PO, data wysyłki + lead time dostawcy).
+        expectedDate:        '',
+        expectedDateTouched: false,
         // Lokalny cache kopii filtrującej (nie mutujemy `doc.suppliers`)
         supplierFilter:   '',
         committing:       false,
@@ -182,6 +191,12 @@ $(function () {
         // zaznaczenia (refreshStep2NextEnabled), ale inne kroki (np.
         // po edycji daty wysłania w kroku 1 w drodze powrotnej) też
         // korzystają z „świeżego" renderu.
+        // Data wysyłki (backdate) mogła się zmienić w kroku 1 → odśwież
+        // domyślną datę PO zanim kroki 3/4 się narysują.
+        if (n >= 3) refreshExpectedDateDefault();
+        // Krok 4 ma układ dwukolumnowy (E-mail | PDF) i potrzebuje
+        // szerszego kontenera niż w-75 kroków 1-3 (CSS: .is-step-4).
+        $root.toggleClass('is-step-4', n === 4);
         if (n === 4 && typeof renderStep4 === 'function') renderStep4();
         if (n === 2 && typeof renderStep2 === 'function') renderStep2();
         if (n === 3 && typeof renderStep3 === 'function') renderStep3();
@@ -249,6 +264,7 @@ $(function () {
                 return;
             }
             state.doc = resp.doc;
+            refreshExpectedDateDefault();
             initSelectedDraftFromDoc();
             renderPageFromDoc();
         })
@@ -276,8 +292,21 @@ $(function () {
         }
         $subtitle.text(typeLabel + ' ' + (d.number || ('#' + d.id)));
 
-        // Tytuły commit buttona.
-        $commitBtnLabel.text(d.actionLabel || ('Wyślij ' + typeLabel));
+        // Etykieta + tooltip commit buttona. System nie wysyła maili,
+        // więc przycisk mówi wprost, co robi: zmienia stan dokumentu.
+        // Tryb respond zostaje przy etykiecie z loadera („Oznacz jako
+        // otrzymaną odpowiedź"). Ponowna wysyłka (RFQ responded / PO
+        // confirmed) dostaje dopisek, tak jak actionLabel z loadera.
+        if (isRespondMode) {
+            $commitBtnLabel.text(d.actionLabel || 'Oznacz jako otrzymaną odpowiedź');
+            $commitBtn.attr('title', 'Zapisuje odpowiedź dostawcy — nic nie jest wysyłane.');
+        } else {
+            const isResend = (DOC_TYPE === 'rfq' && d.state === 'responded')
+                          || (DOC_TYPE === 'po'  && d.state === 'confirmed');
+            $commitBtnLabel.text('Oznacz jako wysłane' + (isResend ? ' (ponownie)' : ''));
+            $commitBtn.attr('title', 'System nie wysyła e-maili — ta akcja tylko zmienia stan '
+                + 'dokumentu na „wysłany”. Skopiuj wiadomość do swojego klienta poczty.');
+        }
 
         // Link "Wróć do dokumentu" — ustawiony raz z data-attr.
         $backToDoc.attr('href', BACK_URL);
@@ -979,107 +1008,134 @@ $(function () {
         if (typeof renderStep4 === 'function') renderStep4();
     }
 
-    // ---- Step 3: PDF -----------------------------------------------
+    // ---- Step 3: Oczekiwana data -----------------------------------
+    //
+    // RFQ: „Oczekiwana odpowiedź", PO: „Planowana dostawa". Pole jest
+    // opcjonalne. Nic nie trafia do bazy, dopóki operator nie kliknie
+    // „Oznacz jako wysłane" w kroku 4 — data jedzie w tym samym POST-cie co wysyłka
+    // (document-send-ajax.php → pole `expected_date`).
+
+    function pad2(n) { return String(n).padStart(2, '0'); }
+
+    function ymdFromDate(dt) {
+        return dt.getFullYear() + '-' + pad2(dt.getMonth() + 1) + '-' + pad2(dt.getDate());
+    }
+
+    function addDaysYmd(ymd, days) {
+        const p = String(ymd).split('-');
+        return ymdFromDate(new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10) + days));
+    }
+
+    // Data wysyłki 'Y-m-d': wybrany backdate albo dziś.
+    function sendBaseDateYmd() {
+        return state.backdatedAt
+            ? String(state.backdatedAt).substring(0, 10)
+            : ymdFromDate(new Date());
+    }
+
+    // Data zapisana już na dokumencie (RFQ: reply, PO: delivery) albo ''.
+    function docExpectedDate() {
+        const d = state.doc;
+        if (!d) return '';
+        const v = DOC_TYPE === 'po' ? d.expectedDeliveryDate : d.expectedReplyDate;
+        return v ? String(v).substring(0, 10) : '';
+    }
+
+    // PO: podpowiedź = data wysyłki + lead time dostawcy. RFQ: brak.
+    function leadTimeDefaultYmd() {
+        const d = state.doc;
+        if (DOC_TYPE !== 'po' || !d || !d.vendorLeadTimeDays) return '';
+        return addDaysYmd(sendBaseDateYmd(), parseInt(d.vendorLeadTimeDays, 10));
+    }
+
+    function refreshExpectedDateDefault() {
+        if (!state.doc || state.expectedDateTouched) return;
+        state.expectedDate = docExpectedDate() || leadTimeDefaultYmd();
+    }
 
     function renderStep3() {
         const d = state.doc;
-        const docKind = DOC_TYPE === 'po' ? 'zamówienia' : 'zapytania';
-        // Przy rfq+sent → tryb respond, PDF nie ma sensu (już wysłane).
-        // UX: pokazujemy panel, ale bez możliwości wyboru — committed
-        // było przy pierwszej wysyłce.
+        const isPo = (DOC_TYPE === 'po');
+        const label = isPo ? 'Planowana dostawa' : 'Oczekiwana odpowiedź';
+        // rfq+sent → tryb respond: dokument już wysłany, daty tu nie
+        // zmieniamy (można to zrobić na stronie edycji dokumentu).
         const respondMode = (DOC_TYPE === 'rfq' && d.state === 'sent');
 
-        const radiosHtml = respondMode
-            ? '<div class="alert alert-info mb-0">'
-                + 'Dokument został już wysłany. Oznaczenie odpowiedzi nie zmienia statusu PDF.'
-              + '</div>'
-            : '<label class="pdf-radio-card" id="send-pdf-yes-card">'
-                + '<input type="radio" name="send-pdf-choice" value="1" '
-                    + (state.generatePdf ? 'checked' : '') + '>'
-                + '<strong>Tak</strong> — utworzony zostanie placeholder PDF. '
-                + 'Prawdziwy PDF pojawi się w przyszłości.'
-            + '</label>'
-            + '<label class="pdf-radio-card" id="send-pdf-no-card">'
-                + '<input type="radio" name="send-pdf-choice" value="0" '
-                    + (!state.generatePdf ? 'checked' : '') + '>'
-                + '<strong>Nie</strong> — dokument zostanie wysłany bez PDF.'
-            + '</label>';
-
-        // Preview placeholder — szary box z ikoną + meta. Generowany
-        // "na teraz" (po prostu timestamp z frontu; prawdziwe dane
-        // przyjdą z endpointu).
-        const now = new Date();
-        const pad = (n) => String(n).padStart(2, '0');
-        const nowStr = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-'
-            + pad(now.getDate()) + ' ' + pad(now.getHours()) + ':'
-            + pad(now.getMinutes());
-        const previewHtml = respondMode
-            ? ''
-            : '<div class="pdf-preview-placeholder">'
-                + '<i class="bi bi-file-earmark-pdf"></i>'
-                + '<div><strong>' + escapeHtml((d.number || ('#' + d.id)) + '_' + DOC_TYPE.toUpperCase() + '.pdf') + '</strong></div>'
-                + '<div class="pdf-preview-meta">'
-                    + '≈ 2 strony · wygenerowano <strong>' + escapeHtml(nowStr) + '</strong>'
+        if (respondMode) {
+            $('#send-step-3-body').html(
+                '<div class="alert alert-info mb-0">'
+                    + 'Dokument został już wysłany — data oczekiwanej odpowiedzi nie jest tu zmieniana'
+                    + (docExpectedDate() ? ' (obecnie: <strong>' + escapeHtml(docExpectedDate()) + '</strong>)' : '')
+                    + '. Możesz ją zmienić na stronie edycji dokumentu.'
                 + '</div>'
-              + '</div>';
+            );
+            return;
+        }
+
+        const leadHint = (isPo && d.vendorLeadTimeDays)
+            ? '<small class="form-text text-muted">Podpowiedź: data wysyłki + '
+                + escapeHtml(String(d.vendorLeadTimeDays)) + ' dni (czas realizacji dostawcy).</small>'
+            : '';
 
         $('#send-step-3-body').html(
-            '<p class="text-muted">'
-                + 'Czy wygenerować PDF dla ' + docKind + '? '
-                + 'Placeholder wskazuje miejsce na przyszły, prawdziwy PDF.'
-            + '</p>'
-            + radiosHtml
-            + previewHtml
+            '<p class="text-muted">Pole opcjonalne. Data zostanie zapisana razem z wysyłką dokumentu.</p>'
+            + '<div class="form-group mb-0">'
+                + '<label for="send-expected-date" class="font-weight-bold">' + escapeHtml(label) + ':</label>'
+                + '<div class="d-flex align-items-center" style="gap: .5rem;">'
+                    + '<input type="date" id="send-expected-date" class="form-control" style="max-width: 220px;" '
+                        + 'value="' + escapeHtml(state.expectedDate || '') + '">'
+                    + '<button type="button" class="btn btn-outline-secondary btn-sm" id="send-expected-date-clear">'
+                        + '<i class="bi bi-x-lg"></i> Wyczyść'
+                    + '</button>'
+                + '</div>'
+                + leadHint
+            + '</div>'
         );
 
-        // Wire radio cards (klik w label → zaznacz radio + zaktualizuj styl).
-        if (!respondMode) {
-            $('input[name="send-pdf-choice"]').on('change', function () {
-                state.generatePdf = $(this).val() === '1';
-                refreshPdfRadioStyle();
-            });
-            refreshPdfRadioStyle();
-        }
-    }
-
-    function refreshPdfRadioStyle() {
-        $('#send-pdf-yes-card, #send-pdf-no-card').each(function () {
-            const $card = $(this);
-            const checked = $card.find('input[type="radio"]').is(':checked');
-            $card.toggleClass('is-selected', checked);
+        $('#send-expected-date').on('change', function () {
+            state.expectedDate = $(this).val() || '';
+            state.expectedDateTouched = true;
+        });
+        $('#send-expected-date-clear').on('click', function () {
+            $('#send-expected-date').val('');
+            state.expectedDate = '';
+            state.expectedDateTouched = true;
         });
     }
 
     // ---- Step 4: Potwierdzenie ------------------------------------
     //
-    // Panel 4 to powierzchnia „przejrzyj i wyślij", nie ekran edycji —
-    // gęstszy i spokojniejszy niż kroki 1-3. Kolejność bloków jest
-    // stała i wynika z tego, jak operator faktycznie pracuje:
+    // Panel 4 to powierzchnia „przejrzyj i oznacz jako wysłane". Ma
+    // pokazać na jeden rzut oka to, co ważne: cały e-mail (Do / Temat /
+    // Treść), PDF i akcję. Kolejność bloków (renderStep4):
     //
-    //   1. blokery (brak kontaktów) + ostrzeżenie o backdate
-    //   2. „Wiadomość do dostawcy" — picker szablonu + gotowa treść
-    //   3. „Podsumowanie zapytania" — jeden rzut oka na dokument
-    //   4. „Parametry wysyłki" (kontakty, data, PDF)     — ZWINIĘTE
-    //   5. „Pozycje" (tabela z kopiowaniem per wiersz)   — ZWINIĘTE
+    //   1. bloker „brak kontaktów" (tylko gdy dotyczy)
+    //   2. pasek kontekstu — dostawca / numer / pozycje / wartość /
+    //      termin; jedna cienka linia tylko do odczytu
+    //   3. układ dwukolumnowy (>= lg; węziej jedno pod drugim):
+    //        lewa  (~64%) — karta „E-mail" (kompozytor) + pod nią
+    //                        zwinięta karta „Szczegóły"
+    //        prawa (~36%) — karta „PDF" (sticky; na razie placeholder)
+    //   Tryb respond (rfq+sent): nic nie jest wysyłane, więc bez
+    //   kompozytora i bez PDF — pasek kontekstu, jednozdaniowe
+    //   wyjaśnienie i „Szczegóły" na pełną szerokość.
     //
-    // Punkt 2 stoi najwyżej, bo jest jedyną CZYNNOŚCIĄ w tym kroku —
-    // operator redaguje treść i kopiuje ją do klienta poczty. Punkty
-    // 3-5 to kontrola („czy to ten dokument, te kontakty, te
-    // pozycje?"), więc schodzą pod spód, a 4-5 dodatkowo do zwiniętych
-    // drilldownów (step4CollapsibleCardHtml) — wcześniej 30-wierszowa
-    // tabela pozycji wypychała kompozytor poza ekran.
+    // Data wysłania ustawiona wstecz (state.backdatedAt) nie jest już
+    // osobnym alertem — to krótka notka obok przycisku commita na
+    // sticky barze (#send-commit-note).
     //
     // WAŻNE: backend nie wysyła maila. W całym repo nie ma mail(), a
-    // przycisk „Wyślij" na sticky barze robi wyłącznie commit stanu
-    // (draft → sent) przez document-send-ajax.php. Dlatego szablon
-    // wiadomości jest w 100% po stronie klienta: operator kopiuje go
-    // przyciskiem „Kopiuj treść maila" i wkleja do własnego klienta
-    // poczty. Kopiowanie jest tu główną interakcją, nie ozdobą.
+    // przycisk „Oznacz jako wysłane" na sticky barze robi wyłącznie
+    // commit stanu (draft → sent) przez document-send-ajax.php. Dlatego
+    // szablon wiadomości jest w 100% po stronie klienta: operator
+    // kopiuje go przyciskiem „Kopiuj wiadomość" i wkleja do własnego
+    // klienta poczty.
     //
-    // Feedback po kopiowaniu: WYŁĄCZNIE swap ikony na przycisku
-    // (bi-clipboard → bi-clipboard-check na 1.2 s). Bez toastu — w
-    // kroku 4 kliknięć „kopiuj" jest kilkanaście, więc toast byłby
-    // spamem. Krok 2 zostaje przy swoim toaście (bez zmian).
+    // Kopiowanie ograniczone do czterech akcji na wierzchu: ikony przy
+    // Do / Temat / Treść + przycisk „Kopiuj wiadomość" w stopce.
+    // (Zwinięte „Szczegóły" mają jeszcze „Kopiuj pozycje" i kopiowanie
+    // danych kontaktowych.) Feedback: WYŁĄCZNIE swap ikony na przycisku
+    // (bi-clipboard → bi-clipboard-check na 1.2 s), bez toastu.
 
     // Bufor na wartości wieloliniowe. Nie trzymamy ich w atrybutach
     // data-copy, bo parser HTML normalizuje tam znaki nowej linii.
@@ -1095,7 +1151,11 @@ $(function () {
     function step4ExpectedDate() {
         const d = state.doc;
         if (!d) return '';
-        return (DOC_TYPE === 'po' ? d.expectedDeliveryDate : d.expectedReplyDate) || '';
+        // Rekap/e-mail pokazują datę z kroku 3 (jeszcze niezapisaną),
+        // nie tę z bazy. W trybie respond krok 3 niczego nie zmienia,
+        // więc wartością jest data z dokumentu.
+        const isRespondMode = (DOC_TYPE === 'rfq' && d.state === 'sent');
+        return isRespondMode ? docExpectedDate() : (state.expectedDate || '');
     }
 
     function step4ExpectedLabel() {
@@ -1124,7 +1184,7 @@ $(function () {
         //                (edytowana) treść, nie ta z chwili renderu
         //   key        — klucz w step4Clip dla bloków wieloliniowych
         //   full       — treść wiadomości z buildComposerBodyText() (bez tematu);
-        //                ten sam payload co przycisk „Kopiuj treść maila"
+        //                ten sam payload co przycisk „Kopiuj wiadomość"
         //                w stopce, żeby nie było dwóch definicji „całego maila"
         //   recipients — adresy e-mail odbiorców wybranych w kroku 2,
         //                rozdzielone ", "; obsługuje też `disabledWhenEmpty`
@@ -1227,14 +1287,16 @@ $(function () {
             document_type:         isPo ? 'zamówienie' : 'zapytanie',
             document_number:       blank(d.number || (d.id ? '#' + d.id : '')),
             document_comment:      blank(d.comment),
-            expected_reply_date:   blank(d.expectedReplyDate),
-            expected_delivery_date: blank(d.expectedDeliveryDate),
+            // Wartość z kroku 3 (jeszcze niezapisana) dla bieżącego typu;
+            // drugi typ nie ma tu sensu, więc zostaje z dokumentu.
+            expected_reply_date:   blank(isPo ? d.expectedReplyDate : step4ExpectedDate()),
+            expected_delivery_date: blank(isPo ? step4ExpectedDate() : d.expectedDeliveryDate),
             created_by_name:       blank(d.createdByName),
             created_at:            blank(d.createdAt),
             item_count:            String(lines.length),
             // Pusty dokument dostaje tekst zastępczy w kolumnie
             // VendorPartNo (mirror pustego stanu tabeli pozycji w
-            // buildStep4ItemsHtml); obsługa wewnątrz plainText.
+            // buildStep4ItemsTableHtml); obsługa wewnątrz plainText.
             // Owijamy tabelę markerami — dzięki temu renderComposerPreview
             // lokalizuje tabelę nawet po edycji komórek (markery stoją
             // na zewnątrz, edycja wnętrza ich nie psuje).
@@ -1278,7 +1340,7 @@ $(function () {
         const drafts = d.availableEmailDrafts || [];
         // Pusty katalog to JEDYNY przypadek, w którym kreator sięga po
         // szablon systemowy. Krok 4 pokaże wtedy komunikat zamiast
-        // pickera — patrz buildDraftPickerHtml().
+        // pickera — patrz buildDraftPickerHtml() / buildDraftEmptyNoticeHtml().
         if (drafts.length === 0) {
             applySelectedDraft(null);
             return;
@@ -1406,14 +1468,14 @@ $(function () {
     /**
      * Zwijana karta kroku 4.
      *
-     * Krok 4 ma dwie powierzchnie pierwszego planu — „Podsumowanie…"
-     * i „Wiadomość do dostawcy" — oraz dwa drilldowny („Parametry
-     * wysyłki", „Pozycje"), które operator otwiera tylko wtedy, gdy
-     * chce coś sprawdzić. Te drugie budujemy tym helperem: nagłówek
-     * jest przyciskiem toggle, a body siedzi w Bootstrapowym .collapse.
+     * Krok 4 ma dwie powierzchnie pierwszego planu — „E-mail" i „PDF" —
+     * oraz jeden drilldown („Szczegóły": notatka, kontakty, pozycje),
+     * który operator otwiera tylko wtedy, gdy chce coś sprawdzić. Ten
+     * drugi budujemy tym helperem: nagłówek jest przyciskiem toggle,
+     * a body siedzi w Bootstrapowym .collapse.
      *
      * Nagłówek to <div> z <button> w środku, nie <button class="card-header">,
-     * bo karta „Pozycje" trzyma w nagłówku własny przycisk „Kopiuj
+     * bo karta „Szczegóły" trzyma w nagłówku własny przycisk „Kopiuj
      * pozycje" — przycisk w przycisku jest niepoprawnym HTML-em.
      * Toggle rozpycha się na całą wolną szerokość (flex: 1), więc
      * klikalny jest praktycznie cały pasek, a nie sam chevron.
@@ -1480,81 +1542,119 @@ $(function () {
         });
     }
 
-    function buildStep4SummaryHtml() {
-        const d          = state.doc;
-        const number     = d.number || ('#' + d.id);
-        const vendorName = d.vendorName || '—';
-        const lines      = d.lines || [];
-        const breakdown  = d.valueBreakdown || [];
-
-        const valueHtml = breakdown.length === 0
-            ? '<span class="text-muted">brak wyceny</span>'
-            : breakdown.map(function (b) {
-                return '<span class="send-review-money">'
-                    + escapeHtml(formatPrice(b.total))
-                    + ' <span class="send-review-money-cur">' + escapeHtml(b.currency) + '</span>'
-                + '</span>';
-              }).join('');
-
-        const facts = [
-            { label: 'Dostawca',
-              value: '<span class="send-review-strong">' + escapeHtml(vendorName) + '</span>'
-                   + copyBtnHtml({ copy: vendorName, label: 'Kopiuj nazwę dostawcy' }) },
-            { label: (DOC_TYPE === 'po' ? 'Numer zamówienia' : 'Numer zapytania'),
-              value: '<span class="send-review-strong">' + escapeHtml(number) + '</span>'
-                   + copyBtnHtml({ copy: number, label: 'Kopiuj numer dokumentu' }) },
-            { label: step4ExpectedLabel(),
-              value: step4ExpectedDate()
-                  ? escapeHtml(step4ExpectedDate())
-                  : '<span class="text-muted">nie podano</span>' },
-            { label: 'Pozycji',
-              value: '<span class="send-review-strong">' + lines.length + '</span>' },
-            { label: 'Wartość', value: valueHtml },
-            { label: 'Utworzył', value: escapeHtml(d.createdByName || '—') },
-            { label: 'Utworzono', value: escapeHtml(d.createdAt || '—') }
-        ];
-
-        const factsHtml = facts.map(function (f) {
-            return '<div class="send-review-fact">'
-                + '<dt class="send-review-fact-label">' + escapeHtml(f.label) + '</dt>'
-                + '<dd class="send-review-fact-value">' + f.value + '</dd>'
-            + '</div>';
-        }).join('');
-
-        const noteHtml = d.comment
-            ? '<div class="send-review-note">'
-                + '<i class="bi bi-chat-left-text" aria-hidden="true"></i>'
-                + '<span>' + escapeHtml(d.comment) + '</span>'
-              + '</div>'
-            : '';
-
-        return '<div class="card send-review-card mb-3">'
-            + '<div class="card-header send-review-card-header">'
-                + '<i class="bi bi-clipboard-data" aria-hidden="true"></i> '
-                + (DOC_TYPE === 'po' ? 'Podsumowanie zamówienia' : 'Podsumowanie zapytania')
-            + '</div>'
-            + '<div class="card-body send-review-card-body">'
-                + '<dl class="send-review-grid mb-0">' + factsHtml + '</dl>'
-                + noteHtml
-            + '</div>'
-        + '</div>';
+    /**
+     * Polska odmiana liczebnika: 1 pozycja / 2 pozycje / 5 pozycji.
+     * Używana tylko w meta nagłówka „Szczegóły".
+     */
+    function plPlural(n, one, few, many) {
+        if (n === 1) return one;
+        const m10 = n % 10;
+        const m100 = n % 100;
+        if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+        return many;
     }
 
-    function buildStep4ItemsHtml() {
-        const lines = (state.doc && state.doc.lines) || [];
-        const count = lines.length;
+    /** Wartość dokumentu per waluta — ten sam markup .send-review-money co wcześniej. */
+    function step4MoneyHtml() {
+        const breakdown = (state.doc && state.doc.valueBreakdown) || [];
+        if (breakdown.length === 0) return '<span class="text-muted">brak wyceny</span>';
+        return breakdown.map(function (b) {
+            return '<span class="send-review-money">'
+                + escapeHtml(formatPrice(b.total))
+                + ' <span class="send-review-money-cur">' + escapeHtml(b.currency) + '</span>'
+            + '</span>';
+        }).join('');
+    }
 
-        if (count === 0) {
-            return step4CollapsibleCardHtml({
-                id:    'send-step-4-items-body',
-                icon:  'bi-list-ul',
-                title: 'Pozycje',
-                meta:  ' <span class="send-review-count">0</span>',
-                open:  false,
-                bodyHtml: '<div class="card-body send-review-card-body">'
-                    + '<p class="text-muted mb-0">Dokument nie ma pozycji.</p>'
-                + '</div>'
-            });
+    /**
+     * Pasek kontekstu na górze kroku 4 — jedna cienka linia tylko do
+     * odczytu: dostawca, numer, liczba pozycji, wartość per waluta,
+     * termin. Zastępuje dawną kartę „Podsumowanie…" (bez autora i daty
+     * utworzenia, bez przycisków kopiowania — to nie są dane, które
+     * operator wkleja do maila). Notatka dokumentu siedzi w „Szczegółach".
+     */
+    function buildStep4ContextHtml() {
+        const d      = state.doc;
+        const number = d.number || ('#' + d.id);
+        const lines  = d.lines || [];
+        const date   = step4ExpectedDate();
+
+        const item = function (label, valueHtml, extraClass) {
+            return '<div class="send-context-item' + (extraClass ? ' ' + extraClass : '') + '">'
+                + '<dt class="send-context-label">' + escapeHtml(label) + '</dt>'
+                + '<dd class="send-context-value">' + valueHtml + '</dd>'
+            + '</div>';
+        };
+
+        return '<dl class="send-context" aria-label="Podsumowanie dokumentu">'
+            + item('Dostawca',
+                   '<strong>' + escapeHtml(d.vendorName || '—') + '</strong>',
+                   'send-context-vendor')
+            + item(DOC_TYPE === 'po' ? 'Zamówienie' : 'Zapytanie',
+                   '<strong class="send-context-number">' + escapeHtml(number) + '</strong>')
+            + item('Pozycji', '<strong>' + lines.length + '</strong>')
+            + item('Wartość', step4MoneyHtml(), 'send-context-money')
+            + item(step4ExpectedLabel(),
+                   date
+                       ? '<strong>' + escapeHtml(date) + '</strong>'
+                       : '<span class="text-muted">nie podano</span>')
+        + '</dl>';
+    }
+
+    /**
+     * Dane wybranych kontaktów (e-mail / telefon / komentarz, z mailto:
+     * i tel: oraz kopiowaniem). Siedzi w zwiniętych „Szczegółach" —
+     * same adresy i tak są w wierszu „Do" kompozytora.
+     */
+    function buildStep4ContactsHtml(selectedList) {
+        if (selectedList.length === 0) {
+            return '<p class="text-muted mb-0">Nie wybrano kontaktów.</p>';
+        }
+        const copyIcon = function (value, label) {
+            return '<button type="button" class="send-copy-btn" data-copy="' + escapeHtml(value) + '" '
+                + 'title="' + label + '" aria-label="' + label + '">'
+                + '<i class="bi bi-clipboard" aria-hidden="true"></i></button>';
+        };
+        return '<div class="summary-recap"><div class="summary-recap-contacts">'
+            + selectedList.map(function (s) {
+                let html = '<div class="summary-contact-row">'
+                    + '<strong>' + escapeHtml(s.name) + '</strong>'
+                    + (s.jobTitle ? ' <small class="text-muted">— ' + escapeHtml(s.jobTitle) + '</small>' : '')
+                + '</div>';
+                if (s.email) {
+                    html += '<div class="summary-contact-line">'
+                        + '<i class="bi bi-envelope"></i> '
+                        + '<a href="mailto:' + escapeHtml(s.email) + '">' + escapeHtml(s.email) + '</a>'
+                        + copyIcon(s.email, 'Kopiuj adres e-mail')
+                    + '</div>';
+                }
+                if (s.phone) {
+                    html += '<div class="summary-contact-line">'
+                        + '<i class="bi bi-telephone"></i> '
+                        + '<a href="tel:' + escapeHtml(s.phone) + '">' + escapeHtml(s.phone) + '</a>'
+                        + copyIcon(s.phone, 'Kopiuj numer telefonu')
+                    + '</div>';
+                }
+                if (s.comment) {
+                    html += '<div class="summary-contact-line summary-contact-comment">'
+                        + '<i class="bi bi-chat-left-text"></i> '
+                        + '<span class="summary-contact-comment-text">' + escapeHtml(s.comment) + '</span>'
+                        + copyIcon(s.comment, 'Kopiuj komentarz kontaktu')
+                    + '</div>';
+                }
+                return html;
+            }).join('')
+        + '</div></div>';
+    }
+
+    /**
+     * Tabela pozycji do „Szczegółów" — bez kopiowania per komórka.
+     * Zostają opis części i komentarz z kartoteki (vendorPartComment),
+     * bo tych informacji nie ma w treści maila.
+     */
+    function buildStep4ItemsTableHtml(lines) {
+        if (lines.length === 0) {
+            return '<p class="text-muted mb-0">Dokument nie ma pozycji.</p>';
         }
 
         const rows = lines.map(function (ln) {
@@ -1564,37 +1664,39 @@ $(function () {
             const vpComment = ln.vendorPartComment || '';
 
             // Nr części producenta, a pod nim (gdy inny) nr u dostawcy.
-            // Każdy z własnym „kopiuj" — to numery, które operator
-            // najczęściej wkleja do maila i do sklepu dostawcy, więc
-            // przycisk stoi TUŻ przy wartości, nie na końcu wiersza.
             let noCell = '';
             if (prodNo) {
                 noCell += '<span class="send-items-copyrow">'
                     + '<code class="send-items-no-val">' + escapeHtml(prodNo) + '</code>'
-                    + copyBtnHtml({ copy: prodNo, label: 'Kopiuj numer części producenta' })
                 + '</span>';
             }
             if (vendNo && vendNo !== prodNo) {
                 noCell += '<span class="send-items-copyrow send-items-secondary">'
                     + '<span class="send-items-tag">dost.</span>'
                     + '<code class="send-items-no-val">' + escapeHtml(vendNo) + '</code>'
-                    + copyBtnHtml({ copy: vendNo, label: 'Kopiuj numer części u dostawcy' })
                 + '</span>';
             }
             if (noCell === '') noCell = '<span class="text-muted">—</span>';
 
             // Kolumna „Komentarz" to WYŁĄCZNIE komentarz pozycji
-            // dokumentu. Komentarz z kartoteki części (vendorPartComment)
-            // opisuje samą część, a nie tę pozycję, więc renderuje się
-            // niżej — w kolumnie „Część", pod opisem.
-            let commentCell = '';
-            if (comment) {
-                commentCell += '<span class="send-items-copyrow">'
-                    + '<span class="send-items-comment-text">' + escapeHtml(comment) + '</span>'
-                    + copyBtnHtml({ copy: comment, label: 'Kopiuj komentarz pozycji' })
-                + '</span>';
-            }
-            if (commentCell === '') commentCell = '<span class="text-muted">—</span>';
+            // dokumentu. Komentarz z kartoteki części opisuje samą część,
+            // więc stoi w kolumnie „Część", pod opisem.
+            const commentCell = comment
+                ? '<span class="send-items-comment-text">' + escapeHtml(comment) + '</span>'
+                : '<span class="text-muted">—</span>';
+
+            // Cena jednostkowa — to samo formatowanie co kolumna Price
+            // w {items} (AtteItemsFormat.formatPrice + kod waluty), ale
+            // brak ceny (RFQ przed odpowiedzią) to samo „—", bez waluty:
+            // loader i tak dokleja 'PLN' domyślnie, więc „— PLN" byłoby
+            // szumem. Wartości pozycji loader nie zwraca — nie liczymy jej.
+            const hasPrice = (ln.unitPrice !== null && ln.unitPrice !== undefined && ln.unitPrice !== '');
+            const priceCell = hasPrice
+                ? escapeHtml(formatPrice(ln.unitPrice))
+                    + (ln.currency
+                        ? ' <span class="send-items-cur">' + escapeHtml(ln.currency) + '</span>'
+                        : '')
+                : '<span class="text-muted">—</span>';
 
             return '<tr>'
                 + '<td class="send-items-part">'
@@ -1602,20 +1704,14 @@ $(function () {
                     + (ln.partDescription
                         ? '<span class="send-items-part-desc">' + escapeHtml(ln.partDescription) + '</span>'
                         : '')
-                    // Komentarz z kartoteki części. Prefiksem jest ikona
-                    // bi-journal-text — ten sam wskaźnik komentarza co w
-                    // /purchase/cart (cart-view.js:1335) — zamiast badge'a
-                    // z napisem „kartoteka". Ikona jest dekoracyjna
-                    // (aria-hidden), więc kontekst dla czytników ekranu
-                    // niosą: sr-only etykieta przed tekstem i nazwa
-                    // przycisku „Kopiuj komentarz z kartoteki części".
+                    // Ikona bi-journal-text — ten sam wskaźnik komentarza
+                    // co w /purchase/cart. Dekoracyjna, więc kontekst dla
+                    // czytników ekranu niesie etykieta sr-only.
                     + (vpComment
                         ? '<span class="send-items-part-vpcomment send-items-copyrow">'
                             + '<i class="bi bi-journal-text send-items-comment-icon" aria-hidden="true"></i>'
                             + '<span class="sr-only">Komentarz z kartoteki części:</span>'
                             + '<span>' + escapeHtml(vpComment) + '</span>'
-                            + copyBtnHtml({ copy: vpComment,
-                                            label: 'Kopiuj komentarz z kartoteki części' })
                           + '</span>'
                         : '')
                 + '</td>'
@@ -1623,41 +1719,133 @@ $(function () {
                 + '<td class="send-items-no">' + noCell + '</td>'
                 + '<td class="text-right send-items-qty">' + escapeHtml(AtteItemsFormat.formatQty(ln.quantityOrdered)) + '</td>'
                 + '<td class="send-items-unit">' + escapeHtml(ln.unitName || '—') + '</td>'
+                + '<td class="text-right send-items-price">' + priceCell + '</td>'
                 + '<td class="send-items-comment">' + commentCell + '</td>'
             + '</tr>';
         }).join('');
 
-        // Zwinięta domyślnie: tabela pozycji jest najwyższym blokiem
-        // kroku 4 i przy 30 wierszach wypychała kompozytor wiadomości
-        // poza ekran. Operator zajrzy tu, gdy chce sprawdzić, co
-        // faktycznie leci do dostawcy.
-        return step4CollapsibleCardHtml({
-            id:    'send-step-4-items-body',
-            icon:  'bi-list-ul',
-            title: 'Pozycje',
-            meta:  ' <span class="send-review-count">' + count + '</span>',
-            open:  false,
-            headerExtra: '<button type="button" class="send-copy-block-btn" data-copy-key="items" '
-                + 'title="Kopiuj wszystkie pozycje jako tekst" '
-                + 'aria-label="Kopiuj wszystkie pozycje jako tekst">'
+        return '<div class="table-responsive">'
+            + '<table class="table table-sm send-items-table mb-0">'
+                + '<thead>'
+                    + '<tr>'
+                        + '<th>Część</th>'
+                        + '<th>Producent</th>'
+                        + '<th>Nr części prod.</th>'
+                        + '<th class="text-right">Ilość</th>'
+                        + '<th>Jedn.</th>'
+                        + '<th class="text-right">Cena jedn.</th>'
+                        + '<th>Komentarz</th>'
+                    + '</tr>'
+                + '</thead>'
+                + '<tbody>' + rows + '</tbody>'
+            + '</table>'
+        + '</div>';
+    }
+
+    /**
+     * Jedna zwinięta karta „Szczegóły": notatka dokumentu, dane
+     * wybranych kontaktów i tabela pozycji. Zastępuje dawne
+     * „Parametry wysyłki" i „Pozycje". Meta w nagłówku pokazuje
+     * liczniki, więc bez rozwijania widać, co jest w środku.
+     * Domyślnie zwinięta; `open` = true zachowuje rozwinięcie przy
+     * ponownym renderze kroku 4.
+     */
+    function buildStep4DetailsHtml(selectedList, open) {
+        const d     = state.doc;
+        const lines = d.lines || [];
+        const count = lines.length;
+        const nContacts = selectedList.length;
+
+        const metaParts = [
+            count + ' ' + plPlural(count, 'pozycja', 'pozycje', 'pozycji'),
+            nContacts + ' ' + plPlural(nContacts, 'kontakt', 'kontakty', 'kontaktów'),
+        ];
+        if (d.comment) metaParts.push('notatka');
+        const meta = ' <span class="send-review-meta">' + escapeHtml(metaParts.join(' · ')) + '</span>';
+
+        const noteHtml = d.comment
+            ? '<section class="send-details-section">'
+                + '<h6 class="send-details-heading">Notatka do dokumentu</h6>'
+                + '<div class="send-review-note">'
+                    + '<i class="bi bi-chat-left-text" aria-hidden="true"></i>'
+                    + '<span>' + escapeHtml(d.comment) + '</span>'
+                + '</div>'
+              + '</section>'
+            : '';
+
+        const contactsHtml = '<section class="send-details-section">'
+            + '<h6 class="send-details-heading">Wybrane kontakty</h6>'
+            + buildStep4ContactsHtml(selectedList)
+        + '</section>';
+
+        // „Kopiuj pozycje" tylko gdy jest co kopiować.
+        const copyItemsBtn = (count > 0)
+            ? '<button type="button" class="send-copy-block-btn" data-copy-key="items" '
+                + 'title="Kopiuj wszystkie pozycje jako tabelę" '
+                + 'aria-label="Kopiuj wszystkie pozycje jako tabelę">'
                 + '<i class="bi bi-clipboard" aria-hidden="true"></i> Kopiuj pozycje'
-            + '</button>',
-            bodyHtml: '<div class="table-responsive">'
-                + '<table class="table table-sm send-items-table mb-0">'
-                    + '<thead>'
-                        + '<tr>'
-                            + '<th>Część</th>'
-                            + '<th>Producent</th>'
-                            + '<th>Nr części prod.</th>'
-                            + '<th class="text-right">Ilość</th>'
-                            + '<th>Jedn.</th>'
-                            + '<th>Komentarz</th>'
-                        + '</tr>'
-                    + '</thead>'
-                    + '<tbody>' + rows + '</tbody>'
-                + '</table>'
+              + '</button>'
+            : '';
+
+        return step4CollapsibleCardHtml({
+            id:    'send-step-4-details-body',
+            icon:  'bi-card-list',
+            title: 'Szczegóły',
+            meta:  meta,
+            open:  open === true,
+            headerExtra: copyItemsBtn,
+            bodyHtml: '<div class="card-body send-review-card-body">'
+                + '<div class="send-details-meta">' + noteHtml + contactsHtml + '</div>'
+                + '<section class="send-details-section send-details-items">'
+                    + '<h6 class="send-details-heading">Pozycje</h6>'
+                    + buildStep4ItemsTableHtml(lines)
+                + '</section>'
             + '</div>'
         });
+    }
+
+    /**
+     * Karta „PDF" (prawa kolumna). Na razie placeholder — generowanie
+     * PDF jeszcze nie istnieje, więc przyciski są nieaktywne.
+     *
+     * Kontrakt pod przyszły endpoint PDF:
+     *   #send-pdf-preview  — kontener podglądu; wstawić do niego
+     *                        <iframe class="send-pdf-frame" src="…"> w
+     *                        miejsce .send-pdf-placeholder (proporcje A4
+     *                        trzyma CSS kontenera)
+     *   #send-pdf-open     — „Podgląd": zamienić <button disabled> na
+     *                        <a href="…" target="_blank" rel="noopener">
+     *   #send-pdf-download — „Pobierz": <a href="…" download>
+     * Klasa .is-unavailable na karcie steruje stanem „wkrótce".
+     */
+    function buildStep4PdfHtml() {
+        const unavailable = 'Generowanie PDF nie jest jeszcze dostępne.';
+        return '<div class="card send-review-card send-pdf-card is-unavailable">'
+            + '<div class="card-header send-review-card-header d-flex align-items-center">'
+                + '<span><i class="bi bi-file-earmark-pdf" aria-hidden="true"></i> PDF</span>'
+                + '<span class="send-pdf-status ml-auto">wkrótce</span>'
+            + '</div>'
+            + '<div class="card-body send-review-card-body">'
+                + '<div class="send-pdf-preview" id="send-pdf-preview">'
+                    + '<div class="send-pdf-placeholder">'
+                        + '<i class="bi bi-file-earmark-pdf" aria-hidden="true"></i>'
+                        + '<span>Podgląd PDF będzie dostępny wkrótce.</span>'
+                    + '</div>'
+                + '</div>'
+                // Wrapper z title: wyłączony <button> w części przeglądarek
+                // nie pokazuje własnego tooltipa.
+                + '<div class="send-pdf-actions" title="' + unavailable + '">'
+                    + '<button type="button" class="btn btn-outline-secondary btn-sm" id="send-pdf-open" '
+                        + 'disabled aria-disabled="true" title="' + unavailable + '">'
+                        + '<i class="bi bi-eye" aria-hidden="true"></i> Podgląd'
+                    + '</button>'
+                    + '<button type="button" class="btn btn-outline-secondary btn-sm" id="send-pdf-download" '
+                        + 'disabled aria-disabled="true" title="' + unavailable + '">'
+                        + '<i class="bi bi-download" aria-hidden="true"></i> Pobierz'
+                    + '</button>'
+                + '</div>'
+            + '</div>'
+        + '</div>';
     }
 
     function tplBadgeTitle() {
@@ -1694,36 +1882,35 @@ $(function () {
     }
 
     /**
-     * Pasek „Szablon wiadomości" na górze kompozytora.
+     * Kompaktowy wybór szablonu w nagłówku karty „E-mail":
+     * „Szablon: <nazwa> ▾". Nazwa ▾ to sam przycisk bootstrap-select
+     * (ostylowany na cichy, mały trigger), więc jeden klik otwiera
+     * listę z wyszukiwarką — bez osobnego paska na całą szerokość.
      *
      * Picker listuje wyłącznie szablony z katalogu — wartością opcji
      * jest id szablonu. Wybór nadpisuje preferencję dostawcy TYLKO
-     * w tej sesji kreatora; nic nie ląduje w bazie.
+     * w tej sesji kreatora; nic nie ląduje w bazie (mówi o tym title
+     * na etykiecie „Szablon").
      *
-     * Gdy katalog nie ma szablonu dla bieżącego typu dokumentu, pasek
-     * zamienia się w komunikat — jednoopcyjny, martwy select udawałby
-     * wybór, którego nie ma.
+     * Gdy katalog nie ma szablonu dla bieżącego typu dokumentu, zamiast
+     * pickera stoi wyciszone „Szablon: wbudowany", a pod nagłówkiem
+     * pełny komunikat (buildDraftEmptyNoticeHtml) — jednoopcyjny,
+     * martwy select udawałby wybór, którego nie ma.
      *
      * bootstrap-select: data-width="100%" + własny, wymiarowany
      * kontener (#send-draft-picker-cell) + data-container na ten sam
-     * kontener — kanoniczny zestaw z AGENTS.md dla pickera, który ma
-     * wypełnić rodzica i przyciąć długie nazwy zamiast go rozpychać.
+     * kontener + min-width: 0 na flex-wrapperze — kanoniczny zestaw z
+     * AGENTS.md dla pickera, który ma przyciąć długie nazwy zamiast
+     * rozpychać nagłówek.
      */
     function buildDraftPickerHtml() {
         const drafts = (state.doc && state.doc.availableEmailDrafts) || [];
+        const hint = 'Tylko na tę wysyłkę — preferencja dostawcy zostaje bez zmian.';
 
         if (drafts.length === 0) {
-            const href = escapeHtml(emailDraftsUrl());
-            return '<div class="send-composer-tplbar send-composer-tplbar-empty" '
-                    + 'id="send-composer-tplbar">'
-                + '<span class="send-composer-tpl-empty">'
-                    + '<i class="bi bi-exclamation-triangle" aria-hidden="true"></i> '
-                    + 'Brak szablonów dla tego typu dokumentu. Utwórz szablon w '
-                    + '<a href="' + href + '" target="_blank" rel="noopener">'
-                        + '/admin/purchase/email-drafts'
-                    + '</a>. '
-                    + 'Poniżej wstawiono wbudowany szablon domyślny.'
-                + '</span>'
+            return '<div class="send-composer-tpl" id="send-composer-tplbar">'
+                + '<span class="send-composer-tpl-key">Szablon:</span>'
+                + '<span class="send-composer-tpl-builtin">wbudowany</span>'
             + '</div>';
         }
 
@@ -1742,21 +1929,38 @@ $(function () {
             + '</option>';
         }).join('');
 
-        return '<div class="send-composer-tplbar" id="send-composer-tplbar">'
-            + '<label class="send-composer-key send-composer-tpl-key" for="send-draft-picker">'
-                + 'Szablon wiadomości'
-            + '</label>'
+        // Bez `title` na samym <select> — bootstrap-select traktuje go
+        // jako tekst „nic nie wybrano" i podpis przycisku.
+        return '<div class="send-composer-tpl" id="send-composer-tplbar" title="' + escapeHtml(hint) + '">'
+            + '<label class="send-composer-tpl-key" for="send-draft-picker">Szablon:</label>'
             + '<div class="send-composer-tpl-cell" id="send-draft-picker-cell">'
                 + '<select class="selectpicker" id="send-draft-picker" '
                     + 'data-width="100%" '
                     + 'data-container="#send-draft-picker-cell" '
-                    + 'aria-label="Szablon wiadomości">'
+                    + 'aria-label="Szablon wiadomości (tylko na tę wysyłkę)">'
                     + optionsHtml
                 + '</select>'
             + '</div>'
-            + '<span class="send-composer-tpl-hint">'
-                + '<i class="bi bi-info-circle" aria-hidden="true"></i> '
-                + 'Tylko na tę wysyłkę — preferencja dostawcy zostaje bez zmian.'
+        + '</div>';
+    }
+
+    /**
+     * Komunikat o pustym katalogu szablonów — pełny wiersz pod
+     * nagłówkiem karty „E-mail". To stan do naprawienia w katalogu,
+     * więc ma być widoczny, a nie schowany za klikiem.
+     */
+    function buildDraftEmptyNoticeHtml() {
+        const drafts = (state.doc && state.doc.availableEmailDrafts) || [];
+        if (drafts.length > 0) return '';
+        const href = escapeHtml(emailDraftsUrl());
+        return '<div class="send-composer-tplbar send-composer-tplbar-empty">'
+            + '<span class="send-composer-tpl-empty">'
+                + '<i class="bi bi-exclamation-triangle" aria-hidden="true"></i> '
+                + 'Brak szablonów dla tego typu dokumentu. Utwórz szablon w '
+                + '<a href="' + href + '" target="_blank" rel="noopener">'
+                    + '/admin/purchase/email-drafts'
+                + '</a>. '
+                + 'Poniżej wstawiono wbudowany szablon domyślny.'
             + '</span>'
         + '</div>';
     }
@@ -1780,48 +1984,45 @@ $(function () {
               }).join('')
             : '<span class="text-muted">brak adresu e-mail w kontaktach dostawcy</span>';
 
-        // Jedno wyjście z kompozytora: cała wiadomość (temat + treść)
-        // do schowka. Renderuje się ZAWSZE — kopiowanie nie potrzebuje
-        // adresatów, a schowek nie ma limitu długości, który psuł
-        // poprzednie „Otwórz w mailu" (mailto: ucinało dłuższe treści).
+        // Główne wyjście z kompozytora: treść wiadomości do schowka
+        // (text/html z tabelą + text/plain). Temat kopiuje się osobno,
+        // ikoną przy polu „Temat". Renderuje się ZAWSZE — kopiowanie nie
+        // potrzebuje adresatów.
         const copyMailHtml = '<button type="button" class="btn btn-primary btn-sm" '
                 + 'id="send-copy-mail-btn" '
-                + 'title="Kopiuj całą wiadomość (temat + treść) do schowka" '
-                + 'aria-label="Kopiuj treść maila">'
-                + '<i class="bi bi-clipboard" aria-hidden="true"></i> Kopiuj treść maila'
+                + 'title="Kopiuj treść wiadomości do schowka (temat kopiujesz osobno, przy polu Temat)" '
+                + 'aria-label="Kopiuj wiadomość">'
+                + '<i class="bi bi-clipboard" aria-hidden="true"></i> Kopiuj wiadomość'
             + '</button>';
 
-        // Znacznik „skąd jest ta treść" — istotne, gdy wiadomość wygląda
-        // inaczej niż operator pamięta z innych dostawców. Tooltip
-        // nazywa konkretny szablon, jeśli go znamy.
+        // Znacznik „skąd jest ta treść" — tooltip nazywa konkretny
+        // szablon, jeśli go znamy.
         const tplBadge = tplBadgeHtml();
 
         // Ile adresów w wierszu „Do"? Ikona kopiuj gaśnie przy zerze.
         const recipientsCount = emails.length;
 
         return '<div class="card send-review-card send-composer mb-3">'
-            + '<div class="card-header send-review-card-header d-flex justify-content-between align-items-center">'
-                + '<span id="send-composer-title">'
-                    + '<i class="bi bi-envelope-paper" aria-hidden="true"></i> Wiadomość do dostawcy'
+            + '<div class="card-header send-review-card-header send-composer-header">'
+                + '<span id="send-composer-title" class="send-composer-title">'
+                    + '<i class="bi bi-envelope-paper" aria-hidden="true"></i> E-mail'
                     + tplBadge
                 + '</span>'
-                + '<button type="button" id="send-email-reset" '
-                    + 'class="send-composer-reset' + (isDirty ? '' : ' is-hidden') + '" '
-                    + 'title="Przywróć wygenerowany szablon" '
-                    + 'aria-label="Przywróć wygenerowany szablon">'
-                    + '<i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i> Przywróć szablon'
-                + '</button>'
+                + '<div class="send-composer-header-tools">'
+                    + buildDraftPickerHtml()
+                    + '<button type="button" id="send-email-reset" '
+                        + 'class="send-composer-reset' + (isDirty ? '' : ' is-hidden') + '" '
+                        + 'title="Przywróć wygenerowany szablon" '
+                        + 'aria-label="Przywróć wygenerowany szablon">'
+                        + '<i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i> Przywróć szablon'
+                    + '</button>'
+                + '</div>'
             + '</div>'
-            + buildDraftPickerHtml()
-            // Ikona „kopiuj" przy każdym z trzech wierszy nagłówka
-            // stoi PO LEWEJ od etykiety, dzięki czego wszystkie trzy
-            // (Do / Temat / Treść) tworzą jedną kolumnę na krawędzi
-            // karty. Przy „Do" kopiują się adresy odbiorców, przy
-            // „Temat" sam temat, przy „Treść" cała wiadomość —
-            // ikona jest na wysokości tego, co skopiuje, licząc od tego
-            // wiersza w dół. Ikona przy „Do" gaśnie, gdy brak
-            // odbiorców z adresem e-mail (chip po prawej też jest
-            // wtedy zastąpiony komunikatem „brak adresu…").
+            + buildDraftEmptyNoticeHtml()
+            // Ikona „kopiuj" przy każdym z trzech wierszy (Do / Temat /
+            // Treść) stoi PO LEWEJ od etykiety — wszystkie trzy tworzą
+            // jedną kolumnę na krawędzi karty. Ikona przy „Do" gaśnie,
+            // gdy brak odbiorców z adresem e-mail.
             + '<div class="send-composer-head">'
                 + '<div class="send-composer-field">'
                     + copyBtnHtml({ recipients: true,
@@ -1868,11 +2069,6 @@ $(function () {
             + '</div>'
             + '<div class="send-composer-foot">'
                 + copyMailHtml
-                + '<span class="send-composer-hint">'
-                    + '<i class="bi bi-info-circle" aria-hidden="true"></i> '
-                    + 'System nie wysyła e-maili. Skopiuj wiadomość do swojego klienta poczty — '
-                    + 'przycisk „Wyślij” poniżej zmienia wyłącznie stan dokumentu.'
-                + '</span>'
             + '</div>'
         + '</div>';
     }
@@ -1926,15 +2122,29 @@ $(function () {
             + composerHostSegHtml('before', seg.before)
             + '<div class="send-body-table" id="send-body-table-block" contenteditable="false"'
                 + ' data-mode="' + (editing ? 'edit' : 'view') + '">'
-                + '<button type="button" class="send-body-table-edit" id="send-body-table-toggle"'
-                    + ' data-atte-ui="1"'
-                    + ' aria-pressed="' + (editing ? 'true' : 'false') + '"'
-                    + ' title="' + toggleLabel + '"'
-                    + ' aria-label="' + toggleLabel + '">'
-                    + '<i class="bi bi-pencil" data-show-in="view" aria-hidden="true"></i>'
-                    + '<i class="bi bi-check-lg" data-show-in="edit" aria-hidden="true"></i>'
-                    + '<span class="send-body-table-edit-label" data-show-in="edit">Gotowe</span>'
-                + '</button>'
+                // Pasek kontrolek wyspy (prawy górny róg): edycja tabeli
+                // i usunięcie tabeli z wiadomości. Cały pasek ma
+                // data-atte-ui, więc serializer / wycinanie go pomija.
+                // Usunięcie nie pyta o potwierdzenie — da się je cofnąć
+                // („Przywróć szablon") albo wstawić tabelę ponownie
+                // („Wstaw zmienną → Lista pozycji").
+                + '<div class="send-body-table-tools" data-atte-ui="1">'
+                    + '<button type="button" class="send-body-table-edit" id="send-body-table-toggle"'
+                        + ' data-atte-ui="1"'
+                        + ' aria-pressed="' + (editing ? 'true' : 'false') + '"'
+                        + ' title="' + toggleLabel + '"'
+                        + ' aria-label="' + toggleLabel + '">'
+                        + '<i class="bi bi-pencil" data-show-in="view" aria-hidden="true"></i>'
+                        + '<i class="bi bi-check-lg" data-show-in="edit" aria-hidden="true"></i>'
+                        + '<span class="send-body-table-edit-label" data-show-in="edit">Gotowe</span>'
+                    + '</button>'
+                    + '<button type="button" class="send-body-table-edit send-body-table-remove"'
+                        + ' id="send-body-table-remove" data-atte-ui="1"'
+                        + ' title="Usuń tabelę z wiadomości"'
+                        + ' aria-label="Usuń tabelę z wiadomości">'
+                        + '<i class="bi bi-trash" aria-hidden="true"></i>'
+                    + '</button>'
+                + '</div>'
                 + '<div class="send-body-table-view" id="send-email-body-preview"'
                     + ' data-show-in="view"></div>'
                 + '<div class="send-body-table-editor" data-show-in="edit">'
@@ -1994,6 +2204,134 @@ $(function () {
 
     let composerSavedRange = null;     // ostatnie zaznaczenie w hoście (dla „Wstaw zmienną")
     let composerCmdBusy = false;       // true, gdy to MY wywołujemy execCommand
+
+    // ---- Cofanie operacji strukturalnych (Ctrl+Z / Ctrl+Y) ------------
+    //
+    // Operacje na tabeli — usunięcie (kosz), przeniesienie („Wstaw zmienną
+    // → Lista pozycji" przy istniejącej tabeli) i wstawienie tabeli do
+    // wiadomości bez tabeli — przebudowują host (rebuildComposerSegments),
+    // więc natywna historia przeglądarki ich nie zna. Trzymamy dla nich
+    // własny, mały stos migawek.
+    //
+    // Model hybrydowy: przy Ctrl+Z najpierw próbujemy NATYWNEGO cofnięcia
+    // (execCommand('undo')). Jeśli zmieniło treść — to było zwykłe pisanie
+    // i na tym koniec. Jeśli treść się nie zmieniła (historia natywna
+    // pusta albo trzyma tylko wpisy z podmienionego hosta), zdejmujemy
+    // migawkę ze stosu. Dzięki temu „usuń tabelę → pisz → Ctrl+Z" cofa
+    // najpierw pisanie, a kolejne Ctrl+Z przywraca tabelę. Redo symetrycznie.
+    //
+    // Gdy stos dla danego kierunku jest pusty, w ogóle nie przechwytujemy
+    // klawisza — zwykłe pisanie ma w 100% natywne cofanie.
+    //
+    // Stosy czyści renderStep4() (render od zera) i applyDraftPick()
+    // (nowy szablon zastępuje całą wiadomość).
+    const STRUCT_HISTORY_MAX = 50;
+    const structUndo = [];
+    const structRedo = [];
+    let structBusy = false;            // true w trakcie naszego undo/redo
+
+    /** Pozycja kursora w hoście bez tabeli (jeden segment) — albo null. */
+    function composerPlainCaretOffset() {
+        if (composerIsland()) return null;
+        const host = composerHost();
+        let r = composerSelectionRange();
+        // Klik w menu „Wstaw zmienną" zabiera zaznaczenie — wtedy
+        // ostatnie zapamiętane miejsce kursora w hoście.
+        if (!r && host && composerSavedRange && host.contains(composerSavedRange.startContainer)) {
+            r = composerSavedRange;
+        }
+        const seg = host && host.querySelector('.send-body-seg');
+        if (!r || !seg || !r.collapsed) return null;
+        if (r.startContainer === seg.firstChild && r.startContainer.nodeType === 3) return r.startOffset;
+        return null;
+    }
+
+    /** Migawka bieżącej wiadomości (body z markerami + stan edycji). */
+    function structSnapshot() {
+        return {
+            body:        readComposerBody(),
+            edited:      state.emailBodyEdited,
+            tableEdit:   state.tableEdit === true,
+            caretOffset: composerPlainCaretOffset(),
+        };
+    }
+
+    /** Zapis przed nową operacją strukturalną — nowa gałąź kasuje redo. */
+    function pushStructUndo(snap) {
+        structUndo.push(snap);
+        if (structUndo.length > STRUCT_HISTORY_MAX) structUndo.shift();
+        structRedo.length = 0;
+    }
+
+    function clearStructHistory() {
+        structUndo.length = 0;
+        structRedo.length = 0;
+    }
+
+    /**
+     * Odtwarza migawkę: body (z tabelą i edycjami komórek operatora
+     * dokładnie w tym miejscu, gdzie była), przypięcie edycji, tryb
+     * tabeli. emailBodyEdited === null → wiadomość wraca do stanu „bez
+     * zmian", więc „Przywróć szablon" znów się chowa.
+     */
+    function restoreStructSnapshot(snap) {
+        state.emailBodyEdited = snap.edited;
+        $('#send-email-reset').toggleClass('is-hidden', snap.edited === null);
+        state.tableEdit = snap.tableEdit === true;
+        lastComposerFieldId = 'send-body-host';
+        rebuildComposerSegments(snap.body);
+
+        const host = composerHost();
+        if (!host) return;
+        if (composerIsland()) {
+            // Kursor na początku tekstu za tabelą — tuż przy niej.
+            composerCaretTo(host.querySelector('.send-body-seg[data-seg="after"]'), false);
+        } else {
+            const seg = host.querySelector('.send-body-seg');
+            const tn  = seg && seg.firstChild && seg.firstChild.nodeType === 3 ? seg.firstChild : null;
+            if (tn && typeof snap.caretOffset === 'number') {
+                host.focus({ preventScroll: true });
+                const r = document.createRange();
+                r.setStart(tn, Math.min(snap.caretOffset, tn.nodeValue.length));
+                r.collapse(true);
+                composerSetSelection(r);
+            } else {
+                composerCaretTo(seg, false);
+            }
+        }
+        const sel = composerSelectionRange();
+        composerSavedRange = sel ? sel.cloneRange() : null;
+    }
+
+    /** Czy dla kierunku `dir` jest co cofać/ponawiać po naszej stronie. */
+    function hasStructHistory(dir) {
+        return (dir === 'undo' ? structUndo : structRedo).length > 0;
+    }
+
+    /**
+     * Ctrl+Z / Ctrl+Y w kompozytorze, gdy stos strukturalny nie jest
+     * pusty: natywnie, a jeśli to nic nie zmieniło — migawka ze stosu.
+     */
+    function composerHistory(dir) {
+        if (structBusy) return;
+        if (!composerHost()) return;
+        structBusy = true;
+        try {
+            const bodyBefore = readComposerBody();
+            composerExec(dir);
+            const bodyAfter = composerHost() ? readComposerBody() : bodyBefore;
+            if (bodyAfter !== bodyBefore) return;   // natywne cofnięcie zadziałało
+
+            const from = (dir === 'undo') ? structUndo : structRedo;
+            const to   = (dir === 'undo') ? structRedo : structUndo;
+            if (from.length === 0) return;
+            const snap = from.pop();
+            to.push(structSnapshot());
+            restoreStructSnapshot(snap);
+        } finally {
+            structBusy = false;
+        }
+    }
 
     /** execCommand z flagą, żeby własne beforeinput nie łapał samego siebie. */
     function composerExec(cmd, value) {
@@ -2212,7 +2550,7 @@ $(function () {
     /**
      * Renderuje podgląd TABELI pozycji w bloku tabeli (tekst wiadomości
      * ma własne pola, więc nie jest tu powtarzany). Tabela pochodzi z
-     * tej samej ścieżki co „Kopiuj pozycje" i „Kopiuj treść maila":
+     * tej samej ścieżki co „Kopiuj pozycje" i „Kopiuj wiadomość":
      * parsujemy pipe-table z body, więc edycje komórek (5000→5500) i
      * nagłówków („Price"→„Prices") są widoczne od razu.
      *
@@ -2273,6 +2611,9 @@ $(function () {
         // wybór nowego szablonu nie zmieniłby nic w treści. Mówimy o tym
         // wprost toastem, żeby utrata pracy nie była cicha.
         const hadEdits = (state.emailSubjectEdited !== null || state.emailBodyEdited !== null);
+        // Nowy szablon zastępuje całą wiadomość — stara historia
+        // operacji na tabeli nie ma już do czego wracać.
+        clearStructHistory();
         state.emailSubjectEdited = null;
         state.emailBodyEdited    = null;
         $('#send-email-reset').addClass('is-hidden');
@@ -2482,7 +2823,10 @@ $(function () {
             + '<span class="send-composer-key send-composer-body-label">Treść</span>'
             + '<div class="send-composer-body-tools">'
                 + '<div class="dropdown send-var-dropdown">'
-                    + '<button type="button" class="btn btn-outline-secondary btn-sm send-var-btn"'
+                    // Cichy przycisk (btn-link) — przygaszony, pełny
+                    // kontrast przy hover / focus-within kompozytora
+                    // (CSS). Zostaje zwykłym, fokusowalnym <button>.
+                    + '<button type="button" class="btn btn-link btn-sm send-var-btn"'
                         + ' id="send-var-insert-btn" data-toggle="dropdown"'
                         + ' aria-haspopup="true" aria-expanded="false"'
                         + ' title="Wstaw wartość zmiennej w miejscu kursora"'
@@ -2577,8 +2921,141 @@ $(function () {
     }
 
     /**
+     * „Wstaw zmienną → Lista pozycji" przy wiadomości, która JUŻ ma
+     * tabelę. Model treści zna dokładnie jedną wyspę (splitBody /
+     * joinBody), więc zamiast wklejać drugą kopię jako surowy tekst
+     * „a | b | c", PRZENOSIMY istniejącą tabelę w miejsce kursora.
+     *
+     * Tekst tabeli bierzemy z #send-body-table (źródło tabeli w obu
+     * trybach, więc edycje komórek operatora zostają). Miejsce kursora
+     * wyznacza unikalny znacznik wstawiony zwykłą ścieżką
+     * insertIntoHost() — ta sama logika zapamiętanego zaznaczenia,
+     * przycinania zaznaczenia sięgającego wyspy i fallbacku „koniec
+     * tekstu przed tabelą". Potem czytamy host jako [przed, po],
+     * rozcinamy go na znaczniku i składamy body na nowo przez joinBody().
+     *
+     * Host jest przebudowywany (rebuildComposerSegments), więc Ctrl+Z
+     * nie cofa tej operacji — tak samo jak przy zmianie szablonu.
+     * Tabela wraca do podglądu (jak po applyDraftPick), a kursor staje
+     * na początku tekstu za tabelą.
+     */
+    function moveItemsTableToCaret() {
+        const host = composerHost();
+        const ta   = document.getElementById('send-body-table');
+        if (!host || !ta) return;
+        const tableText = String(ta.value || '').replace(/\r\n?/g, '\n');
+
+        // Migawka PRZED wstawieniem znacznika — Ctrl+Z wraca do tabeli
+        // w dotychczasowym miejscu (patrz composerHistory).
+        pushStructUndo(structSnapshot());
+
+        const marker = 'ATTEITEMSCARET' + Date.now().toString(36)
+            + Math.random().toString(36).slice(2, 8) + 'X';
+        insertIntoHost(marker, false);
+
+        const parts = AtteItemsFormat.domToTextParts(host, composerIsIslandNode);
+        const p0 = parts[0] || '';
+        const p1 = parts.length > 1 ? (parts[1] || '') : '';
+        const trimEnd   = function (s) { return String(s).replace(/(?:\n[ \t]*)+$/, ''); };
+        const trimStart = function (s) { return String(s).replace(/^(?:[ \t]*\n)+/, ''); };
+
+        let before, after;
+        const i0 = p0.indexOf(marker);
+        const i1 = p1.indexOf(marker);
+        if (i0 !== -1) {
+            // Kursor w tekście przed tabelą: reszta tego tekstu + cały
+            // dotychczasowy tekst za tabelą schodzą pod tabelę.
+            before = p0.slice(0, i0);
+            const rest = trimEnd(p0.slice(i0 + marker.length));
+            after = (rest.trim() !== '')
+                ? rest + (p1.trim() !== '' ? '\n\n' + trimStart(p1) : '')
+                : p1;
+        } else if (i1 !== -1) {
+            // Kursor w tekście za tabelą: dotychczasowy tekst przed
+            // tabelą + początek tekstu za nią wchodzą nad tabelę.
+            const head = trimEnd(p0);
+            const pre  = p1.slice(0, i1);
+            before = (head.trim() !== '' ? head + '\n\n' : '') + trimStart(pre);
+            after  = p1.slice(i1 + marker.length);
+        } else {
+            // Znacznik się nie wstawił (np. brak zaznaczenia w hoście) —
+            // tabela zostaje na końcu tekstu przed nią, jak była.
+            before = p0;
+            after  = p1;
+        }
+        // Na wszelki wypadek: znacznik nie może przeżyć w treści.
+        before = before.split(marker).join('');
+        after  = trimEnd(after.split(marker).join(''));
+
+        const body = AtteItemsFormat.joinBody(before, tableText, after);
+        state.emailBodyEdited = body;
+        $('#send-email-reset').removeClass('is-hidden');
+        state.tableEdit = false;
+        lastComposerFieldId = 'send-body-host';
+        rebuildComposerSegments(body);
+
+        const hostEl = composerHost();
+        composerCaretTo(hostEl && hostEl.querySelector('.send-body-seg[data-seg="after"]'), false);
+    }
+
+    /**
+     * Przycisk „Usuń tabelę z wiadomości" na wyspie. Jedyna droga
+     * usunięcia tabeli — Backspace / Delete / wycinanie dalej jej nie
+     * ruszają (patrz beforeinput.composer / cut.composer).
+     *
+     * Tekst przed i za tabelą bierzemy z ŻYWEGO hosta (readComposerBody
+     * + splitBody), nie ze state — operator mógł go właśnie edytować.
+     * Nowe body = przed + pusta linia + po, bez markerów (splitBody da
+     * hasTable: false), więc host przebudowuje się jako zwykły tekst,
+     * a „Wstaw zmienną → Lista pozycji" idzie ścieżką „bez wyspy" i
+     * buduje tabelę na nowo. Kursor staje tam, gdzie była tabela.
+     */
+    function removeItemsTable() {
+        if (!composerHost() || !composerIsland()) return;
+        const seg = AtteItemsFormat.splitBody(readComposerBody());
+        if (!seg.hasTable) return;
+
+        // Migawka do Ctrl+Z — przywraca tabelę z edycjami komórek
+        // w tym samym miejscu (patrz composerHistory).
+        pushStructUndo(structSnapshot());
+
+        const before = String(seg.before).replace(/(?:\n[ \t]*)+$/, '');
+        const after  = String(seg.after).replace(/^(?:[ \t]*\n)+/, '').replace(/(?:\n[ \t]*)+$/, '');
+        const hasBefore = before.trim() !== '';
+        const hasAfter  = after.trim() !== '';
+        const body = (hasBefore && hasAfter)
+            ? before + '\n\n' + after
+            : (hasBefore ? before : after);
+
+        state.emailBodyEdited = body;
+        $('#send-email-reset').removeClass('is-hidden');
+        state.tableEdit = false;
+        lastComposerFieldId = 'send-body-host';
+        rebuildComposerSegments(body);
+
+        // Kursor: koniec tekstu przed tabelą albo — gdy go nie było —
+        // początek tekstu za nią (offset 0). Zapisujemy go też jako
+        // composerSavedRange, żeby „Wstaw zmienną" od razu trafiło w to
+        // samo miejsce, nawet bez kliknięcia w treść.
+        const host  = composerHost();
+        const segEl = host && host.querySelector('.send-body-seg');
+        if (!host || !segEl) return;
+        host.focus({ preventScroll: true });
+        const r = document.createRange();
+        const tn = (segEl.firstChild && segEl.firstChild.nodeType === 3) ? segEl.firstChild : null;
+        if (tn) {
+            r.setStart(tn, hasBefore ? Math.min(before.length, tn.nodeValue.length) : 0);
+        } else {
+            r.setStart(segEl, 0);
+        }
+        r.collapse(true);
+        composerSetSelection(r);
+        composerSavedRange = r.cloneRange();
+    }
+
+    /**
      * Buduje payload CAŁEGO BODY dla przycisków kopiujących treść maila
-     * („Kopiuj treść maila" w stopce + ikona przy wierszu „Treść").
+     * („Kopiuj wiadomość" w stopce + ikona przy wierszu „Treść").
      * Zwraca OBIE wersje:
      *   - `html` — body z `<table>` inline (zamiast pipe-text między
      *     markerami). Gmail renderuje jako prawdziwą tabelę.
@@ -2623,7 +3100,7 @@ $(function () {
         flashCopyButton($btn, 'bi bi-clipboard-check');
     }
 
-    /** Plain-text fallback dla „Kopiuj treść maila" — używane też przez
+    /** Plain-text fallback dla „Kopiuj wiadomość" — używane też przez
      * inne ścieżki, które nie chcą schowka HTML (np. „Otwórz w mailu"). */
     function buildComposerBodyText() {
         return buildComposerBodyPayload().plainText;
@@ -2631,131 +3108,12 @@ $(function () {
 
     function renderStep4() {
         const d = state.doc;
+        if (!d) return;
         const isRespondMode = (DOC_TYPE === 'rfq' && d.state === 'sent');
 
-        // Trzy wiersze recapa. W trybie respond trzeci wiersz jest
-        // „Data odpowiedzi" zamiast „Data wysłania".
-        const datumLabel = isRespondMode ? 'Data odpowiedzi:' : 'Data wysłania:';
-        const datumValue = isRespondMode
-            ? (state.backdatedAt || 'teraz')
-            : (state.backdatedAt || 'teraz');
-
         const supplierCount = state.selectedSuppliers.length;
-        const datumHelp = state.backdatedAt
-            ? '<small class="text-warning">— nadpisze bieżący znacznik czasu.</small>'
-            : '<small class="text-muted">— bieżący czas serwera.</small>';
-
-        // Rozwinięcie listy kontaktów do wysyłki — każdy rekord
-        // dostaje swoje wiersze z polami (email/phone/comment) i
-        // przyciskami „kopiuj". Alias mailto:/tel: też obecne.
-        const allSuppliers = (d.suppliers || []);
-        const selectedSet  = new Set(state.selectedSuppliers);
-        const selectedList = allSuppliers.filter(function (s) { return selectedSet.has(s.id); });
-        const contactsExpandedHtml = (supplierCount > 0)
-            ? '<div class="summary-recap-contacts">'
-                + selectedList.map(function (s) {
-                    const lineParts = [];
-                    lineParts.push('<div class="summary-contact-row">'
-                        + '<strong>' + escapeHtml(s.name) + '</strong>'
-                        + (s.jobTitle ? ' <small class="text-muted">— ' + escapeHtml(s.jobTitle) + '</small>' : '')
-                    + '</div>');
-                    if (s.email) {
-                        lineParts.push(
-                            '<div class="summary-contact-line">'
-                            + '<i class="bi bi-envelope"></i> '
-                            + '<a href="mailto:' + escapeHtml(s.email) + '">'
-                                + escapeHtml(s.email)
-                            + '</a>'
-                            + '<button type="button" class="send-copy-btn" data-copy="' + escapeHtml(s.email) + '" '
-                                + 'title="Kopiuj adres e-mail" aria-label="Kopiuj adres e-mail">'
-                                + '<i class="bi bi-clipboard" aria-hidden="true"></i></button>'
-                            + '</div>'
-                        );
-                    }
-                    if (s.phone) {
-                        lineParts.push(
-                            '<div class="summary-contact-line">'
-                            + '<i class="bi bi-telephone"></i> '
-                            + '<a href="tel:' + escapeHtml(s.phone) + '">'
-                                + escapeHtml(s.phone)
-                            + '</a>'
-                            + '<button type="button" class="send-copy-btn" data-copy="' + escapeHtml(s.phone) + '" '
-                                + 'title="Kopiuj numer telefonu" aria-label="Kopiuj numer telefonu">'
-                                + '<i class="bi bi-clipboard" aria-hidden="true"></i></button>'
-                            + '</div>'
-                        );
-                    }
-                    if (s.comment) {
-                        lineParts.push(
-                            '<div class="summary-contact-line summary-contact-comment">'
-                            + '<i class="bi bi-chat-left-text"></i> '
-                            + '<span class="summary-contact-comment-text">'
-                                + escapeHtml(s.comment)
-                            + '</span>'
-                            + '<button type="button" class="send-copy-btn" data-copy="' + escapeHtml(s.comment) + '" '
-                                + 'title="Kopiuj komentarz kontaktu" aria-label="Kopiuj komentarz kontaktu">'
-                                + '<i class="bi bi-clipboard" aria-hidden="true"></i></button>'
-                            + '</div>'
-                        );
-                    }
-                    return lineParts.join('');
-                }).join('')
-            + '</div>'
-            : '';
-
-        const contactsCell = (supplierCount > 0)
-            ? '<span class="summary-recap-value">'
-                + supplierCount + ' kontakt' + (supplierCount === 1 ? '' : 'ów')
-                + '</span>'
-                + contactsExpandedHtml
-            : '<span class="summary-recap-value">'
-                + '<span class="text-danger">brak</span>'
-              + '</span>';
-
-        // Parametry wysyłki. Wiersz „Dokument" wypadł — numer i typ
-        // pokazuje teraz karta „Podsumowanie…", a powtarzanie go tutaj
-        // tylko rozmywało hierarchię.
-        //
-        // Karta jest zwinięta domyślnie: to rekapitulacja decyzji z
-        // kroków 1-3, które operator właśnie podjął. Liczbę adresatów
-        // (najważniejszą wartość) pokazujemy w nagłówku, więc bez
-        // rozwijania też widać, czy jest do kogo wysyłać.
-        const recapMeta = (supplierCount > 0)
-            ? ' <span class="send-review-count">' + supplierCount + '</span>'
-            : ' <span class="send-review-count send-review-count-danger">brak</span>';
-
-        const recapBodyHtml =
-            '<div class="card-body send-review-card-body">'
-            + '<div class="summary-recap">'
-            + '<div class="summary-recap-row summary-recap-row-contacts">'
-                + '<span class="summary-recap-label">Wysyłane do:</span>'
-                + contactsCell
-            + '</div>'
-            + '<div class="summary-recap-row">'
-                + '<span class="summary-recap-label">' + escapeHtml(datumLabel) + '</span>'
-                + '<span class="summary-recap-value">'
-                    + escapeHtml(datumValue) + ' ' + datumHelp
-                + '</span>'
-            + '</div>'
-            + (isRespondMode
-                ? ''
-                : '<div class="summary-recap-row">'
-                    + '<span class="summary-recap-label">PDF:</span>'
-                    + '<span class="summary-recap-value">'
-                        + (state.generatePdf ? 'Tak — placeholder' : 'Nie')
-                    + '</span>'
-                  + '</div>')
-            + '</div>'
-            + '</div>';
-
-        const recapHtml = step4CollapsibleCardHtml({
-            id:    'send-step-4-params-body',
-            icon:  'bi-send',
-            title: 'Parametry wysyłki',
-            meta:  recapMeta,
-            open:  false,
-            bodyHtml: recapBodyHtml
-        });
+        const selectedSet   = new Set(state.selectedSuppliers);
+        const selectedList  = (d.suppliers || []).filter(function (s) { return selectedSet.has(s.id); });
 
         // Brak kontaktów → blokuj commit + alert z CTA do kroku 2.
         const noSuppliersHtml = (supplierCount === 0)
@@ -2767,15 +3125,20 @@ $(function () {
               + '</div>'
             : '';
 
-        // Ostrzeżenie o backdate — gdy operator wybrał datę wsteczną,
-        // przypominamy, że to nadpisze bieżący znacznik czasu.
-        const backdateHtml = state.backdatedAt
-            ? '<div class="alert alert-warning small">'
-                + '<i class="bi bi-exclamation-triangle"></i> '
-                + 'Wybrana data wysłania to <strong>' + escapeHtml(state.backdatedAt)
-                + '</strong>. Nadpisze bieżący znacznik czasu wysyłki.'
-              + '</div>'
-            : '';
+        // Data ustawiona wstecz w kroku 1 — krótka notka obok przycisku
+        // commita na sticky barze (#send-commit-note w PHP), widoczna
+        // tylko gdy ustawiona.
+        const $commitNote = $('#send-commit-note');
+        if (state.backdatedAt) {
+            $commitNote
+                .html('<i class="bi bi-clock-history" aria-hidden="true"></i> '
+                    + (isRespondMode ? 'Data odpowiedzi: ' : 'Data wysłania: ')
+                    + '<strong>' + escapeHtml(state.backdatedAt) + '</strong>')
+                .attr('title', 'Data ustawiona ręcznie w kroku 1 — nadpisze bieżący znacznik czasu.')
+                .removeClass('d-none');
+        } else {
+            $commitNote.empty().removeAttr('title').addClass('d-none');
+        }
 
         // Pozycje trzymamy w buforze jako obiekt { plainText, htmlTable } —
         // handler click.copyStep4 używa obu wariantów przez ClipboardItem
@@ -2792,40 +3155,55 @@ $(function () {
             ),
         };
 
-        // Hierarchia panelu: blokery → wiadomość → podsumowanie →
-        // parametry wysyłki → pozycje.
-        //
-        // Kompozytor idzie PIERWSZY, bo w kroku 4 to on jest realną
-        // pracą: operator redaguje treść, kopiuje ją i dopiero potem
-        // klika „Wyślij". Podsumowanie schodzi pod niego — to kontrola
-        // („czy to na pewno ten dokument?"), a nie czynność.
-        // „Parametry wysyłki" i „Pozycje" zostają zwiniętymi
-        // drilldownami: dane weryfikowane raz, a wcześniej rozpychały
-        // kompozytor na drugi ekran (tabela 30 pozycji potrafiła zająć
-        // całą wysokość okna).
-        //
-        // Sticky action bar zostaje poza tym kontenerem (jest w
-        // PHP-owym szkielecie kroku 4).
+        // „Szczegóły" zachowują stan rozwinięcia między renderami (krok 4
+        // przerysowuje się m.in. po „Przywróć szablon").
         const $body = $('#send-step-4-body');
+        const detailsWasOpen = $body.find('#send-step-4-details-body').hasClass('show');
+        const detailsHtml = buildStep4DetailsHtml(selectedList, detailsWasOpen);
+
+        // Układ panelu (patrz komentarz nad sekcją Step 4):
+        //   bloker → pasek kontekstu → [E-mail + Szczegóły | PDF]
+        // Tryb respond: bez kompozytora i PDF — nic nie jest wysyłane.
+        // Sticky action bar zostaje poza tym kontenerem (PHP).
+        let mainHtml;
+        if (isRespondMode) {
+            mainHtml = '<p class="send-respond-note">'
+                    + '<i class="bi bi-info-circle" aria-hidden="true"></i> '
+                    + 'Zapytanie jest już wysłane — zapisujesz tylko odpowiedź dostawcy.'
+                + '</p>'
+                + detailsHtml;
+        } else {
+            mainHtml = '<div class="send-review-layout">'
+                + '<div class="send-review-main">'
+                    + buildStep4ComposerHtml()
+                    + detailsHtml
+                + '</div>'
+                + '<aside class="send-review-aside" aria-label="PDF">'
+                    + buildStep4PdfHtml()
+                + '</aside>'
+            + '</div>';
+        }
+
         $body.html(
             noSuppliersHtml
-            + backdateHtml
-            + buildStep4ComposerHtml()
-            + buildStep4SummaryHtml()
-            + recapHtml
-            + buildStep4ItemsHtml()
+            + buildStep4ContextHtml()
+            + mainHtml
         );
 
         // Tabela w treści dostaje podgląd od razu po wstrzyknięciu
         // markupu — jest domyślnie na wierzchu, więc musi mieć zawartość
         // przed pierwszym malowaniem, a nie po pierwszej edycji. Pola
-        // tekstu dostają wysokość dopasowaną do treści.
+        // tekstu dostają wysokość dopasowaną do treści. W trybie respond
+        // kompozytora nie ma — obie funkcje same sprawdzają obecność DOM.
         lastComposerFieldId = null;
         composerSavedRange = null;
+        // Host jest nowy — migawki operacji na tabeli odnoszą się do
+        // poprzedniego renderu (m.in. po „Przywróć szablon").
+        clearStructHistory();
         renderComposerPreview();
         autoGrowComposer();
 
-        // Chevrony zwijanych kart („Parametry wysyłki", „Pozycje").
+        // Chevron zwijanej karty „Szczegóły".
         wireStep4Chevrons($body);
 
         // ---- Picker szablonu wiadomości ---------------------------
@@ -2834,10 +3212,13 @@ $(function () {
         // size: 8 nie pozwala rosnącemu katalogowi zasłonić kompozytora;
         // liveSearch — ten sam wybór co picker preferencji na
         // /admin/purchase/vendors/edit (vendor-edit-view.js:399).
+        // Picker siedzi przy prawej krawędzi nagłówka karty „E-mail",
+        // więc menu otwiera się do prawej, gdy brak miejsca (auto).
         const $draftPicker = $('#send-draft-picker');
         if ($draftPicker.length > 0 && typeof $draftPicker.selectpicker === 'function') {
             $draftPicker.selectpicker({
                 style: 'btn-light border',
+                dropdownAlignRight: 'auto',
                 size: 8,
                 liveSearch: true,
                 liveSearchPlaceholder: 'Szukaj szablonu…',
@@ -2944,6 +3325,9 @@ $(function () {
                 // Z wyspy interesuje nas wyłącznie textarea tabeli.
                 if (inIsland && e.target.id !== 'send-body-table') return;
                 if (inIsland) autoGrowTextarea(e.target);
+                // Nowa edycja operatora (nie nasze undo/redo) zaczyna
+                // nową gałąź historii — strukturalne redo traci sens.
+                if (!structBusy) structRedo.length = 0;
 
                 const hiddenBody = ($('#send-email-body').val() || '').toString();
                 const combined = readComposerBody();
@@ -2999,6 +3383,18 @@ $(function () {
                 if (composerCmdBusy || inComposerIsland(e.target)) return;
                 const ev = e.originalEvent;
                 const type = (ev && ev.inputType) || '';
+
+                // Cofnij / Ponów spoza klawiatury (menu Edycja, gest na
+                // mobile). Skróty klawiszowe obsługuje keydown.composerUndo
+                // i robi preventDefault, więc tu nie dochodzą — brak
+                // podwójnej obsługi. Pusty stos strukturalny → natywnie.
+                if (type === 'historyUndo' || type === 'historyRedo') {
+                    const dir = (type === 'historyUndo') ? 'undo' : 'redo';
+                    if (structBusy || !hasStructHistory(dir)) return;
+                    e.preventDefault();
+                    composerHistory(dir);
+                    return;
+                }
 
                 // Żadnego formatowania (Ctrl+B/I/U, menu kontekstowe, listy…).
                 if (type.indexOf('format') === 0
@@ -3072,6 +3468,31 @@ $(function () {
                 }
             });
 
+        // Ctrl/Cmd+Z, Ctrl+Y, Ctrl/Cmd+Shift+Z — cofanie operacji na
+        // tabeli (patrz composerHistory). Delegacja na całą kartę
+        // „E-mail", bo tuż po kliknięciu kosza / „Wstaw zmienną" fokus
+        // może stać na przycisku, a nie w treści. Pola formularza
+        // (temat, textarea tabeli, wyszukiwarka pickera) zostają przy
+        // natywnym cofaniu. Gdy nasz stos jest pusty, nic nie
+        // przechwytujemy — zwykłe pisanie cofa się natywnie.
+        $body.off('keydown.composerUndo')
+            .on('keydown.composerUndo', '.send-composer', function (e) {
+                if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+                const t = e.target;
+                const tag = t && t.tagName ? String(t.tagName).toUpperCase() : '';
+                if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+                const k = String(e.key || '').toLowerCase();
+                let dir = null;
+                if (k === 'z' || e.code === 'KeyZ') {
+                    dir = e.shiftKey ? 'redo' : 'undo';
+                } else if ((k === 'y' || e.code === 'KeyY') && !e.shiftKey) {
+                    dir = 'redo';
+                }
+                if (dir === null || structBusy || !hasStructHistory(dir)) return;
+                e.preventDefault();
+                composerHistory(dir);
+            });
+
         // Wklejanie: zawsze text/plain (bez formatowania, stylów, obrazków).
         $body.off('paste.composer')
             .on('paste.composer', '#send-body-host', function (e) {
@@ -3141,6 +3562,16 @@ $(function () {
                 setTableEdit(state.tableEdit !== true);
             });
 
+        // Kosz w rogu wyspy: usuwa tabelę z wiadomości, tekst zostaje.
+        // Bez confirm() — „Przywróć szablon" i „Wstaw zmienną → Lista
+        // pozycji" przywracają tabelę.
+        $body.off('click.composerTableRemove')
+            .on('click.composerTableRemove', '#send-body-table-remove', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                removeItemsTable();
+            });
+
         // Zmiana szerokości okna zmienia zawijanie tekstu, więc wysokość
         // textarei tabeli trzeba policzyć od nowa (host rośnie sam).
         $(window).off('resize.composer').on('resize.composer', autoGrowComposer);
@@ -3153,7 +3584,7 @@ $(function () {
                 renderStep4();
             });
 
-        // „Kopiuj treść maila" w stopce — własny handler, bo to
+        // „Kopiuj wiadomość" w stopce — własny handler, bo to
         // btn-primary, a nie ikona .send-copy-btn. Używa copyBodyAsMail
         // (ClipboardItem z text/html + text/plain) — Gmail renderuje
         // tabelę zamiast surowego pipe-text.
@@ -3176,23 +3607,33 @@ $(function () {
                 e.preventDefault();
                 const name = $(this).attr('data-var-name');
                 if (!name) return;                       // pozycja „(brak)"
-                let text = step4VarValue(buildTemplateVars(state.doc), name);
+                const text = step4VarValue(buildTemplateVars(state.doc), name);
                 if (text === '') return;
+
+                // {items} niesie markery tabeli, a wiadomość może mieć
+                // tylko JEDNĄ tabelę. Gdy już ją ma — przenosimy ją w
+                // miejsce kursora (z edycjami komórek), zamiast wklejać
+                // drugą kopię jako surowy tekst „a | b | c". Nigdy nie
+                // wstawiamy pozycji do textarei tabeli: przy ostatnim
+                // fokusie w tabeli liczy się zapamiętany kursor w tekście
+                // (albo koniec tekstu przed tabelą). Bez tabeli markery
+                // trafiają do tekstu, a input.composer buduje z nich wyspę.
+                if (name === 'items') {
+                    if (composerIsland() && document.getElementById('send-body-table')) {
+                        moveItemsTableToCaret();
+                    } else {
+                        // Wstawienie tabeli do wiadomości bez tabeli też
+                        // przebudowuje host (input.composer) — migawka,
+                        // żeby Ctrl+Z ją cofnął.
+                        pushStructUndo(structSnapshot());
+                        insertIntoHost(text, true);
+                    }
+                    return;
+                }
 
                 const target = composerInsertTarget();
                 if (!target.el) return;
-
-                // {items} niesie markery tabeli. Gdy wiadomość już ma
-                // tabelę, druga kopia z markerami zepsułaby układ
-                // (markery wylądowałyby w tekście) — wstawiamy wtedy
-                // samą tabelę jako zwykły tekst. Bez tabeli markery
-                // zostają i z bloku tekstu robi się prawdziwa tabela
-                // (patrz input.composer).
-                if (name === 'items' && $('#send-body-table').length > 0) {
-                    text = text.split(AtteItemsFormat.MARKER_START).join('')
-                        .split(AtteItemsFormat.MARKER_END).join('');
-                }
-                // Blok wieloliniowy ({items}) dostaje własne linie.
+                // Wartość wieloliniowa (np. komentarz) dostaje własne linie.
                 const asBlock = (text.indexOf('\n') !== -1);
                 if (target.kind === 'table') {
                     insertAtCursor($(target.el), text, asBlock);
@@ -3238,7 +3679,7 @@ $(function () {
 
         state.committing = true;
         $commitBtn.prop('disabled', true);
-        $commitBtn.html('<span class="spinner-border spinner-border-sm mr-2"></span>Wysyłanie…');
+        $commitBtn.html('<span class="spinner-border spinner-border-sm mr-2"></span>Zapisywanie…');
 
         let url, payload;
         if (isRespondMode) {
@@ -3253,7 +3694,12 @@ $(function () {
                 type:         DOC_TYPE,
                 id:           DOC_ID,
                 sent_at:      state.backdatedAt || '',
-                generate_pdf: state.generatePdf ? 1 : 0,
+                // Zawsze stemplujemy placeholder PDF (prawdziwego PDF
+                // jeszcze nie ma; przełącznik z kroku 3 został usunięty).
+                generate_pdf: 1,
+                // Data z kroku 3 ('' = brak / wyczyszczona) — zapisywana
+                // razem ze zmianą stanu.
+                expected_date: state.expectedDate || '',
             };
         }
 
@@ -3297,8 +3743,8 @@ $(function () {
                 + escapeHtml(r.state_label || r.state || 'sent') + '</span>';
             $successAlert.html(
                 '<i class="bi bi-check-circle-fill"></i> '
-                + 'Wysłano <strong>' + escapeHtml(d.actionLabel || '') + '</strong> '
-                + escapeHtml(docNumber) + '. Stan: ' + stateBadge + '.'
+                + (isRespondMode ? 'Zapisano odpowiedź dostawcy: ' : 'Oznaczono jako wysłane: ')
+                + '<strong>' + escapeHtml(docNumber) + '</strong>. Stan: ' + stateBadge + '.'
                 + '<br><small class="text-muted">Przekierowanie do listy dokumentów za 2 s…</small>'
             );
             $root.hide();
