@@ -60,6 +60,39 @@ $(function () {
             .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
+    // Header "Oczekiwana odpowiedź" / "Planowana dostawa" date — saved on
+    // change; an emptied field clears the date. Reverts to the last saved
+    // value if the server rejects it.
+    const $expectedDate = $('#doc-expected-date');
+    $expectedDate.data('saved', $expectedDate.val());
+    $expectedDate.on('change', function () {
+        const $input = $(this);
+        const val = $input.val() || '';
+        $input.prop('disabled', true);
+        $.ajax({
+            url: COMPONENTS_PATH + ENDPOINT_BASE + 'document-expected-date-update.php',
+            method: 'POST',
+            dataType: 'json',
+            data: { type: DOC_TYPE, id: $input.data('doc-id'), date: val }
+        })
+        .done(function (r) {
+            if (!r || !r.success) {
+                $input.val($input.data('saved'));
+                setAlert((r && r.error) || 'Błąd zapisu daty.', 'danger');
+                return;
+            }
+            $input.data('saved', val);
+            setAlert(r.message || 'Data zapisana.', 'success');
+        })
+        .fail(function (xhr, status) {
+            $input.val($input.data('saved'));
+            setAlert((xhr && xhr.responseJSON && xhr.responseJSON.error) || status || 'Błąd sieci.', 'danger');
+        })
+        .always(function () {
+            $input.prop('disabled', false);
+        });
+    });
+
     // Enter saves, Esc cancels — for the qty / price inputs.
     $tbody.on('keydown', '.doc-edit-input', function (e) {
         if (e.key === 'Enter') {
@@ -1398,6 +1431,8 @@ $(function () {
     // i przeładowujemy bieżącą stronę, żeby badge stanu się zaktualizował.
     // Delegacja na `document`, bo button pojawia się dopiero po wyrenderowaniu
     // strony edycji (osadzany w <body> przez includeWithVariables).
+    // Klik w CTA otwiera modal potwierdzenia (#rfqConvertModal w
+    // documents-edit.php); dopiero „Utwórz zamówienie" wysyła POST.
     $(document).on('click', '#rfq-convert-btn', function () {
         const $btn  = $(this);
         const rfqId = parseInt($btn.data('rfq-id'), 10);
@@ -1406,6 +1441,19 @@ $(function () {
             return;
         }
         if ($btn.prop('disabled')) return;
+        $('#rfqConvertModal').modal('show');
+    });
+
+    $(document).on('click', '#rfqConvertConfirm', function () {
+        const $confirm = $(this);
+        const $btn     = $('#rfq-convert-btn');
+        const rfqId    = parseInt($btn.data('rfq-id'), 10);
+        if (!rfqId || rfqId <= 0) {
+            setAlert('Nieprawidłowe ID RFQ.', 'danger');
+            return;
+        }
+        if ($confirm.prop('disabled')) return;
+        $confirm.prop('disabled', true);
         $btn.prop('disabled', true);
 
         $.ajax({
@@ -1427,11 +1475,15 @@ $(function () {
                 return;
             }
             $btn.prop('disabled', false);
+            $confirm.prop('disabled', false);
+            $('#rfqConvertModal').modal('hide');
             const msg = (resp && resp.error) || 'Nieznany błąd';
             setAlert(msg, 'danger');
         })
         .fail(function (xhr, status) {
             $btn.prop('disabled', false);
+            $confirm.prop('disabled', false);
+            $('#rfqConvertModal').modal('hide');
             const msg = (xhr && xhr.responseJSON && xhr.responseJSON.error) || status || 'Błąd sieci';
             setAlert(msg, 'danger');
         });

@@ -61,6 +61,12 @@ $(document).ready(function () {
     // dwa inputy i można je sczytać bezpośrednio.
     let currentPoId = null;
 
+    // Opcjonalny URL, do którego przechodzimy po sukcesie zamiast
+    // przeładowania strony (data-after-confirm-url na triggerze).
+    // Edit page PO ustawia go na formularz przyjęcia towaru; kolejka
+    // /purchase/receipts go nie ustawia i nadal się przeładowuje.
+    let afterConfirmUrl = '';
+
     // ---- Helpers ---------------------------------------------------
 
     function escapeHtml(s) {
@@ -142,6 +148,7 @@ $(document).ready(function () {
         }
 
         currentPoId = poId;
+        afterConfirmUrl = $trigger.attr('data-after-confirm-url') || '';
 
         // Kontekst: "PO/2026/0042 — Farnell". Separator " — " (em dash
         // + spacje) spójny ze stylem wizarda. Pusta nazwa dostawcy →
@@ -246,9 +253,15 @@ $(document).ready(function () {
             // "potwierdzone").
             const docNumber = r.document_number || ('#' + currentPoId);
             announceSuccess('Potwierdzono odbiór ' + docNumber + '. Stan: potwierdzone.');
+            const nextUrl = afterConfirmUrl;
             setTimeout(function () {
-                window.location.reload();
-            }, 1200);
+                if (nextUrl) {
+                    // Dalej do przyjęcia towaru (/purchase/receipts/receive).
+                    window.location.href = nextUrl;
+                } else {
+                    window.location.reload();
+                }
+            }, nextUrl ? 600 : 1200);
         })
         .fail(function (xhr, status) {
             setSubmitting(false);
@@ -267,6 +280,7 @@ $(document).ready(function () {
     // wiadomości).
     $modal.on('hidden.bs.modal', function () {
         currentPoId = null;
+        afterConfirmUrl = '';
         hideInlineError();
         $errorBlock.removeClass('text-success').addClass('text-danger');
         resetBackdate();

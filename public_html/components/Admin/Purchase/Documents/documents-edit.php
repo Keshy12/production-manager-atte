@@ -236,7 +236,8 @@ function formatPrice($v) {
                             data-po-id="<?= (int)$doc->id ?>"
                             data-po-number="<?= htmlspecialchars((string)($doc->poNumber ?? ''), ENT_QUOTES) ?>"
                             data-vendor-name="<?= htmlspecialchars((string)($doc->vendorName ?? ''), ENT_QUOTES) ?>"
-                            data-vendor-po-number="<?= htmlspecialchars((string)($doc->vendorPoNumber ?? ''), ENT_QUOTES) ?>">
+                            data-vendor-po-number="<?= htmlspecialchars((string)($doc->vendorPoNumber ?? ''), ENT_QUOTES) ?>"
+                            data-after-confirm-url="<?= htmlspecialchars('http://' . BASEURL . '/purchase/receipts/receive?po_id=' . (int)$doc->id, ENT_QUOTES) ?>">
                         <i class="<?= htmlspecialchars($sendButton['icon']) ?>"></i>
                         <?= htmlspecialchars($sendButton['label']) ?>
                     </button>
@@ -306,7 +307,20 @@ function formatPrice($v) {
                 <dd class="col-sm-4"><?= htmlspecialchars($docNumber !== ('#' . $doc->id) ? $docNumber : '—') ?></dd>
 
                 <dt class="col-sm-2"><?= htmlspecialchars($expectedDateLabel) ?></dt>
-                <dd class="col-sm-4"><?= $expectedDate ? htmlspecialchars($expectedDate) : '—' ?></dd>
+                <dd class="col-sm-4">
+                    <?php if (in_array($doc->state, ['draft', 'sent'], true)): ?>
+                        <!-- Saved on change via document-expected-date-update.php;
+                             clearing the field clears the date. -->
+                        <input type="date"
+                               id="doc-expected-date"
+                               class="form-control form-control-sm d-inline-block"
+                               style="width: auto;"
+                               data-doc-id="<?= (int)$doc->id ?>"
+                               value="<?= $expectedDate ? htmlspecialchars(substr($expectedDate, 0, 10), ENT_QUOTES) : '' ?>">
+                    <?php else: ?>
+                        <?= $expectedDate ? htmlspecialchars($expectedDate) : '—' ?>
+                    <?php endif; ?>
+                </dd>
                 <dt class="col-sm-2">Wysłane:</dt>
                 <dd class="col-sm-4"><?= htmlspecialchars($sentAt ?? '—') ?></dd>
 
@@ -755,6 +769,44 @@ function formatPrice($v) {
         </div>
     </div>
 </div>
+
+<?php if ($type === 'rfq' && $doc->state === 'responded'): ?>
+<!--
+    Potwierdzenie konwersji RFQ → PO. Otwierane przez #rfq-convert-btn
+    (documents-edit.js); dopiero [Utwórz zamówienie] wysyła POST do
+    document-rfq-convert-ajax.php.
+-->
+<div class="modal fade" id="rfqConvertModal" tabindex="-1" role="dialog" aria-labelledby="rfqConvertModalTitle" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="rfqConvertModalTitle">Utworzyć zamówienie z odpowiedzi?</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-2">Na podstawie zapytania <strong><?= htmlspecialchars($docNumber) ?></strong>
+                    zostanie utworzone nowe zamówienie
+                    <?php if (!empty($doc->vendorName)): ?>
+                        dla dostawcy <strong><?= htmlspecialchars($doc->vendorName) ?></strong>
+                    <?php endif; ?>.
+                </p>
+                <ul class="small text-muted mb-0 pl-3">
+                    <li>Pozycje zostaną skopiowane wraz z cenami z odpowiedzi dostawcy.</li>
+                    <li>Zapytanie przejdzie w stan „<?= htmlspecialchars($stateBadgeLabel['converted'] ?? 'skonwertowane na PO') ?>” i nie będzie można go już zmieniać.</li>
+                </ul>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Anuluj</button>
+                <button type="button" class="btn btn-success" id="rfqConvertConfirm">
+                    <i class="bi bi-cart-check"></i> Utwórz zamówienie
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
 
 <!--
     Merge-conflict confirmation modal. Shown when the "Dodaj pozycję"
