@@ -255,7 +255,7 @@ class PurchaseActionHandler {
      * @param bool|null    $generatePdfPlaceholder czy wstawić placeholder PDF
      * @return bool
      */
-    public function sendRfq(int $rfqId, int $userId, ?string $sentAt = null, ?bool $generatePdfPlaceholder = true): bool {
+    public function sendRfq(int $rfqId, int $userId, ?string $sentAt = null, ?bool $generatePdfPlaceholder = true, ?string $expectedDate = null, bool $applyExpectedDate = false): bool {
         $MsaDB = $this->MsaDB;
         $repo = new RFQRepository($MsaDB);
         $itemRepo = new RFQItemRepository($MsaDB);
@@ -282,6 +282,10 @@ class PurchaseActionHandler {
             if ($generatePdfPlaceholder === true) {
                 $repo->setPdfPlaceholder($rfqId);
             }
+            // Wizard step 3: expected reply date (null/'' clears it).
+            if ($applyExpectedDate) {
+                $repo->setExpectedReplyDate($rfqId, $expectedDate);
+            }
             $MsaDB->db->commit();
             return true;
         } catch (\Throwable $e) {
@@ -304,7 +308,7 @@ class PurchaseActionHandler {
      * @param bool|null   $generatePdfPlaceholder czy wstawić placeholder PDF
      * @return bool
      */
-    public function sendPo(int $poId, int $userId, ?string $sentAt = null, ?bool $generatePdfPlaceholder = true): bool {
+    public function sendPo(int $poId, int $userId, ?string $sentAt = null, ?bool $generatePdfPlaceholder = true, ?string $expectedDate = null, bool $applyExpectedDate = false): bool {
         $MsaDB = $this->MsaDB;
         $repo = new PurchaseOrderRepository($MsaDB);
         $itemRepo = new PurchaseOrderItemRepository($MsaDB);
@@ -330,6 +334,25 @@ class PurchaseActionHandler {
             $repo->setSentAt($poId, $normalisedSentAt);
             if ($generatePdfPlaceholder === true) {
                 $repo->setPdfPlaceholder($poId);
+            }
+            // Wizard step 3 sends the final date explicitly (possibly empty
+            // = cleared on purpose) — then the lead-time default is skipped.
+            if ($applyExpectedDate) {
+                $repo->setExpectedDeliveryDate($poId, $expectedDate);
+            }
+            // Default "Planowana dostawa" (callers that don't pass a date):
+            // when the operator hasn't entered
+            // one, derive it as send date + vendor lead_time_days. A date
+            // that was set by hand is never overwritten (e.g. on re-send).
+            elseif ($po->expectedDeliveryDate === null) {
+                $leadStmt = $MsaDB->db->prepare("SELECT `lead_time_days` FROM `list__vendor` WHERE `id` = ?");
+                $leadStmt->execute([$po->vendorId]);
+                $leadDays = $leadStmt->fetchColumn();
+                if ($leadDays !== false && $leadDays !== null && (int)$leadDays > 0) {
+                    $base = new \DateTime(substr($normalisedSentAt, 0, 10));
+                    $base->modify('+' . (int)$leadDays . ' days');
+                    $repo->setExpectedDeliveryDate($poId, $base->format('Y-m-d'));
+                }
             }
             $MsaDB->db->commit();
             return true;

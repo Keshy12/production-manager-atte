@@ -119,6 +119,16 @@ class PurchaseOrderRepository {
         );
     }
 
+    /**
+     * Sets (or clears, with null/'') only the expected delivery date.
+     * Returns the normalised 'Y-m-d' value (or null) that was stored.
+     */
+    public function setExpectedDeliveryDate(int $id, ?string $date): ?string {
+        $date = self::normaliseDate($date);
+        $this->MsaDB->update('purchase__order', ['expected_delivery_date' => $date], 'id', $id);
+        return $date;
+    }
+
     public function setState(int $id, string $state): bool {
         // 'in_progress' is a logistics-only state introduced for the goods-
         // receiving workflow: PO went confirmed → operator accepted the

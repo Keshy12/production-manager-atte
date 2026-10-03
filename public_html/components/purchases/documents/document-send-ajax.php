@@ -83,6 +83,22 @@ if ($sentAtRaw !== null) {
     }
 }
 
+// expected_date (krok 3 wizarda): 'Y-m-d' albo '' (= wyczyść). Gdy klucza
+// brak w POST, nie ruszamy daty (PO dostaje wtedy domyślną z lead time).
+$applyExpectedDate = array_key_exists('expected_date', $_POST);
+$expectedDate = null;
+if ($applyExpectedDate) {
+    $expectedRaw = trim((string)$_POST['expected_date']);
+    if ($expectedRaw !== '') {
+        $ed = \DateTime::createFromFormat('Y-m-d', $expectedRaw);
+        if ($ed === false || $ed->format('Y-m-d') !== $expectedRaw) {
+            echo json_encode(['success' => false, 'error' => 'Nieprawidłowa data (wymagany format RRRR-MM-DD).']);
+            exit;
+        }
+        $expectedDate = $expectedRaw;
+    }
+}
+
 $userId = (int)($_SESSION['user_id'] ?? 0);
 if ($userId <= 0) {
     echo json_encode(['success' => false, 'error' => 'Brak zalogowanego użytkownika.']);
@@ -113,13 +129,13 @@ $poStateLabels = [
 
 try {
     if ($type === 'rfq') {
-        $handler->sendRfq($id, $userId, $sentAt, $generatePdf);
+        $handler->sendRfq($id, $userId, $sentAt, $generatePdf, $expectedDate, $applyExpectedDate);
         $rfq = (new RFQRepository($MsaDB))->getById($id);
         $documentNumber = $rfq !== null ? ($rfq->rfqNumber ?? null) : null;
         $state          = $rfq !== null ? $rfq->state : 'sent';
         $stateLabel     = $rfqStateLabels[$state] ?? $state;
     } else {
-        $handler->sendPo($id, $userId, $sentAt, $generatePdf);
+        $handler->sendPo($id, $userId, $sentAt, $generatePdf, $expectedDate, $applyExpectedDate);
         $po  = (new PurchaseOrderRepository($MsaDB))->getById($id);
         $documentNumber = $po !== null ? ($po->poNumber ?? null) : null;
         $state          = $po !== null ? $po->state : 'sent';

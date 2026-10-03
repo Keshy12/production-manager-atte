@@ -105,6 +105,16 @@ class RFQRepository {
         );
     }
 
+    /**
+     * Sets (or clears, with null/'') only the expected reply date.
+     * Returns the normalised 'Y-m-d' value (or null) that was stored.
+     */
+    public function setExpectedReplyDate(int $id, ?string $date): ?string {
+        $date = self::normaliseDate($date);
+        $this->MsaDB->update('purchase__rfq', ['expected_reply_date' => $date], 'id', $id);
+        return $date;
+    }
+
     public function setState(int $id, string $state): bool {
         $valid = ['draft','sent','responded','cancelled','converted'];
         if (!in_array($state, $valid, true)) {

@@ -332,6 +332,14 @@ try {
     $emailDraftRepo      = new EmailDraftRepository($MsaDB);
     $availableEmailDrafts = $emailDraftRepo->getActiveForPicker($type);
 
+    // Vendor lead time (days) — krok 3 wizarda (PO) podpowiada
+    // "Planowana dostawa" jako data wysyłki + lead time. NULL / <= 0 =
+    // brak podpowiedzi.
+    $leadStmt = $MsaDB->db->prepare("SELECT `lead_time_days` FROM `list__vendor` WHERE `id` = ?");
+    $leadStmt->execute([(int)$vendorId]);
+    $leadRaw = $leadStmt->fetchColumn();
+    $vendorLeadTimeDays = ($leadRaw !== false && $leadRaw !== null && (int)$leadRaw > 0) ? (int)$leadRaw : null;
+
     echo json_encode([
         'success' => true,
         'doc'     => [
@@ -348,6 +356,7 @@ try {
             'respondedAt'          => $respondedAt,
             'expectedReplyDate'    => $type === 'rfq' ? $expectedDate : null,
             'expectedDeliveryDate' => $type === 'po'  ? $expectedDate : null,
+            'vendorLeadTimeDays'   => $vendorLeadTimeDays,
             // Autor dokumentu — krok 4 podpisuje nim wygenerowany
             // szablon wiadomości do dostawcy ("Z poważaniem, …").
             'createdBy'            => (int)$doc->createdBy,
