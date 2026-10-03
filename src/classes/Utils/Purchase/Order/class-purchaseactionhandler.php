@@ -926,25 +926,9 @@ class PurchaseActionHandler {
                 throw new \LogicException("Pozycja #{$idx}: magazyn {$subMag} jest nieaktywny.");
             }
 
-            // Lenient 110% over-delivery cap — applied PER receipt, not
-            // cumulatively. Earlier code compared ($poItem->quantityReceived
-            // + $qtyRecv) against the cap, which made partial receptions
-            // impossible after the first one: a 5-unit second receipt on
-            // top of a 10-unit prior one printed as „przyjęcie 15" and
-            // was rejected. The cap is what THIS single receipt may
-            // exceed remaining by, not the running total.
-            $remaining = ((float)$poItem->quantity) - ((float)$poItem->quantityReceived);
-            $maxAllowed = $remaining * 1.10 + $epsilon;
-            if ($qtyRecv > $maxAllowed) {
-                throw new \LogicException(sprintf(
-                    "Pozycja %d (%s): przyjęcie %.4f przekracza dopuszczalne maksimum %.4f (pozostało %.4f × 1,10).",
-                    $poItem->id,
-                    $poItem->vendorPartNo ?? ('vp#' . $poItem->vendorPartId),
-                    $qtyRecv,
-                    $maxAllowed,
-                    $remaining
-                ));
-            }
+            // Over-delivery is NOT blocked: the receive UI only warns when
+            // the quantity is far above the remaining amount (> 110%, see
+            // maxAllowed in receipt-po-get.php), but the reception is saved.
 
             if ($lineComment !== null) {
                 $lineComment = trim((string)$lineComment);

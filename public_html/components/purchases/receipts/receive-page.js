@@ -765,7 +765,8 @@ $(document).ready(function() {
 
     // ---- walidacja na żywo ---------------------------------------------
 
-    // Zwraca 'empty' | 'ok' | 'over' | 'error' i od razu maluje wiersz.
+    // Zwraca 'empty' | 'ok' | 'over' i od razu maluje wiersz.
+    // 'over' (także „znacznie więcej niż oczekiwano") nigdy nie blokuje zapisu.
     function validateRow($row) {
         const item = itemOfRow($row);
         const $qty = $row.find('.line-qty');
@@ -791,8 +792,11 @@ $(document).ready(function() {
         if (qty > max) {
             $row.addClass('table-danger');
             $qty.addClass('is-invalid');
-            $msg.html('<span class="text-danger">Maksymalnie ' + esc(fmtQty(max) + unit) + '.</span>');
-            return 'error';
+            $msg.html('<span class="text-danger font-weight-bold">Znacznie więcej niż oczekiwano (oczekiwane do '
+                + esc(fmtQty(max) + unit) + ').</span>');
+            $diff.html('<span class="text-danger font-weight-bold">Nadwyżka: +'
+                + esc(fmtQty(qty - remaining) + unit) + '</span>');
+            return 'over';
         }
         if (qty > remaining) {
             $row.addClass('table-warning');
@@ -810,7 +814,6 @@ $(document).ready(function() {
 
     function refreshSummary() {
         let filled = 0;
-        let errors = 0;
         let open   = 0;
 
         $linesBody.find('tr.receipt-line').each(function() {
@@ -821,18 +824,14 @@ $(document).ready(function() {
             if ($row.find('.line-receive-toggle').is(':not(:checked)')) return;
             if (item && !isDone(item)) open++;
             const st = validateRow($row);
-            if (st === 'error') errors++;
-            else if (st === 'ok' || st === 'over') filled++;
+            if (st === 'ok' || st === 'over') filled++;
         });
 
         $('#receiveSummary').text('Przyjmujesz ' + filled + ' z ' + open + ' pozycji');
 
         let hint = '';
         let ok = true;
-        if (errors > 0) {
-            ok = false;
-            hint = 'Popraw pozycje oznaczone na czerwono — ilość przekracza dopuszczalne maksimum.';
-        } else if (filled === 0) {
+        if (filled === 0) {
             ok = false;
             hint = 'Wpisz ilość w co najmniej jednej pozycji.';
         }
@@ -844,9 +843,7 @@ $(document).ready(function() {
         receiveState.submitReady = ok;
         if (!step1Accepted) {
             ok = false;
-            // Błąd w tabeli jest konkretniejszy niż „zatwierdź dokument",
-            // więc gdy jakiś jest — zostaje on.
-            if (errors === 0) hint = 'Najpierw zatwierdź dokument przyjęcia („Akceptuję").';
+            hint = 'Najpierw zatwierdź dokument przyjęcia („Akceptuję").';
         }
 
         $('#receiveHint').text(hint);
@@ -950,7 +947,6 @@ $(document).ready(function() {
         }
 
         const items = [];
-        let blocked = false;
 
         $linesBody.find('tr.receipt-line').each(function() {
             const $row = $(this);
@@ -964,7 +960,8 @@ $(document).ready(function() {
             if (raw === '') return;
             const qty = parseFloat(raw);
             if (isNaN(qty) || qty <= 0) return;      // tylko wypełnione pozycje
-            if (qty > num(item.maxAllowed)) { blocked = true; return; }
+            // Znacznie większa ilość niż oczekiwana jest tylko ostrzeżeniem
+            // (czerwone w validateRow) — nie blokuje zapisu.
 
             items.push({
                 po_item_id:        parseInt(item.poItemId, 10),
@@ -974,10 +971,6 @@ $(document).ready(function() {
             });
         });
 
-        if (blocked) {
-            showAlert('Popraw ilości przekraczające dopuszczalne maksimum.', 'danger');
-            return;
-        }
         if (items.length === 0) {
             showAlert('Wpisz ilość w co najmniej jednej pozycji.', 'warning');
             return;
