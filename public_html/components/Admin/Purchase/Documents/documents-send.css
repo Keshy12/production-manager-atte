@@ -988,21 +988,22 @@
     color: #533f03;
 }
 
-/* --- Step 4: blok treści — dwa widoki, jeden naraz ---------------
+/* --- Step 4: blok treści ------------------------------------------
  *
- * .send-composer-body trzyma cały blok: pasek nagłówka, widok „Treść"
- * (wyrenderowana wiadomość) i textareę do edycji. Atrybut data-view
- * jest JEDYNYM przełącznikiem — dwie reguły niżej zdejmują z widoku
- * to, co do danego trybu nie należy, więc JS nie rusza żadnych styli
- * ani klas, tylko przestawia jeden atrybut.
+ * .send-composer-body trzyma pasek nagłówka i samą wiadomość:
+ * tekst przed tabelą, tabelę pozycji i tekst po tabeli. Tekst jest
+ * edytowalny od razu; tylko tabela przełącza się między podglądem a
+ * edycją — robi to atrybut data-mode na .send-body-table, a dwie
+ * reguły niżej zdejmują z bloku to, co do danego trybu nie należy
+ * (JS nie rusza żadnych styli, tylko przestawia ten atrybut).
  */
 #send-wizard-root #send-step-4-body .send-composer-body {
     position: relative;
 }
-#send-wizard-root #send-step-4-body .send-composer-body[data-view="preview"] [data-show-in="edit"] {
+#send-wizard-root #send-step-4-body .send-body-table[data-mode="view"] [data-show-in="edit"] {
     display: none !important;
 }
-#send-wizard-root #send-step-4-body .send-composer-body[data-view="edit"] [data-show-in="preview"] {
+#send-wizard-root #send-step-4-body .send-body-table[data-mode="edit"] [data-show-in="view"] {
     display: none !important;
 }
 
@@ -1021,31 +1022,13 @@
     background-color: #fff;
     border-bottom: 1px solid #edeef0;
 }
-/* Narzędzia dociśnięte do prawej krawędzi — „Wstaw zmienną" i
-   „Edytuj / Gotowe" są narzędziami, nie treścią, więc nie zaczynają
-   wiersza. W trybie podglądu zostaje tu sam przełącznik. */
+/* Narzędzia dociśnięte do prawej krawędzi — „Wstaw zmienną" jest
+   narzędziem, nie treścią, więc nie zaczyna wiersza. */
 #send-wizard-root #send-step-4-body .send-composer-body-tools {
     display: flex;
     align-items: center;
     gap: .35rem;
     margin-left: auto;
-}
-#send-wizard-root #send-step-4-body .send-composer-toggle {
-    padding: .1rem .5rem;
-    font-size: .75rem;
-    line-height: 1.6;
-    border-color: #d3d8de;
-    color: #6c757d;
-    white-space: nowrap;
-}
-#send-wizard-root #send-step-4-body .send-composer-toggle:hover,
-#send-wizard-root #send-step-4-body .send-composer-toggle:focus {
-    background-color: #e7f1ff;
-    border-color: #9ec5fe;
-    color: #0b5ed7;
-}
-#send-wizard-root #send-step-4-body .send-composer-toggle .bi {
-    margin-right: .15rem;
 }
 #send-wizard-root #send-step-4-body .send-var-btn {
     padding: .1rem .5rem;
@@ -1151,88 +1134,204 @@
 #send-wizard-root #send-step-4-body .send-var-item:not(.disabled):hover .send-var-label {
     color: #495057;
 }
-/* Textarea — narzędzie edycji, widoczne tylko w trybie 'edit'.
-   Monospace zostaje: tu operator patrzy na surowy tekst, w którym
-   liczą się tabulatory bloku pozycji. min-height równe podglądowi,
-   żeby przeskok między widokami był jak najmniejszy. */
-#send-wizard-root #send-step-4-body .send-composer-body-textarea {
-    display: block;
-    width: 100%;
-    min-height: 14rem;
-    /* Równy margines ze wszystkich stron — ikona „kopiuj" nie siedzi
-       już w prawym górnym rogu textarei, więc nie trzeba dla niej
-       rezerwować 2.4rem po prawej. */
-    padding: .85rem;
-    background-color: #fff;
-    border: 0;
-    border-radius: 0;
-    color: #212529;
-    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-    font-size: .82rem;
-    line-height: 1.65;
-    resize: vertical;
-}
-#send-wizard-root #send-step-4-body .send-composer-body-textarea:focus {
-    outline: none;
-    box-shadow: none;
-    background-color: #fffdf7;
-}
-
-/* --- Step 4: widok „Treść" ---------------------------------------
+/* --- Step 4: wiadomość jako jedno pole ----------------------------
  *
- * To NIE jest podgląd obok edytora — to domyślna postać treści.
- * Operator ma widzieć wiadomość tak, jak wyląduje w Gmailu (tabela
- * pozycji, proporcjonalny krój), a nie surowy TSV. Textarea włącza
- * się dopiero na „Edytuj".
- *
- * Podgląd jest celowo NIEklikalny — jedyną drogą do edycji jest
- * przycisk „Edytuj". Cursor: default (nie text), brak podświetlenia
- * hover, brak ramki focus — to nie jest control, to render maila.
- * Ramka wokół treści maila byłaby fałszem (to nie osobna karta, to
- * treść tej karty).
+ * Cała treść (tekst przed tabelą, tabela, tekst po tabeli) siedzi w
+ * JEDNYM edytowalnym hoście, żeby Ctrl+A / Ctrl+C obejmowały całą
+ * wiadomość. Host ma jedną ramkę i jeden pierścień fokusu —
+ * :focus-within, bo fokus bywa też w textarei tabeli w środku.
+ * white-space: pre-wrap trzyma nowe linie i spacje dokładnie takie,
+ * jak wpisał operator (to samo dostaje serializer do body).
+ * Wysokość rośnie z treścią, bez wewnętrznego paska przewijania.
  */
-#send-wizard-root #send-step-4-body .send-composer-body-preview {
-    min-height: 14rem;
-    padding: 1rem;
+#send-wizard-root #send-step-4-body .send-body-host {
+    margin: .5rem .85rem .85rem;
+    padding: .65rem .8rem;
+    min-height: 6rem;
     background-color: #fff;
-    overflow-x: auto;
+    border: 1px solid #ced4da;
+    border-radius: .3rem;
     color: #212529;
     font-size: .85rem;
     line-height: 1.65;
     white-space: pre-wrap;
     word-break: break-word;
-    cursor: default;
+    cursor: text;
+    transition: border-color .15s ease, box-shadow .15s ease;
 }
-/* Tabela pozycji. htmlTable() niesie inline border="1" cellpadding="4"
+#send-wizard-root #send-step-4-body .send-body-host:hover {
+    border-color: #b8c0c8;
+}
+#send-wizard-root #send-step-4-body .send-body-host:focus,
+#send-wizard-root #send-step-4-body .send-body-host:focus-within {
+    outline: none;
+    border-color: #9ec5fe;
+    box-shadow: 0 0 0 .15rem rgba(0, 123, 255, .12);
+}
+/* Wiadomość bez tabeli: wysokość dawnej płaszczyzny treści — pusty
+   szablon nie zwija się do jednej linii. */
+#send-wizard-root #send-step-4-body .send-body-host.is-plain {
+    min-height: 14rem;
+}
+/* Części tekstu: zwykłe bloki bez własnej oprawy; min-height daje
+   pustej części linię, w którą da się kliknąć. */
+#send-wizard-root #send-step-4-body .send-body-seg {
+    min-height: 1.65em;
+}
+
+/* Tabela pozycji jako osadzona wyspa (contenteditable="false"): jasne
+   tło + cienka ramka oddzielają ją od tekstu, a przycisk edycji siedzi
+   w prawym górnym rogu, w rezerwowanym pasie (padding-right), żeby nigdy
+   nie zasłaniał ostatniej kolumny. white-space: normal — host ma
+   pre-wrap, a komórki nie mogą dziedziczyć go z hosta. */
+#send-wizard-root #send-step-4-body .send-body-table {
+    position: relative;
+    margin: .5rem 0;
+    padding: .55rem 2.6rem .55rem .65rem;
+    background-color: #fafbfc;
+    border: 1px solid #e3e6ea;
+    border-radius: .35rem;
+    white-space: normal;
+    cursor: default;
+    transition: border-color .15s ease, background-color .15s ease;
+}
+#send-wizard-root #send-step-4-body .send-body-table:hover {
+    border-color: #d3d8de;
+}
+#send-wizard-root #send-step-4-body .send-body-table[data-mode="edit"] {
+    padding-right: .65rem;
+    background-color: #f5f9ff;
+    border-color: #9ec5fe;
+}
+/* Kontrolki wyspy nie są treścią: nie dają się zaznaczyć, więc nie
+   trafiają do natywnej kopii zaznaczenia obejmującego tabelę. */
+#send-wizard-root #send-step-4-body .send-body-table-edit,
+#send-wizard-root #send-step-4-body .send-body-table-hint {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    user-select: none;
+}
+#send-wizard-root #send-step-4-body .send-body-table-edit {
+    position: absolute;
+    top: .4rem;
+    right: .4rem;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .25rem;
+    min-width: 1.75rem;
+    height: 1.75rem;
+    padding: 0 .4rem;
+    background-color: #fff;
+    border: 1px solid #dee2e6;
+    border-radius: .25rem;
+    color: #868e96;
+    font-size: .78rem;
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: color .15s ease, background-color .15s ease, border-color .15s ease;
+}
+#send-wizard-root #send-step-4-body .send-body-table-edit:hover,
+#send-wizard-root #send-step-4-body .send-body-table-edit:focus {
+    outline: none;
+    background-color: #e7f1ff;
+    border-color: #9ec5fe;
+    color: #0b5ed7;
+}
+#send-wizard-root #send-step-4-body .send-body-table[data-mode="edit"] .send-body-table-edit {
+    background-color: #e7f1ff;
+    border-color: #9ec5fe;
+    color: #0b5ed7;
+    font-weight: 600;
+}
+
+/* Podgląd tabeli. htmlTable() niesie inline border="1" cellpadding="4"
    dla Gmaila — tutaj nadpisujemy to na czytelniejszą siatkę, bez
    ruszania samego generatora (ten sam HTML leci do schowka). */
-#send-wizard-root #send-step-4-body .send-composer-body-preview table {
+#send-wizard-root #send-step-4-body .send-body-table-view {
+    overflow-x: auto;
+    color: #212529;
+    font-size: .85rem;
+    line-height: 1.5;
+    word-break: break-word;
+}
+#send-wizard-root #send-step-4-body .send-body-table-view table {
     border-collapse: collapse;
-    margin: .55rem 0;
+    margin: 0;
     font-size: .78rem;
     line-height: 1.45;
-    white-space: normal;
+    background-color: #fff;
 }
-#send-wizard-root #send-step-4-body .send-composer-body-preview th,
-#send-wizard-root #send-step-4-body .send-composer-body-preview td {
+#send-wizard-root #send-step-4-body .send-body-table-view th,
+#send-wizard-root #send-step-4-body .send-body-table-view td {
     padding: .25rem .5rem;
     border: 1px solid #dee2e6;
     vertical-align: top;
 }
-#send-wizard-root #send-step-4-body .send-composer-body-preview th {
+#send-wizard-root #send-step-4-body .send-body-table-view th {
     background-color: #f6f7f9;
     font-weight: 600;
     white-space: nowrap;
     color: #495057;
 }
-/* Pusta treść — hint zamiast pustej płaszczyzny, która nie mówi, czy
-   to błąd, czy stan wyjściowy. */
-#send-wizard-root #send-step-4-body .send-composer-body-empty {
+/* Pusta / uszkodzona tabela — podpowiedź zamiast pustego pudełka. */
+#send-wizard-root #send-step-4-body .send-body-table-empty {
     display: block;
-    padding: 3.5rem 1rem;
-    text-align: center;
+    padding: .4rem 0;
+    font-size: .8rem;
     font-style: italic;
-    color: #adb5bd;
+    color: #868e96;
+}
+
+/* Edycja tabeli: surowy tekst, monospace, bez zawijania — w tym
+   formacie liczy się, która kolumna jest którą. Nad polem krótka
+   podpowiedź; jej prawy margines rezerwuje miejsce na przycisk
+   „Gotowe", który stoi w rogu bloku. */
+#send-wizard-root #send-step-4-body .send-body-table-hint {
+    margin: 0 5.5rem .4rem 0;
+    min-height: 1.75rem;
+    display: flex;
+    align-items: center;
+    font-size: .72rem;
+    color: #6c757d;
+}
+#send-wizard-root #send-step-4-body .send-body-table-textarea {
+    display: block;
+    width: 100%;
+    min-height: 6rem;
+    padding: .5rem .6rem;
+    background-color: #fff;
+    border: 1px solid #ced4da;
+    border-radius: .25rem;
+    color: #212529;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: .8rem;
+    line-height: 1.6;
+    white-space: pre;
+    overflow-x: auto;
+    overflow-y: hidden;
+    resize: none;
+}
+#send-wizard-root #send-step-4-body .send-body-table-textarea:focus {
+    outline: none;
+    border-color: #9ec5fe;
+    box-shadow: 0 0 0 .15rem rgba(0, 123, 255, .12);
+}
+
+@media (max-width: 575.98px) {
+    #send-wizard-root #send-step-4-body .send-body-host {
+        margin: .4rem .5rem .6rem;
+        padding: .5rem .55rem;
+    }
+    #send-wizard-root #send-step-4-body .send-body-table {
+        padding-left: .5rem;
+    }
+    #send-wizard-root #send-step-4-body .send-body-table-hint {
+        margin-right: 4.75rem;
+        line-height: 1.3;
+    }
 }
 
 #send-wizard-root #send-step-4-body .send-composer-foot {

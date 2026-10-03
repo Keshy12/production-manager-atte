@@ -77,12 +77,11 @@ $(function () {
         // refreshStep2NextEnabled() renderują panel od nowa).
         emailSubjectEdited: null,
         emailBodyEdited:    null,
-        // Krok 4 — który widok treści jest na wierzchu. Domyślnie
-        // 'preview': operator ma zobaczyć gotową wiadomość (z tabelą
-        // pozycji), a nie surowy TSV w textarei. 'edit' włącza się po
-        // kliknięciu „Edytuj" albo w samą treść i trzyma się do
-        // kliknięcia „Gotowe" — przeżywa ponowny render kroku 4.
-        composerView:       'preview',
+        // Krok 4 — czy tabela pozycji w treści jest w trybie edycji
+        // (surowy tekst z kolumnami rozdzielonymi „|"). Tekst wiadomości
+        // przed i po tabeli jest edytowalny zawsze; ta flaga dotyczy
+        // wyłącznie tabeli. Przeżywa ponowny render kroku 4.
+        tableEdit:          false,
         // Krok 4 — picker „Szablon wiadomości". Pozwala nadpisać
         // preferencję dostawcy w momencie wysyłki. Picker listuje
         // WYŁĄCZNIE szablony z katalogu — pozycji „wbudowany domyślny"
@@ -1844,30 +1843,27 @@ $(function () {
                         + 'class="send-composer-subject" value="' + escapeHtml(subject) + '">'
                 + '</div>'
             + '</div>'
-            // Blok treści ma DWA widoki i pokazuje zawsze dokładnie
-            // jeden — data-view na tym wrapperze przestawia oba przez
-            // selektory [data-show-in] w CSS, bez dotykania styli w JS.
+            // Treść to jedno pole (host contenteditable): tekst przed
+            // tabelą → wyspa z tabelą pozycji → tekst po tabeli. Tekst
+            // jest edytowalny od razu; tylko tabela ma własny przycisk
+            // „Edytuj tabelę" (surowy tekst z kolumnami rozdzielonymi „|").
+            // Jedno pole = Ctrl+A zaznacza i kopiuje całą wiadomość.
             //
-            // Domyślnie 'preview': operator widzi wiadomość taką, jaka
-            // pójdzie do Gmaila (tabela pozycji, nie surowy TSV).
-            // Textarea to narzędzie edycji, nie „prawdziwa" treść —
-            // dlatego nagłówek mówi „Treść", a nie „Podgląd".
-            //
-            // Klik w sam podgląd NIE przełącza trybu — jedyną drogą
-            // do edycji jest przycisk „Edytuj". To zapobiega przypadkowym
-            // przeskokom (klik w treść podczas czytania zamierza ustawiać
-            // kursor tekstowy, nie wyrzucać z podglądu). W zamian
-            // sam przycisk jest wyraźny i zawsze dostępny w pasku narzędzi.
-            + '<div class="send-composer-body" data-view="'
-                + (state.composerView === 'edit' ? 'edit' : 'preview') + '">'
+            // Źródłem prawdy zostaje JEDEN string z markerami w
+            // ukrytej textarei #send-email-body — wszystko niżej
+            // (schowek, stan, „Przywróć szablon") czyta ją tak jak
+            // wcześniej. Host jest tylko widokiem: po każdej edycji
+            // serializujemy go z powrotem do tego stringa.
+            + '<div class="send-composer-body">'
                 + buildComposerBodyBarHtml()
-                + '<div class="send-composer-body-preview" id="send-email-body-preview"'
-                    + ' data-show-in="preview" aria-hidden="false"></div>'
-                + '<textarea id="send-email-body" class="send-composer-body-textarea"'
-                    + ' rows="10" data-show-in="edit"'
-                    + ' aria-label="Treść wiadomości"'
-                    + ' placeholder="Treść wiadomości…">'
-                    + escapeHtml(body)
+                + buildComposerSegmentsHtml(AtteItemsFormat.splitBody(body))
+                + '<textarea id="send-email-body" hidden tabindex="-1"'
+                    + ' aria-hidden="true">'
+                    // Parser HTML zjada pierwszy \n tuż po <textarea>,
+                    // więc dokładamy własny — inaczej body zaczynające
+                    // się od markera (tabela na samej górze) traciłoby
+                    // wiodący \n, a wraz z nim dopasowanie MARKER_START.
+                    + '\n' + escapeHtml(body)
                 + '</textarea>'
             + '</div>'
             + '<div class="send-composer-foot">'
@@ -1882,60 +1878,364 @@ $(function () {
     }
 
     /**
-     * Renderuje widok „Treść" — treść wiadomości z tabelą HTML w
-     * miejscu pozycji. Inaczej niż w email-draft-edit (gdzie token
-     * {items} przeżywa do podglądu) — tu {items} jest już podstawiony
-     * na TSV na etapie generowania treści (buildTemplateVars /
-     * buildEmailBodyDefault), więc treść w textarei nigdy nie ma
-     * literału {items}. Podgląd szuka więc dokładnie TEGO SAMEGO
-     * stringu TSV (ten sam ctx.documentNumber co przy generowaniu) i
-     * podaje go jako trzeci argument AtteItemsFormat.previewBody() —
-     * ta sama funkcja, co w email-draft-edit, inny marker do podziału.
+     * Jedna część tekstu wiadomości w hoście (przed / po tabeli albo cała
+     * wiadomość bez tabeli): blok `div.send-body-seg` z czystym tekstem.
+     * Znacznik `<br>` na końcu to placeholder przeglądarki — dzięki niemu
+     * pusta część albo tekst kończący się nową linią ma widoczną linię z
+     * kursorem. Serializer (AtteItemsFormat.domToTextParts) go ignoruje.
+     */
+    function composerHostSegHtml(seg, text) {
+        const t = String(text || '');
+        return '<div class="send-body-seg" data-seg="' + seg + '">'
+            + escapeHtml(t)
+            + ((t === '' || t.charAt(t.length - 1) === '\n') ? '<br>' : '')
+        + '</div>';
+    }
+
+    /**
+     * Cała treść wiadomości jako JEDEN edytowalny host (`contenteditable`),
+     * zbudowany z wyniku AtteItemsFormat.splitBody():
      *
-     * Brak dopasowania (operator ręcznie zmienił blok pozycji) →
-     * cała treść wraca jako czysty tekst, bez zgadywania.
+     *   • z tabelą:  tekst przed → wyspa z tabelą (`contenteditable="false"`,
+     *                przycisk edycji w prawym górnym rogu) → tekst po,
+     *   • bez tabeli (szablon bez {items} albo markery usunięte): sam
+     *                tekst, żadnych kontrolek tabeli.
      *
-     * Temat NIE jest tu powtarzany — ma własny, zawsze widoczny
-     * wiersz nad blokiem treści; drugi raz byłby szumem.
+     * Dzięki jednemu hostowi Ctrl+A zaznacza całą wiadomość razem z
+     * tabelą (zaznaczenie nie jest uwięzione w jednej textarei).
+     *
+     * Markery nigdy nie trafiają do DOM — doklejane są dopiero w
+     * readComposerBody(). Wyspa trzyma też ukrytą textareę z tekstem
+     * tabeli (`#send-body-table`); jest źródłem tabeli niezależnie od
+     * trybu widoku, a w trybie edycji jest po prostu widoczna.
+     *
+     * Wywoływane przy renderze kroku 4 i przy zmianie struktury (nowy
+     * szablon, markery w tekście); podczas pisania NIE — przebudowa
+     * hosta zabrałaby fokus, kursor i Ctrl+Z.
+     */
+    function buildComposerSegmentsHtml(seg) {
+        const hostOpen = '<div class="send-body-host' + (seg.hasTable ? '' : ' is-plain') + '"'
+            + ' id="send-body-host" contenteditable="true" role="textbox"'
+            + ' aria-multiline="true" aria-label="Treść wiadomości" spellcheck="true">';
+        if (!seg.hasTable) {
+            return hostOpen + composerHostSegHtml('before', seg.before) + '</div>';
+        }
+        const editing = (state.tableEdit === true);
+        const toggleLabel = editing ? 'Zakończ edycję tabeli' : 'Edytuj tabelę';
+        return hostOpen
+            + composerHostSegHtml('before', seg.before)
+            + '<div class="send-body-table" id="send-body-table-block" contenteditable="false"'
+                + ' data-mode="' + (editing ? 'edit' : 'view') + '">'
+                + '<button type="button" class="send-body-table-edit" id="send-body-table-toggle"'
+                    + ' data-atte-ui="1"'
+                    + ' aria-pressed="' + (editing ? 'true' : 'false') + '"'
+                    + ' title="' + toggleLabel + '"'
+                    + ' aria-label="' + toggleLabel + '">'
+                    + '<i class="bi bi-pencil" data-show-in="view" aria-hidden="true"></i>'
+                    + '<i class="bi bi-check-lg" data-show-in="edit" aria-hidden="true"></i>'
+                    + '<span class="send-body-table-edit-label" data-show-in="edit">Gotowe</span>'
+                + '</button>'
+                + '<div class="send-body-table-view" id="send-email-body-preview"'
+                    + ' data-show-in="view"></div>'
+                + '<div class="send-body-table-editor" data-show-in="edit">'
+                    + '<div class="send-body-table-hint" data-atte-ui="1">'
+                        + 'Pierwszy wiersz to nagłówki, kolumny rozdzielone znakiem „|”.'
+                    + '</div>'
+                    + '<textarea id="send-body-table" class="send-body-table-textarea"'
+                        + ' data-seg="table" rows="4" wrap="off" spellcheck="false"'
+                        + ' aria-label="Tabela pozycji — tekst z kolumnami rozdzielonymi znakiem |">'
+                        // Parser HTML zjada pierwszy \n tuż po <textarea>.
+                        + '\n' + escapeHtml(seg.table)
+                    + '</textarea>'
+                + '</div>'
+            + '</div>'
+            + composerHostSegHtml('after', seg.after)
+        + '</div>';
+    }
+
+    function composerHost() { return document.getElementById('send-body-host'); }
+    function composerIsland() { return document.getElementById('send-body-table-block'); }
+    function composerIsIslandNode(n) { return n.nodeType === 1 && n.id === 'send-body-table-block'; }
+    function inComposerIsland(node) {
+        const isl = composerIsland();
+        return !!(isl && node && isl.contains(node));
+    }
+
+    /**
+     * Składa pełne body (z markerami) z hosta. Bez wyspy → sam tekst.
+     * Gdy hosta nie ma w DOM (markup jeszcze niewstrzyknięty), zwraca to,
+     * co trzyma ukryte źródło prawdy.
+     */
+    function readComposerBody() {
+        const host = composerHost();
+        if (!host) return ($('#send-email-body').val() || '').toString();
+        const parts = AtteItemsFormat.domToTextParts(host, composerIsIslandNode);
+        const ta = document.getElementById('send-body-table');
+        return AtteItemsFormat.bodyFromHostParts(parts, ta ? ta.value : '');
+    }
+
+    /**
+     * Dopasowuje wysokość textarei tabeli do treści. Host rośnie sam (to
+     * zwykły div). Gdy panel jest ukryty (scrollHeight = 0) nic nie robi —
+     * setStep(4) i tak renderuje krok od nowa.
+     */
+    function autoGrowTextarea(el) {
+        if (!el) return;
+        el.style.height = 'auto';
+        const h = el.scrollHeight;
+        if (h > 0) el.style.height = (h + (el.offsetHeight - el.clientHeight)) + 'px';
+    }
+
+    function autoGrowComposer() {
+        autoGrowTextarea(document.getElementById('send-body-table'));
+    }
+
+    // ---- Host: zaznaczenie, wyspa, polecenia edycji -----------------
+
+    let composerSavedRange = null;     // ostatnie zaznaczenie w hoście (dla „Wstaw zmienną")
+    let composerCmdBusy = false;       // true, gdy to MY wywołujemy execCommand
+
+    /** execCommand z flagą, żeby własne beforeinput nie łapał samego siebie. */
+    function composerExec(cmd, value) {
+        composerCmdBusy = true;
+        try {
+            return document.execCommand(cmd, false, value);
+        } catch (err) {
+            return false;
+        } finally {
+            composerCmdBusy = false;
+        }
+    }
+
+    function composerSetSelection(range) {
+        const sel = window.getSelection();
+        if (!sel) return;
+        sel.removeAllRanges();
+        sel.addRange(range);
+    }
+
+    /** Aktualne zaznaczenie, o ile leży w hoście. */
+    function composerSelectionRange() {
+        const sel = window.getSelection();
+        const host = composerHost();
+        if (!sel || sel.rangeCount === 0 || !host) return null;
+        const r = sel.getRangeAt(0);
+        return host.contains(r.commonAncestorContainer) ? r : null;
+    }
+
+    function composerRangeTouchesIsland(range) {
+        const isl = composerIsland();
+        return !!(isl && range && range.intersectsNode(isl));
+    }
+
+    /** Punkt tuż przed wyspą: koniec tekstu poprzedzającego (przed jego `<br>`). */
+    function composerPointBeforeIsland(isl) {
+        const p = isl.previousSibling;
+        if (p && p.nodeType === 1 && p.classList.contains('send-body-seg')) {
+            let n = p.childNodes.length;
+            if (n > 0 && p.lastChild.nodeName === 'BR') n--;
+            return [p, n];
+        }
+        return [isl.parentNode, Array.prototype.indexOf.call(isl.parentNode.childNodes, isl)];
+    }
+
+    /** Punkt tuż za wyspą: początek tekstu następującego po niej. */
+    function composerPointAfterIsland(isl) {
+        const nx = isl.nextSibling;
+        if (nx && nx.nodeType === 1 && nx.classList.contains('send-body-seg')) return [nx, 0];
+        return [isl.parentNode, Array.prototype.indexOf.call(isl.parentNode.childNodes, isl) + 1];
+    }
+
+    /**
+     * Kasuje z zaznaczenia wszystko POZA wyspą. Zaznaczenie obejmujące
+     * tabelę (Ctrl+A, Delete / wpisanie znaku / wklejenie) dzielimy na
+     * część przed i część za wyspą i usuwamy je osobno — przeglądarka
+     * sama usunęłaby wyspę razem z markerami logiki. Tabela znika tylko
+     * przez własny tryb edycji (kasowanie jej tekstu), nigdy przez
+     * Backspace / Delete / zaznaczenie. Po wszystkim kursor jest zwinięty
+     * w miejscu, gdzie zaczynało się zaznaczenie.
+     */
+    function composerDeleteAroundIsland(range) {
+        const isl = composerIsland();
+        if (!isl) return;
+        const bp = composerPointBeforeIsland(isl);
+        const ap = composerPointAfterIsland(isl);
+        const pieces = [];
+        if (range.comparePoint(bp[0], bp[1]) === 0) {
+            const r1 = range.cloneRange();
+            r1.setEnd(bp[0], bp[1]);
+            if (!r1.collapsed) pieces.push(r1);
+        }
+        if (range.comparePoint(ap[0], ap[1]) === 0) {
+            const r2 = range.cloneRange();
+            r2.setStart(ap[0], ap[1]);
+            if (!r2.collapsed) pieces.push(r2);
+        }
+        // Najpierw późniejsza część, żeby offsety wcześniejszej zostały ważne.
+        pieces.reverse().forEach(function (p) {
+            composerSetSelection(p);
+            composerExec('delete');
+        });
+        if (pieces.length === 0) {
+            const c = document.createRange();
+            c.setStart(ap[0], ap[1]);
+            c.collapse(true);
+            composerSetSelection(c);
+        }
+    }
+
+    /** Czy kursor (zwinięty) stoi tuż przy wyspie od strony `dir` ('back' / 'fwd')? */
+    function composerCaretAdjacentToIsland(range, dir) {
+        const isl = composerIsland();
+        if (!isl || !range || !range.collapsed) return false;
+        const between = document.createRange();
+        if (dir === 'back') {
+            const ap = composerPointAfterIsland(isl);
+            const mark = document.createRange();
+            mark.setStart(ap[0], ap[1]);
+            mark.collapse(true);
+            if (mark.compareBoundaryPoints(Range.START_TO_START, range) > 0) return false;  // kursor przed wyspą
+            between.setStart(ap[0], ap[1]);
+            between.setEnd(range.startContainer, range.startOffset);
+        } else {
+            const bp = composerPointBeforeIsland(isl);
+            const mark = document.createRange();
+            mark.setStart(bp[0], bp[1]);
+            mark.collapse(true);
+            if (mark.compareBoundaryPoints(Range.START_TO_START, range) < 0) return false;  // kursor za wyspą
+            between.setStart(range.startContainer, range.startOffset);
+            between.setEnd(bp[0], bp[1]);
+        }
+        return between.toString() === '';
+    }
+
+    /** Czy zaznaczenie obejmuje całą zawartość hosta (tekst + tabelę)? */
+    function composerWholeSelected(range) {
+        const host = composerHost();
+        if (!host || !range || range.collapsed) return false;
+        const isl = composerIsland();
+        const hasContent = function (r) {
+            if (isl && r.intersectsNode(isl)) return true;
+            return r.toString().replace(/[\s\u200b]/g, '') !== '';
+        };
+        const pre = document.createRange();
+        pre.setStart(host, 0);
+        pre.setEnd(range.startContainer, range.startOffset);
+        const post = document.createRange();
+        post.setStart(range.endContainer, range.endOffset);
+        post.setEnd(host, host.childNodes.length);
+        return !hasContent(pre) && !hasContent(post);
+    }
+
+    /** Wstawia nową linię tak samo przy Enterze i przy wklejaniu. */
+    function composerBreak() {
+        if (!composerExec('insertLineBreak')) composerExec('insertText', '\n');
+    }
+
+    /** Ostatnia deska ratunku, gdy execCommand nie działa: ręczny splice (bez undo). */
+    function composerManualInsert(text) {
+        const r = composerSelectionRange();
+        if (!r) return;
+        r.deleteContents();
+        const node = document.createTextNode(text);
+        r.insertNode(node);
+        r.setStartAfter(node);
+        r.collapse(true);
+        composerSetSelection(r);
+        $(composerHost()).trigger('input');
+    }
+
+    /**
+     * Wstawia czysty tekst w miejscu kursora hosta (wklejanie, drop,
+     * wstawianie zmiennych). Zaznaczenie obejmujące tabelę najpierw
+     * przycinamy do tekstu poza nią.
+     */
+    function composerInsertText(text) {
+        const range = composerSelectionRange();
+        if (range && composerRangeTouchesIsland(range)) composerDeleteAroundIsland(range);
+        if (!composerExec('insertText', text)) composerManualInsert(text);
+    }
+
+    function composerCaretTo(segEl, atEnd) {
+        const host = composerHost();
+        if (!host || !segEl) return;
+        host.focus({ preventScroll: true });
+        const r = document.createRange();
+        r.selectNodeContents(segEl);
+        if (atEnd) {
+            const n = segEl.childNodes.length;
+            const trailingBr = n > 0 && segEl.lastChild.nodeName === 'BR';
+            r.setStart(segEl, trailingBr ? n - 1 : n);
+        }
+        r.collapse(!atEnd);
+        composerSetSelection(r);
+    }
+
+    /**
+     * Przerysowuje host z podanego body i synchronizuje ukryte źródło
+     * prawdy. Używane tylko przy zmianie struktury (nowy szablon,
+     * w body pojawiły się markery) — nie przy zwykłym pisaniu.
+     */
+    function rebuildComposerSegments(body) {
+        $('#send-email-body').val(body);
+        composerSavedRange = null;
+        const $old = $('#send-body-host');
+        if ($old.length === 0) return;
+        $old.replaceWith(buildComposerSegmentsHtml(AtteItemsFormat.splitBody(body)));
+        renderComposerPreview();
+        autoGrowComposer();
+    }
+
+    /**
+     * Włącza / wyłącza edycję tabeli. Samo przestawienie atrybutu
+     * data-mode (CSS chowa to, co do trybu nie należy) — pola tekstowe
+     * nie są ruszane.
+     */
+    function setTableEdit(on) {
+        state.tableEdit = !!on;
+        const $block = $('#send-body-table-block');
+        if ($block.length === 0) return;
+        $block.attr('data-mode', state.tableEdit ? 'edit' : 'view');
+        const label = state.tableEdit ? 'Zakończ edycję tabeli' : 'Edytuj tabelę';
+        $('#send-body-table-toggle')
+            .attr({ title: label, 'aria-label': label,
+                    'aria-pressed': state.tableEdit ? 'true' : 'false' });
+        if (state.tableEdit) {
+            const ta = document.getElementById('send-body-table');
+            autoGrowTextarea(ta);
+            if (ta) ta.focus();
+        } else {
+            renderComposerPreview();
+        }
+    }
+
+    /**
+     * Renderuje podgląd TABELI pozycji w bloku tabeli (tekst wiadomości
+     * ma własne pola, więc nie jest tu powtarzany). Tabela pochodzi z
+     * tej samej ścieżki co „Kopiuj pozycje" i „Kopiuj treść maila":
+     * parsujemy pipe-table z body, więc edycje komórek (5000→5500) i
+     * nagłówków („Price"→„Prices") są widoczne od razu.
+     *
+     * Blok bez żadnego poprawnego wiersza dostaje podpowiedź zamiast
+     * kanonicznej tabeli z dokumentu — schowek w takim przypadku też
+     * pomija tabelę, więc podgląd nie może udawać czegoś innego.
      */
     function renderComposerPreview() {
         try {
-            const $previewBody = $('#send-email-body-preview');
-            if ($previewBody.length === 0) return;   // markup jeszcze nie wstrzyknięty
-            // Normalizacja CRLF → LF: niektóre przeglądarki / schowek mogą
-            // wstawić \r\n do textarei, a MARKER_END z wrapItems() ma zawsze
-            // same \n — bez normalizacji indexOf nie trafi.
+            const $view = $('#send-email-body-preview');
+            if ($view.length === 0) return;   // brak tabeli w tej wiadomości
             const body = ($('#send-email-body').val() || '').toString().replace(/\r\n?/g, '\n');
-            // Pusta treść (szablon nie wypełnił nic) — zamiast pustej,
-            // niczego nie mówiącej płaszczyzny podpowiadamy, co zrobić.
-            if (body.trim() === '') {
-                $previewBody.html('<span class="send-composer-body-empty">'
-                    + 'Brak treści — kliknij, aby zacząć pisać.'
+            const d    = state.doc || {};
+            const ctx  = { documentNumber: d.number || (d.id ? '#' + d.id : '') };
+            const fromBody = AtteItemsFormat.clipboardItemsFromBody(body, ctx);
+            if (!fromBody) {
+                $view.html('<span class="send-body-table-empty">'
+                    + 'Brak poprawnych wierszy tabeli — nie trafi do skopiowanej wiadomości. '
+                    + 'Kliknij ołówek, żeby ją poprawić.'
                 + '</span>');
                 return;
             }
-            const d       = state.doc || {};
-            const ctx     = { documentNumber: d.number || (d.id ? '#' + d.id : '') };
-            // Edycje operatora w komórkach (5000→5500) muszą być widoczne
-            // w podglądzie — więc tabela pochodzi z TEJ SAMEJ ścieżki co
-            // „Kopiuj pozycje": parsujemy pipe-table z textarei. Fallback
-            // do kanonicznego state.doc.lines (gdy brak markerów albo
-            // parsowanie nie zwróciło żadnego wiersza) — wtedy preview
-            // pokazuje oryginał, ale schowek i tak kopiuje kanoniczny
-            // (patrz click.copyStep4 branch „items"). `headers` z parsera
-            // idą do htmlTable, więc zmiana „Price" na „Prices" też
-            // odbija się w podglądzie.
-            const fromBody = AtteItemsFormat.clipboardItemsFromBody(body, ctx);
-            const lines = (fromBody && fromBody.parsed)
-                ? fromBody.parsed
-                : (d.lines || []);
-            const itemsHtml = AtteItemsFormat.htmlTable(lines, ctx,
-                fromBody && fromBody.headers);
-            // Markery `<<<ATTE_ITEMS_TABLE>>>` / `<<<END_ATTE_ITEMS_TABLE>>>`
-            // otaczają tabelę w body — lokalizują jej pozycję. previewBodyMarked
-            // robi split na spanie między nimi i wkleja HTML w to samo miejsce.
-            // Brak markerów → escape całości + HTML na końcu.
-            $previewBody.html(AtteItemsFormat.previewBodyMarked(body, itemsHtml));
+            $view.html(AtteItemsFormat.htmlTable(fromBody.parsed, ctx, fromBody.headers));
         } catch (err) {
             // Ciche przełknięcie — podgląd jest informacyjny; przy
             // błędzie zostaje poprzednia zawartość (lub pusty DOM).
@@ -1981,11 +2281,14 @@ $(function () {
         // nie cały markup — przyciski „Kopiuj temat" / „Kopiuj treść
         // wiadomości" i tak czytają .val() dopiero przy kliknięciu,
         // więc kopiują aktualną wersję bez żadnej dodatkowej pracy.
+        // Pola treści (przed tabelą / tabela / po tabeli) przebudowujemy
+        // od nowa z nowego body — nowy szablon może mieć inny układ, a
+        // tabela wraca do podglądu.
         $('#send-email-subject').val(buildEmailSubject());
-        $('#send-email-body').val(buildEmailBody());
+        state.tableEdit = false;
+        rebuildComposerSegments(buildEmailBody());
 
         refreshTplBadge();
-        renderComposerPreview();
 
         if (hadEdits) {
             flashCopyToast('Szablon podmieniony — ręczne zmiany nadpisane');
@@ -2166,20 +2469,19 @@ $(function () {
             + '</button>';
         });
 
-        // Etykieta to <span>, nie <label for>: textarea bywa ukryta
-        // (tryb „Treść"), a etykieta opisuje CAŁY blok treści — i
-        // podgląd, i edytor. Textarea ma własne aria-label.
+        // Etykieta to <span>, nie <label for>: opisuje CAŁY blok treści
+        // (kilka pól), a każde pole ma własne aria-label.
         //
-        // „Wstaw zmienną" ma data-show-in="edit" — wstawia w miejscu
-        // kursora w textarei, więc w trybie podglądu nie ma czego
-        // robić. Ukrywa je CSS po data-view na rodzicu, bez JS.
+        // „Wstaw zmienną" jest zawsze aktywne — tekst wiadomości jest
+        // edytowalny od razu. Wartość ląduje w ostatnio używanym polu
+        // (tekst przed tabelą, po tabeli albo tabela w trybie edycji).
         return '<div class="send-composer-body-bar">'
             + copyBtnHtml({ full: true, label: 'Kopiuj treść wiadomości',
                             title: 'Kopiuj treść wiadomości do schowka',
                             extraClass: 'send-composer-row-copy mr-2' })
             + '<span class="send-composer-key send-composer-body-label">Treść</span>'
             + '<div class="send-composer-body-tools">'
-                + '<div class="dropdown send-var-dropdown" data-show-in="edit">'
+                + '<div class="dropdown send-var-dropdown">'
                     + '<button type="button" class="btn btn-outline-secondary btn-sm send-var-btn"'
                         + ' id="send-var-insert-btn" data-toggle="dropdown"'
                         + ' aria-haspopup="true" aria-expanded="false"'
@@ -2192,54 +2494,86 @@ $(function () {
                         + itemsHtml
                     + '</div>'
                 + '</div>'
-                + composerToggleBtnHtml(state.composerView)
             + '</div>'
         + '</div>';
     }
 
     /**
-     * Jeden przycisk w obie strony — nie zakładka, nie para radio.
-     * `view` to widok AKTUALNY; `data-target-view` mówi, gdzie
-     * przycisk zabierze po kliknięciu.
-     *
-     *   podgląd → „Edytuj"  (ołówek)  → włącza textareę
-     *   edycja  → „Gotowe"  (fajka)   → wraca do podglądu
+     * Gdzie trafi „Wstaw zmienną": do textarei tabeli (tylko gdy ostatnio
+     * w niej pisano i tabela jest w trybie edycji) albo do hosta z tekstem
+     * wiadomości. Kliknięcie przycisku w menu zabiera fokus, więc
+     * zapamiętujemy ostatnie pole przy `focusin`, a zaznaczenie w hoście
+     * przy `selectionchange` (composerSavedRange).
      */
-    function composerToggleBtnHtml(view) {
-        const toEdit = (view !== 'edit');
-        return '<button type="button" class="btn btn-sm btn-outline-secondary send-composer-toggle"'
-            + ' data-target-view="' + (toEdit ? 'edit' : 'preview') + '"'
-            + ' title="' + (toEdit
-                ? 'Edytuj treść wiadomości'
-                : 'Zakończ edycję i wróć do widoku wiadomości') + '">'
-            + (toEdit
-                ? '<i class="bi bi-pencil" aria-hidden="true"></i> Edytuj'
-                : '<i class="bi bi-check-lg" aria-hidden="true"></i> Gotowe')
-        + '</button>';
+    let lastComposerFieldId = null;
+
+    function composerInsertTarget() {
+        const ta = document.getElementById('send-body-table');
+        if (ta && lastComposerFieldId === 'send-body-table' && state.tableEdit === true) {
+            return { kind: 'table', el: ta };
+        }
+        return { kind: 'host', el: composerHost() };
     }
 
     /**
-     * Przestawia kompozytor między „Treść" (podgląd) i edycją.
-     * Atrybut data-view na .send-composer-body jest JEDYNYM przełącznikiem
-     * widoczności — reszta to selektory [data-show-in] w CSS.
+     * Wstawia tekst w hoście: w ostatnim zapamiętanym miejscu kursora
+     * (a gdy go nie ma — na końcu tekstu przed tabelą). Przez
+     * execCommand('insertText'), więc Ctrl+Z cofa wstawkę natywnie.
+     * `asBlock` (dla {items} i innych wieloliniowych wartości) dokłada
+     * nowe linie z obu stron, żeby blok stanął osobno.
      */
-    function setComposerView(view) {
-        const next = (view === 'edit') ? 'edit' : 'preview';
-        state.composerView = next;
-        const $wrap = $('#send-step-4-body .send-composer-body');
-        if ($wrap.length === 0) return;
-        $wrap.attr('data-view', next);
-        $wrap.find('.send-composer-toggle').replaceWith(composerToggleBtnHtml(next));
-        if (next === 'edit') {
-            // Kursor od razu w treści — kliknięcie w podgląd ma być
-            // jednym ruchem do pisania, bez drugiego kliknięcia.
-            $('#send-email-body').trigger('focus');
-        } else {
-            // Powrót do podglądu przerysowuje treść, żeby zmiany z
-            // textarei były widoczne także wtedy, gdy `input` nie
-            // zdążył odpalić (wklejenie przez menu kontekstowe itp.).
-            renderComposerPreview();
+    function insertIntoHost(text, asBlock) {
+        const host = composerHost();
+        if (!host) return;
+        let range = null;
+        if (composerSavedRange
+            && host.contains(composerSavedRange.startContainer)
+            && host.contains(composerSavedRange.endContainer)) {
+            range = composerSavedRange.cloneRange();
         }
+        host.focus({ preventScroll: true });
+        if (!range) {
+            const first = host.querySelector('.send-body-seg');
+            range = document.createRange();
+            if (first) {
+                range.selectNodeContents(first);
+                const n = first.childNodes.length;
+                range.setStart(first, (n > 0 && first.lastChild.nodeName === 'BR') ? n - 1 : n);
+                range.collapse(true);
+            } else {
+                range.selectNodeContents(host);
+                range.collapse(false);
+            }
+        }
+        composerSetSelection(range);
+        if (composerRangeTouchesIsland(range)) {
+            composerDeleteAroundIsland(range);
+            range = composerSelectionRange() || range;
+        }
+
+        let chunk = String(text);
+        if (asBlock) {
+            // Tekst przed / za kursorem liczymy w obrębie bieżącej części
+            // (nie całego hosta — tabela między nimi nie jest „tekstem").
+            let segEl = range.startContainer;
+            while (segEl && segEl !== host
+                   && !(segEl.nodeType === 1 && segEl.classList.contains('send-body-seg'))) {
+                segEl = segEl.parentNode;
+            }
+            if (segEl && segEl !== host) {
+                const pre = document.createRange();
+                pre.selectNodeContents(segEl);
+                pre.setEnd(range.startContainer, range.startOffset);
+                const post = document.createRange();
+                post.selectNodeContents(segEl);
+                post.setStart(range.endContainer, range.endOffset);
+                const preText = pre.toString();
+                const postText = post.toString();
+                if (preText !== '' && preText.charAt(preText.length - 1) !== '\n') chunk = '\n' + chunk;
+                if (postText !== '' && postText.charAt(0) !== '\n') chunk = chunk + '\n';
+            }
+        }
+        if (!composerExec('insertText', chunk)) composerManualInsert(chunk);
     }
 
     /**
@@ -2254,8 +2588,10 @@ $(function () {
      * Edycje operatora w komórkach tabeli zachowane w obu wersjach:
      * parser pipe-table → htmlTable() bierze aktualną zawartość textarei.
      */
-    function buildComposerBodyPayload() {
-        const body = ($('#send-email-body').val() || '').toString();
+    function buildComposerBodyPayload(bodyOverride) {
+        const body = (typeof bodyOverride === 'string')
+            ? bodyOverride
+            : ($('#send-email-body').val() || '').toString();
         const ctx  = { documentNumber: state.doc ? (state.doc.number || (state.doc.id ? '#' + state.doc.id : '')) : '' };
         return AtteItemsFormat.clipboardBodyFromText(body, ctx);
     }
@@ -2480,10 +2816,14 @@ $(function () {
             + buildStep4ItemsHtml()
         );
 
-        // Widok „Treść" wypełniamy od razu po wstrzyknięciu markupu —
-        // to on jest domyślnie na wierzchu, więc musi mieć zawartość
-        // przed pierwszym malowaniem, a nie po pierwszej edycji.
+        // Tabela w treści dostaje podgląd od razu po wstrzyknięciu
+        // markupu — jest domyślnie na wierzchu, więc musi mieć zawartość
+        // przed pierwszym malowaniem, a nie po pierwszej edycji. Pola
+        // tekstu dostają wysokość dopasowaną do treści.
+        lastComposerFieldId = null;
+        composerSavedRange = null;
         renderComposerPreview();
+        autoGrowComposer();
 
         // Chevrony zwijanych kart („Parametry wysyłki", „Pozycje").
         wireStep4Chevrons($body);
@@ -2587,26 +2927,223 @@ $(function () {
             });
 
         // ---- Kompozytor wiadomości --------------------------------
-        // Każda edycja treści „przypina" wersję operatora w state, żeby
-        // przetrwała ponowny render panelu; „Przywróć szablon" czyści
+        // Treść to jeden edytowalny host (`#send-body-host`) z tekstem i
+        // wyspą-tabelą. Każda edycja „przypina" wersję operatora w state,
+        // żeby przetrwała ponowny render panelu; „Przywróć szablon" czyści
         // przypięcie i renderuje krok 4 od zera.
+        //
+        // Pisanie NIE przebudowuje hosta (fokus, kursor i Ctrl+Z zostają
+        // natywne): serializujemy DOM do ukrytego body z markerami, a
+        // podgląd tabeli odświeżamy tylko wtedy, gdy edytowana jest sama
+        // tabela. Jedyny wyjątek to chwila, gdy w wiadomości bez tabeli
+        // pojawiają się markery (np. „Wstaw zmienną → Lista pozycji") —
+        // wtedy host trzeba zbudować od nowa, żeby tabela dostała wyspę.
         $body.off('input.composer')
-            .on('input.composer', '#send-email-body', function () {
-                state.emailBodyEdited = ($(this).val() || '').toString();
+            .on('input.composer', '#send-body-host', function (e) {
+                const inIsland = inComposerIsland(e.target);
+                // Z wyspy interesuje nas wyłącznie textarea tabeli.
+                if (inIsland && e.target.id !== 'send-body-table') return;
+                if (inIsland) autoGrowTextarea(e.target);
+
+                const hiddenBody = ($('#send-email-body').val() || '').toString();
+                const combined = readComposerBody();
+                state.emailBodyEdited = combined;
                 $('#send-email-reset').removeClass('is-hidden');
-                renderComposerPreview();
+
+                // Wyspa zniknęła z DOM-u (przeglądarka ją usunęła mimo
+                // blokad) — przywracamy tabelę z ostatniego dobrego body,
+                // żeby nie zgubić pozycji wiadomości. Tekst, który został,
+                // ląduje przed tabelą.
+                if (!composerIsland()) {
+                    const prev = AtteItemsFormat.splitBody(hiddenBody);
+                    if (prev.hasTable) {
+                        const restored = AtteItemsFormat.joinBody(combined, prev.table, '');
+                        state.emailBodyEdited = restored;
+                        rebuildComposerSegments(restored);
+                        const hostEl = composerHost();
+                        composerCaretTo(hostEl && hostEl.querySelector('.send-body-seg[data-seg="before"]'), true);
+                        return;
+                    }
+                }
+
+                if (!composerIsland() && AtteItemsFormat.splitBody(combined).hasTable) {
+                    rebuildComposerSegments(combined);
+                    const hostEl = composerHost();
+                    composerCaretTo(hostEl && hostEl.querySelector('.send-body-seg[data-seg="after"]'), false);
+                    return;
+                }
+                $('#send-email-body').val(combined);
+                if (inIsland) renderComposerPreview();
             });
-        // ---- Przełącznik „Treść" ↔ edycja -------------------------
-        // Jedyna droga do edycji: przycisk „Edytuj" / „Gotowe". Klik w
-        // sam podgląd jest celowo ignorowany — operator czyta wiadomość
-        // i klika w losowe miejsca tekstu, licząc na zaznaczenie, a nie
-        // na przeskok do edycji.
-        $body.off('click.composerToggle')
-            .on('click.composerToggle', '.send-composer-toggle', function (e) {
+
+        // Ostatnie pole, w którym operator pisał (cel „Wstaw zmienną").
+        $body.off('focusin.composer')
+            .on('focusin.composer', '#send-body-host', function (e) {
+                if (e.target.id === 'send-body-table') {
+                    lastComposerFieldId = 'send-body-table';
+                } else if (!inComposerIsland(e.target)) {
+                    lastComposerFieldId = 'send-body-host';
+                }
+            });
+        // Pozycja kursora / zaznaczenia w hoście — klik w „Wstaw zmienną"
+        // zabiera fokus, więc miejsce wstawienia pamiętamy z zaznaczenia.
+        $(document).off('selectionchange.composer')
+            .on('selectionchange.composer', function () {
+                const r = composerSelectionRange();
+                if (r && !inComposerIsland(r.startContainer)) composerSavedRange = r.cloneRange();
+            });
+
+        // ---- Host: tylko czysty tekst, tabela nietykalna ------------
+        $body.off('beforeinput.composer')
+            .on('beforeinput.composer', '#send-body-host', function (e) {
+                if (composerCmdBusy || inComposerIsland(e.target)) return;
+                const ev = e.originalEvent;
+                const type = (ev && ev.inputType) || '';
+
+                // Żadnego formatowania (Ctrl+B/I/U, menu kontekstowe, listy…).
+                if (type.indexOf('format') === 0
+                    || type === 'insertOrderedList' || type === 'insertUnorderedList'
+                    || type === 'insertHorizontalRule' || type === 'insertLink') {
+                    e.preventDefault();
+                    return;
+                }
+
+                // Enter → zawsze jedna spójna nowa linia (bez <div> / <p>).
+                if (type === 'insertParagraph' || type === 'insertLineBreak') {
+                    e.preventDefault();
+                    const r = composerSelectionRange();
+                    if (r && composerRangeTouchesIsland(r)) composerDeleteAroundIsland(r);
+                    composerBreak();
+                    return;
+                }
+
+                const isDelete = (type.indexOf('delete') === 0);
+                const isInsert = (type === 'insertText' || type === 'insertReplacementText'
+                                  || type === 'insertFromDrop');
+                if (!isDelete && !isInsert) return;
+
+                // Zakres, którego dotyczy operacja: dla kasowania —
+                // targetRange przeglądarki (np. całe słowo), inaczej zaznaczenie.
+                let range = null;
+                if (isDelete && ev.getTargetRanges) {
+                    const tr = ev.getTargetRanges();
+                    if (tr.length > 0) {
+                        try {
+                            range = document.createRange();
+                            range.setStart(tr[0].startContainer, tr[0].startOffset);
+                            range.setEnd(tr[0].endContainer, tr[0].endOffset);
+                        } catch (err) {
+                            range = null;
+                        }
+                    }
+                }
+                if (!range) range = composerSelectionRange();
+                if (!range) return;
+
+                if (composerRangeTouchesIsland(range)) {
+                    // Operacja sięga tabeli: robimy ją tylko na tekście
+                    // poza tabelą (patrz composerDeleteAroundIsland).
+                    e.preventDefault();
+                    composerDeleteAroundIsland(range);
+                    if (isInsert && ev.data) composerExec('insertText', ev.data);
+                    return;
+                }
+                // Backspace / Delete tuż przy tabeli nie mogą jej skasować.
+                if (isDelete) {
+                    const sel = composerSelectionRange();
+                    if (sel && sel.collapsed) {
+                        if (type.indexOf('Backward') !== -1 && composerCaretAdjacentToIsland(sel, 'back')) {
+                            e.preventDefault();
+                        } else if (type.indexOf('Forward') !== -1 && composerCaretAdjacentToIsland(sel, 'fwd')) {
+                            e.preventDefault();
+                        }
+                    }
+                }
+            });
+
+        $body.off('keydown.composer')
+            .on('keydown.composer', '#send-body-host', function (e) {
+                if (inComposerIsland(e.target)) return;
+                // Skróty formatowania — beforeinput je też blokuje, ale nie
+                // każda przeglądarka go odpala dla skrótów klawiszowych.
+                if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+                    const k = String(e.key || '').toLowerCase();
+                    if (k === 'b' || k === 'i' || k === 'u') e.preventDefault();
+                }
+            });
+
+        // Wklejanie: zawsze text/plain (bez formatowania, stylów, obrazków).
+        $body.off('paste.composer')
+            .on('paste.composer', '#send-body-host', function (e) {
+                if (inComposerIsland(e.target)) return;      // textarea tabeli: natywnie
+                const cd = e.originalEvent && e.originalEvent.clipboardData;
+                if (!cd) return;
+                e.preventDefault();
+                const text = (cd.getData('text/plain') || '').replace(/\r\n?/g, '\n');
+                if (text !== '') composerInsertText(text);
+            });
+
+        // Upuszczanie (drag & drop) tekstu / plików — blokujemy, żeby nic
+        // nie wchodziło do hosta w innej postaci niż czysty tekst.
+        $body.off('drop.composer')
+            .on('drop.composer', '#send-body-host', function (e) {
+                if (inComposerIsland(e.target)) return;
+                e.preventDefault();
+            });
+
+        // Kopiowanie / wycinanie z hosta.
+        //   • całe zaznaczenie (Ctrl+A) → ten sam payload co „Kopiuj
+        //     treść maila": text/html (tabela inline) + text/plain, bez
+        //     markerów, z edytowanymi nagłówkami / kolumnami tabeli;
+        //   • zaznaczenie częściowe → natywna kopia (przyciski wyspy mają
+        //     user-select: none i nie mają tekstu, więc nie wyciekają);
+        //   • wycięcie sięgające tabeli: kopia do schowka, a potem
+        //     kasujemy tylko tekst — tabela zostaje na miejscu.
+        $body.off('copy.composer cut.composer')
+            .on('copy.composer cut.composer', '#send-body-host', function (e) {
+                if (inComposerIsland(e.target)) return;      // textarea tabeli: natywnie
+                const range = composerSelectionRange();
+                if (!range || range.collapsed) return;
+                const cd = e.originalEvent && e.originalEvent.clipboardData;
+                if (!cd) return;
+                const isCut = (e.type === 'cut');
+
+                if (composerWholeSelected(range)) {
+                    // Treść bierzemy świeżo z DOM-u (też w trybie edycji tabeli).
+                    const p = buildComposerBodyPayload(readComposerBody());
+                    e.preventDefault();
+                    cd.setData('text/html', p.html);
+                    cd.setData('text/plain', p.plainText);
+                    if (isCut) composerDeleteAroundIsland(range);
+                    return;
+                }
+                if (!composerRangeTouchesIsland(range)) return;   // sam tekst: natywnie
+
+                if (isCut) {
+                    const holder = document.createElement('div');
+                    holder.appendChild(range.cloneContents());
+                    $(holder).find('[data-atte-ui], textarea, .send-body-table-editor').remove();
+                    e.preventDefault();
+                    cd.setData('text/html', holder.innerHTML);
+                    cd.setData('text/plain', window.getSelection().toString());
+                    composerDeleteAroundIsland(range);
+                }
+            });
+
+        // ---- Edycja tabeli pozycji --------------------------------
+        // Mały przycisk w rogu wyspy: ołówek → surowy tekst z kolumnami
+        // „|", „Gotowe" → z powrotem wyrenderowana tabela. Tekst
+        // wiadomości nie zależy od tego trybu.
+        $body.off('click.composerTable')
+            .on('click.composerTable', '#send-body-table-toggle', function (e) {
                 e.preventDefault();
                 e.stopPropagation();
-                setComposerView($(this).attr('data-target-view'));
+                setTableEdit(state.tableEdit !== true);
             });
+
+        // Zmiana szerokości okna zmienia zawijanie tekstu, więc wysokość
+        // textarei tabeli trzeba policzyć od nowa (host rośnie sam).
+        $(window).off('resize.composer').on('resize.composer', autoGrowComposer);
 
         $body.off('click.composerReset')
             .on('click.composerReset', '#send-email-reset', function (e) {
@@ -2639,10 +3176,29 @@ $(function () {
                 e.preventDefault();
                 const name = $(this).attr('data-var-name');
                 if (!name) return;                       // pozycja „(brak)"
-                const text = step4VarValue(buildTemplateVars(state.doc), name);
+                let text = step4VarValue(buildTemplateVars(state.doc), name);
                 if (text === '') return;
+
+                const target = composerInsertTarget();
+                if (!target.el) return;
+
+                // {items} niesie markery tabeli. Gdy wiadomość już ma
+                // tabelę, druga kopia z markerami zepsułaby układ
+                // (markery wylądowałyby w tekście) — wstawiamy wtedy
+                // samą tabelę jako zwykły tekst. Bez tabeli markery
+                // zostają i z bloku tekstu robi się prawdziwa tabela
+                // (patrz input.composer).
+                if (name === 'items' && $('#send-body-table').length > 0) {
+                    text = text.split(AtteItemsFormat.MARKER_START).join('')
+                        .split(AtteItemsFormat.MARKER_END).join('');
+                }
                 // Blok wieloliniowy ({items}) dostaje własne linie.
-                insertAtCursor($('#send-email-body'), text, text.indexOf('\n') !== -1);
+                const asBlock = (text.indexOf('\n') !== -1);
+                if (target.kind === 'table') {
+                    insertAtCursor($(target.el), text, asBlock);
+                } else {
+                    insertIntoHost(text, asBlock);
+                }
             });
 
         // Włącz / wyłącz commit + reakcja na „wróć do kroku 2".
