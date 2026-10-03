@@ -341,6 +341,8 @@
     function cartConfirm(opts) {
         $cartConfirmModal.find('#cartConfirmTitle').text(opts.title || 'Potwierdź');
         $cartConfirmModal.find('#cartConfirmBody').html(opts.body || '');
+        // opts.large — wide dialog for prompts that carry a table.
+        $cartConfirmModal.find('.modal-dialog').toggleClass('modal-lg', !!opts.large);
         const $ok = $cartConfirmModal.find('#cartConfirmOk');
         $ok.text(opts.okLabel || 'Potwierdź')
            .removeClass('btn-danger btn-success btn-primary btn-warning')
@@ -2436,39 +2438,110 @@ $cartQty.val('');
         // uncommon but if present the user is best served by knowing
         // the dominant one).
         const vendorName = items[0].vendor_name || ('#' + vid);
-        const itemCount = items.length;
-        // Per-currency totals — items[0].currency assumed a single
-        // currency, which lied for mixed-currency vendor groups. Sum
-        // per-currency, the same shape as the server's value_breakdown
-        // and the cart's per-vendor header breakdown above.
-        const valueBreakdown = {};
-        items.forEach(function (it) {
-            const cur   = it.currency || 'PLN';
-            const qty   = parseFloat(it.quantity) || 0;
-            const price = parseFloat(it.unit_price) || 0;
-            valueBreakdown[cur] = (valueBreakdown[cur] || 0) + (qty * price);
-        });
-        const breakdownHtml = Object.keys(valueBreakdown).sort().map(function (cur) {
-            return '<br><strong>' + escapeHtml(formatPrice(valueBreakdown[cur])) + ' ' + escapeHtml(cur) + '</strong>';
-        }).join('');
         const isRfq = (docType === 'rfq');
+
+        // Item-selection table: one checkbox row per cart item of this
+        // vendor, all checked by default. Unchecked rows stay in the cart
+        // (the server echoes back only the vendor_part_ids it received).
+        const rowsHtml = items.map(function (it) {
+            const qty   = parseFloat(it.quantity) || 0;
+            const hasPrice = it.unit_price !== null && it.unit_price !== undefined && it.unit_price !== '';
+            const price = parseFloat(it.unit_price) || 0;
+            const cur   = it.currency || 'PLN';
+            const sub   = [];
+            if (it.vendor_part_no) { sub.push('Nr dost.: ' + escapeHtml(it.vendor_part_no)); }
+            return '<tr class="cart-doc-pick-row" style="cursor:pointer; user-select:none;">' +
+                '<td class="align-middle"><input type="checkbox" class="cart-doc-pick" data-vp-id="' + escapeHtml(it.vendor_part_id) + '" checked></td>' +
+                '<td>' + escapeHtml(it.part_name) +
+                    (sub.length ? '<div><small class="text-muted">' + sub.join(' · ') + '</small></div>' : '') + '</td>' +
+                '<td class="text-right text-nowrap">' + escapeHtml(formatQty(it.quantity)) + (it.unit_name ? ' ' + escapeHtml(it.unit_name) : '') + '</td>' +
+                '<td class="text-right text-nowrap">' + (hasPrice ? escapeHtml(formatPrice(price)) + ' ' + escapeHtml(cur) : '—') + '</td>' +
+                '<td class="text-right text-nowrap">' + (hasPrice ? escapeHtml(formatPrice(qty * price)) + ' ' + escapeHtml(cur) : '—') + '</td>' +
+                '</tr>';
+        }).join('');
+
+        const bodyHtml =
+            '<p>Dostawca: <strong>' + escapeHtml(vendorName) + '</strong></p>' +
+            '<div class="table-responsive mb-2" style="max-height: 45vh; overflow-y: auto;">' +
+                '<table class="table table-sm table-hover mb-0">' +
+                    '<thead class="thead-light"><tr>' +
+                        '<th style="width:1%"><input type="checkbox" id="cartDocPickAll" checked title="Zaznacz / odznacz wszystkie"></th>' +
+                        '<th>Część</th><th class="text-right">Ilość</th><th class="text-right">Cena/szt.</th><th class="text-right">Wartość</th>' +
+                    '</tr></thead>' +
+                    '<tbody>' + rowsHtml + '</tbody>' +
+                '</table>' +
+            '</div>' +
+            '<p class="mb-2">Pozycji: <strong id="cartDocPickCount"></strong></p>' +
+            '<p class="mb-2">Łączna wartość: <span id="cartDocPickTotal"></span></p>' +
+            '<p class="text-muted small mb-0">Dokument zostanie utworzony jako szkic i otwarty w nowej karcie. Niezaznaczone pozycje pozostaną w koszyku.</p>';
+
+        const $body = $('#cartConfirmBody');
+        const $ok   = $('#cartConfirmOk');
+
+        // Selected cart items, in cart order.
+        function getSelected() {
+            const picked = {};
+            $body.find('.cart-doc-pick:checked').each(function () { picked[String($(this).data('vp-id'))] = true; });
+            return items.filter(function (it) { return picked[String(it.vendor_part_id)]; });
+        }
+
+        // Live "Pozycji" + per-currency total; OK disabled at 0 rows.
+        function refreshSummary() {
+            const sel = getSelected();
+            const totals = {};
+            sel.forEach(function (it) {
+                const cur = it.currency || 'PLN';
+                totals[cur] = (totals[cur] || 0) + ((parseFloat(it.quantity) || 0) * (parseFloat(it.unit_price) || 0));
+            });
+            const totalHtml = Object.keys(totals).sort().map(function (cur) {
+                return '<strong>' + escapeHtml(formatPrice(totals[cur]) === '—' ? '0' : formatPrice(totals[cur])) + ' ' + escapeHtml(cur) + '</strong>';
+            }).join(' + ');
+            $body.find('#cartDocPickCount').text(sel.length + ' / ' + items.length);
+            $body.find('#cartDocPickTotal').html(totalHtml || '<strong>0</strong>');
+            $body.find('#cartDocPickAll').prop('checked', sel.length === items.length);
+            $ok.prop('disabled', sel.length === 0);
+        }
+
         cartConfirm({
             title: isRfq ? 'Utworzyć zapytanie?' : 'Utworzyć zamówienie?',
-            body: '<p>Dostawca: <strong>' + escapeHtml(vendorName) + '</strong></p>' +
-                  '<p>Pozycji: <strong>' + itemCount + '</strong></p>' +
-                  '<p>Łączna wartość:' + breakdownHtml + '</p>' +
-                  '<p class="text-muted small mb-0">Dokument zostanie utworzony jako szkic i otwarty w nowej karcie.</p>',
+            body: bodyHtml,
+            large: true,
             okLabel: isRfq ? 'Utwórz zapytanie' : 'Utwórz zamówienie',
             okClass: 'btn-success',
-            onConfirm: function () { createDocumentFromVendor(docType, vid, $btn); }
+            onConfirm: function () {
+                const sel = getSelected();
+                if (sel.length === 0) return;
+                createDocumentFromVendor(docType, vid, $btn, sel);
+            }
         });
+
+        // Body was just replaced by cartConfirm(), so these handlers bind
+        // to fresh elements; the namespace keeps them from stacking.
+        $body.off('change.cartDocPick click.cartDocPick')
+             // Clicking anywhere on a row toggles its checkbox. A click on
+             // the checkbox itself already toggles natively, so skip it
+             // here to avoid a double toggle.
+             .on('click.cartDocPick', '.cart-doc-pick-row', function (e) {
+                 if ($(e.target).is('input')) return;
+                 $(this).find('.cart-doc-pick').trigger('click');
+             })
+             .on('change.cartDocPick', '.cart-doc-pick', refreshSummary)
+             .on('change.cartDocPick', '#cartDocPickAll', function () {
+                 $body.find('.cart-doc-pick').prop('checked', $(this).is(':checked'));
+                 refreshSummary();
+             });
+        refreshSummary();
     });
 
-    function createDocumentFromVendor(docType, vid, $btn) {
+    // `selectedItems` — the vendor's cart items the user ticked in the
+    // confirmation modal. Falls back to the whole vendor group when omitted.
+    function createDocumentFromVendor(docType, vid, $btn, selectedItems) {
         if (cart.items.length === 0) return;
         // Items for THIS vendor only — each vendor group has its own
         // create buttons, and a PO/RFQ is locked to one vendor.
-        let items = cart.items.filter(function (i) { return parseInt(i.vendor_id, 10) === vid; });
+        let items = Array.isArray(selectedItems)
+            ? selectedItems
+            : cart.items.filter(function (i) { return parseInt(i.vendor_id, 10) === vid; });
         if (items.length === 0) return;
 
         // jQuery's $.ajax with a structured data object emits form-encoded
