@@ -202,9 +202,20 @@ window.AtteItemsFormat = (function () {
 
     function htmlTable(lines, ctx, headers) {
         ctx = ctx || {};
-        const cols = (Array.isArray(headers) && headers.length > 0) ? headers : HEADERS;
+        const baseCols = (Array.isArray(headers) && headers.length > 0) ? headers : HEADERS;
         const docNumber = String(ctx.documentNumber || '');
         const list = lines || [];
+        // Liczba kolumn = max(nagłówki, najdłuższy wiersz z `cells`), żeby
+        // kolumna dodana w samych wierszach (bez nagłówka) też się
+        // wyrenderowała, a krótsze wiersze były dopełnione pustymi komórkami.
+        let colCount = baseCols.length;
+        list.forEach(function (ln) {
+            if (ln && Array.isArray(ln.cells) && ln.cells.length > colCount) {
+                colCount = ln.cells.length;
+            }
+        });
+        const cols = baseCols.slice();
+        while (cols.length < colCount) cols.push('');
         const head = '<thead><tr>'
             + cols.map(function (h) {
                 return '<th style="' + HEADER_STYLE + '">' + escapeHtml(h) + '</th>';
@@ -212,11 +223,20 @@ window.AtteItemsFormat = (function () {
             + '</tr></thead>';
         let body;
         if (list.length === 0) {
-            body = '<tbody><tr><td colspan="6" style="' + CELL_STYLE + '">'
+            body = '<tbody><tr><td colspan="' + colCount + '" style="' + CELL_STYLE + '">'
                 + '(dokument nie zawiera pozycji)'
                 + '</td></tr></tbody>';
         } else {
             const rows = list.map(function (ln) {
+                if (Array.isArray(ln.cells)) {
+                    // Wiersz z parsera (edycja operatora): komórki 1:1.
+                    let tds = '';
+                    for (let i = 0; i < colCount; i++) {
+                        tds += '<td style="' + CELL_STYLE + '">'
+                            + escapeHtmlBreaks(ln.cells[i] || '') + '</td>';
+                    }
+                    return '<tr>' + tds + '</tr>';
+                }
                 return '<tr>'
                     + '<td style="' + CELL_STYLE + '">' + escapeHtmlBreaks(docNumber) + '</td>'
                     + '<td style="' + CELL_STYLE + '">' + escapeHtmlBreaks(refOf(ln)) + '</td>'
@@ -376,9 +396,9 @@ window.AtteItemsFormat = (function () {
             .filter(function (l) { return l.trim() !== ''; });
         if (lines.length < 1) return { headers: [], rows: [] };
 
-        const headers = lines[0].split(' | ').map(function (h) { return h.trim(); });
+        const headers = lines[0].split('|').map(function (h) { return h.trim(); });
         const rows = lines.slice(1).map(function (line) {
-            const cells = line.split(' | ');
+            const cells = line.split('|').map(function (c) { return c.trim(); });
             // Komórka ceny może mieć formę "1.23 PLN" — wyciągamy sam
             // numer, walutę zostawiamy pustą (ctx.currency pokryje ją
             // dla kanonicznych danych; dla edycji ręcznych brak sufiksu
@@ -387,6 +407,10 @@ window.AtteItemsFormat = (function () {
             const priceNum = priceRaw === '—' ? ''
                 : priceRaw.replace(/[^\d.,\-]/g, '').replace(',', '.');
             return {
+                // Wszystkie komórki wiersza dokładnie tak, jak wpisał je
+                // operator (także kolumny dodane ponad kanoniczne 6).
+                // htmlTable() renderuje wiersz z `cells`, gdy są obecne.
+                cells:           cells,
                 vendorPartNo:    (cells[1] || '').trim(),
                 quantityOrdered: (cells[2] || '').trim(),
                 unitName:        (cells[3] || '').trim(),
@@ -473,7 +497,145 @@ window.AtteItemsFormat = (function () {
         };
     }
 
+    /**
+     * Rozbija body na trzy segmenty dla edytora z osobnymi polami:
+     *   { hasTable, before, table, after }
+     *
+     * Lokalizacja markerów jest identyczna jak w clipboardBodyFromText()
+     * (pierwszy START, pierwszy END za nim), więc UI i schowek zawsze
+     * zgadzają się co do tego, gdzie jest tabela.
+     *
+     * Gdy tabeli nie ma (brak któregoś markera), zwraca całość w `before`
+     * bez żadnych zmian i `hasTable: false`.
+     *
+     * Gdy jest — `before` traci końcowe puste linie, a `after` początkowe
+     * puste linie. Odstęp wokół tabeli to element układu, nie treść;
+     * joinBody() odtwarza go jako jedną pustą linię po każdej stronie
+     * (tak samo wyglądają wygenerowane treści). `table` to surowy span
+     * między markerami, bez żadnych zmian.
+     */
+    function splitBody(body) {
+        const text = String(body || '').replace(/\r\n?/g, '\n');
+        const startIdx = text.indexOf(MARKER_START);
+        const endIdx = (startIdx === -1)
+            ? -1
+            : text.indexOf(MARKER_END, startIdx + MARKER_START.length);
+        if (startIdx === -1 || endIdx === -1) {
+            return { hasTable: false, before: text, table: '', after: '' };
+        }
+        return {
+            hasTable: true,
+            before: text.substring(0, startIdx).replace(/(?:\n[ \t]*)+$/, ''),
+            table:  text.substring(startIdx + MARKER_START.length, endIdx),
+            after:  text.substring(endIdx + MARKER_END.length).replace(/^(?:[ \t]*\n)+/, ''),
+        };
+    }
+
+    /**
+     * Odwrotność splitBody() dla body z tabelą: skleja `before` + blok
+     * tabeli z markerami + `after`. Wynik jest zawsze parsowalny przez
+     * clipboardBodyFromText / clipboardItemsFromBody, a ich plainText
+     * (before + tabela + after) ma pustą linię po obu stronach tabeli.
+     */
+    function joinBody(before, table, after) {
+        const b = String(before || '').replace(/\r\n?/g, '\n').replace(/(?:\n[ \t]*)+$/, '');
+        const a = String(after || '').replace(/\r\n?/g, '\n').replace(/^(?:[ \t]*\n)+/, '');
+        return (b !== '' ? b + '\n\n' : '')
+            + MARKER_START + String(table || '').replace(/\r\n?/g, '\n') + MARKER_END
+            + (a !== '' ? '\n\n' + a : '');
+    }
+
+    /**
+     * Tagi blokowe, które przeglądarka wstawia w contenteditable przy
+     * Enterze / wklejaniu (`<div>`, `<p>`, …) — każdy z nich to osobna
+     * linia tekstu.
+     */
+    const BLOCK_TAGS = {
+        DIV: 1, P: 1, PRE: 1, LI: 1, UL: 1, OL: 1, BLOCKQUOTE: 1,
+        H1: 1, H2: 1, H3: 1, H4: 1, H5: 1, H6: 1,
+    };
+
+    /**
+     * Zamienia drzewo DOM edytowalnego hosta na czysty tekst, osobno dla
+     * każdej części oddzielonej „wyspą" (tabelą). `isIsland(node)` mówi,
+     * który węzeł jest wyspą; do jej wnętrza funkcja nie zagląda.
+     * Zwraca tablicę tekstów: [przed] albo [przed, po] (przy jednej wyspie).
+     *
+     * Reguły (tekst ma wracać dokładnie taki, jaki wpisał operator):
+     *   - węzeł tekstowy → jego treść (z literalnymi „\n" — host ma
+     *     white-space: pre-wrap); nbsp → spacja, znak zerowej szerokości
+     *     usuwany,
+     *   - `<br>` kończy linię, CHYBA że jest ostatnim dzieckiem swojego
+     *     rodzica — to znacznik-wypełniacz (placeholder), który
+     *     przeglądarka dokleja, żeby pusta / kończąca się nową linią
+     *     część miała widoczną linię z kursorem; nie jest treścią,
+     *   - element blokowy (`<div>`, `<p>`…) to osobna linia: zamyka
+     *     bieżącą linię przed sobą i po sobie (`<div><br></div>` = pusta
+     *     linia),
+     *   - pozostałe elementy (span, b, …) są przezroczyste.
+     * Linie łączone są przez „\n". Nie dokładamy ani nie zjadamy
+     * końcowych nowych linii — to robi bodyFromHostParts().
+     *
+     * Czysta funkcja (nodeType / nodeName / nodeValue / childNodes),
+     * więc da się ją testować bez przeglądarki.
+     */
+    function domToTextParts(root, isIsland) {
+        const parts = [];
+        let lines = [];
+        let cur = '';
+
+        function closePart() {
+            if (cur !== '') { lines.push(cur); cur = ''; }
+            parts.push(lines.join('\n'));
+            lines = [];
+        }
+        function walk(nodes) {
+            for (let i = 0; i < nodes.length; i++) {
+                const node = nodes[i];
+                if (isIsland && isIsland(node)) { closePart(); continue; }
+                if (node.nodeType === 3) {
+                    cur += String(node.nodeValue || '')
+                        .replace(/\r/g, '').replace(/\u200b/g, '').replace(/\u00a0/g, ' ');
+                } else if (node.nodeType === 1) {
+                    const name = String(node.nodeName || '').toUpperCase();
+                    const kids = Array.prototype.slice.call(node.childNodes || []);
+                    if (name === 'BR') {
+                        if (i < nodes.length - 1) { lines.push(cur); cur = ''; }
+                    } else if (BLOCK_TAGS[name]) {
+                        if (cur !== '') { lines.push(cur); cur = ''; }
+                        walk(kids);
+                        lines.push(cur); cur = '';
+                    } else {
+                        walk(kids);
+                    }
+                }
+            }
+        }
+        walk(Array.prototype.slice.call(root.childNodes || []));
+        closePart();
+        return parts;
+    }
+
+    /**
+     * Składa body z wyniku domToTextParts() i tekstu tabeli.
+     *   - 1 część (brak tabeli): tekst bez końcowych pustych linii,
+     *   - 2 części: joinBody(przed, tabela, po) z `po` bez końcowych
+     *     pustych linii.
+     * Obcięcie końcówki jest celowe: przeglądarki dokładają na końcu
+     * edytowalnego pola własną nową linię (żeby pokazać kursor), a
+     * bez obcinania każde wpisanie znaku wydłużałoby treść o kolejny `\n`.
+     */
+    function bodyFromHostParts(parts, table) {
+        const rtrim = function (s) { return String(s || '').replace(/(?:\n[ \t]*)+$/, ''); };
+        if (!parts || parts.length < 2) return rtrim(parts && parts[0]);
+        return joinBody(parts[0], table, rtrim(parts[1]));
+    }
+
     return {
+        splitBody: splitBody,
+        joinBody: joinBody,
+        domToTextParts: domToTextParts,
+        bodyFromHostParts: bodyFromHostParts,
         formatQty: formatQty,
         formatPrice: formatPrice,
         escapeHtml: escapeHtml,
