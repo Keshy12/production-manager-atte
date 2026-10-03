@@ -274,14 +274,14 @@
    (.table-warning/.table-danger z walidacji) i wiersze domknięte są
    wyłączone: tam kolor wiersza niesie ważniejszą informację i musi
    wygrać z tłem strefy. */
-.receipt-lines-table tbody tr.receipt-line:not(.table-warning):not(.table-danger):not(.receipt-line-done):not(.receipt-line-skip) > td:nth-child(7),
-.receipt-lines-table tbody tr.receipt-line:not(.table-warning):not(.table-danger):not(.receipt-line-done):not(.receipt-line-skip) > td:nth-child(8) {
+.receipt-lines-table tbody tr.receipt-line:not(.table-warning):not(.table-danger):not(.table-info):not(.receipt-line-done):not(.receipt-line-skip) > td:nth-child(7),
+.receipt-lines-table tbody tr.receipt-line:not(.table-warning):not(.table-danger):not(.table-info):not(.receipt-line-done):not(.receipt-line-skip) > td:nth-child(8) {
     background-color: rgba(0, 123, 255, .045);
 }
 /* .table-hover maluje tło na <tr>, a tło strefy siedzi na <td> i by je
    przykryło — stąd osobny wariant na hover. */
-.receipt-lines-table tbody tr.receipt-line:not(.table-warning):not(.table-danger):not(.receipt-line-done):not(.receipt-line-skip):hover > td:nth-child(7),
-.receipt-lines-table tbody tr.receipt-line:not(.table-warning):not(.table-danger):not(.receipt-line-done):not(.receipt-line-skip):hover > td:nth-child(8) {
+.receipt-lines-table tbody tr.receipt-line:not(.table-warning):not(.table-danger):not(.table-info):not(.receipt-line-done):not(.receipt-line-skip):hover > td:nth-child(7),
+.receipt-lines-table tbody tr.receipt-line:not(.table-warning):not(.table-danger):not(.table-info):not(.receipt-line-done):not(.receipt-line-skip):hover > td:nth-child(8) {
     background-color: rgba(0, 123, 255, .085);
 }
 
@@ -290,6 +290,7 @@
    kolumny i rozjechałby nagłówek. */
 .receipt-lines-table tbody tr.table-warning > td:first-child { box-shadow: inset .2rem 0 0 #ffc107; }
 .receipt-lines-table tbody tr.table-danger  > td:first-child { box-shadow: inset .2rem 0 0 #dc3545; }
+.receipt-lines-table tbody tr.table-info    > td:first-child { box-shadow: inset .2rem 0 0 #17a2b8; }
 .receipt-line-done > td:first-child         { box-shadow: inset .2rem 0 0 #28a745; }
 
 /* Komunikat walidacji pod polem ilości ma `mt-1` z JS. Żeby wiersze

@@ -757,7 +757,7 @@ $(document).ready(function() {
             $cmt.val('').prop('disabled', true);
             $qty.removeClass('is-invalid packages-uneven').removeAttr('title');
             $pkg.removeClass('packages-uneven').removeAttr('title');
-            $row.removeClass('table-warning table-danger');
+            $row.removeClass('table-warning table-danger table-info');
             updateAmountIndicator($row, NaN, num(item.quantityRemaining));
         }
         refreshSummary();
@@ -772,7 +772,7 @@ $(document).ready(function() {
         const $qty = $row.find('.line-qty');
         const $msg = $row.find('.line-msg');
 
-        $row.removeClass('table-warning table-danger');
+        $row.removeClass('table-warning table-danger table-info');
         $qty.removeClass('is-invalid');
         $msg.empty();
         const $diff = $row.find('.line-diff').empty();
@@ -806,6 +806,11 @@ $(document).ready(function() {
             return 'over';
         }
         if (remaining - qty > 1e-9) {
+            // Niedobór (przyjęcie częściowe): wiersz też dostaje kolor, tak
+            // jak przy nadwyżce — ale niebieski (table-info), żeby nie
+            // mylić go z żółtą nadwyżką. Nie blokuje zapisu.
+            $row.addClass('table-info');
+            $msg.html('<span class="badge badge-info">przyjęcie częściowe</span>');
             $diff.html('<span class="text-muted">Brakuje: <span class="font-weight-bold">'
                 + esc(fmtQty(remaining - qty) + unit) + '</span></span>');
         }
