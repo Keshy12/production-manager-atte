@@ -252,6 +252,14 @@ switch ($request) {
         includeWithVariables($headerDir, array('title' => 'Przyjęcie towaru'));
         require $componentsDir . '/purchases/receipts/receive-page.php';
         break;
+    case 'purchase/receipts/view':
+        // Szczegóły przyjęcia (PZ) — osobna strona zamiast dawnego
+        // modala #receiptInfoModal. URL: /purchase/receipts/view?id=N.
+        // Link „Szczegóły" w historii na /purchase/receipts prowadzi tutaj.
+        requireAdmin();
+        includeWithVariables($headerDir, array('title' => 'Szczegóły przyjęcia'));
+        require $componentsDir . '/purchases/receipts/receipt-view.php';
+        break;
     case 'purchase/documents':
         requireAdmin();
         includeWithVariables($headerDir, array('title' => 'Zapytania i zamówienia'));

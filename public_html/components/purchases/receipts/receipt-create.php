@@ -49,7 +49,27 @@
  * Response on success:
  *   {success: true, receipt_id: int, document_number: string,
  *    po_state: 'partially_received'|'received'|other,
- *    po_state_label: 'Częściowo odebrane'|'Odebrane'|other}
+ *    po_state_label: 'Częściowo odebrane'|'Odebrane'|other,
+ *    short_items: [
+ *      {poItemId: int, vendorPartNo: string, partName: string,
+ *       unitName: string, ordered: float, received: float,
+ *       remaining: float, progressPct: float},
+ *      ...
+ *    ],
+ *    has_short: bool,            // true iff short_items is non-empty
+ *    lines_total: int,           // count of PO items
+ *    lines_received: int}        // count of PO items fully received after save
+ *
+ *   - `short_items` lists PO lines that are still genuinely short after
+ *     this save (ordered - received_after > 1e-6). Fully received and
+ *     over-received lines are excluded. `progressPct` =
+ *     round(min(100, received/ordered*100), 1) — or 0 when ordered = 0.
+ *     Reads go through PurchaseOrderItemRepository::getByPo(), which
+ *     already joins vendor_part / parts / unit (same joins as
+ *     receipt-po-get.php lines 118-141) so we don't repeat the SQL.
+ *     Floats come back as JSON numbers (not strings).
+ *   - `lines_total` / `lines_received` let the UI draw an aggregate
+ *     progress bar without re-fetching the PO.
  *
  * Exception handling:
  *   - \LogicException / \InvalidArgumentException from the handler
@@ -63,6 +83,7 @@
 use Atte\DB\MsaDB;
 use Atte\Utils\Purchase\Order\OrderReceiptRepository;
 use Atte\Utils\Purchase\Order\PurchaseActionHandler;
+use Atte\Utils\Purchase\Order\PurchaseOrderItemRepository;
 use Atte\Utils\Purchase\Order\PurchaseOrderRepository;
 
 header('Content-Type: application/json; charset=utf-8');
@@ -192,6 +213,7 @@ try {
     // handler returns just the receipt id).
     $receiptRepo = new OrderReceiptRepository($MsaDB);
     $poRepo      = new PurchaseOrderRepository($MsaDB);
+    $poItemRepo  = new PurchaseOrderItemRepository($MsaDB);
     $receipt     = $receiptRepo->getById($receiptId);
     $po          = $poRepo->getById($poId);
 
@@ -200,12 +222,63 @@ try {
         ? $poStateLabels[$poState]
         : ($poState ?? '');
 
+    // Per-line post-save snapshot for the UI's "short items" hint:
+    //   - lines that are STILL short after this save (ordered - received > epsilon)
+    //     are returned in `short_items` with their vendor / unit labels and
+    //     a progress percentage;
+    //   - `lines_total` / `lines_received` cover the aggregate progress bar
+    //     so the client doesn't have to re-fetch the PO just to render it.
+    // Reading through PurchaseOrderItemRepository keeps the join shape
+    // (vendor_part / parts / unit) identical to receipt-po-get.php —
+    // we get vendorPartNo / partName / unitName from the same query the
+    // GET endpoint uses (see class-purchaseorderitemrepository.php
+    // buildSelectJoin() and receipt-po-get.php lines 118-141).
+    $shortItems    = [];
+    $linesTotal    = 0;
+    $linesReceived = 0;
+    $epsilon       = 1e-6;
+    foreach ($poItemRepo->getByPo($poId) as $pi) {
+        $ordered  = (float)$pi->quantity;
+        $received = (float)$pi->quantityReceived;
+        $remaining = $ordered - $received;
+
+        $linesTotal++;
+        if ($received + $epsilon >= $ordered) {
+            // Fully received (or over-received) — counts as "done" for
+            // the aggregate progress bar.
+            $linesReceived++;
+        }
+
+        if ($ordered - $received > $epsilon) {
+            // Genuinely short — include in the UI hint. progressPct
+            // is capped at 100 (over-received lines never make it here,
+            // but the cap is defensive) and rounded to 1 decimal.
+            $progressPct = $ordered > 0
+                ? round(min(100, $received / $ordered * 100), 1)
+                : 0.0;
+            $shortItems[] = [
+                'poItemId'     => (int)$pi->id,
+                'vendorPartNo' => $pi->vendorPartNo ?? '',
+                'partName'     => $pi->partName ?? '',
+                'unitName'     => $pi->unitName ?? '',
+                'ordered'      => $ordered,
+                'received'     => $received,
+                'remaining'    => $remaining,
+                'progressPct'  => $progressPct,
+            ];
+        }
+    }
+
     echo json_encode([
         'success'         => true,
         'receipt_id'      => $receiptId,
         'document_number' => $receipt !== null ? $receipt->documentNumber : null,
         'po_state'        => $poState,
         'po_state_label'  => $poStateLabel,
+        'short_items'     => $shortItems,
+        'has_short'       => count($shortItems) > 0,
+        'lines_total'     => $linesTotal,
+        'lines_received'  => $linesReceived,
     ]);
 } catch (\LogicException | \InvalidArgumentException $e) {
     // Handler-thrown validation errors carry user-actionable messages.

@@ -474,3 +474,90 @@
     100% { background-color: transparent; }
 }
 .receipt-row-new > td { animation: receiptRowFlash 2s ease-out 1; }
+
+
+/* ---- Postęp zamówienia (pasek pod tabelą + okno po zapisie) -------- */
+
+/* Odpowiednik kolumny „Postęp" z receipts-ui.css:542-566 (.rx-progress-top,
+   .rx-bar, .rx-pct). receipts-ui.css NIE jest ładowany na tej stronie
+   (przemalowałby cały formularz), więc ten sam wygląd ma własne klasy
+   z prefiksem receipt-. Kolory: akcent #007bff, ukończone #28a745,
+   tło paska jak --rx-line-soft (#eef1f5). */
+.receipt-progress {
+    padding: .6rem 1rem .7rem;
+    border-top: 1px solid #e9ecef;
+    background: #fafbfc;
+}
+.receipt-progress-flat { padding: 0; border: 0; background: transparent; }
+.receipt-progress-top {
+    display: flex;
+    justify-content: space-between;
+    gap: .5rem;
+    font-size: .8rem;
+    color: #495057;
+}
+.receipt-progress-top strong { color: #212529; }
+.receipt-pct { font-weight: 700; color: #6b7785; font-variant-numeric: tabular-nums; }
+.receipt-bar {
+    display: flex;
+    height: 6px;
+    margin: .3rem 0 .15rem;
+    border-radius: 999px;
+    background: #eef1f5;
+    overflow: hidden;
+}
+.receipt-bar > span {
+    display: block;
+    height: 100%;
+    background: #007bff;
+    transition: width .45s ease;
+}
+.receipt-bar > span.is-done { background: #28a745; }
+.receipt-progress-sub { font-size: .75rem; color: #6b7785; }
+
+/* ---- Okno „Przyjęcie zapisane" (braki) ----------------------------- */
+
+.receipt-short-saved { color: #1e7e34; font-weight: 600; }
+.receipt-short-saved .bi { margin-right: .25rem; }
+.receipt-short-heading {
+    font-size: .75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: #6b7785;
+    margin-bottom: .35rem;
+}
+.receipt-short-list {
+    max-height: 40vh;
+    overflow-y: auto;
+    border: 1px solid #e9ecef;
+    border-radius: .25rem;
+}
+.receipt-short-row {
+    display: grid;
+    grid-template-columns: minmax(6rem, 9rem) minmax(0, 1fr) auto;
+    align-items: baseline;
+    gap: .75rem;
+    padding: .5rem .75rem;
+    font-size: .875rem;
+}
+.receipt-short-row + .receipt-short-row { border-top: 1px solid #f1f3f5; }
+.receipt-short-no { font-family: SFMono-Regular, Menlo, Consolas, monospace; font-weight: 700; overflow-wrap: anywhere; }
+.receipt-short-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.receipt-short-qty { text-align: right; white-space: nowrap; color: #495057; }
+.receipt-short-qty strong { color: #0c5460; background: #d1ecf1; border-radius: .2rem; padding: 0 .3rem; }
+
+.receipt-short-footer {
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: .75rem 1.5rem;
+}
+.receipt-short-choice { flex: 1 1 14rem; display: flex; flex-direction: column; align-items: flex-start; gap: .35rem; max-width: 22rem; }
+.receipt-short-choice-primary { align-items: flex-end; text-align: right; margin-left: auto; }
+
+@media (max-width: 575.98px) {
+    .receipt-short-row { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
+    .receipt-short-qty { text-align: left; white-space: normal; }
+    .receipt-short-choice-primary { order: -1; align-items: stretch; text-align: left; margin-left: 0; max-width: none; }
+}

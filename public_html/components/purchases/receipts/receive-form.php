@@ -355,10 +355,32 @@
                 </table>
             </div>
         </div>
+        <!-- Postęp całego zamówienia — odpowiednik kolumny „Postęp" z
+             kolejki przyjęć. Aktualizuje receive-page.js → updateProgress()
+             przy każdej zmianie ilości. -->
+        <div class="receipt-progress d-none" id="receiveProgress">
+            <div class="receipt-progress-top">
+                <span id="receiveProgressLines"></span>
+                <span class="receipt-pct" id="receiveProgressPct">0%</span>
+            </div>
+            <div class="receipt-bar" id="receiveProgressBar" role="progressbar"
+                 aria-label="Postęp przyjęcia zamówienia"
+                 aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                <span style="width:0%"></span>
+            </div>
+            <div class="receipt-progress-sub" id="receiveProgressSub"></div>
+        </div>
     </div>
 
-    <!-- ===== Pasek akcji (przyklejony do dołu okna) ===== -->
-    <div class="receipt-actionbar bg-white border border-top-0 shadow-sm py-2 px-3 d-flex flex-wrap align-items-center">
+    <!-- ===== Pasek akcji (przyklejony do dołu okna) =====
+         Startuje z .receipt-step-locked jak karta pozycji: licznik
+         „Przyjmujesz X z Y pozycji" liczyłby pozycje, których operator
+         jeszcze nie widzi. W trakcie kroku 1 „Anuluj" i „Zapisz" są
+         i tak bezużyteczne (nie ma jeszcze dokumentu), więc wygaszenie
+         całego paska nie zabiera nic działającego. Klasa schodzi
+         w showDocumentSummary() / wraca w showDocumentEdit(). -->
+    <div class="receipt-actionbar bg-white border border-top-0 shadow-sm py-2 px-3 d-flex flex-wrap align-items-center receipt-step-locked"
+         id="receiveActionBar">
         <div class="mr-auto py-1 d-flex align-items-center">
             <i class="bi bi-box-seam receipt-actionbar-icon text-primary mr-2"></i>
             <div>
@@ -370,4 +392,61 @@
         <button type="button" class="btn btn-success px-4" id="receiveSubmitBtn" disabled>
             <i class="bi bi-check2-circle"></i> Zapisz przyjęcie
         </button>
+    </div>
+
+    <!-- ===== Okno po zapisie przyjęcia z brakami =====
+         Decyzja, nie błąd: zostaw PO otwarte (domyślnie) albo oznacz jako
+         odebrane. Zawartość wypełnia receive-page.js → openShortModal().
+         Zamknięcie okna (×, Escape) = „Zostaw otwarte". -->
+    <div class="modal fade" id="receiveShortModal" tabindex="-1" role="dialog"
+         aria-labelledby="receiveShortTitle" data-backdrop="static">
+        <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="receiveShortTitle">Przyjęcie zapisane</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Zamknij i zostaw zamówienie otwarte">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <p class="receipt-short-saved mb-3">
+                        <i class="bi bi-check-circle-fill"></i>
+                        Przyjęcie zostało zapisane jako <strong id="receiveShortDoc"></strong>.
+                    </p>
+
+                    <div class="receipt-progress receipt-progress-flat mb-3">
+                        <div class="receipt-progress-top">
+                            <span id="receiveShortProgressLines"></span>
+                            <span class="receipt-pct" id="receiveShortProgressPct">0%</span>
+                        </div>
+                        <div class="receipt-bar" id="receiveShortBar" role="progressbar"
+                             aria-label="Postęp przyjęcia zamówienia po zapisie"
+                             aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                            <span style="width:0%"></span>
+                        </div>
+                        <div class="receipt-progress-sub" id="receiveShortProgressSub"></div>
+                    </div>
+
+                    <div class="receipt-short-heading">Pozycje, których jeszcze brakuje</div>
+                    <ul class="receipt-short-list list-unstyled mb-3" id="receiveShortList"></ul>
+
+                    <p class="mb-0 font-weight-bold">Czy zamówienie ma czekać na brakujące pozycje?</p>
+                    <div class="alert alert-danger d-none mt-3 mb-0" id="receiveShortError" role="alert"></div>
+                </div>
+                <div class="modal-footer receipt-short-footer">
+                    <div class="receipt-short-choice">
+                        <button type="button" class="btn btn-outline-secondary" id="receiveShortCloseBtn">
+                            <i class="bi bi-check2-all"></i> Zamknij zamówienie
+                        </button>
+                        <small class="text-muted">Zamówienie przejdzie w stan „Odebrane" i nie będzie już można dostarczyć brakujących pozycji.</small>
+                    </div>
+                    <div class="receipt-short-choice receipt-short-choice-primary">
+                        <button type="button" class="btn btn-primary" id="receiveShortKeepBtn" data-dismiss="modal">
+                            <i class="bi bi-hourglass-split"></i> Zostaw otwarte
+                        </button>
+                        <small class="text-muted">Brakujące pozycje przyjmiesz przy kolejnej dostawie.</small>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>

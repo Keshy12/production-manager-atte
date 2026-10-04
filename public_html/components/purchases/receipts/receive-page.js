@@ -266,6 +266,10 @@ $(document).ready(function() {
         $('#receiptDocumentSummary').removeClass('d-none');
         $('#receiptDocumentEditBtn').removeClass('d-none');
         $('#receiptLinesCard').removeClass('receipt-step-locked');
+        // Pasek akcji startuje zablokowany (licznik „Przyjmujesz X z Y"
+        // dotyczy kroku 2) — zdejmujemy tę samą klasą co kartę pozycji,
+        // żeby stan obu bloków szedł w parze.
+        $('#receiveActionBar').removeClass('receipt-step-locked');
 
         step1Accepted = true;
         refreshSummary();   // przelicza bramkę zapisu i dociąga pasek kroków
@@ -277,9 +281,11 @@ $(document).ready(function() {
         $('#receiptDocumentEdit').removeClass('d-none');
         $('#receiptDocumentEditBtn').addClass('d-none');
         $('#receiptLinesCard').addClass('receipt-step-locked');
+        $('#receiveActionBar').addClass('receipt-step-locked');
 
         step1Accepted = false;
         $('#receiveSubmitBtn').prop('disabled', true);
+        updateProgress();   // krok 1 znów otwarty — pasek wraca do stanu sprzed zapisu
         syncStepper();
     }
 
@@ -853,7 +859,62 @@ $(document).ready(function() {
 
         $('#receiveHint').text(hint);
         $('#receiveSubmitBtn').prop('disabled', !ok || receiveState.submitting);
+        updateProgress();
         syncStepper();
+    }
+
+    // ---- postęp całego zamówienia --------------------------------------
+
+    // Sumuje po WSZYSTKICH pozycjach zamówienia: to, co już przyjęto, plus
+    // to, co operator wpisał w tym przyjęciu (tylko zaznaczone wiersze).
+    // `entered` = mapa idx → wpisana ilość; pusta mapa daje stan sprzed zapisu.
+    // Nadwyżka na jednej pozycji nie maskuje braków na innej, więc każdą
+    // pozycję przycinamy do jej zamówionej ilości.
+    function computeProgress(entered) {
+        let ordered = 0;
+        let received = 0;
+        let linesDone = 0;
+        const items = receiveState.items;
+        for (let i = 0; i < items.length; i++) {
+            const it = items[i];
+            const ord = Math.max(0, num(it.quantityOrdered));
+            const got = Math.max(0, num(it.quantityReceived)) + Math.max(0, entered[i] || 0);
+            ordered += ord;
+            received += Math.min(got, ord);
+            if (ord > 0 && got >= ord - 1e-9) linesDone++;
+        }
+        return { ordered: ordered, received: received, linesDone: linesDone, linesTotal: items.length };
+    }
+
+    function enteredByIdx() {
+        const entered = {};
+        $linesBody.find('tr.receipt-line').each(function() {
+            const $row = $(this);
+            const item = itemOfRow($row);
+            if (!item || isDone(item)) return;
+            if (!$row.find('.line-receive-toggle').is(':checked')) return;
+            const q = parseFloat($.trim(String($row.find('.line-qty').val())));
+            if (!isNaN(q) && q > 0) entered[parseInt($row.attr('data-idx'), 10)] = q;
+        });
+        return entered;
+    }
+
+    function updateProgress() {
+        const $box = $('#receiveProgress');
+        if ($box.length === 0) return;
+        // Przed zaakceptowaniem kroku 1 pokazujemy tylko to, co już
+        // przyjęto — prefill ilości nie ma wyglądać jak postęp.
+        const p = computeProgress(step1Accepted ? enteredByIdx() : {});
+        if (p.linesTotal === 0) { $box.addClass('d-none'); return; }
+        $box.removeClass('d-none');
+        const pct = p.ordered > 0 ? Math.max(0, Math.min(100, (p.received / p.ordered) * 100)) : 0;
+        $('#receiveProgressLines').html('<strong>' + p.linesDone + '</strong> z ' + p.linesTotal + ' pozycji');
+        $('#receiveProgressPct').text(Math.round(pct) + '%');
+        $('#receiveProgressSub').text('przyjęto ' + fmtQty(p.received) + ' z ' + fmtQty(p.ordered));
+        $('#receiveProgressBar')
+            .attr('aria-valuenow', Math.round(pct))
+            .attr('title', 'Przyjęto ' + fmtQty(p.received) + ' z ' + fmtQty(p.ordered))
+            .children('span').toggleClass('is-done', pct >= 100).css('width', pct.toFixed(1) + '%');
     }
 
     // ---- nagłówek formularza -------------------------------------------
@@ -942,6 +1003,133 @@ $(document).ready(function() {
         if (!on) refreshSummary();
     }
 
+    // Ten sam query string niesie info o zapisie do receipts-view.js
+    // (alert + podświetlenie wiersza). Kodujemy, bo numery PO/PZ mogą
+    // zawierać '/', '&' i spacje.
+    function redirectToList(documentNumber, n, poState) {
+        const params = [
+            'saved='    + encodeURIComponent(documentNumber || ''),
+            'n='        + encodeURIComponent(n),
+            'po='       + encodeURIComponent(receiveState.poNumber),
+            'po_state=' + encodeURIComponent(poState || '')
+        ];
+        window.location.href = ROOT_DIR + '/purchase/receipts?' + params.join('&');
+    }
+
+    // ---- okno „Przyjęcie zapisane" (są braki) ---------------------------
+    //
+    // Pytanie jest jedno: zostawić zamówienie otwarte (domyślnie; każde
+    // zamknięcie okna — przycisk, ×, Escape — znaczy to samo) czy oznaczyć
+    // jako odebrane. Przekierowanie następuje dopiero po decyzji.
+
+    const $shortModal = $('#receiveShortModal');
+    let shortCtx = null;   // { r, n, closing, leaving }
+
+    function shortTitle(n) {
+        const last = n % 10, last2 = n % 100;
+        let w = 'nieukończonych';
+        if (n === 1) w = 'nieukończona';
+        else if (last >= 2 && last <= 4 && (last2 < 12 || last2 > 14)) w = 'nieukończone';
+        const noun = n === 1 ? 'pozycja' : ((last >= 2 && last <= 4 && (last2 < 12 || last2 > 14)) ? 'pozycje' : 'pozycji');
+        return 'Przyjęcie zapisane — ' + n + ' ' + noun + ' ' + w;
+    }
+
+    function openShortModal(r, savedItems) {
+        // Ilości zapisane w tym przyjęciu → postęp PO „po zapisie".
+        const saved = {};
+        for (let i = 0; i < savedItems.length; i++) {
+            for (let k = 0; k < receiveState.items.length; k++) {
+                if (parseInt(receiveState.items[k].poItemId, 10) === savedItems[i].po_item_id) {
+                    saved[k] = (saved[k] || 0) + savedItems[i].quantity_received;
+                }
+            }
+        }
+        const p = computeProgress(saved);
+        const pct = p.ordered > 0 ? Math.max(0, Math.min(100, (p.received / p.ordered) * 100)) : 0;
+        const linesTotal = parseInt(r.lines_total, 10) || p.linesTotal;
+        const linesDone  = (r.lines_received === undefined || r.lines_received === null)
+            ? p.linesDone : (parseInt(r.lines_received, 10) || 0);
+
+        $('#receiveShortTitle').text(shortTitle(r.short_items.length));
+        $('#receiveShortDoc').text(r.document_number || '');
+        $('#receiveShortProgressLines').html('<strong>' + linesDone + '</strong> z ' + linesTotal + ' pozycji');
+        $('#receiveShortProgressPct').text(Math.round(pct) + '%');
+        $('#receiveShortProgressSub').text('przyjęto ' + fmtQty(p.received) + ' z ' + fmtQty(p.ordered));
+        $('#receiveShortBar')
+            .attr('aria-valuenow', Math.round(pct))
+            .attr('title', 'Przyjęto ' + fmtQty(p.received) + ' z ' + fmtQty(p.ordered))
+            .children('span').toggleClass('is-done', pct >= 100).css('width', pct.toFixed(1) + '%');
+
+        let html = '';
+        $.each(r.short_items, function(_, s) {
+            const unit = s.unitName ? (' ' + s.unitName) : '';
+            html += '<li class="receipt-short-row">'
+                + '<span class="receipt-short-no">' + esc(s.vendorPartNo || '—') + '</span>'
+                + '<span class="receipt-short-name text-muted" title="' + escAttr(s.partName || '') + '">' + esc(s.partName || '') + '</span>'
+                + '<span class="receipt-short-qty">przyjęto ' + esc(fmtQty(s.received)) + ' z ' + esc(fmtQty(s.ordered)) + esc(unit)
+                + ' · brakuje <strong>' + esc(fmtQty(s.remaining)) + esc(unit) + '</strong></span>'
+                + '</li>';
+        });
+        $('#receiveShortList').html(html);
+        $('#receiveShortError').addClass('d-none').empty();
+
+        shortCtx = { r: r, n: savedItems.length, closing: false, leaving: false };
+        $shortModal.modal('show');
+    }
+
+    // Wyjście z okna = „Zostaw otwarte": stan PO zostaje taki, jaki ustawił serwer.
+    function leaveShortModal(poState) {
+        if (!shortCtx || shortCtx.leaving) return;
+        shortCtx.leaving = true;
+        redirectToList(shortCtx.r.document_number, shortCtx.n, poState || shortCtx.r.po_state);
+    }
+
+    // W trakcie zamykania PO okna nie da się zamknąć (Escape/×).
+    $shortModal.on('hide.bs.modal', function(e) {
+        if (shortCtx && shortCtx.closing) e.preventDefault();
+    });
+    $shortModal.on('hidden.bs.modal', function() {
+        leaveShortModal();
+    });
+    $shortModal.on('shown.bs.modal', function() {
+        $('#receiveShortKeepBtn').trigger('focus');
+    });
+
+    $('#receiveShortCloseBtn').on('click', function() {
+        if (!shortCtx || shortCtx.closing) return;
+        const $btn = $(this);
+        const originalHtml = $btn.html();
+        shortCtx.closing = true;
+        $btn.prop('disabled', true)
+            .html('<span class="spinner-border spinner-border-sm"></span> Zamykanie…');
+        $('#receiveShortKeepBtn').prop('disabled', true);
+        $('#receiveShortError').addClass('d-none').empty();
+
+        const restore = function() {
+            shortCtx.closing = false;
+            $btn.prop('disabled', false).html(originalHtml);
+            $('#receiveShortKeepBtn').prop('disabled', false);
+        };
+
+        getAjax('receipt-close-po.php', { po_id: receiveState.poId })
+            .done(function(res) {
+                if (!res || !res.success) {
+                    restore();
+                    $('#receiveShortError')
+                        .text((res && res.error) || 'Nie udało się zamknąć zamówienia.')
+                        .removeClass('d-none');
+                    return;
+                }
+                leaveShortModal(res.po_state || 'received');
+            })
+            .fail(function(xhr, status) {
+                restore();
+                $('#receiveShortError')
+                    .text((xhr.responseJSON && xhr.responseJSON.error) || status || 'Błąd komunikacji z serwerem')
+                    .removeClass('d-none');
+            });
+    });
+
     $('#receiveSubmitBtn').on('click', function() {
         if (receiveState.submitting) return;
         // Ostatnia bramka kroku 1 — przycisk jest wyłączony, ale klik
@@ -1003,25 +1191,28 @@ $(document).ready(function() {
             dataType: 'json'
         })
             .done(function(r) {
-                setSubmitting(false);
                 if (!r || !r.success) {
+                    setSubmitting(false);
                     showAlert(esc((r && r.error) || 'Nie udało się zapisać przyjęcia.'), 'danger');
                     return;
                 }
+                // Przyjęcie jest już zapisane — przy brakach pytamy, co
+                // z zamówieniem, i dopiero potem przekierowujemy. Przycisk
+                // zapisu zostaje zablokowany (setSubmitting(false) tu NIE
+                // wołamy), żeby nie dało się zapisać drugiego PZ.
+                const shortItems = $.isArray(r.short_items) ? r.short_items : [];
+                if (r.has_short && shortItems.length > 0) {
+                    openShortModal(r, items);
+                    return;
+                }
+                setSubmitting(false);
                 // Sukces — prawdziwy reload na listę z query stringiem
                 // niosącym info o zapisie. receipts-view.js czyta to przy
                 // starcie, wyświetla alert (success) i podświetla nowy
                 // wiersz historii (klasa .receipt-row-new, animacja w
                 // receipts.css). Parametry kodujemy przez encodeURIComponent,
                 // bo numery PO i komentarze mogą zawierać '/', '&', spacje.
-                const n = items.length;
-                const params = [
-                    'saved='  + encodeURIComponent(r.document_number || ''),
-                    'n='      + encodeURIComponent(n),
-                    'po='     + encodeURIComponent(receiveState.poNumber),
-                    'po_state=' + encodeURIComponent(r.po_state || '')
-                ];
-                window.location.href = ROOT_DIR + '/purchase/receipts?' + params.join('&');
+                redirectToList(r.document_number, items.length, r.po_state);
             })
             .fail(function(xhr, status) {
                 setSubmitting(false);
