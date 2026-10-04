@@ -88,6 +88,12 @@
 .rfq-respond-table td { vertical-align: top; }
 
 .rfq-respond-col-num   { width: 8rem; }
+/* Producer name + producer part no under the vendor number. Kept muted and
+   compact: the vendor number stays the row's identifying value, the producer
+   data is context only. font-size 0.8125rem keeps the block from competing
+   with the part name in the adjacent column. */
+.rfq-respond-num-meta  { margin-top: .25rem; line-height: 1.25; }
+.rfq-respond-num-meta small { font-size: .8125rem; }
 /* 13rem fits the qty cell's second row on ONE line: unit label + 4.5em
    packs input + "opak." + pack-size badge + 3 gaps ≈ 11.5rem. At 9rem the
    flex row wrapped every item onto its own line. */

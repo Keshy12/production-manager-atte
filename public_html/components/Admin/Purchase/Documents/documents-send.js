@@ -371,6 +371,18 @@ $(function () {
                       + '<dd class="col-sm-4">' + escapeHtml(d.vendorPoNumber) + '</dd>'
                     : '<dt class="col-sm-2">&nbsp;</dt><dd class="col-sm-4">&nbsp;</dd>'));
 
+        // Numer oferty u dostawcy — pole RFQ dostępne na entity (alias
+        // `r.vendor_reference` w RFQRepository::buildSelectJoin()), dla PO
+        // loader zwraca null. Renderujemy wyłącznie dla RFQ; przy pustej
+        // wartości wstawiamy &nbsp; w obu kolumnach, żeby zachować
+        // 2-kolumnowy rytm okalających wierszy.
+        const vendorReferenceRowHtml = (DOC_TYPE === 'rfq')
+            ? (d.vendorReference
+                ? '<dt class="col-sm-2">Numer oferty u dostawcy:</dt>'
+                  + '<dd class="col-sm-4">' + escapeHtml(d.vendorReference) + '</dd>'
+                : '<dt class="col-sm-2">&nbsp;</dt><dd class="col-sm-4">&nbsp;</dd>')
+            : '';
+
         const headerHtml =
             '<dl class="row mb-3">'
             + '<dt class="col-sm-2">Numer:</dt>'
@@ -390,6 +402,7 @@ $(function () {
             + '<dt class="col-sm-2">' + escapeHtml(expectedLabel) + '</dt>'
             + '<dd class="col-sm-4">' + escapeHtml(expectedValue) + '</dd>'
             + respondedRowHtml
+            + vendorReferenceRowHtml
 
             + '<dt class="col-sm-2">Utworzone:</dt>'
             + '<dd class="col-sm-4">' + escapeHtml(d.createdAt || '—') + '</dd>'

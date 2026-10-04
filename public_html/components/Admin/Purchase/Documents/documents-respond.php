@@ -5,7 +5,9 @@
  * klikem przechodzi zapytanie w stan `responded`. Następca "kroku
  * odpowiedź" w wizzardzie documents-send.php — wizzard jest wieloetapowy
  * i niewłaściwy dla tego jednoetapowego przepływu, więc wyodrębniliśmy
- * tę stronę zamiast linkować z powrotem do send-wizarda.
+ * tę stronę zamiast linkować z powrotem do send-wizardza.
+ *
+ * Pole `vendor_reference` (Numer Oferty u dostawcy) — opcjonalne, używane w dalszej korespondencji z dostawcą.
  *
  * Routing: /admin/purchase/documents/respond?id=N&type=rfq.
  * Walidacja serwerowa:
@@ -192,7 +194,7 @@ $backUrl         = 'http://' . BASEURL . '/admin/purchase/documents/edit?id=' . 
                             <th scope="colgroup" colspan="1" class="rfq-respond-group">Uwagi do odpowiedzi</th>
                         </tr>
                         <tr>
-                            <th scope="col" class="rfq-respond-col-num">Nr dostawcy</th>
+                            <th scope="col" class="rfq-respond-col-num">Numer Dostawcy</th>
                             <th scope="col">Nazwa</th>
                             <th scope="col" class="text-right">Ilość</th>
                             <th scope="col" class="rfq-respond-col-qty">Ilość</th>
@@ -207,6 +209,7 @@ $backUrl         = 'http://' . BASEURL . '/admin/purchase/documents/edit?id=' . 
                             $pack     = isset($it->pickedPackSize) ? (float)$it->pickedPackSize : null;
                             $vn       = (string)($it->vendorPartNo ?? '');
                             $pn       = (string)($it->producerPartNo ?? '');
+                            $prName   = (string)($it->producerName ?? '');
                             $askedQty = (float)$it->quantity;
                             $askedQtyStr = $rawQty($askedQty);
                             $isUnpriced = ($it->unitPrice === null);
@@ -228,8 +231,18 @@ $backUrl         = 'http://' . BASEURL . '/admin/purchase/documents/edit?id=' . 
                                     <?php else: ?>
                                         <span class="text-muted">—</span>
                                     <?php endif; ?>
-                                    <?php if ($pn !== '' && $pn !== $vn): ?>
-                                        <div><small class="text-muted">Nr prod.: <?= htmlspecialchars($pn) ?></small></div>
+                                    <?php if ($prName !== '' || ($pn !== '' && $pn !== $vn)): ?>
+                                        <!-- Producent + nr producenta: kontekst pomocniczy pod numerem
+                                             dostawcy, sam w sobie nie identyfikuje pozycji (numer
+                                             dostawcy pozostaje wierszem rozpoznawczym). -->
+                                        <div class="rfq-respond-num-meta">
+                                            <?php if ($prName !== ''): ?>
+                                                <small class="text-muted d-block"><?= htmlspecialchars($prName) ?></small>
+                                            <?php endif; ?>
+                                            <?php if ($pn !== '' && $pn !== $vn): ?>
+                                                <small class="text-muted d-block">Nr prod.: <?= htmlspecialchars($pn) ?></small>
+                                            <?php endif; ?>
+                                        </div>
                                     <?php endif; ?>
                                 </td>
                                 <td>
@@ -308,9 +321,17 @@ $backUrl         = 'http://' . BASEURL . '/admin/purchase/documents/edit?id=' . 
                     </table>
                 </div>
             </div>
-            <!-- ===== Card-footer: data odpowiedzi + per-currency totals ===== -->
+            <!-- ===== Card-footer: numer u dostawcy + data odpowiedzi + per-currency totals ===== -->
             <div class="card-footer">
-                <div class="d-flex flex-wrap justify-content-between align-items-end" style="gap: 1rem;">
+                <div class="d-flex flex-wrap justify-content-between align-items-end" style="gap: 1rem 1.5rem;">
+                    <div>
+                        <label for="vendor_reference" class="small text-muted mb-1 d-block">Numer Oferty u dostawcy</label>
+                        <input type="text" id="vendor_reference" name="vendor_reference" maxlength="128"
+                               class="form-control form-control-sm" style="max-width: 16rem;"
+                               value="<?= htmlspecialchars($rfq->vendorReference ?? '', ENT_QUOTES) ?>"
+                               placeholder="np. OF/2026/114">
+                        <small class="text-muted d-block mt-1">Numer oferty nadany przez dostawcę do jego odpowiedzi — używany w dalszej korespondencji.</small>
+                    </div>
                     <div>
                         <label for="responded_at" class="small text-muted mb-1 d-block">Data odpowiedzi</label>
                         <input type="date" id="responded_at" name="responded_at"

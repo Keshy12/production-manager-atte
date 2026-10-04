@@ -381,6 +381,11 @@ class PurchaseActionHandler {
      * @param int         $userId
      * @param string|null $respondedAt         'Y-m-d H:i:s' lub null/empty → NOW()
      * @return bool
+     *
+     * Uwaga: ta metoda nie przyjmuje `$vendorReference` ("Numer u
+     * dostawcy") — wizard "Wyślij dokument", który z niej korzysta,
+     * nie ma takiego pola. Callery chcący ustawić numer referencyjny
+     * muszą wywołać {@see markRfqRespondedWithPrices()} bezpośrednio.
      */
     public function markRfqResponded(int $rfqId, int $userId, ?string $respondedAt = null): bool {
         return $this->markRfqRespondedWithPrices($rfqId, $userId, [], $respondedAt);
@@ -418,6 +423,16 @@ class PurchaseActionHandler {
      * odpowiedzi co korekty uwag, więc atomowy zapis wszystkich trzech
      * jest pożądany.
      *
+     * `$vendorReference` ("Numer oferty u dostawcy") to opcjonalny numer
+     * referencyjny nadany sprawie przez dostawcę — zapisywany razem ze
+     * stanem `responded`, żeby później można się było do niego odwołać
+     * w korespondencji. Trimowany; null/empty → czyści kolumnę;
+     * dłuższy niż 128 znaków → \InvalidArgumentException (komunikat po
+     * polsku). Walidowany PRZED otwarciem transakcji (ten sam wzorzec
+     * co pozycje), a następnie ponownie w `RFQRepository::setVendorReference()`
+     * — defensywne podwójne sprawdzenie jest tanie (no DB roundtrip)
+     * i zgodne z istniejącym kontraktem.
+     *
      * @param int         $rfqId
      * @param int         $userId
      * @param array       $items             lista map per pozycja (pusta = bez aktualizacji pozycji):
@@ -425,13 +440,15 @@ class PurchaseActionHandler {
      *                                           'quantity' => ?float,         // null = keep existing
      *                                           'quantity_unit_id' => ?int]   // null = keep existing
      * @param string|null $respondedAt       'Y-m-d H:i:s' lub null/empty → NOW()
+     * @param string|null $vendorReference   "Numer oferty u dostawcy" (max 128 zn.); null/empty → NULL w kolumnie
      * @return bool
      */
     public function markRfqRespondedWithPrices(
         int $rfqId,
         int $userId,
         array $items,
-        ?string $respondedAt = null
+        ?string $respondedAt = null,
+        ?string $vendorReference = null
     ): bool {
         $MsaDB     = $this->MsaDB;
         $repo      = new RFQRepository($MsaDB);
@@ -451,6 +468,7 @@ class PurchaseActionHandler {
         }
 
         $normalisedRespondedAt = $this->normaliseSentAt($respondedAt, "odpowiedzi");
+        $normalisedVendorReference = self::normaliseVendorReference($vendorReference);
 
         // Pre-walidacja pozycji: najpierw zbierz wszystkie błędy walidacji,
         // żeby operator widział pełną listę (albo chociaż pierwszą sensowną)
@@ -576,6 +594,13 @@ class PurchaseActionHandler {
             }
 
             $repo->setState($rfqId, 'responded');
+
+            // "Numer oferty u dostawcy" — zawsze wywołujemy (puste/null czyści
+            // kolumnę, więc ponowne oznaczenie odpowiedzi może nadpisać
+            // wcześniejszy numer). Walidacja długości/formatu już
+            // odbyła się w normaliseVendorReference() przed otwarciem
+            // transakcji — repo i tak waliduje defensywnie ponownie.
+            $repo->setVendorReference($rfqId, $normalisedVendorReference);
 
             // responded_at / responded_by zostały dodane migracją P5+
             // (migrate-to-procurement-schema.php). Kolumny istnieją
@@ -731,6 +756,25 @@ class PurchaseActionHandler {
             );
         }
         return $dt->format('Y-m-d H:i:s');
+    }
+
+    /**
+     * Waliduje i normalizuje numer referencyjny u dostawcy ("Numer u
+     * dostawcy") przekazywany do `markRfqRespondedWithPrices()`.
+     * Trimuje whitespace; null/empty → null (czyszczenie kolumny);
+     * dłuższy niż 128 znaków → \InvalidArgumentException (komunikat po
+     * polsku, bo trafia prosto do UI przez endpoint AJAX).
+     */
+    private static function normaliseVendorReference(?string $value): ?string {
+        if ($value === null) return null;
+        $trimmed = trim($value);
+        if ($trimmed === '') return null;
+        if (strlen($trimmed) > 128) {
+            throw new \InvalidArgumentException(
+                "Numer oferty u dostawcy jest zbyt długi (max 128 znaków)."
+            );
+        }
+        return $trimmed;
     }
 
     public function cancelRfq(int $rfqId, int $userId): bool {
@@ -1095,6 +1139,75 @@ class PurchaseActionHandler {
             return $receiptId;
         } catch (\Throwable $e) {
             if ($ownedTransaction && $MsaDB->db->inTransaction()) {
+                $MsaDB->db->rollBack();
+            }
+            throw $e;
+        }
+    }
+
+    /**
+     * Zamyka częściowo dostarczone / „w trakcie przyjęcia" zamówienie (PO)
+     * jako w pełni odebrane (stan `received`). Obsługiwany scenariusz:
+     * dostawca dostarczył mniej niż zamówiono i nie dostarczy reszty (np.
+     * brak w magazynie, koniec serii, anulacja pozycji) — operator chce
+     * zakończyć PO bez oczekiwania na brakujące pozycje.
+     *
+     * Dozwolone wyłącznie ze stanów `in_progress` lub
+     * `partially_received`. Wymaga co najmniej jednego zapisanego
+     * przyjęcia (`purchase__order_receipt`) — szkic `in_progress`
+     * (utworzony przez acceptReceiptMetadata) też się liczy. Bez tego
+     * operator „zamykałby" PO, na którym nic nie przyjął.
+     *
+     * Uwaga: stan `received` jest traktowany jako terminalny —
+     * `OrderReceiptRepository::delete()` odmawia kasowania przyjęcia
+     * dla PO w tym stanie (zob. delete() w
+     * class-orderreceiptrepository.php), więc po wywołaniu tej metody
+     * nie da się już cofnąć historii przyjęcia dla tego zamówienia.
+     *
+     * Komunikaty błędów po polsku — trafiają do operatora przez
+     * endpoint AJAX.
+     *
+     * @param int $poId
+     * @return array{poId: int, poState: string}
+     */
+    public function closePoAsReceived(int $poId): array {
+        if ($poId <= 0) {
+            throw new \InvalidArgumentException("poId must be positive.");
+        }
+
+        $MsaDB  = $this->MsaDB;
+        $poRepo = new PurchaseOrderRepository($MsaDB);
+
+        $po = $poRepo->getById($poId);
+        if ($po === null) {
+            throw new \LogicException("Nie znaleziono zamówienia.");
+        }
+        if (!in_array($po->state, ['in_progress', 'partially_received'], true)) {
+            throw new \LogicException(
+                "Zamówienie jest w stanie '{$po->state}'. Zamknięcie jako odebrane jest możliwe tylko ze stanu „w trakcie przyjęcia\" lub „częściowo odebrane\"."
+            );
+        }
+
+        // Wymóg co najmniej jednego zapisanego przyjęcia (szkic in_progress
+        // też się liczy) — bez tego operator „zamykałby" PO, na którym nic
+        // nie zostało przyjęte.
+        $existsStmt = $MsaDB->db->prepare(
+            "SELECT 1 FROM `purchase__order_receipt` WHERE `po_id` = ? LIMIT 1"
+        );
+        $existsStmt->execute([$poId]);
+        if ($existsStmt->fetchColumn() === false) {
+            throw new \LogicException(
+                "Nie można zamknąć zamówienia jako odebranego bez zapisanego przyjęcia."
+            );
+        }
+
+        $MsaDB->db->beginTransaction();
+        try {
+            $poRepo->setState($poId, 'received');
+            $MsaDB->db->commit();
+            return ['poId' => $poId, 'poState' => 'received'];
+        } catch (\Throwable $e) {
+            if ($MsaDB->db->inTransaction()) {
                 $MsaDB->db->rollBack();
             }
             throw $e;

@@ -19,6 +19,11 @@
  *                                     'Y-m-d' normalizowane do
  *                                     'Y-m-d 00:00:00'; puste → null,
  *                                     handler użyje NOW().
+ *   vendor_reference  string                 opcjonalne — "Numer oferty u dostawcy"
+ *                                     (max 128 zn.; zapisywany w kolumnie
+ *                                     `purchase__rfq.vendor_reference`).
+ *                                     Trimowany; pusty → null (czyszczenie
+ *                                     kolumny); za długi → JSON error.
  *   items[i][item_id]          int             (wymagane gdy items obecne, > 0;
  *                                     gdy brak — kluczem `i` jest id pozycji,
  *                                     tak jak wysyła documents-respond.js)
@@ -84,6 +89,28 @@ if ($respondedAtRaw !== null) {
         if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $respondedAt)) {
             $respondedAt .= ' 00:00:00';
         }
+    }
+}
+
+// Normalizacja vendor_reference ("Numer oferty u dostawcy"): trim; puste → null
+// (czyszczenie kolumny); za długi → JSON error i exit (HTTP 200 per
+// konwencja endpointów — patrz AGENTS.md). Handler i tak zwaliduje
+// defensywnie ponownie w setVendorReference(), ale odrzucamy tu, żeby
+// nie otwierać transakcji dla złego wejścia (analogicznie do innych
+// pól walidowanych przed wywołaniem handlera).
+$vendorReference = null;
+$vendorReferenceRaw = $_POST['vendor_reference'] ?? null;
+if ($vendorReferenceRaw !== null) {
+    $vendorReferenceRaw = trim((string)$vendorReferenceRaw);
+    if ($vendorReferenceRaw !== '') {
+        if (strlen($vendorReferenceRaw) > 128) {
+            echo json_encode([
+                'success' => false,
+                'error'   => 'Numer oferty u dostawcy jest zbyt długi (max 128 znaków).',
+            ]);
+            exit;
+        }
+        $vendorReference = $vendorReferenceRaw;
     }
 }
 
@@ -242,7 +269,10 @@ try {
     // Jeden handler obsługuje oba warianty: items=[] zachowuje stare
     // zachowanie (czysta zmiana stanu, bez ruszania pozycji); items>0
     // aktualizuje ceny/waluty/uwagi i dopiero potem przechodzi w responded.
-    $handler->markRfqRespondedWithPrices($id, $userId, $normalizedItems, $respondedAt);
+    // vendorReference (5. argument) zapisywany jest zawsze — null/'' czyści
+    // kolumnę, więc ponowne oznaczenie odpowiedzi może nadpisać wcześniejszy
+    // numer u dostawcy (zgodnie z zadaniem).
+    $handler->markRfqRespondedWithPrices($id, $userId, $normalizedItems, $respondedAt, $vendorReference);
 
     echo json_encode([
         'success'     => true,

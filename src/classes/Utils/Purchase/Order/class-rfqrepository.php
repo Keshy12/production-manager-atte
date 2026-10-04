@@ -15,6 +15,7 @@ class RFQRepository {
                        r.vendor_id AS vendorId,
                        r.state,
                        r.rfq_number AS rfqNumber,
+                       r.vendor_reference AS vendorReference,
                        r.expected_reply_date AS expectedReplyDate,
                        r.sent_at AS sentAt,
                        r.created_by AS createdBy,
@@ -115,6 +116,19 @@ class RFQRepository {
         return $date;
     }
 
+    /**
+     * Ustawia (lub czyści przez null/'') numer referencyjny u dostawcy
+     * ("Numer oferty u dostawcy"). Trimuje białe znaki; pusty string → null;
+     * dłuższy niż 128 znaków → \InvalidArgumentException (komunikat po
+     * polsku, bo trafia do UI przez endpoint AJAX). Zwraca znormalizowaną
+     * wartość (null albo trim'owany string), która trafiła do bazy.
+     */
+    public function setVendorReference(int $id, ?string $reference): ?string {
+        $reference = self::normaliseVendorReference($reference);
+        $this->MsaDB->update('purchase__rfq', ['vendor_reference' => $reference], 'id', $id);
+        return $reference;
+    }
+
     public function setState(int $id, string $state): bool {
         $valid = ['draft','sent','responded','cancelled','converted'];
         if (!in_array($state, $valid, true)) {
@@ -183,5 +197,17 @@ class RFQRepository {
             throw new \InvalidArgumentException("Date must be in YYYY-MM-DD format.");
         }
         return $d->format('Y-m-d');
+    }
+
+    private static function normaliseVendorReference(?string $value): ?string {
+        if ($value === null) return null;
+        $trimmed = trim($value);
+        if ($trimmed === '') return null;
+        if (strlen($trimmed) > 128) {
+            throw new \InvalidArgumentException(
+                "Numer oferty u dostawcy jest zbyt długi (max 128 znaków)."
+            );
+        }
+        return $trimmed;
     }
 }

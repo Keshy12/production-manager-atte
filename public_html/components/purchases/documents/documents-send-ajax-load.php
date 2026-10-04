@@ -26,6 +26,7 @@
  *       "createdAt":            'Y-m-d H:i:s' | null,
  *       "sentAt":               'Y-m-d H:i:s' | null,
  *       "respondedAt":          'Y-m-d H:i:s' | null,  // tylko RFQ
+ *       "vendorReference":      string | null,    // tylko RFQ
  *       "expectedReplyDate":    'Y-m-d' | null,        // tylko RFQ
  *       "expectedDeliveryDate": 'Y-m-d' | null,        // tylko PO
  *       "createdBy":            int,
@@ -138,6 +139,7 @@ try {
         $sentAt        = $doc->sentAt;
         $expectedDate  = $doc->expectedReplyDate;
         $vendorPoNumber = null;
+        $vendorReference = $doc->vendorReference;
 
         // responded_at nie jest jeszcze mapowane w RFQRepository::buildSelectJoin().
         // Czytamy bezpośrednio (kolumna dodana migracją P5+).
@@ -189,6 +191,7 @@ try {
         $respondedAt    = null;
         $expectedDate   = $doc->expectedDeliveryDate;
         $vendorPoNumber = $doc->vendorPoNumber;
+        $vendorReference = null;
         $vendorId       = $doc->vendorId;
 
         // valueBreakdown — kopia GROUP_CONCAT-subquery z documents-table.php
@@ -349,6 +352,7 @@ try {
             'vendorId'             => (int)$vendorId,
             'vendorName'           => $doc->vendorName,
             'vendorPoNumber'       => $vendorPoNumber,
+            'vendorReference'      => $vendorReference,
             'state'                => $state,
             'stateLabel'           => $stateLbl,
             'createdAt'            => $doc->createdAt,

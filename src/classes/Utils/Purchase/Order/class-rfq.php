@@ -13,6 +13,7 @@ class RFQ {
     public int $createdBy;
     public ?string $createdByName;
     public ?string $comment;
+    public ?string $vendorReference;
     public ?string $createdAt;
     public ?string $updatedAt;
     public ?string $vendorName;
@@ -26,6 +27,7 @@ class RFQ {
         $this->createdBy = (int)$row['createdBy'];
         $this->createdByName = $row['createdByName'] ?? null;
         $this->comment = $row['comment'] ?? null;
+        $this->vendorReference = $row['vendorReference'] ?? null;
         $this->createdAt = $row['createdAt'] ?? null;
         $this->updatedAt = $row['updatedAt'] ?? null;
         $this->vendorName = $row['vendorName'] ?? null;
