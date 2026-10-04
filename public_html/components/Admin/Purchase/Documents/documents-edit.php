@@ -33,6 +33,8 @@ use Atte\Utils\Purchase\Order\PurchaseOrderRepository;
 use Atte\Utils\Purchase\Order\PurchaseOrderItemRepository;
 use Atte\Utils\Purchase\Master\CurrencyRepository;
 
+require_once __DIR__ . '/../../../purchases/receipts/receipts-helpers.php';
+
 if(!isset($_SESSION['isAdmin']) || $_SESSION['isAdmin'] !== true) {
     header("Location: http://".BASEURL."/");
     exit();
@@ -78,6 +80,7 @@ if ($type === 'po') {
     $sentAt            = $doc->sentAt;
     $confirmedAt       = $doc->confirmedAt;
     $vendorPoNumber    = $doc->vendorPoNumber;
+    $vendorReference   = null;
     $convertedFromRfqId     = $doc->convertedFromRfqId;
     $convertedFromRfqNumber = $doc->convertedFromRfqNumber;
 } else {
@@ -88,6 +91,7 @@ if ($type === 'po') {
     $sentAt            = $doc->sentAt;
     $confirmedAt       = null;
     $vendorPoNumber    = null;
+    $vendorReference   = $doc->vendorReference;
     $convertedFromRfqId     = null;
     $convertedFromRfqNumber = null;
 }
@@ -155,19 +159,22 @@ $currencies = (new CurrencyRepository($MsaDB))->getActiveEnsuring($vendorDefault
 
 // State badge map. Each type has its own state set; keeping both
 // maps in one file avoids drift between the two legacy pages.
-$stateBadgeClass = $type === 'po' ? [
-    'draft'              => 'badge-secondary',
-    'sent'               => 'badge-primary',
-    'confirmed'          => 'badge-info',
-    'partially_received' => 'badge-warning',
-    'received'           => 'badge-success',
-    'cancelled'          => 'badge-danger',
+// Tones map onto the rx-badge--* colours from receipts-ui.css; they
+// match rx_state_meta() in receipts-helpers.php so a PO looks the same
+// here and on the receipts pages. Labels stay local (see below).
+$stateBadgeTone = $type === 'po' ? [
+    'draft'              => 'neutral',
+    'sent'               => 'violet',
+    'confirmed'          => 'blue',
+    'partially_received' => 'amber',
+    'received'           => 'green',
+    'cancelled'          => 'red',
 ] : [
-    'draft'     => 'badge-secondary',
-    'sent'      => 'badge-primary',
-    'responded' => 'badge-info',
-    'cancelled' => 'badge-danger',
-    'converted' => 'badge-success',
+    'draft'     => 'neutral',
+    'sent'      => 'violet',
+    'responded' => 'cyan',
+    'cancelled' => 'red',
+    'converted' => 'green',
 ];
 $stateBadgeLabel = $type === 'po' ? [
     'draft'              => 'szkic',
@@ -184,6 +191,12 @@ $stateBadgeLabel = $type === 'po' ? [
     'converted' => 'skonwertowane na PO',
 ];
 
+// State badge in the rx style. Uses this page's own labels (the RFQ set
+// differs from rx_state_meta), only the look comes from the rx system.
+function dx_state_badge($state, array $tones, array $labels): string {
+    return '<span class="rx-badge rx-badge--' . rx_e($tones[$state] ?? 'neutral') . '">'
+         . rx_e($labels[$state] ?? $state) . '</span>';
+}
 function formatQty($v) {
     if ($v === null || $v === '') return '—';
     return rtrim(rtrim(number_format((float)$v, 4, '.', ' '), '0'), '.');
@@ -193,127 +206,145 @@ function formatPrice($v) {
     return rtrim(rtrim(number_format((float)$v, 4, '.', ' '), '0'), '.');
 }
 ?>
-<div class="container-fluid w-75 mt-3">
+<link rel="stylesheet" href="<?= htmlspecialchars(asset('public_html/components/purchases/receipts/receipts-ui.css'), ENT_QUOTES) ?>">
+<link rel="stylesheet" href="<?= htmlspecialchars(asset('public_html/components/Admin/Purchase/Documents/documents-edit-ui.css'), ENT_QUOTES) ?>">
+
+<div class="rx-page rx-detail dx-edit dx-edit--<?= $type === 'po' ? 'po' : 'rfq' ?>" id="docEditView">
+
+    <nav aria-label="Ścieżka">
+        <ol class="rx-crumbs">
+            <li><a href="http://<?= BASEURL ?>/purchase/documents"><i class="bi bi-files"></i> Dokumenty</a></li>
+            <li aria-hidden="true"><i class="bi bi-chevron-right"></i></li>
+            <li aria-current="page">
+                <?= htmlspecialchars($docTitle) ?> <?= htmlspecialchars($docNumber) ?>
+            </li>
+        </ol>
+    </nav>
+
     <div id="alertContainer" class="mb-2"></div>
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h2 class="mb-0">
-            <i class="bi bi-file-earmark-text"></i>
-            <?= htmlspecialchars($docTitle) ?>
-            <span class="font-weight-bold"><?= htmlspecialchars($docNumber) ?></span>
-            <span class="badge <?= $stateBadgeClass[$doc->state] ?? 'badge-secondary' ?> ml-2"><?= htmlspecialchars($stateBadgeLabel[$doc->state] ?? $doc->state) ?></span>
-        </h2>
-        <!--
-            "Wróć" + (opcjonalny) "Wyślij / Oznacz" — oba buttony razem
-            w jednym .d-flex, żeby wizard-CTA siedział tuż obok
-            "Wróć". "Wróć" używa history.back() kiedy jest dokąd
-            wracać (Cart / Documents / direct URL); w ostateczności
-            ląduje na /purchase/documents jako fallback po otwarciu w
-            pustej karcie. Button wysyłki jest warunkowy — patrz
-            mapa stanów przy definicji $sendButton powyżej.
 
-            Specjalny przypadek: PO w stanie `sent` → akcja
-            "Potwierdź odbiór" otwiera współdzielony modal
-            (confirm-po-modal.php). Dlatego $sendButton['action'] ===
-            'confirm-po' renderuje <button> z data-* zamiast <a>
-            do wizarda — klik nie nawiguje, lecz triggeruje modal.
+    <!-- ===== Arkusz dokumentu: nagłówek, przyciski akcji, dane ===== -->
+    <section class="rx-panel rx-sheet mb-3">
+        <div class="rx-dochead">
+            <div class="rx-dochead-main">
+                <div class="rx-eyebrow dx-type-tag"><?= htmlspecialchars($docTitle) ?></div>
+                <h1 class="rx-docnum"><?= htmlspecialchars($docNumber) ?></h1>
+                <div class="rx-dochead-meta">
+                    <?= htmlspecialchars($doc->vendorName ?? '—') ?>
+                    <span class="rx-meta-sep">·</span>
+                    <span class="text-faint">ID <?= (int)$doc->id ?></span>
+                </div>
+            </div>
 
-            Drugi przypadek: RFQ w stanie `sent` → akcja
-            "Oznacz odpowiedź" prowadzi do dedykowanej strony
-            documents-respond.php (jednoetapowy formularz z cenami
-            odpowiedzi), więc 'action' === 'respond-rfq' renderuje
-            <a> do tej strony zamiast do wizzarda documents-send.php.
-            Wybór <a> zamiast <button>: to czysta nawigacja, bez
-            konieczności JS-owego potwierdzenia/spinnera, więc anchor
-            jest najprostszym i najbardziej spójnym z resztą headera
-            rozwiązaniem (zachowuje history.back() w przycisku Wróć).
-        -->
-        <div class="d-flex align-items-center" style="gap: .5rem;">
-            <?php if ($sendButton !== null): ?>
-                <?php if (($sendButton['action'] ?? '') === 'confirm-po'): ?>
-                    <button type="button"
-                            class="btn btn-primary btn-sm"
-                            data-action="confirm-po"
-                            data-po-id="<?= (int)$doc->id ?>"
-                            data-po-number="<?= htmlspecialchars((string)($doc->poNumber ?? ''), ENT_QUOTES) ?>"
-                            data-vendor-name="<?= htmlspecialchars((string)($doc->vendorName ?? ''), ENT_QUOTES) ?>"
-                            data-vendor-po-number="<?= htmlspecialchars((string)($doc->vendorPoNumber ?? ''), ENT_QUOTES) ?>"
-                            data-after-confirm-url="<?= htmlspecialchars('http://' . BASEURL . '/purchase/receipts/receive?po_id=' . (int)$doc->id, ENT_QUOTES) ?>">
-                        <i class="<?= htmlspecialchars($sendButton['icon']) ?>"></i>
-                        <?= htmlspecialchars($sendButton['label']) ?>
-                    </button>
-                <?php elseif (($sendButton['action'] ?? '') === 'respond-rfq'): ?>
-                    <a href="http://<?= BASEURL ?>/admin/purchase/documents/respond?id=<?= (int)$doc->id ?>&amp;type=rfq"
-                       class="btn btn-primary btn-sm">
-                        <i class="<?= htmlspecialchars($sendButton['icon']) ?>"></i>
-                        <?= htmlspecialchars($sendButton['label']) ?>
-                    </a>
-                <?php else: ?>
-                    <a href="http://<?= BASEURL ?>/admin/purchase/documents/send?id=<?= (int)$doc->id ?>&amp;type=<?= htmlspecialchars($type, ENT_QUOTES) ?>"
-                       class="btn btn-primary btn-sm">
-                        <i class="<?= htmlspecialchars($sendButton['icon']) ?>"></i>
-                        <?= htmlspecialchars($sendButton['label']) ?>
-                    </a>
-                <?php endif; ?>
-            <?php endif; ?>
-            <?php if ($type === 'po' && $doc->state === 'confirmed'): ?>
+            <div class="rx-dochead-side">
+                <?= dx_state_badge($doc->state, $stateBadgeTone, $stateBadgeLabel) ?>
                 <!--
-                    Przyjęcie towaru: dostępne dla PO w stanie `confirmed`.
-                    Klik prowadzi do /purchase/receipts/receive?po_id=N, gdzie
-                    operator wpisuje faktycznie dostarczone ilości per pozycja.
-                    Receive handler (PurchaseActionHandler::createReceipt)
-                    akceptuje też stany in_progress / partially_received, więc
-                    jeśli chcesz pokazać ten button także w nich — wystarczy
-                    rozszerzyć warunek. Na ten moment trzymamy się zakresu
-                    zgłoszonego przez operatora (tylko `confirmed`).
+                    Przyciski akcji — prawy górny róg arkusza (jak w widoku
+                    przyjęcia). Te same przyciski i te same warunki co wcześniej:
+
+                    "Wróć" używa history.back() kiedy jest dokąd wracać (Cart /
+                    Documents / direct URL); w ostateczności ląduje na
+                    /purchase/documents. Button wysyłki jest warunkowy — patrz
+                    mapa stanów przy definicji $sendButton powyżej.
+
+                    PO w stanie `sent` → "Potwierdź odbiór" otwiera współdzielony
+                    modal (confirm-po-modal.php), więc 'action' === 'confirm-po'
+                    renderuje <button> z data-* zamiast <a> do wizarda.
+
+                    RFQ w stanie `sent` → "Oznacz odpowiedź" prowadzi do
+                    documents-respond.php, więc 'action' === 'respond-rfq'
+                    renderuje <a> do tej strony zamiast do wizarda send.
                 -->
-                <a href="http://<?= BASEURL ?>/purchase/receipts/receive?po_id=<?= (int)$doc->id ?>"
-                   class="btn btn-success btn-sm">
-                    <i class="bi bi-box-arrow-in-down"></i> Przyjmij towar
-                </a>
-            <?php endif; ?>
-            <?php if ($type === 'rfq' && $doc->state === 'responded'): ?>
-                <!--
-                    Konwersja RFQ → PO: dostępna wyłącznie w stanie
-                    `responded` (operator odnotował odpowiedź dostawcy,
-                    ale jeszcze nie utworzył zamówienia). Po sukcesie
-                    handler PurchaseActionHandler::createPoFromRfq()
-                    przenosi RFQ do stanu terminalnego `converted`, więc
-                    ten button znika po odświeżeniu strony. Ikona
-                    bi-cart-check nawiązuje do istniejącego CTA
-                    "Utwórz zamówienie" w koszyku (cart-view.js).
-                -->
-                <button type="button"
-                        id="rfq-convert-btn"
-                        class="btn btn-success btn-sm"
-                        data-rfq-id="<?= (int)$id ?>">
-                    <i class="bi bi-cart-check"></i> Utwórz zamówienie z odpowiedzi
-                </button>
-            <?php endif; ?>
-            <a href="http://<?= BASEURL ?>/purchase/documents"
-               class="btn btn-outline-secondary btn-sm"
-               onclick="if (history.length > 1) { history.back(); return false; }">
-                <i class="bi bi-arrow-left"></i> Wróć
-            </a>
+                <div class="rx-dochead-actions rx-no-print">
+                    <?php if ($sendButton !== null): ?>
+                        <?php if (($sendButton['action'] ?? '') === 'confirm-po'): ?>
+                            <button type="button"
+                                    class="btn btn-primary btn-sm"
+                                    data-action="confirm-po"
+                                    data-po-id="<?= (int)$doc->id ?>"
+                                    data-po-number="<?= htmlspecialchars((string)($doc->poNumber ?? ''), ENT_QUOTES) ?>"
+                                    data-vendor-name="<?= htmlspecialchars((string)($doc->vendorName ?? ''), ENT_QUOTES) ?>"
+                                    data-vendor-po-number="<?= htmlspecialchars((string)($doc->vendorPoNumber ?? ''), ENT_QUOTES) ?>"
+                                    data-after-confirm-url="<?= htmlspecialchars('http://' . BASEURL . '/purchase/receipts/receive?po_id=' . (int)$doc->id, ENT_QUOTES) ?>">
+                                <i class="<?= htmlspecialchars($sendButton['icon']) ?>"></i>
+                                <?= htmlspecialchars($sendButton['label']) ?>
+                            </button>
+                        <?php elseif (($sendButton['action'] ?? '') === 'respond-rfq'): ?>
+                            <a href="http://<?= BASEURL ?>/admin/purchase/documents/respond?id=<?= (int)$doc->id ?>&amp;type=rfq"
+                               class="btn btn-primary btn-sm">
+                                <i class="<?= htmlspecialchars($sendButton['icon']) ?>"></i>
+                                <?= htmlspecialchars($sendButton['label']) ?>
+                            </a>
+                        <?php else: ?>
+                            <a href="http://<?= BASEURL ?>/admin/purchase/documents/send?id=<?= (int)$doc->id ?>&amp;type=<?= htmlspecialchars($type, ENT_QUOTES) ?>"
+                               class="btn btn-primary btn-sm">
+                                <i class="<?= htmlspecialchars($sendButton['icon']) ?>"></i>
+                                <?= htmlspecialchars($sendButton['label']) ?>
+                            </a>
+                        <?php endif; ?>
+                    <?php endif; ?>
+                    <?php if ($type === 'po' && $doc->state === 'confirmed'): ?>
+                        <!--
+                            Przyjęcie towaru: dostępne dla PO w stanie `confirmed`.
+                            Klik prowadzi do /purchase/receipts/receive?po_id=N, gdzie
+                            operator wpisuje faktycznie dostarczone ilości per pozycja.
+                            Receive handler (PurchaseActionHandler::createReceipt)
+                            akceptuje też stany in_progress / partially_received, więc
+                            jeśli chcesz pokazać ten button także w nich — wystarczy
+                            rozszerzyć warunek. Na ten moment trzymamy się zakresu
+                            zgłoszonego przez operatora (tylko `confirmed`).
+                        -->
+                        <a href="http://<?= BASEURL ?>/purchase/receipts/receive?po_id=<?= (int)$doc->id ?>"
+                           class="btn btn-success btn-sm">
+                            <i class="bi bi-box-arrow-in-down"></i> Przyjmij towar
+                        </a>
+                    <?php endif; ?>
+                    <?php if ($type === 'rfq' && $doc->state === 'responded'): ?>
+                        <!--
+                            Konwersja RFQ → PO: dostępna wyłącznie w stanie
+                            `responded` (operator odnotował odpowiedź dostawcy,
+                            ale jeszcze nie utworzył zamówienia). Po sukcesie
+                            handler PurchaseActionHandler::createPoFromRfq()
+                            przenosi RFQ do stanu terminalnego `converted`, więc
+                            ten button znika po odświeżeniu strony. Ikona
+                            bi-cart-check nawiązuje do istniejącego CTA
+                            "Utwórz zamówienie" w koszyku (cart-view.js).
+                        -->
+                        <button type="button"
+                                id="rfq-convert-btn"
+                                class="btn btn-success btn-sm"
+                                data-rfq-id="<?= (int)$id ?>">
+                            <i class="bi bi-cart-check"></i> Utwórz zamówienie z odpowiedzi
+                        </button>
+                    <?php endif; ?>
+                    <a href="http://<?= BASEURL ?>/purchase/documents"
+                       class="btn btn-sm rx-btn-quiet"
+                       onclick="if (history.length > 1) { history.back(); return false; }">
+                        <i class="bi bi-arrow-left"></i> Wróć
+                    </a>
+                </div>
+            </div>
         </div>
-    </div>
 
-    <div class="card mb-3">
-        <div class="card-header"><strong>Nagłówek</strong></div>
-        <div class="card-body py-2">
-            <dl class="row mb-0">
-                <dt class="col-sm-2">Dostawca:</dt>
-                <dd class="col-sm-4"><?= htmlspecialchars($doc->vendorName ?? '—') ?></dd>
-                <dt class="col-sm-2"><?= htmlspecialchars($type === 'po' ? 'Numer PO:' : 'Numer RFQ:') ?></dt>
-                <dd class="col-sm-4"><?= htmlspecialchars($docNumber !== ('#' . $doc->id) ? $docNumber : '—') ?></dd>
+        <dl class="rx-facts">
+            <div class="rx-fact">
+                <dt>Dostawca</dt>
+                <dd><?= htmlspecialchars($doc->vendorName ?? '—') ?></dd>
+            </div>
+            <div class="rx-fact">
+                <dt><?= htmlspecialchars($type === 'po' ? 'Numer PO' : 'Numer RFQ') ?></dt>
+                <dd><?= htmlspecialchars($docNumber !== ('#' . $doc->id) ? $docNumber : '—') ?></dd>
+            </div>
 
-                <dt class="col-sm-2"><?= htmlspecialchars($expectedDateLabel) ?></dt>
-                <dd class="col-sm-4">
+            <div class="rx-fact">
+                <dt><?= htmlspecialchars(rtrim($expectedDateLabel, ':')) ?></dt>
+                <dd>
                     <?php if (in_array($doc->state, ['draft', 'sent'], true)): ?>
                         <!-- Saved on change via document-expected-date-update.php;
                              clearing the field clears the date. -->
                         <input type="date"
                                id="doc-expected-date"
-                               class="form-control form-control-sm d-inline-block"
+                               class="form-control form-control-sm d-inline-block dx-datefield"
                                style="width: auto;"
                                data-doc-id="<?= (int)$doc->id ?>"
                                value="<?= $expectedDate ? htmlspecialchars(substr($expectedDate, 0, 10), ENT_QUOTES) : '' ?>">
@@ -321,212 +352,236 @@ function formatPrice($v) {
                         <?= $expectedDate ? htmlspecialchars($expectedDate) : '—' ?>
                     <?php endif; ?>
                 </dd>
-                <dt class="col-sm-2">Wysłane:</dt>
-                <dd class="col-sm-4"><?= htmlspecialchars($sentAt ?? '—') ?></dd>
+            </div>
+            <div class="rx-fact">
+                <dt>Wysłane</dt>
+                <dd><?= htmlspecialchars($sentAt ?? '—') ?></dd>
+            </div>
 
-                <?php if ($type === 'po'): ?>
-                    <dt class="col-sm-2">Numer u dostawcy:</dt>
-                    <dd class="col-sm-4"><?= htmlspecialchars($vendorPoNumber ?? '—') ?></dd>
-                    <?php if ($confirmedAt !== null): ?>
-                        <dt class="col-sm-2">Potwierdzone:</dt>
-                        <dd class="col-sm-4"><?= htmlspecialchars($confirmedAt) ?></dd>
-                    <?php else: ?>
-                        <dt class="col-sm-2">&nbsp;</dt>
-                        <dd class="col-sm-4">&nbsp;</dd>
-                    <?php endif; ?>
-
-                    <?php if ($convertedFromRfqId): ?>
-                        <dt class="col-sm-2">Z zapytania:</dt>
-                        <dd class="col-sm-4">
+            <?php if ($type === 'po'): ?>
+                <div class="rx-fact">
+                    <dt>Numer u dostawcy</dt>
+                    <dd><?= htmlspecialchars($vendorPoNumber ?? '—') ?></dd>
+                </div>
+                <?php if ($confirmedAt !== null): ?>
+                    <div class="rx-fact">
+                        <dt>Potwierdzone</dt>
+                        <dd><?= htmlspecialchars($confirmedAt) ?></dd>
+                    </div>
+                <?php endif; ?>
+                <?php if ($convertedFromRfqId): ?>
+                    <div class="rx-fact">
+                        <dt>Z zapytania</dt>
+                        <dd>
                             <a href="http://<?= BASEURL ?>/admin/purchase/documents/edit?id=<?= (int)$convertedFromRfqId ?>&amp;type=rfq">
                                 <?= htmlspecialchars($convertedFromRfqNumber ?? ('RFQ #' . $convertedFromRfqId)) ?>
                             </a>
                         </dd>
-                    <?php else: ?>
-                        <dt class="col-sm-2">&nbsp;</dt>
-                        <dd class="col-sm-4">&nbsp;</dd>
-                    <?php endif; ?>
+                    </div>
                 <?php endif; ?>
+            <?php endif; ?>
 
-                <dt class="col-sm-2">Utworzył:</dt>
-                <dd class="col-sm-4"><?= htmlspecialchars($doc->createdByName ?? ('#' . (int)$doc->createdBy)) ?></dd>
-                <dt class="col-sm-2">Utworzone:</dt>
-                <dd class="col-sm-4"><?= htmlspecialchars($doc->createdAt ?? '—') ?></dd>
+            <div class="rx-fact">
+                <dt>Utworzył</dt>
+                <dd><?= htmlspecialchars($doc->createdByName ?? ('#' . (int)$doc->createdBy)) ?></dd>
+            </div>
+            <div class="rx-fact">
+                <dt>Utworzone</dt>
+                <dd><?= htmlspecialchars($doc->createdAt ?? '—') ?></dd>
+            </div>
 
-                <?php if (!empty($doc->comment)): ?>
-                    <dt class="col-sm-2">Komentarz:</dt>
-                    <dd class="col-sm-10"><?= nl2br(htmlspecialchars($doc->comment)) ?></dd>
-                <?php endif; ?>
-            </dl>
-        </div>
-    </div>
+            <?php if ($type === 'rfq'): ?>
+                <!-- Numer oferty u dostawcy (alias r.vendor_reference
+                     w RFQRepository::buildSelectJoin()) — pole tylko do
+                     odczytu. -->
+                <div class="rx-fact">
+                    <dt>Numer oferty u dostawcy</dt>
+                    <dd><?= htmlspecialchars($vendorReference ?? '—', ENT_QUOTES) ?></dd>
+                </div>
+            <?php endif; ?>
+        </dl>
 
-    <div class="card mb-3">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <strong>Pozycje</strong>
+        <?php if (!empty($doc->comment)): ?>
+            <div class="rx-note">
+                <div class="rx-note-label"><i class="bi bi-chat-left-text"></i> Komentarz</div>
+                <?= htmlspecialchars($doc->comment) ?>
+            </div>
+        <?php endif; ?>
+    </section>
+
+    <!-- ===== Pozycje ===== -->
+    <section class="rx-panel mb-3">
+        <div class="rx-panel-head">
+            <h2 class="rx-panel-title">
+                Pozycje
+                <span class="rx-count"><?= count($items) ?></span>
+            </h2>
             <?php if ($type === 'po'): ?>
-                <span class="text-muted">Łącznie: <?= htmlspecialchars(formatQty($itemRepo->sumQuantityReceivedByPo($id))) ?> / <?= htmlspecialchars(formatQty(array_sum(array_map(fn($i) => (float)$i->quantity, $items)))) ?> szt (odebrane / zamówione)</span>
+                <span class="dx-total">Łącznie: <?= htmlspecialchars(formatQty($itemRepo->sumQuantityReceivedByPo($id))) ?> / <?= htmlspecialchars(formatQty(array_sum(array_map(fn($i) => (float)$i->quantity, $items)))) ?> szt (odebrane / zamówione)</span>
             <?php else: ?>
-                <span class="text-muted">Łącznie: <?= count($items) ?> <?= count($items) === 1 ? 'pozycja' : 'pozycji' ?></span>
+                <span class="dx-total">Łącznie: <?= count($items) ?> <?= count($items) === 1 ? 'pozycja' : 'pozycji' ?></span>
             <?php endif; ?>
         </div>
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-sm table-striped mb-0">
-                    <thead class="thead-light">
-                        <tr>
-                            <th>Część</th>
-                            <th>Producent</th>
-                            <th class="text-right">Ilość</th>
-                            <th class="text-right">Cena</th>
-                            <th>Waluta</th>
-                            <th class="text-right">Wartość</th>
-                            <?php if ($type === 'po'): ?>
-                                <th class="text-right">Odebrane</th>
-                            <?php endif; ?>
-                            <th>Komentarz pozycji:</th>
-                            <?php if ($allowedEdit): ?>
-                                <th class="text-right">Akcje</th>
-                            <?php endif; ?>
-                        </tr>
-                    </thead>
-                    <?php
-                        // Column count for the empty-state row (and for
-                        // the JS append-empty-row fallback after delete).
-                        // RFQ: 8 with edit, 7 without. PO: 9 with edit,
-                        // 8 without (extra Odebrane column).
-                        $colspan = $type === 'po'
-                            ? ($allowedEdit ? 9 : 8)
-                            : ($allowedEdit ? 8 : 7);
-                    ?>
-                    <tbody id="doc-items-tbody" data-colspan="<?= $colspan ?>">
-                    <?php if (empty($items)): ?>
-                        <tr><td colspan="<?= $colspan ?>" class="text-center text-muted">Brak pozycji.</td></tr>
-                    <?php else: foreach ($items as $i): ?>
-                        <tr data-doc-item-id="<?= (int)$i->id ?>"
-                            data-vendor-part-id="<?= (int)$i->vendorPartId ?>"
-                            data-vp-comment="<?= htmlspecialchars((string)($i->vendorPartComment ?? ''), ENT_QUOTES, 'UTF-8') ?>"
-                            data-quantity-unit-id="<?= (int)$i->quantityUnitId ?>"
-                            data-quantity="<?= htmlspecialchars((string)$i->quantity) ?>"
-                            data-unit-price="<?= $i->unitPrice === null ? '' : htmlspecialchars((string)$i->unitPrice) ?>"
-                            data-currency="<?= htmlspecialchars((string)($i->currency ?? 'PLN')) ?>"
-                            data-unit-name="<?= htmlspecialchars((string)($i->unitName ?? '')) ?>"
-                            data-picked-pack-size="<?= $i->pickedPackSize === null ? '' : htmlspecialchars((string)$i->pickedPackSize) ?>"
-                            data-comment="<?= htmlspecialchars((string)($i->comment ?? '')) ?>"
-                            data-part-name="<?= htmlspecialchars((string)($i->partName ?? ''), ENT_QUOTES, 'UTF-8') ?>"
-                            data-vendor-name="<?= htmlspecialchars((string)($i->vendorName ?? ''), ENT_QUOTES, 'UTF-8') ?>"
-                            data-vendor-part-no="<?= htmlspecialchars((string)($i->vendorPartNo ?? ''), ENT_QUOTES, 'UTF-8') ?>"
-                            data-producer-part-no="<?= htmlspecialchars((string)($i->producerPartNo ?? ''), ENT_QUOTES, 'UTF-8') ?>"
-                            data-part-description="<?= htmlspecialchars((string)($i->partDescription ?? ''), ENT_QUOTES, 'UTF-8') ?>"
-                            <?php if ($type === 'po'): ?>
-                            data-quantity-received="<?= htmlspecialchars((string)$i->quantityReceived) ?>"
-                            <?php endif; ?>>
-                            <td>
-                                <?= htmlspecialchars($i->partName ?? '—') ?>
-                                <?php
-                                    $vn = $i->vendorPartNo ?? '';
-                                    $pn = $i->producerPartNo ?? '';
-                                    if ($vn && $pn && $vn === $pn): ?>
-                                    <div><small class="text-muted">Nr dost./prod.: <span class="font-weight-bold"><?= htmlspecialchars($vn) ?></span></small></div>
-                                    <?php else: ?>
-                                    <?php if ($vn): ?>
-                                        <div><small class="text-muted">Nr dost.: <span class="font-weight-bold"><?= htmlspecialchars($vn) ?></span></small></div>
-                                    <?php endif; ?>
-                                    <?php if ($pn): ?>
-                                        <div><small class="text-muted">Nr prod.: <span class="font-weight-bold"><?= htmlspecialchars($pn) ?></span></small></div>
-                                    <?php endif; ?>
-                                    <?php endif; ?>
-                                <?php if (!empty($i->partDescription)): ?>
-                                    <div><small class="text-muted"><?= htmlspecialchars($i->partDescription) ?></small></div>
+        <div class="table-responsive">
+            <table class="table rx-table rx-items dx-items mb-0">
+                <thead>
+                    <tr>
+                        <th scope="col">Część</th>
+                        <th scope="col">Producent</th>
+                        <th scope="col" class="text-right">Ilość</th>
+                        <th scope="col" class="text-right">Cena</th>
+                        <th scope="col">Waluta</th>
+                        <th scope="col" class="text-right">Wartość</th>
+                        <?php if ($type === 'po'): ?>
+                            <th scope="col" class="text-right">Odebrane</th>
+                        <?php endif; ?>
+                        <th scope="col">Komentarz pozycji:</th>
+                        <?php if ($allowedEdit): ?>
+                            <th scope="col" class="text-right">Akcje</th>
+                        <?php endif; ?>
+                    </tr>
+                </thead>
+                <?php
+                    // Column count for the empty-state row (and for
+                    // the JS append-empty-row fallback after delete).
+                    // RFQ: 8 with edit, 7 without. PO: 9 with edit,
+                    // 8 without (extra Odebrane column).
+                    $colspan = $type === 'po'
+                        ? ($allowedEdit ? 9 : 8)
+                        : ($allowedEdit ? 8 : 7);
+                ?>
+                <tbody id="doc-items-tbody" data-colspan="<?= $colspan ?>">
+                <?php if (empty($items)): ?>
+                    <tr><td colspan="<?= $colspan ?>" class="text-center text-muted dx-empty-cell">
+                        <div class="rx-empty">
+                            <div class="rx-empty-icon"><i class="bi bi-inbox"></i></div>
+                            <div class="rx-empty-title">Brak pozycji.</div>
+                        </div>
+                    </td></tr>
+                <?php else: foreach ($items as $i): ?>
+                    <tr data-doc-item-id="<?= (int)$i->id ?>"
+                        data-vendor-part-id="<?= (int)$i->vendorPartId ?>"
+                        data-vp-comment="<?= htmlspecialchars((string)($i->vendorPartComment ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                        data-quantity-unit-id="<?= (int)$i->quantityUnitId ?>"
+                        data-quantity="<?= htmlspecialchars((string)$i->quantity) ?>"
+                        data-unit-price="<?= $i->unitPrice === null ? '' : htmlspecialchars((string)$i->unitPrice) ?>"
+                        data-currency="<?= htmlspecialchars((string)($i->currency ?? 'PLN')) ?>"
+                        data-unit-name="<?= htmlspecialchars((string)($i->unitName ?? '')) ?>"
+                        data-picked-pack-size="<?= $i->pickedPackSize === null ? '' : htmlspecialchars((string)$i->pickedPackSize) ?>"
+                        data-comment="<?= htmlspecialchars((string)($i->comment ?? '')) ?>"
+                        data-part-name="<?= htmlspecialchars((string)($i->partName ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                        data-vendor-name="<?= htmlspecialchars((string)($i->vendorName ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                        data-vendor-part-no="<?= htmlspecialchars((string)($i->vendorPartNo ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                        data-producer-part-no="<?= htmlspecialchars((string)($i->producerPartNo ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                        data-part-description="<?= htmlspecialchars((string)($i->partDescription ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                        <?php if ($type === 'po'): ?>
+                        data-quantity-received="<?= htmlspecialchars((string)$i->quantityReceived) ?>"
+                        <?php endif; ?>>
+                        <td>
+                            <div class="rx-partname dx-partname"><?= htmlspecialchars($i->partName ?? '—') ?></div>
+                            <?php
+                                $vn = $i->vendorPartNo ?? '';
+                                $pn = $i->producerPartNo ?? '';
+                                if ($vn && $pn && $vn === $pn): ?>
+                                <div><small class="text-muted">Nr dost./prod.: <span class="font-weight-bold"><?= htmlspecialchars($vn) ?></span></small></div>
+                                <?php else: ?>
+                                <?php if ($vn): ?>
+                                    <div><small class="text-muted">Nr dost.: <span class="font-weight-bold"><?= htmlspecialchars($vn) ?></span></small></div>
                                 <?php endif; ?>
-                                <?php $vpCmt = $i->vendorPartComment ?? ''; ?>
-                                <div class="doc-row-vp-comment-line">
-                                    <small class="text-muted">
-                                        <i class="bi bi-journal-text"></i> Uwagi do artykułu: <?= $vpCmt !== '' ? htmlspecialchars($vpCmt) : '<em>Brak</em>' ?>
+                                <?php if ($pn): ?>
+                                    <div><small class="text-muted">Nr prod.: <span class="font-weight-bold"><?= htmlspecialchars($pn) ?></span></small></div>
+                                <?php endif; ?>
+                                <?php endif; ?>
+                            <?php if (!empty($i->partDescription)): ?>
+                                <div><small class="text-muted"><?= htmlspecialchars($i->partDescription) ?></small></div>
+                            <?php endif; ?>
+                            <?php $vpCmt = $i->vendorPartComment ?? ''; ?>
+                            <div class="doc-row-vp-comment-line">
+                                <small class="text-muted">
+                                    <i class="bi bi-journal-text"></i> Uwagi do artykułu: <?= $vpCmt !== '' ? htmlspecialchars($vpCmt) : '<em>Brak</em>' ?>
+                                </small>
+                                <button type="button" class="btn btn-link btn-sm p-0 ml-1 doc-row-vp-comment-edit"
+                                        data-vp-id="<?= (int)$i->vendorPartId ?>"
+                                        title="<?= $vpCmt !== '' ? 'Edytuj uwagi' : 'Dodaj uwagi' ?>">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                            </div>
+                        </td>
+                        <td>
+                            <?= htmlspecialchars($i->producerName ?? '—') ?>
+                            <?php if (!empty($i->producerPartNo)): ?>
+                                <div><small class="text-muted"><?= htmlspecialchars($i->producerPartNo) ?></small></div>
+                            <?php endif; ?>
+                        </td>
+                        <td class="text-right doc-cell-qty">
+                            <?= htmlspecialchars(formatQty($i->quantity)) ?>
+                            <?php
+                                // Pack sub-line + badge when pickedPackSize
+                                // is set. Mirrors the cart's read-mode
+                                // treatment so users see the package
+                                // breakdown without entering edit mode.
+                                $pickedPack = isset($i->pickedPackSize) ? (float)$i->pickedPackSize : null;
+                                if ($pickedPack !== null && $pickedPack > 0):
+                                    $qtyVal  = (float)$i->quantity;
+                                    $pkgs    = $qtyVal / $pickedPack;
+                                    $evenPkgs = abs($pkgs - round($pkgs)) < 1e-9;
+                                    $pkgsStr = rtrim(rtrim(number_format($pkgs, 2, '.', ''), '0'), '.');
+                            ?>
+                                <div>
+                                    <small class="<?= $evenPkgs ? 'text-muted' : 'text-warning' ?>">
+                                        <?= htmlspecialchars($pkgsStr) ?> opak.
                                     </small>
-                                    <button type="button" class="btn btn-link btn-sm p-0 ml-1 doc-row-vp-comment-edit"
-                                            data-vp-id="<?= (int)$i->vendorPartId ?>"
-                                            title="<?= $vpCmt !== '' ? 'Edytuj uwagi' : 'Dodaj uwagi' ?>">
-                                        <i class="bi bi-pencil"></i>
-                                    </button>
+                                    <span class="badge badge-light border text-monospace ml-1" title="Wybrana wielkość opakowania">
+                                        opak. <?= htmlspecialchars(formatQty($pickedPack)) ?>
+                                    </span>
                                 </div>
-                            </td>
-                            <td>
-                                <?= htmlspecialchars($i->producerName ?? '—') ?>
-                                <?php if (!empty($i->producerPartNo)): ?>
-                                    <div><small class="text-muted"><?= htmlspecialchars($i->producerPartNo) ?></small></div>
-                                <?php endif; ?>
-                            </td>
-                            <td class="text-right doc-cell-qty">
-                                <?= htmlspecialchars(formatQty($i->quantity)) ?>
-                                <?php
-                                    // Pack sub-line + badge when pickedPackSize
-                                    // is set. Mirrors the cart's read-mode
-                                    // treatment so users see the package
-                                    // breakdown without entering edit mode.
-                                    $pickedPack = isset($i->pickedPackSize) ? (float)$i->pickedPackSize : null;
-                                    if ($pickedPack !== null && $pickedPack > 0):
-                                        $qtyVal  = (float)$i->quantity;
-                                        $pkgs    = $qtyVal / $pickedPack;
-                                        $evenPkgs = abs($pkgs - round($pkgs)) < 1e-9;
-                                        $pkgsStr = rtrim(rtrim(number_format($pkgs, 2, '.', ''), '0'), '.');
-                                ?>
-                                    <div>
-                                        <small class="<?= $evenPkgs ? 'text-muted' : 'text-warning' ?>">
-                                            <?= htmlspecialchars($pkgsStr) ?> opak.
-                                        </small>
-                                        <span class="badge badge-light border text-monospace ml-1" title="Wybrana wielkość opakowania">
-                                            opak. <?= htmlspecialchars(formatQty($pickedPack)) ?>
-                                        </span>
-                                    </div>
-                                <?php endif; ?>
+                            <?php endif; ?>
+                            <?php if (!empty($i->unitName)): ?>
+                                <div><small class="text-muted"><?= htmlspecialchars($i->unitName) ?></small></div>
+                            <?php endif; ?>
+                        </td>
+                        <td class="text-right doc-cell-price">
+                            <?php if ($i->unitPrice !== null): ?>
+                                <?= htmlspecialchars(formatPrice($i->unitPrice)) ?>
+                                <div><small class="text-muted">/ <?= htmlspecialchars($i->unitName ?? '—') ?></small></div>
+                            <?php else: ?>
+                                <span class="text-muted">—</span>
+                            <?php endif; ?>
+                        </td>
+                        <td><?= htmlspecialchars($i->currency ?? '—') ?></td>
+                        <td class="text-right doc-cell-value">
+                            <?php if ($i->unitPrice !== null): ?>
+                                <?= htmlspecialchars(formatPrice(((float)$i->unitPrice) * (float)$i->quantity)) ?>
+                                <div><small class="text-muted"><?= htmlspecialchars($i->currency ?? '—') ?></small></div>
+                            <?php else: ?>
+                                <span class="text-muted">—</span>
+                            <?php endif; ?>
+                        </td>
+                        <?php if ($type === 'po'): ?>
+                            <td class="text-right doc-cell-received">
+                                <?= htmlspecialchars(formatQty($i->quantityReceived ?? 0)) ?>
                                 <?php if (!empty($i->unitName)): ?>
                                     <div><small class="text-muted"><?= htmlspecialchars($i->unitName) ?></small></div>
                                 <?php endif; ?>
                             </td>
-                            <td class="text-right doc-cell-price">
-                                <?php if ($i->unitPrice !== null): ?>
-                                    <?= htmlspecialchars(formatPrice($i->unitPrice)) ?>
-                                    <div><small class="text-muted">/ <?= htmlspecialchars($i->unitName ?? '—') ?></small></div>
-                                <?php else: ?>
-                                    <span class="text-muted">—</span>
-                                <?php endif; ?>
+                        <?php endif; ?>
+                        <td class="doc-cell-comment"><?= $i->comment !== null && $i->comment !== '' ? nl2br(htmlspecialchars($i->comment)) : '' ?></td>
+                        <?php if ($allowedEdit): ?>
+                            <td class="text-right doc-cell-akcje" style="white-space: nowrap;">
+                                <button type="button" class="btn btn-sm btn-outline-primary doc-row-edit mr-1" title="Edytuj ilość / cenę / komentarz">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-danger doc-row-delete" title="Usuń pozycję">
+                                    <i class="bi bi-trash"></i>
+                                </button>
                             </td>
-                            <td><?= htmlspecialchars($i->currency ?? '—') ?></td>
-                            <td class="text-right doc-cell-value">
-                                <?php if ($i->unitPrice !== null): ?>
-                                    <?= htmlspecialchars(formatPrice(((float)$i->unitPrice) * (float)$i->quantity)) ?>
-                                    <div><small class="text-muted"><?= htmlspecialchars($i->currency ?? '—') ?></small></div>
-                                <?php else: ?>
-                                    <span class="text-muted">—</span>
-                                <?php endif; ?>
-                            </td>
-                            <?php if ($type === 'po'): ?>
-                                <td class="text-right doc-cell-received">
-                                    <?= htmlspecialchars(formatQty($i->quantityReceived ?? 0)) ?>
-                                    <?php if (!empty($i->unitName)): ?>
-                                        <div><small class="text-muted"><?= htmlspecialchars($i->unitName) ?></small></div>
-                                    <?php endif; ?>
-                                </td>
-                            <?php endif; ?>
-                            <td class="doc-cell-comment"><?= $i->comment !== null && $i->comment !== '' ? nl2br(htmlspecialchars($i->comment)) : '' ?></td>
-                            <?php if ($allowedEdit): ?>
-                                <td class="text-right doc-cell-akcje" style="white-space: nowrap;">
-                                    <button type="button" class="btn btn-sm btn-outline-primary doc-row-edit mr-1" title="Edytuj ilość / cenę / komentarz">
-                                        <i class="bi bi-pencil"></i>
-                                    </button>
-                                    <button type="button" class="btn btn-sm btn-outline-danger doc-row-delete" title="Usuń pozycję">
-                                        <i class="bi bi-trash"></i>
-                                    </button>
-                                </td>
-                            <?php endif; ?>
-                        </tr>
-                    <?php endforeach; endif; ?>
-                    </tbody>
-                </table>
-            </div>
+                        <?php endif; ?>
+                    </tr>
+                <?php endforeach; endif; ?>
+                </tbody>
+            </table>
         </div>
-    </div>
+    </section>
 
     <?php if ($allowedEdit): ?>
     <?php
@@ -602,7 +657,7 @@ function formatPrice($v) {
         }
         $vpsByPartJson = htmlspecialchars(json_encode($vpsByPart), ENT_QUOTES, 'UTF-8');
     ?>
-<div class="doc-add-wrapper"
+<div class="doc-add-wrapper dx-add"
          data-doc-type="<?= htmlspecialchars($type, ENT_QUOTES, 'UTF-8') ?>"
          data-doc-id="<?= (int)$doc->id ?>"
          data-vendor-id="<?= (int)$doc->vendorId ?>"
@@ -613,23 +668,22 @@ function formatPrice($v) {
          data-update-url="document-item-update.php"
          data-delete-url="document-item-delete.php"
          data-merge-url="document-item-merge.php">
-        <div class="text-center mb-3">
-            <button type="button" class="btn btn-outline-primary btn-sm doc-add-toggle" title="Dodaj pozycję">
+        <div class="mb-3 rx-no-print">
+            <button type="button" class="btn btn-block dx-add-toggle doc-add-toggle" title="Dodaj pozycję">
                 <i class="bi bi-plus-circle"></i> Dodaj pozycję
             </button>
         </div>
 
-        <div class="card mb-3 doc-add-card" style="display: none;">
-            <div class="card-header">
-                <strong><i class="bi bi-plus-circle"></i> Dodaj pozycję</strong>
-            </div>
-            <div class="card-body">
-                <div class="doc-add-vendor-row mb-2">
+        <div class="rx-panel dx-add-card mb-3 doc-add-card" style="display: none;">
+            <div class="rx-panel-head">
+                <h2 class="rx-panel-title"><i class="bi bi-plus-circle"></i> Dodaj pozycję</h2>
+                <div class="doc-add-vendor-row">
                     <small class="text-muted">
                         Dostawca: <strong id="doc-add-vendor-name">—</strong>
                     </small>
                 </div>
-
+            </div>
+            <div class="dx-add-body">
                 <div class="form-row">
                     <div class="form-group col-md-12 mb-2" id="doc-add-part-cell" style="min-width: 0;">
                         <label class="small mb-1" for="doc-add-part-select">Część:</label>
@@ -720,7 +774,7 @@ function formatPrice($v) {
                         <button type="button" class="btn btn-success btn-sm doc-add-save" disabled>
                             <i class="bi bi-check-lg"></i> Zapisz pozycję
                         </button>
-                        <button type="button" class="btn btn-outline-secondary btn-sm doc-add-cancel">
+                        <button type="button" class="btn btn-sm rx-btn-quiet doc-add-cancel">
                             Wyczyść
                         </button>
                     </div>
@@ -730,7 +784,7 @@ function formatPrice($v) {
     </div>
     <?php endif; ?>
 
-    <p class="text-muted small">
+    <p class="dx-footnote">
         <?php if ($allowedEdit): ?>
             Ilość, cena i komentarz pozycji są edytowalne inline (przycisk ołówka w kolumnie Akcje).
         <?php else: ?>
@@ -739,7 +793,7 @@ function formatPrice($v) {
     </p>
 </div>
 
-<div class="modal fade" id="docItemDeleteModal" tabindex="-1" role="dialog" aria-labelledby="docItemDeleteModalTitle" aria-hidden="true">
+<div class="modal fade dx-modal" id="docItemDeleteModal" tabindex="-1" role="dialog" aria-labelledby="docItemDeleteModalTitle" aria-hidden="true">
     <div class="modal-dialog" role="document">
         <div class="modal-content">
             <div class="modal-header">
@@ -776,7 +830,7 @@ function formatPrice($v) {
     (documents-edit.js); dopiero [Utwórz zamówienie] wysyła POST do
     document-rfq-convert-ajax.php.
 -->
-<div class="modal fade" id="rfqConvertModal" tabindex="-1" role="dialog" aria-labelledby="rfqConvertModalTitle" aria-hidden="true">
+<div class="modal fade dx-modal" id="rfqConvertModal" tabindex="-1" role="dialog" aria-labelledby="rfqConvertModalTitle" aria-hidden="true">
     <div class="modal-dialog" role="document">
         <div class="modal-content">
             <div class="modal-header">
@@ -820,7 +874,7 @@ function formatPrice($v) {
     Placeholders are filled by the populateMergeModal(resp) JS helper;
     see documents-edit.js.
 -->
-<div class="modal fade" id="docMergeModal" tabindex="-1" role="dialog" aria-labelledby="docMergeModalTitle" aria-hidden="true"
+<div class="modal fade dx-modal" id="docMergeModal" tabindex="-1" role="dialog" aria-labelledby="docMergeModalTitle" aria-hidden="true"
      data-existing-item-id=""
      data-existing-qty=""
      data-existing-vp-no=""
