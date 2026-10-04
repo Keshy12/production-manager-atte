@@ -1,0 +1,393 @@
+/* Zapytania i zamówienia — /purchase/documents.
+
+   Baza wyglądu to receipts-ui.css (wczytywany przed tym plikiem, bez
+   zmian): zmienne .rx-page, pasek filtrów, kafelki .rx-stat, plakietki
+   .rx-badge, stany puste, szkielety, paginacja. Tutaj tylko to, czego
+   nie ma na stronie przyjęć — wszystko pod .dx-page. */
+
+
+/* ---- Typ dokumentu: RFQ vs PO ---------------------------------------
+   Typ to informacja tła — ma być rozpoznawalny od razu, ale nie może
+   konkurować z plakietką statusu (to status operator skanuje wzrokiem).
+   Dlatego „papierowe" odcienie o średnim/niskim nasyceniu, z dwóch
+   wyraźnie różnych rodzin:
+     RFQ (zapytanie)  — ciepła glina/karmel, znacznik: jasne tło + obrys,
+     PO  (zamówienie) — chłodny łupkowy błękit, znacznik: samo tło.
+   Główny nośnik typu to 4px krawędź wiersza; znacznik to mały napis
+   bez ikony, lżejszy i mniejszy niż plakietka statusu. Kształt celowo
+   inny niż plakietka statusu (prostokąt z lekkim zaokrągleniem vs
+   pigułka z kropką), więc te dwa wymiary się nie mylą.
+   Plakietki statusu (receipts-ui.css) bez zmian. */
+
+.dx-page {
+    --dx-rfq:       #cf8a4f;   /* krawędź wiersza, belka w menu, linia panelu */
+    --dx-rfq-ink:   #8a5228;   /* tekst znacznika (5,3:1 na --dx-rfq-soft) */
+    --dx-rfq-soft:  #f7ebdd;   /* tło znacznika */
+    --dx-rfq-line:  #ebd3b8;   /* obrys znacznika, szkielety, pasek opcji */
+    --dx-po:        #4f6d92;
+    --dx-po-ink:    #34506f;   /* 6,9:1 na --dx-po-soft */
+    --dx-po-soft:   #dfe7f1;
+    --dx-po-line:   #b9c8da;
+}
+
+/* Znacznik typu w wierszu (i jego odpowiedniki niżej): mniejszy
+   i lżejszy niż plakietka statusu (.74rem / 700). */
+.dx-page .dx-type-tag {
+    flex-shrink: 0;
+    display: inline-block;
+    min-width: 2.5rem;
+    padding: .08rem .35rem;
+    border: 1px solid transparent;
+    border-radius: .2rem;
+    font-size: .62rem;
+    font-weight: 600;
+    letter-spacing: .05em;
+    line-height: 1.3;
+    text-align: center;
+}
+.dx-page .dx-type-tag--rfq {
+    background: var(--dx-rfq-soft);
+    border-color: var(--dx-rfq-line);
+    color: var(--dx-rfq-ink);
+}
+.dx-page .dx-type-tag--po {
+    background: var(--dx-po-soft);
+    color: var(--dx-po-ink);
+}
+
+
+/* ---- Nagłówek ------------------------------------------------------ */
+
+.dx-page .dx-head-links { display: flex; flex-wrap: wrap; gap: .4rem; }
+
+
+/* ---- Liczniki statusów (6 kafelków w jednym pasku) ----------------- */
+
+.dx-page .dx-stats {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: .5rem;
+    margin-bottom: 1rem;
+}
+.dx-page .dx-stats .rx-stat { min-width: 0; }
+.dx-page .dx-stats .rx-stat-label {
+    overflow: hidden;
+    max-width: 100%;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.dx-page .dx-stats.is-loading .rx-stat-value { opacity: .45; }
+.dx-page .rx-stat.is-zero .rx-stat-value { color: var(--rx-faint); }
+
+.dx-page .dx-stat--draft     { --rx-tone: #8a96a3; --rx-tone-soft: #f3f5f8; }
+.dx-page .dx-stat--sent      { --rx-tone: #6f42c1; --rx-tone-soft: #f7f3fd; }
+.dx-page .dx-stat--responded { --rx-tone: #17a2b8; --rx-tone-soft: #eef9fb; }
+.dx-page .dx-stat--progress  { --rx-tone: #007bff; --rx-tone-soft: #edf4ff; }
+.dx-page .dx-stat--received  { --rx-tone: #28a745; --rx-tone-soft: #eef8f1; }
+.dx-page .dx-stat--cancelled { --rx-tone: #dc3545; --rx-tone-soft: #fff4f5; }
+
+/* Kafelki, które dotyczą tylko jednego typu, dostają w rogu ten sam
+   cichy znacznik co wiersz. */
+.dx-page .dx-stats .rx-stat[data-stat="responded"]::after,
+.dx-page .dx-stats .rx-stat[data-stat="progress"]::after,
+.dx-page .dx-stats .rx-stat[data-stat="received"]::after {
+    position: absolute;
+    top: .6rem;
+    right: .6rem;
+    padding: .05rem .32rem;
+    border: 1px solid transparent;
+    border-radius: .2rem;
+    font-size: .58rem;
+    font-weight: 600;
+    letter-spacing: .05em;
+    line-height: 1.3;
+}
+.dx-page .dx-stats .rx-stat[data-stat="responded"]::after {
+    content: "RFQ";
+    background: var(--dx-rfq-soft);
+    border-color: var(--dx-rfq-line);
+    color: var(--dx-rfq-ink);
+}
+.dx-page .dx-stats .rx-stat[data-stat="progress"]::after,
+.dx-page .dx-stats .rx-stat[data-stat="received"]::after {
+    content: "PO";
+    background: var(--dx-po-soft);
+    color: var(--dx-po-ink);
+}
+
+@media (max-width: 991.98px) {
+    .dx-page .dx-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 575.98px) {
+    .dx-page .dx-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+
+/* ---- Pasek filtrów -------------------------------------------------- */
+
+/* Przełącznik typu = legenda: te same ciche znaczniki co w wierszach.
+   Aktywny przycisk zostaje zwykłym niebieskim segmentem (jak „30 dni" /
+   „Wszystkie") — typ nie dostaje własnego, krzykliwego wypełnienia.
+   Na niebieskim tle oba znaczniki dostają swoje jasne tło, żeby rodzina
+   koloru (beż vs szaroniebieski) nadal była widoczna. */
+.dx-page .dx-seg-tag {
+    display: inline-block;
+    margin-left: .3rem;
+    padding: .02rem .3rem;
+    border: 1px solid transparent;
+    border-radius: .2rem;
+    font-size: .6rem;
+    font-weight: 600;
+    letter-spacing: .05em;
+    line-height: 1.25;
+    vertical-align: .05em;
+}
+.dx-page .dx-type [data-type="rfq"] .dx-seg-tag {
+    background: var(--dx-rfq-soft);
+    border-color: var(--dx-rfq-line);
+    color: var(--dx-rfq-ink);
+}
+.dx-page .dx-type [data-type="po"] .dx-seg-tag {
+    background: var(--dx-po-soft);
+    color: var(--dx-po-ink);
+}
+/* Na niebieskim aktywnym segmencie obrys RFQ zlewa się z tłem — ukryj go. */
+.dx-page .dx-type [data-type="rfq"].is-active .dx-seg-tag { border-color: var(--dx-rfq-soft); }
+
+/* Filtr statusu: grupy „Tylko zapytania" (2.) i „Tylko zamówienia" (3.)
+   w menu bootstrap-select. Plugin sam nadaje nagłówkowi i opcjom klasę
+   .optgroup-N wg kolejności <optgroup> w documents-view.php — przy
+   zmianie kolejności grup popraw numery tutaj.
+   UWAGA: nie dodawać atrybutu class do <optgroup> — bootstrap-select
+   1.13.14 wtedy nie buduje listy opcji (sprawdzone: 0 pozycji + błąd JS). */
+.dx-page #statesCell .dropdown-header.optgroup-2,
+.dx-page #statesCell .dropdown-header.optgroup-3 {
+    border-left: 3px solid;
+    font-weight: 600;
+}
+.dx-page #statesCell .dropdown-header.optgroup-2 { border-left-color: var(--dx-rfq); color: var(--dx-rfq-ink); }
+.dx-page #statesCell .dropdown-header.optgroup-3 { border-left-color: var(--dx-po);  color: var(--dx-po-ink); }
+.dx-page #statesCell li.optgroup-2:not(.dropdown-header):not(.dropdown-divider) > a { box-shadow: inset 3px 0 0 var(--dx-rfq-line); }
+.dx-page #statesCell li.optgroup-3:not(.dropdown-header):not(.dropdown-divider) > a { box-shadow: inset 3px 0 0 var(--dx-po-line); }
+
+/* Linijka wyników: podsumowanie po lewej, paginacja górna po prawej. */
+.dx-page .dx-filterbar { flex-wrap: wrap; }
+.dx-page .dx-summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .25rem .75rem;
+}
+.dx-page .dx-summary .rx-link-btn { font-size: .8rem; }
+.dx-page .dx-sep { color: var(--rx-faint); }
+.dx-page .dx-pager-compact .rx-pager-current { min-width: 7.5rem; }
+
+
+/* ---- Panel listy + ładowanie --------------------------------------- */
+
+.dx-page .dx-panel { position: relative; }
+.dx-page .dx-list { transition: opacity .15s ease; }
+.dx-page .dx-panel.is-loading .dx-list { opacity: .45; pointer-events: none; }
+/* Cienki pasek postępu przy górnej krawędzi panelu (kolejne wczytania;
+   pierwsze pokazuje szkielety). */
+.dx-page .dx-panel.is-loading::after {
+    content: "";
+    position: absolute;
+    left: 0; right: 0; top: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent 0%, var(--rx-accent) 50%, transparent 100%);
+    background-size: 50% 100%;
+    background-repeat: no-repeat;
+    animation: dxLoadBar 1s linear infinite;
+}
+@keyframes dxLoadBar {
+    0%   { background-position: -50% 0; }
+    100% { background-position: 150% 0; }
+}
+
+.dx-page .dx-empty-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: .5rem;
+    margin-top: 1.1rem;
+}
+.dx-page .dx-empty-actions .btn { margin-top: 0; }
+
+
+/* ---- Wiersze dokumentów --------------------------------------------
+   Każdy wiersz to osobna siatka, więc kolumny mają stałe minima
+   (bez `auto`), żeby wyrównanie trzymało się między wierszami. */
+
+.dx-page .dx-head,
+.dx-page .dx-row {
+    display: grid;
+    grid-template-columns:
+        minmax(11rem, 1.25fr)   /* Dokument  */
+        minmax(8rem, 1.3fr)     /* Dostawca  */
+        minmax(9.5rem, 1fr)     /* Status    */
+        4.5rem                  /* Pozycje   */
+        minmax(7.5rem, .9fr)    /* Wartość   */
+        7rem                    /* Utworzony */
+        16rem;                  /* Akcje     */
+    column-gap: 1rem;
+    align-items: center;
+    padding: .8rem 1.15rem .8rem 1.4rem;
+}
+.dx-page .dx-head {
+    padding-top: .55rem;
+    padding-bottom: .55rem;
+    background: var(--rx-canvas);
+    border-bottom: 1px solid var(--rx-line);
+    font-size: .68rem;
+    font-weight: 700;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: var(--rx-muted);
+}
+
+.dx-page .dx-row {
+    --dx-type: transparent;
+    position: relative;
+    border-top: 1px solid var(--rx-line-soft);
+    cursor: pointer;
+    transition: background-color .12s ease;
+}
+.dx-page .dx-list > .dx-row:first-child { border-top: 0; }
+/* Pasek typu przy lewej krawędzi: RFQ glina, PO łupkowy błękit.
+   4px w stonowanych odcieniach — główny nośnik typu, ale cichy. */
+.dx-page .dx-row::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 4px;
+    background: var(--dx-type);
+}
+.dx-page .dx-row.is-rfq { --dx-type: var(--dx-rfq); }
+.dx-page .dx-row.is-po  { --dx-type: var(--dx-po); }
+.dx-page .dx-row:hover { background: var(--rx-hover); }
+.dx-page .dx-row:hover .dx-number { color: var(--rx-accent-ink); }
+
+/* Anulowane: przygaszone, ale czytelne (akcje bez zmian). Typ zostaje
+   widoczny — krawędź tylko blednie, nie przechodzi w szarość. */
+.dx-page .dx-row.is-cancelled::before { opacity: .5; }
+.dx-page .dx-row.is-cancelled .dx-cell:not(.dx-cell--action):not(.dx-cell--status) { opacity: .6; }
+.dx-page .dx-row.is-cancelled .dx-number { text-decoration: line-through; text-decoration-color: rgba(29, 39, 51, .35); }
+
+/* Szkielety ładowania: neutralna krawędź; gdy lista jest zawężona do
+   jednego typu, krawędź, pasek postępu, górna linia panelu i ikona
+   pustego stanu biorą kolor tego typu. :has() — bez obsługi w starej
+   przeglądarce zostaje wersja neutralna. */
+.dx-page .dx-skel-row { --dx-type: var(--rx-line); cursor: default; }
+.dx-page .dx-skel-row:hover { background: transparent; }
+
+.dx-page:has(#typeSeg [data-type="rfq"].is-active) { --dx-active: var(--dx-rfq); --dx-active-soft: var(--dx-rfq-soft); --dx-active-line: var(--dx-rfq-line); }
+.dx-page:has(#typeSeg [data-type="po"].is-active)  { --dx-active: var(--dx-po);  --dx-active-soft: var(--dx-po-soft);  --dx-active-line: var(--dx-po-line); }
+
+.dx-page:has(#typeSeg [data-type="rfq"].is-active) .dx-panel,
+.dx-page:has(#typeSeg [data-type="po"].is-active) .dx-panel {
+    border-top: 3px solid var(--dx-active);
+}
+.dx-page:has(#typeSeg [data-type="rfq"].is-active) .dx-skel-row,
+.dx-page:has(#typeSeg [data-type="po"].is-active) .dx-skel-row { --dx-type: var(--dx-active-line); }
+.dx-page:has(#typeSeg [data-type="rfq"].is-active) .dx-panel.is-loading::after,
+.dx-page:has(#typeSeg [data-type="po"].is-active) .dx-panel.is-loading::after {
+    background-image: linear-gradient(90deg, transparent 0%, var(--dx-active) 50%, transparent 100%);
+}
+.dx-page:has(#typeSeg [data-type="rfq"].is-active) #docsStatus .rx-empty-icon:not(.rx-empty-icon--danger),
+.dx-page:has(#typeSeg [data-type="po"].is-active) #docsStatus .rx-empty-icon:not(.rx-empty-icon--danger) {
+    background: var(--dx-active-soft);
+    color: var(--dx-active);
+}
+
+.dx-page .dx-cell { min-width: 0; }
+.dx-page .dx-cell--items,
+.dx-page .dx-cell--value { text-align: right; }
+.dx-page .dx-cell--action {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: .35rem;
+}
+.dx-page .dx-cell--action .btn { white-space: nowrap; font-weight: 600; }
+
+/* Numer dokumentu + znacznik typu. */
+/* (wygląd .dx-type-tag — sekcja „Typ dokumentu" na górze pliku) */
+.dx-page .dx-doc-line { display: flex; align-items: center; gap: .5rem; min-width: 0; }
+
+.dx-page .dx-number {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    font-size: .86rem;
+    font-weight: 700;
+    color: var(--rx-ink);
+    transition: color .12s ease;
+}
+.dx-page .dx-number:hover { color: var(--rx-accent-ink); text-decoration: none; }
+.dx-page .dx-number.is-empty {
+    font-family: inherit;
+    font-style: italic;
+    font-weight: 600;
+    color: var(--rx-muted);
+}
+
+/* Wartość — po jednej linijce na walutę. */
+.dx-page .dx-money {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.dx-page .dx-money + .dx-money { margin-top: .1rem; }
+.dx-page .dx-cur { font-size: .74rem; font-weight: 600; color: var(--rx-muted); }
+.dx-page .dx-noprice { font-style: italic; }
+
+
+/* ---- Węższe ekrany: każdy dokument to karta ------------------------ */
+
+/* Średnie ekrany: karta w trzech rzędach — numer + status,
+   cztery dane obok siebie, akcje. */
+@media (max-width: 1199.98px) {
+    .dx-page .dx-head { display: none; }
+    .dx-page .dx-row {
+        grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, .6fr) minmax(0, 1fr);
+        grid-template-areas:
+            "doc    doc     status status"
+            "vendor created items  value"
+            "action action  action action";
+        row-gap: .65rem;
+        padding: .9rem 1rem .9rem 1.3rem;
+    }
+    .dx-page .dx-cell--doc     { grid-area: doc; }
+    .dx-page .dx-cell--status  { grid-area: status; justify-self: end; text-align: right; }
+    .dx-page .dx-cell--vendor  { grid-area: vendor; }
+    .dx-page .dx-cell--items   { grid-area: items; text-align: left; }
+    .dx-page .dx-cell--created { grid-area: created; }
+    .dx-page .dx-cell--value   { grid-area: value; text-align: right; }
+    .dx-page .dx-cell--action  { grid-area: action; justify-content: flex-start; }
+    .dx-page .dx-row .rx-cell-label { display: block; }
+
+    /* Szkielety: w karcie wystarczą dwie pierwsze komórki. */
+    .dx-page .dx-skel-row { grid-template-areas: none; }
+    .dx-page .dx-skel-row > div:nth-child(n+3) { display: none; }
+}
+/* Telefon: dwie kolumny. */
+@media (max-width: 767.98px) {
+    /* Znacznik typu + numer: gdy obok siebie się nie mieszczą, numer
+       schodzi pod znacznik zamiast być ucinany. */
+    .dx-page .dx-doc-line { flex-wrap: wrap; row-gap: .2rem; }
+    .dx-page .dx-row {
+        grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+        grid-template-areas:
+            "doc     status"
+            "vendor  value"
+            "created items"
+            "action  action";
+    }
+    .dx-page .dx-cell--items { text-align: right; }
+}
+@media (max-width: 575.98px) {
+    .dx-page .dx-cell--action .btn { flex: 1 1 0; }
+}

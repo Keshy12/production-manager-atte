@@ -1,25 +1,33 @@
 <?php
 /**
- * Combined RFQ + PO table at /purchase/documents.
+ * Zapytania i zamówienia — /purchase/documents.
  *
- * Mirrors /archive's filter-card markup + AJAX lifecycle so the operator's
- * mental model carries over (collapsible alert-primary header, per-row red
- * Wyczyść, date range, Odśwież). The data is fetched from
- * documents-table.php; this file only renders the filter UI + empty table
- * skeleton + pagination containers.
+ * Wspólna lista zapytań ofertowych (RFQ) i zamówień (PO). Dane pobiera
+ * documents-view.js z documents-table.php (kontrakt endpointu zamrożony:
+ * type, vendor_ids[], states[], number, date_from, date_to, page,
+ * items_per_page, mode=data|count, snapshot_ts). Ten plik renderuje tylko
+ * szkielet: nagłówek, liczniki, pasek filtrów i pusty panel listy.
  *
- * Filter set (matches documents-table.php exactly):
- *   Typ dokumentu (single: both/rfq/po) — default both
- *   Dostawca (multi, list__vendor.isActive = 1)
- *   Status (multi, 8 unique state labels covering RFQ + PO enums)
- *   Numer dokumentu (text — partial LIKE on rfq_number / po_number /
- *                                vendor_po_number)
- *   Data utworzenia od/do (date range; JS sets dateFrom to today-90d on
- *                            first paint so the page never lands empty)
+ * Wygląd: ten sam język co /purchase/receipts. receipts-ui.css jest
+ * wczytywany jako baza (tylko do odczytu — pasek filtrów, kafelki,
+ * plakietki, stany puste, paginacja), a documents-ui.css dokłada to,
+ * co jest tylko na tej stronie (wiersze dokumentów, znacznik RFQ/PO).
  *
- * Row action lives in documents-view.js renderRow() — single endpoint,
- * label + icon flip on the editable flag (Edytuj vs Podgląd → both go
- * to /admin/purchase/documents/edit?id=N&type=…).
+ * Liczniki (kafelki pod nagłówkiem) liczy JS przez documents-table.php
+ * w trybie mode=count — po jednym zapytaniu na kafelek, z bieżącymi
+ * filtrami poza statusem. Klik w kafelek ustawia filtr statusu.
+ *
+ * Akcje w wierszu:
+ *   - Edytuj / Podgląd (zależnie od flagi editable) →
+ *     /admin/purchase/documents/edit?id=N&type=rfq|po (edit_url z serwera),
+ *   - następny krok, ten sam co w nagłówku strony edycji:
+ *       szkic       → Wyślij            /admin/purchase/documents/send?id=N&type=…
+ *       RFQ wysłane → Oznacz odpowiedź  /admin/purchase/documents/respond?id=N&type=rfq
+ *       PO wysłane  → Potwierdź odbiór  (współdzielony confirm-po-modal)
+ *       PO w realizacji → Przyjmij towar /purchase/receipts/receive?po_id=N
+ *
+ * Domyślny zakres dat: ostatnie 90 dni — widoczny w pasku (przycisk
+ * „90 dni" zaznaczony) i w linijce podsumowania.
  */
 use Atte\DB\MsaDB;
 
@@ -30,202 +38,201 @@ if(!isset($_SESSION['isAdmin']) || $_SESSION['isAdmin'] !== true) {
 
 $MsaDB = MsaDB::getInstance();
 
-// Active vendors for the Dostawca selectpicker. Same query shape as
-// cart-view.php (active-only, sorted by name).
+// Aktywni dostawcy do filtra „Dostawca" (jak w cart-view.php).
 $activeVendors = $MsaDB->query(
     "SELECT id, name
        FROM `list__vendor`
       WHERE isActive = 1
       ORDER BY name ASC"
 );
+
+// Współdzielony modal „Potwierdź odbiór" (PO w stanie `sent`) — ten sam
+// partial, którego używają /purchase/receipts i strona edycji.
+include __DIR__ . '/confirm-po-modal.php';
+
+$baseUrl = 'http://' . BASEURL;
 ?>
 
-<div class="container-fluid w-75 mt-3">
-    <div class="row">
-        <div class="col-12 my-2">
-            <h2><i class="bi bi-file-earmark-text"></i> Zapytania i zamówienia</h2>
-            <p class="text-muted">
-                Wspólna tabela zapytań ofertowych (RFQ) i zamówień (PO).
-                Domyślnie wyświetlone są dokumenty z ostatnich 90 dni
-                (ze względu na optymalizację) — zakres zmienisz w filtrach.
+<link rel="stylesheet" href="<?= asset('public_html/components/purchases/receipts/receipts-ui.css') ?>">
+<link rel="stylesheet" href="<?= asset('public_html/components/purchases/documents/documents-ui.css') ?>">
+<link rel="stylesheet" href="<?= asset('public_html/components/purchases/documents/confirm-po-modal.css') ?>">
+
+<div class="rx-page dx-page" id="documentsView">
+
+    <!-- ===== Nagłówek strony ===== -->
+    <header class="rx-head">
+        <div class="rx-head-main">
+            <div class="rx-eyebrow"><i class="bi bi-file-earmark-text"></i> Zamówienia komponentów</div>
+            <h1 class="rx-title">Zapytania i zamówienia</h1>
+            <p class="rx-lead">
+                Zapytania ofertowe (RFQ) i zamówienia (PO) w jednym miejscu.
+                Nowe dokumenty tworzysz w koszyku.
             </p>
-            <div id="alertContainer"></div>
         </div>
+        <div class="dx-head-links">
+            <a class="btn btn-sm rx-btn-quiet" href="<?= htmlspecialchars($baseUrl . '/purchase/cart', ENT_QUOTES) ?>">
+                <i class="bi bi-cart3"></i> Koszyk
+            </a>
+            <a class="btn btn-sm rx-btn-quiet" href="<?= htmlspecialchars($baseUrl . '/purchase/receipts', ENT_QUOTES) ?>">
+                <i class="bi bi-box-arrow-in-down"></i> Przyjęcia
+            </a>
+        </div>
+    </header>
+
+    <div id="alertContainer" class="rx-alerts"></div>
+
+    <!-- ===== Liczniki = skróty do filtra statusu =====
+         Wartości wypełnia JS (mode=count, bieżące filtry bez statusu). -->
+    <div class="dx-stats" role="group" aria-label="Dokumenty według statusu">
+        <button type="button" class="rx-stat dx-stat--draft" data-stat="draft" aria-pressed="false"
+                title="Szkice — dokumenty jeszcze niewysłane do dostawcy">
+            <span class="rx-stat-value" data-stat-value>–</span>
+            <span class="rx-stat-label">Szkice</span>
+        </button>
+        <button type="button" class="rx-stat dx-stat--sent" data-stat="sent" aria-pressed="false"
+                title="Wysłane — czekają na odpowiedź lub potwierdzenie dostawcy">
+            <span class="rx-stat-value" data-stat-value>–</span>
+            <span class="rx-stat-label">Wysłane</span>
+        </button>
+        <button type="button" class="rx-stat dx-stat--responded" data-stat="responded" aria-pressed="false"
+                title="Zapytania, na które dostawca odpowiedział — można z nich utworzyć zamówienie">
+            <span class="rx-stat-value" data-stat-value>–</span>
+            <span class="rx-stat-label">Z odpowiedzią</span>
+        </button>
+        <button type="button" class="rx-stat dx-stat--progress" data-stat="progress" aria-pressed="false"
+                title="Zamówienia potwierdzone lub częściowo odebrane — czekają na towar">
+            <span class="rx-stat-value" data-stat-value>–</span>
+            <span class="rx-stat-label">Czeka na towar</span>
+        </button>
+        <button type="button" class="rx-stat dx-stat--received" data-stat="received" aria-pressed="false"
+                title="Zamówienia odebrane w całości">
+            <span class="rx-stat-value" data-stat-value>–</span>
+            <span class="rx-stat-label">Odebrane</span>
+        </button>
+        <button type="button" class="rx-stat dx-stat--cancelled" data-stat="cancelled" aria-pressed="false"
+                title="Dokumenty anulowane">
+            <span class="rx-stat-value" data-stat-value>–</span>
+            <span class="rx-stat-label">Anulowane</span>
+        </button>
     </div>
 
-    <!-- ===== Filter card (collapsible, mirrors /archive) ===== -->
-    <div class="card mt-3 mb-3">
-        <div class="card-header alert-primary" style="cursor: pointer;" data-toggle="collapse" data-target="#filterCollapse">
-            <div class="d-flex justify-content-between align-items-center">
-                <h6 class="mb-0"><i class="bi bi-funnel"></i> Filtry</h6>
-                <i class="bi bi-chevron-down"></i>
-            </div>
+    <!-- ===== Pasek filtrów ===== -->
+    <div class="rx-toolbar dx-toolbar" role="search">
+        <div class="rx-seg dx-type" role="group" aria-label="Typ dokumentu" id="typeSeg">
+            <button type="button" data-type="both" class="is-active" aria-pressed="true">Wszystkie</button>
+            <button type="button" data-type="rfq" aria-pressed="false" title="Tylko zapytania ofertowe">Zapytania <span class="dx-seg-tag">RFQ</span></button>
+            <button type="button" data-type="po" aria-pressed="false" title="Tylko zamówienia">Zamówienia <span class="dx-seg-tag">PO</span></button>
         </div>
-        <div id="filterCollapse" class="collapse alert-info">
-            <div class="card-body p-3">
 
-                <!-- Row 1: Typ dokumentu -->
-                <div class="form-row mb-2">
-                    <div class="col-md-10 col-12 mb-2">
-                        <label class="small mb-1" for="type"><strong>Typ dokumentu:</strong></label>
-                        <select id="type" class="selectpicker form-control form-control-sm" data-width="100%">
-                            <option value="both" selected>Oba (RFQ + PO)</option>
-                            <option value="rfq">Tylko zapytania (RFQ)</option>
-                            <option value="po">Tylko zamówienia (PO)</option>
-                        </select>
-                    </div>
-                    <div class="col-md-2 col-12 d-flex align-items-end">
-                        <button type="button" id="clearType" class="btn btn-danger btn-sm btn-block mb-2">Wyczyść</button>
-                    </div>
-                </div>
-
-                <hr class="my-2">
-
-                <!-- Row 2: Dostawca (multi) -->
-                <div class="form-row mb-2">
-                    <div class="col-md-10 col-12 mb-2">
-                        <label class="small mb-1" for="vendor"><strong>Dostawca:</strong></label>
-                        <select id="vendor"
-                                class="selectpicker form-control form-control-sm"
-                                data-live-search="true"
-                                data-actions-box="true"
-                                data-selected-text-format="count > 2"
-                                data-title="Wybierz dostawców…"
-                                multiple
-                                data-width="100%">
-                            <?php foreach ($activeVendors as $v): ?>
-                                <option value="<?= (int)$v['id'] ?>">
-                                    <?= htmlspecialchars($v['name']) ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="col-md-2 col-12 d-flex align-items-end">
-                        <button type="button" id="clearVendor" class="btn btn-danger btn-sm btn-block mb-2">Wyczyść</button>
-                    </div>
-                </div>
-
-                <hr class="my-2">
-
-                <!-- Row 3: Status (multi, 8 unique combined states) -->
-                <div class="form-row mb-2">
-                    <div class="col-md-10 col-12 mb-2">
-                        <label class="small mb-1" for="states"><strong>Status:</strong></label>
-                        <select id="states"
-                                class="selectpicker form-control form-control-sm"
-                                data-actions-box="true"
-                                data-selected-text-format="count > 2"
-                                data-title="Wybierz statusy…"
-                                multiple
-                                data-width="100%">
-                            <optgroup label="Wspólne (RFQ + PO)">
-                                <option value="draft">Szkic</option>
-                                <option value="sent">Wysłane</option>
-                                <option value="cancelled">Anulowane</option>
-                            </optgroup>
-                            <optgroup label="Zapytanie (RFQ)">
-                                <option value="responded">Odpowiedź</option>
-                                <option value="converted">Przekonwertowane</option>
-                            </optgroup>
-                            <optgroup label="Zamówienie (PO)">
-                                <option value="confirmed">Potwierdzone</option>
-                                <option value="partially_received">Częściowo odebrane</option>
-                                <option value="received">Odebrane</option>
-                            </optgroup>
-                        </select>
-                    </div>
-                    <div class="col-md-2 col-12 d-flex align-items-end">
-                        <button type="button" id="clearStates" class="btn btn-danger btn-sm btn-block mb-2">Wyczyść</button>
-                    </div>
-                </div>
-
-                <hr class="my-2">
-
-                <!-- Row 4: Numer dokumentu (text) -->
-                <div class="form-row mb-2">
-                    <div class="col-md-10 col-12 mb-2">
-                        <label class="small mb-1" for="number"><strong>Numer dokumentu:</strong></label>
-                        <input type="text" id="number" class="form-control form-control-sm"
-                               placeholder="np. 2025/01, RFQ-y/...">
-                    </div>
-                    <div class="col-md-2 col-12 d-flex align-items-end">
-                        <button type="button" id="clearNumber" class="btn btn-danger btn-sm btn-block mb-2">Wyczyść</button>
-                    </div>
-                </div>
-
-                <hr class="my-2">
-
-                <!-- Row 5: Data utworzenia -->
-                <div class="form-row mb-2">
-                    <div class="col-md-5 col-12 mb-2">
-                        <label class="small mb-1" for="dateFrom"><strong>Data od:</strong></label>
-                        <input type="date" id="dateFrom" class="form-control form-control-sm">
-                    </div>
-                    <div class="col-md-5 col-12 mb-2">
-                        <label class="small mb-1" for="dateTo"><strong>Data do:</strong></label>
-                        <input type="date" id="dateTo" class="form-control form-control-sm">
-                    </div>
-                    <div class="col-md-2 col-12 d-flex align-items-end">
-                        <button type="button" id="clearDates" class="btn btn-danger btn-sm btn-block mb-2">Wyczyść daty</button>
-                    </div>
-                </div>
-
-            </div>
+        <div class="rx-search">
+            <i class="bi bi-search" aria-hidden="true"></i>
+            <input type="search" id="number" class="form-control form-control-sm"
+                   placeholder="Nr dokumentu lub nr u dostawcy"
+                   title="Szuka w numerach zapytań i zamówień oraz w numerze zamówienia nadanym przez dostawcę"
+                   aria-label="Numer dokumentu" autocomplete="off">
         </div>
-    </div>
 
-    <!-- Pagination top -->
-    <div id="paginationTop" class="mb-3"></div>
-
-    <!-- Spinner -->
-    <div class="d-flex justify-content-center mb-3">
-        <div style="display: none;" id="docsSpinner" class="spinner-border text-primary" role="status">
-            <span class="sr-only">Ładowanie...</span>
+        <!-- AGENTS.md: data-width="100%" + data-container na komórce
+             + min-width: 0 na komórce (.rx-tool w receipts-ui.css). -->
+        <div class="rx-tool" id="vendorCell">
+            <select id="vendor"
+                    class="selectpicker"
+                    data-live-search="true"
+                    data-actions-box="true"
+                    data-selected-text-format="count > 1"
+                    data-title="Wszyscy dostawcy"
+                    data-style="rx-picker-btn"
+                    aria-label="Dostawca"
+                    multiple
+                    data-width="100%"
+                    data-container="#vendorCell">
+                <?php foreach ($activeVendors as $v): ?>
+                    <option value="<?= (int)$v['id'] ?>"><?= htmlspecialchars($v['name']) ?></option>
+                <?php endforeach; ?>
+            </select>
         </div>
-    </div>
 
-    <!-- Quick controls (mirror /archive's "Szybkie sterowanie" card).
-         Footer carries both the info text and the Odśwież button on a
-         single row (justified between) so the button isn't stranded on
-         its own line above the hint. -->
-    <div class="card mb-3">
-        <div class="card-footer py-1 small text-muted d-flex align-items-center justify-content-between">
-            <div>
-                <i class="bi bi-info-circle"></i> Domyślnie wyświetlone dokumenty z ostatnich 90 dni. Aby zobaczyć starsze, wyczyść daty w filtrach.
-            </div>
-            <button type="button" id="refreshDocs" class="btn btn-primary btn-sm">
-                <i class="bi bi-arrow-clockwise"></i> Odśwież
+        <div class="rx-tool" id="statesCell">
+            <select id="states"
+                    class="selectpicker"
+                    data-actions-box="true"
+                    data-selected-text-format="count > 1"
+                    data-title="Wszystkie statusy"
+                    data-style="rx-picker-btn"
+                    aria-label="Status"
+                    multiple
+                    data-width="100%"
+                    data-container="#statesCell">
+                <optgroup label="Zapytania i zamówienia">
+                    <option value="draft">Szkic</option>
+                    <option value="sent">Wysłane</option>
+                    <option value="cancelled">Anulowane</option>
+                </optgroup>
+                <optgroup label="Tylko zapytania (RFQ)">
+                    <option value="responded">Odpowiedź</option>
+                    <option value="converted">Skonwertowane na PO</option>
+                </optgroup>
+                <optgroup label="Tylko zamówienia (PO)">
+                    <option value="confirmed">Potwierdzone</option>
+                    <option value="in_progress">W trakcie przyjęcia</option>
+                    <option value="partially_received">Częściowo odebrane</option>
+                    <option value="received">Odebrane</option>
+                </optgroup>
+            </select>
+        </div>
+
+        <div class="rx-daterange" id="dateRange" title="Data utworzenia dokumentu">
+            <i class="bi bi-calendar3" aria-hidden="true"></i>
+            <input type="date" id="dateFrom" aria-label="Utworzone od">
+            <span class="rx-daterange-sep">–</span>
+            <input type="date" id="dateTo" aria-label="Utworzone do">
+        </div>
+
+        <div class="rx-seg" role="group" aria-label="Szybki zakres dat" id="rangeSeg">
+            <button type="button" data-range="30">30 dni</button>
+            <button type="button" data-range="90" title="Zakres domyślny">90 dni</button>
+            <button type="button" data-range="365">Rok</button>
+            <button type="button" data-range="all">Wszystkie daty</button>
+        </div>
+
+        <div class="rx-toolbar-end">
+            <button type="button" id="refreshDocs" class="btn btn-sm rx-btn-quiet" title="Wczytaj listę ponownie">
+                <i class="bi bi-arrow-clockwise rx-spin-icon"></i>
+                <span class="d-none d-sm-inline">Odśwież</span>
             </button>
         </div>
     </div>
 
-    <!-- Documents table (8 cells — Number, Type, Vendor, State, Items, Created, Value, Action) -->
-    <div class="d-flex justify-content-center">
-        <table class="table w-100" id="docsTable">
-            <thead class="thead-light">
-                <tr>
-                    <th scope="col" class="text-center" style="width: 70px;">Typ</th>
-                    <th scope="col">Numer</th>
-                    <th scope="col">Dostawca</th>
-                    <th scope="col" class="text-right">Pozycje</th>
-                    <th scope="col">Utworzony</th>
-                    <th scope="col" class="text-right">Wartość</th>
-                    <th scope="col">Status</th>
-                    <th scope="col" class="text-right" style="width: 130px;">Akcja</th>
-                </tr>
-            </thead>
-            <tbody id="docsTableBody">
-                <tr>
-                    <td colspan="8" class="text-center text-muted">
-                        Ładowanie dokumentów…
-                    </td>
-                </tr>
-            </tbody>
-        </table>
+    <!-- Linijka wyników + paginacja górna -->
+    <div class="rx-filterbar dx-filterbar">
+        <div class="dx-summary">
+            <span id="docsSummary">Wczytywanie dokumentów…</span>
+            <button type="button" class="rx-link-btn d-none js-clear-filters" id="clearFilters">
+                <i class="bi bi-x-circle"></i> Wyczyść filtry
+            </button>
+        </div>
+        <div id="paginationTop"></div>
     </div>
 
-    <!-- Pagination bottom -->
-    <div id="paginationBottom" class="mt-3"></div>
+    <div class="rx-panel dx-panel" id="docsPanel">
+        <div id="docsStatus" aria-live="polite"></div>
+
+        <div id="docsListWrap" class="d-none">
+            <div class="dx-head" aria-hidden="true">
+                <div>Dokument</div>
+                <div>Dostawca</div>
+                <div>Status</div>
+                <div class="text-right">Pozycje</div>
+                <div class="text-right">Wartość</div>
+                <div>Utworzony</div>
+                <div class="text-right">Akcje</div>
+            </div>
+            <div id="docsTableBody" class="dx-list"></div>
+        </div>
+    </div>
+
+    <div id="paginationBottom"></div>
 </div>
 
 <script src="<?= asset('public_html/components/purchases/documents/documents-view.js') ?>"></script>
+<script src="<?= asset('public_html/components/purchases/documents/confirm-po-modal.js') ?>"></script>

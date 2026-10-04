@@ -71,7 +71,7 @@ $sanitizedStates  = array_values(array_filter(array_map('strval', $states)));
 $numberSearch = str_replace(['%', '_', '\\'], '', $numberSearch);
 
 $validRfqStates = ['draft', 'sent', 'responded', 'cancelled', 'converted'];
-$validPoStates  = ['draft', 'sent', 'confirmed', 'partially_received', 'received', 'cancelled'];
+$validPoStates  = ['draft', 'sent', 'confirmed', 'partially_received', 'received', 'cancelled', 'in_progress'];
 
 $includeRfq = in_array($typeFilter, ['both', 'rfq'], true);
 $includePo  = in_array($typeFilter, ['both', 'po'],  true);
