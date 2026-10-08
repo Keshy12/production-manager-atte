@@ -1,4 +1,21 @@
 ﻿<?php
+/**
+ * Koszyk zakupowy — /purchase/cart.
+ *
+ * Wygląd: ten sam język co /purchase/receipts i /purchase/documents.
+ * receipts-ui.css jest wczytywany jako baza (tylko do odczytu), potem
+ * purchases.css (wspólny, nietknięty), a cart-ui.css dokłada style
+ * widoczne tylko tutaj (.cx-*, wszystko pod .cx-page).
+ *
+ * Zachowanie (selektory kaskadowe, tryb „Artykuł", koszyk w localStorage,
+ * tworzenie dokumentów) jest w cart-view.js — ten plik renderuje tylko
+ * szkielet. Wszystkie identyfikatory (#vendorSelect, #cartBody, …) i
+ * atrybuty data-* są używane przez JS; zmieniając układ, nie ruszaj ich.
+ *
+ * Elementy pokazywane/chowane przez JS (.show()/.hide()/.toggle()) mają
+ * początkowe inline `style="display:none"` — to celowe: jQuery .show()
+ * zdejmuje ten inline i wraca do `display` z CSS (grid / flex / contents).
+ */
 use Atte\DB\MsaDB;
 use Atte\Utils\Purchase\Master\CurrencyRepository;
 
@@ -128,32 +145,75 @@ $units = $MsaDB->query(
     "SELECT id, name FROM `part__unit`
       ORDER BY name ASC"
 );
+
+$baseUrl = 'http://' . BASEURL;
 ?>
 
-<div class="container-fluid w-75 mt-3">
-    <div class="row">
-        <div class="col-12 my-2">
-            <h2><i class="bi bi-cart3"></i> Koszyk zakupowy</h2>
-            <p class="text-muted">
-                Wybierz <strong>dostawcę</strong> i <strong>część</strong> &mdash; selektory
-                filtrują się nawzajem, więc widzisz tylko kombinacje, które istnieją w katalogu.
-                Jeśli dostawca ma kilka numerów katalogowych dla tej samej części, wybierz właściwy
-                z listy &bdquo;Numer u dostawcy&rdquo;. Koszyk grupuje pozycje po dostawcy
-                &mdash; każde zamówienie/zapytanie obejmuje tylko jednego dostawcę. Pozycje
-                w koszyku są zapisywane lokalnie w przeglądarce przez <strong>7 dni</strong>
-                i są czyszczone przyciskiem &bdquo;Wyczyść koszyk&rdquo; albo po utworzeniu dokumentu.
-            </p>
-            <div id="alertContainer"></div>
-        </div>
-    </div>
+<link rel="stylesheet" href="<?= asset('public_html/components/purchases/receipts/receipts-ui.css') ?>">
+<link rel="stylesheet" href="<?= asset('public_html/components/purchases/cart/purchases.css') ?>">
+<link rel="stylesheet" href="<?= asset('public_html/components/purchases/cart/cart-ui.css') ?>">
 
-    <!-- ===== Wybierz dostawcę i część (cascading pickers) ===== -->
-    <div class="card mb-3">
-        <div class="card-header"><h5 class="mb-0">Wybierz dostawcę i część</h5></div>
-        <div class="card-body">
-            <div class="row">
-                <div class="col-md-6" id="vendorCell">
-                    <label for="vendorSelect">Dostawca:</label>
+<div class="rx-page cx-page" id="cartView">
+
+    <!-- ===== Nagłówek strony + liczniki koszyka ===== -->
+    <header class="rx-head">
+        <div class="rx-head-main">
+            <div class="rx-eyebrow"><i class="bi bi-cart3"></i> Zamówienia komponentów</div>
+            <h1 class="rx-title">Koszyk zakupowy</h1>
+            <p class="rx-lead">
+                Wybierz dostawcę i część, dodaj pozycje do koszyka, a potem utwórz z nich
+                zapytanie (RFQ) lub zamówienie (PO).
+            </p>
+            <ul class="cx-rules">
+                <li>
+                    <i class="bi bi-person-check" aria-hidden="true"></i>
+                    <span>Jeden dokument obejmuje <strong>jednego dostawcę</strong> — koszyk grupuje pozycje po dostawcy.</span>
+                </li>
+                <li>
+                    <i class="bi bi-clock-history" aria-hidden="true"></i>
+                    <span>Pozycje są zapamiętane w tej przeglądarce przez <strong>7 dni</strong>;
+                        znikają po „Wyczyść koszyk" albo po utworzeniu dokumentu.</span>
+                </li>
+            </ul>
+        </div>
+
+        <div class="cx-head-links">
+            <a class="btn btn-sm rx-btn-quiet" href="<?= htmlspecialchars($baseUrl . '/purchase/documents', ENT_QUOTES) ?>">
+                <i class="bi bi-file-earmark-text"></i> Zapytania i zamówienia
+            </a>
+            <a class="btn btn-sm rx-btn-quiet" href="<?= htmlspecialchars($baseUrl . '/purchase/receipts', ENT_QUOTES) ?>">
+                <i class="bi bi-box-arrow-in-down"></i> Przyjęcia
+            </a>
+        </div>
+    </header>
+
+    <div id="alertContainer" class="rx-alerts"></div>
+
+    <!-- ===== Dodaj pozycję (selektory kaskadowe) =====
+         .cx-picker dostaje klasę .picker-add-mode z setPickerMode().
+         Wiersze #pickVariantRow, #cartPriceRow, #addVariantRow1/2 i
+         #addVariantCommentRow to display: contents — ich dzieci leżą
+         w jednej wspólnej siatce .cx-fields. -->
+    <section class="rx-panel cx-picker" aria-labelledby="cxPickerTitle">
+        <div class="rx-panel-head">
+            <h2 class="rx-panel-title" id="cxPickerTitle">
+                <span class="cx-title-pick"><i class="bi bi-plus-circle" aria-hidden="true"></i> Dodaj pozycję do koszyka</span>
+                <span class="cx-title-add"><i class="bi bi-plus-square" aria-hidden="true"></i> Nowy artykuł w katalogu dostawcy</span>
+            </h2>
+            <p class="cx-panel-note cx-note-pick">
+                Dostawca i część filtrują się nawzajem. Gdy dostawca ma kilka numerów
+                dla tej samej części, wybierz właściwy w „Numer u dostawcy".
+            </p>
+            <p class="cx-panel-note cx-note-add">
+                Najpierw zapisz artykuł w katalogu — ilość, cenę i walutę wpiszesz po zapisie.
+            </p>
+        </div>
+
+        <div class="cx-picker-body">
+            <div class="cx-fields">
+
+                <div class="cx-field cx-sm-6 cx-xl-4" id="vendorCell">
+                    <label class="cx-label" for="vendorSelect">Dostawca</label>
                     <!--
                         Per bs-select 1.13.x docs, custom HTML for an option
                         goes in `data-content` (rendered as HTML in both the
@@ -167,6 +227,7 @@ $units = $MsaDB->query(
                     <select id="vendorSelect" class="selectpicker form-control"
                             data-live-search="true" data-width="100%"
                             data-container="#vendorCell"
+                            data-style="cx-picker-btn"
                             data-show-subtext="true"
                             title="Wybierz dostawcę...">
                         <?php foreach ($vendorsByCurrency as $currencyCode => $vendors):
@@ -206,9 +267,10 @@ $units = $MsaDB->query(
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <div class="col-md-6" id="partCell">
-                    <label for="partSelect">Część:</label>
-                    <select id="partSelect" class="selectpicker form-control" data-live-search="true" data-width="100%" data-container="#partCell" title="Wybierz część...">
+
+                <div class="cx-field cx-sm-6 cx-xl-4" id="partCell">
+                    <label class="cx-label" for="partSelect">Część</label>
+                    <select id="partSelect" class="selectpicker form-control" data-live-search="true" data-width="100%" data-container="#partCell" data-style="cx-picker-btn" title="Wybierz część...">
                         <?php foreach ($partsWithVendors as $p): ?>
                             <option value="<?= (int)$p['id'] ?>"
                                     data-name="<?= htmlspecialchars($p['name']) ?>"
@@ -220,217 +282,263 @@ $units = $MsaDB->query(
                         <?php endforeach; ?>
                     </select>
                 </div>
-            </div>
-            <div class="row mt-3" id="pickVariantRow">
-                <div class="col-md-6" id="vendorPartCell">
-                    <label for="vendorPartNoSelect">Numer u dostawcy:</label>
-                    <div class="d-flex align-items-start">
-                        <div class="flex-grow-1 mr-1">
-                            <select id="vendorPartNoSelect" class="selectpicker form-control" data-live-search="true" data-width="100%" data-container="#vendorPartCell" title="Wybierz numer u dostawcy...">
-                                <!-- populated by JS once vendor and/or part are picked;
-                                     catalog-wide lookup lives in the search modal -->
+
+                <!-- Tryb „wybór": wariant + opak. + ilość. Wiersz chowany
+                     w całości przez setPickerMode('add'). -->
+                <div id="pickVariantRow" class="cx-contents">
+                    <div class="cx-field cx-md-6 cx-xl-4" id="vendorPartCell">
+                        <label class="cx-label" for="vendorPartNoSelect">Numer u dostawcy</label>
+                        <div class="cx-with-btn">
+                            <div class="cx-grow flex-grow-1">
+                                <select id="vendorPartNoSelect" class="selectpicker form-control" data-live-search="true" data-width="100%" data-container="#vendorPartCell" data-style="cx-picker-btn" title="Wybierz numer u dostawcy...">
+                                    <!-- populated by JS once vendor and/or part are picked;
+                                         catalog-wide lookup lives in the search modal -->
+                                </select>
+                            </div>
+                            <button type="button" id="vpSearchBtn" class="btn rx-btn-quiet cx-icon-btn cx-icon-btn--field"
+                                    title="Szukaj po numerze dostawcy / producenta / części"
+                                    aria-label="Szukaj numeru u dostawcy w całym katalogu">
+                                <i class="bi bi-search"></i>
+                            </button>
+                        </div>
+                        <!-- Sits directly underneath the vendor-part picker.
+                             Hidden until a variant is selected; shown by JS
+                             in syncAmountsInputs. -->
+                        <div id="variantInfoRow" class="cx-varinfo" style="display:none">
+                            <span id="variantCommentDisplay" class="cx-varnote">
+                                <i class="bi bi-journal-text" aria-hidden="true"></i>
+                                <strong>Uwagi do artykułu:</strong>
+                                <em id="variantCommentText">Brak komentarza</em>
+                                <button type="button" id="variantCommentEdit" class="rx-link-btn cx-iconlink"
+                                        title="Edytuj komentarz — zapisze się od razu na karcie artykułu"
+                                        aria-label="Edytuj komentarz do artykułu"><i class="bi bi-pencil"></i></button>
+                            </span>
+                            <span id="variantCommentEditBox" class="cx-inline-edit" style="display:none">
+                                <input type="text" id="variantCommentInput" class="form-control form-control-sm"
+                                       maxlength="255" aria-label="Komentarz do artykułu"
+                                       placeholder="Komentarz tylko dla nas — nie trafi do dostawcy">
+                                <button type="button" id="variantCommentSave" class="btn btn-sm btn-success" title="Zapisz" aria-label="Zapisz komentarz"><i class="bi bi-check"></i></button>
+                                <button type="button" id="variantCommentCancel" class="btn btn-sm btn-secondary" title="Anuluj (Esc)" aria-label="Anuluj edycję komentarza"><i class="bi bi-x"></i></button>
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Opak. widoczne dopiero, gdy wybrany wariant ma
+                         zdefiniowaną wielkość opakowania. Stepper wielkości
+                         siedzi pod polem, blisko liczby, którą mnoży. -->
+                    <div class="cx-field cx-xs-6 cx-md-3 cx-xl-3" id="cartPackagesWrap" style="display:none">
+                        <label class="cx-label" for="cartPackages">Opak.</label>
+                        <input type="number" id="cartPackages" class="form-control" min="0" step="1" placeholder="opak." title="Ilość = N × opak.">
+                        <!-- Stepper +/- dla wybranej wielkości opakowania.
+                             Ołówek otwiera pole „nowa wielkość" (to samo
+                             co edycja komentarza: ukrywa stepper, aż do
+                             zapisu albo anulowania). -->
+                        <div id="cartPackSizePickerWrap" class="cx-pack" style="display:none">
+                            <span class="cx-pack-label">wielkość opak.</span>
+                            <!-- Jedna linia bez zawijania: stepper + ołówek
+                                 albo (po kliknięciu ołówka) pole „nowa wielkość". -->
+                            <div class="cx-pack-row">
+                                <span id="cartPackSizeStepper" class="cx-stepper" role="group" aria-label="Wielkość opakowania">
+                                    <button type="button" id="cartPackSizePrev" title="Poprzednia wielkość" aria-label="Poprzednia wielkość opakowania">&minus;</button>
+                                    <span id="cartPackSizeValue" class="cx-step-val">&mdash;</span>
+                                    <button type="button" id="cartPackSizeNext" title="Następna wielkość" aria-label="Następna wielkość opakowania">+</button>
+                                </span>
+                                <button type="button" id="cartPackSizeAdd" class="cx-mini-btn"
+                                        title="Dodaj nową wielkość opakowania"
+                                        aria-label="Dodaj nową wielkość opakowania"><i class="bi bi-pencil"></i></button>
+                                <!-- Pole zaczyna jako `d-none`; JS przełącza
+                                     d-none ↔ d-flex (bez walki o priorytet z inline). -->
+                                <span id="cartPackSizeEditBox" class="cx-pack-edit d-none">
+                                    <input type="number" id="cartPackSizeInput" class="form-control form-control-sm" min="0.0001" step="0.0001" placeholder="np. 2500" aria-label="Nowa wielkość opakowania">
+                                    <button type="button" id="cartPackSizeSave" class="btn btn-sm btn-success" title="Zapisz" aria-label="Zapisz wielkość opakowania"><i class="bi bi-check"></i></button>
+                                    <button type="button" id="cartPackSizeCancel" class="btn btn-sm btn-secondary" title="Anuluj (Esc)" aria-label="Anuluj"><i class="bi bi-x"></i></button>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="cx-field cx-xs-6 cx-md-3 cx-xl-2" id="cartQtyWrap">
+                        <label class="cx-label" for="cartQty">Ilość</label>
+                        <div class="input-group">
+                            <input type="number" id="cartQty" class="form-control" min="0.0001" step="0.0001">
+                            <div class="input-group-append">
+                                <span class="input-group-text" id="cartQtyUnit">szt.</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Cena / Waluta / Komentarz pozycji — widoczne dopiero po
+                     wyborze konkretnego wariantu (przy niejednoznacznym
+                     wyborze nie mają sensu). „Komentarz pozycji" jest
+                     jednorazowy dla tej linii koszyka i trafia do
+                     RFQ / zamówienia; to coś innego niż „Uwagi do artykułu"
+                     zapisywane na karcie artykułu. -->
+                <div id="cartPriceRow" class="cx-contents" style="display:none">
+                    <div class="cx-field cx-xs-6 cx-md-3 cx-xl-2" id="cartPriceWrap">
+                        <label class="cx-label" for="cartPrice">Cena/szt.</label>
+                        <input type="number" id="cartPrice" class="form-control" min="0" step="0.0001" placeholder="opcjonalna">
+                    </div>
+                    <div class="cx-field cx-xs-6 cx-md-3 cx-xl-2" id="cartCurrencyWrap">
+                        <label class="cx-label" for="cartCurrency">Waluta</label>
+                        <div id="cartCurrencyCell">
+                            <select id="cartCurrency" name="cartCurrency"
+                                    class="selectpicker form-control"
+                                    data-width="100%"
+                                    data-container="#cartCurrencyCell"
+                                    data-style="cx-picker-btn"
+                                    data-live-search="true"
+                                    title="Wybierz walutę…">
+                                <?php foreach ($currencies as $cur):
+                                    $code = (string)$cur['code'];
+                                    $name = (string)$cur['name'];
+                                    $isSelected = ($code === 'PLN'); // initial default; JS overrides on vendor change
+                                ?>
+                                    <option value="<?= htmlspecialchars($code, ENT_QUOTES) ?>"
+                                            <?= $isSelected ? 'selected' : '' ?>>
+                                        <?= htmlspecialchars($code, ENT_QUOTES) ?> — <?= htmlspecialchars($name, ENT_QUOTES) ?>
+                                    </option>
+                                <?php endforeach; ?>
                             </select>
                         </div>
-                        <a href="#" id="vpSearchBtn" class="text-muted clear-picker-link ml-1" title="Szukaj po numerze dostawcy / producenta / części"><i class="bi bi-search"></i></a>
                     </div>
-                    <!-- Sits directly underneath the vendor-part picker (per
-                         current UX). Hidden until a variant is selected;
-                         shown by JS in syncAmountsInputs. -->
-                    <div id="variantInfoRow" class="mt-1" style="display:none">
-                        <span id="variantCommentDisplay" class="text-muted small">
-                            <i class="bi bi-journal-text"></i>
-                            <strong>Uwagi do artykułu:</strong>
-                            <em id="variantCommentText" class="ml-1">Brak komentarza</em>
-                            <a href="#" id="variantCommentEdit" class="text-muted ml-1"
-                               title="Edytuj komentarz — zapisze się od razu na karcie artykułu"><i class="bi bi-pencil"></i></a>
-                        </span>
-                        <span id="variantCommentEditBox" style="display:none" class="mt-1">
-                            <input type="text" id="variantCommentInput" class="form-control form-control-sm d-inline-block align-middle"
-                                   style="width:70%" maxlength="255" placeholder="Komentarz tylko dla nas — nie trafi do dostawcy">
-                            <button type="button" id="variantCommentSave" class="btn btn-sm btn-success ml-1" title="Zapisz"><i class="bi bi-check"></i></button>
-                            <button type="button" id="variantCommentCancel" class="btn btn-sm btn-secondary ml-1" title="Anuluj (Esc)"><i class="bi bi-x"></i></button>
-                        </span>
+                    <div class="cx-field cx-md-6 cx-xl-3" id="cartLineCommentWrap">
+                        <label class="cx-label" for="cartLineComment">Komentarz pozycji <span class="cx-opt">(opcjonalnie)</span></label>
+                        <input type="text" id="cartLineComment" class="form-control" maxlength="500"
+                               placeholder="Jednorazowe uwagi — trafią do RFQ / zamówienia">
                     </div>
                 </div>
-                <!-- The cart-add wrappers below live in pickVariantRow next to
-                     vendorPartCell in pick mode (inline layout). Cena/Szt.
-                     and Waluta live in a separate #cartPriceRow that is
-                     shown only after a variant is selected (they have no
-                     meaning against an ambiguous pick). #cartPackagesWrap
-                     is hidden until the selected variant has a usable
-                     pack-size definition; the picker chip group lives
-                     *inside* the packages wrap (sits below the input) so
-                     the picker is rendered close to the count it multiplies. -->
-                <div class="col-md-3" id="cartPackagesWrap" style="display:none">
-                    <label for="cartPackages">Opak.:</label>
-                    <input type="number" id="cartPackages" class="form-control" min="0" step="1" placeholder="opak." title="Ilość = N × opak.">
-                    <!-- Small +/- stepper for the picked pack size. The
-                         trailing pencil icon opens an inline edit box for
-                         adding a new tier on the fly (same pattern as the
-                         variant-comment edit): clicking the pencil hides
-                         the stepper and shows the input until the user
-                         saves or cancels. Label sits inline with the
-                         stepper so single-tier variants (which render the
-                         same layout, just with prev/next disabled) match
-                         multi-tier ones exactly. -->
-                    <div id="cartPackSizePickerWrap" class="mt-1" style="display:none">
-                        <div class="d-flex align-items-center flex-wrap">
-                            <small class="text-muted mr-2">wielkość opak.:</small>
-                            <span id="cartPackSizeStepper" class="btn-group btn-group-sm" role="group" aria-label="Wielkość opakowania">
-                                <button type="button" class="btn btn-outline-secondary" id="cartPackSizePrev" title="Poprzednia wielkość" style="padding:.1rem .45rem">&minus;</button>
-                                <span class="btn btn-outline-secondary disabled" id="cartPackSizeValue" style="min-width:3.5em;padding:.1rem .35rem">&mdash;</span>
-                                <button type="button" class="btn btn-outline-secondary" id="cartPackSizeNext" title="Następna wielkość" style="padding:.1rem .45rem">+</button>
-                            </span>
-                            <button type="button" class="btn btn-sm btn-outline-secondary ml-1" id="cartPackSizeAdd" title="Dodaj nową wielkość opakowania" style="padding:.1rem .4rem"><i class="bi bi-pencil"></i></button>
-                            <!-- Edit box starts hidden via Bootstrap's
-                                 `d-none` utility. Toggling between
-                                 `d-none` and `d-flex` keeps the element
-                                 either fully hidden or in flex layout
-                                 without relying on inline-style priority
-                                 fights with `d-flex !important`. -->
-                            <span id="cartPackSizeEditBox" class="d-none align-items-center flex-wrap">
-                                <input type="number" id="cartPackSizeInput" class="form-control form-control-sm" style="width:6em" min="0.0001" step="0.0001" placeholder="np. 2500">
-                                <button type="button" id="cartPackSizeSave" class="btn btn-sm btn-success ml-1" title="Zapisz" style="padding:.15rem .4rem"><i class="bi bi-check"></i></button>
-                                <button type="button" id="cartPackSizeCancel" class="btn btn-sm btn-secondary ml-1" title="Anuluj (Esc)" style="padding:.15rem .4rem"><i class="bi bi-x"></i></button>
-                            </span>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-3" id="cartQtyWrap">
-                    <label for="cartQty">Ilość:</label>
-                    <div class="input-group">
-                        <input type="number" id="cartQty" class="form-control" min="0.0001" step="0.0001">
-                        <div class="input-group-append">
-                            <span class="input-group-text" id="cartQtyUnit">szt.</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
 
-            <div class="row mt-2" id="cartPriceRow" style="display:none">
-                <div class="col-md-3" id="cartPriceWrap">
-                    <label for="cartPrice">Cena/Szt.:</label>
-                    <input type="number" id="cartPrice" class="form-control" min="0" step="0.0001" placeholder="opcjonalna">
-                </div>
-                <div class="col-md-2" id="cartCurrencyWrap">
-                    <label for="cartCurrency">Waluta:</label>
-                    <div id="cartCurrencyCell">
-                        <select id="cartCurrency" name="cartCurrency"
-                                class="selectpicker form-control"
-                                data-width="100%"
-                                data-container="#cartCurrencyCell"
-                                data-live-search="true"
-                                title="Wybierz walutę…">
-                            <?php foreach ($currencies as $cur):
-                                $code = (string)$cur['code'];
-                                $name = (string)$cur['name'];
-                                $isSelected = ($code === 'PLN'); // initial default; JS overrides on vendor change
-                            ?>
-                                <option value="<?= htmlspecialchars($code, ENT_QUOTES) ?>"
-                                        <?= $isSelected ? 'selected' : '' ?>>
-                                    <?= htmlspecialchars($code, ENT_QUOTES) ?> — <?= htmlspecialchars($name, ENT_QUOTES) ?>
+                <!-- Tryb „Artykuł": nowy wariant dostawcy do katalogu. -->
+                <div id="addVariantRow1" class="cx-contents" style="display:none">
+                    <div class="cx-field cx-sm-6 cx-xl-3">
+                        <label class="cx-label" for="addProducerSelect">Producent</label>
+                        <select id="addProducerSelect" class="selectpicker form-control" data-live-search="true" data-width="100%" data-style="cx-picker-btn" title="Wybierz producenta...">
+                            <?php foreach ($producers as $pr): ?>
+                                <option value="<?= (int)$pr['id'] ?>"
+                                        data-name="<?= htmlspecialchars($pr['name']) ?>">
+                                    <?= htmlspecialchars($pr['name']) ?>
                                 </option>
                             <?php endforeach; ?>
                         </select>
                     </div>
+                    <div class="cx-field cx-sm-6 cx-xl-3">
+                        <label class="cx-label" for="addUnitSelect">JM</label>
+                        <select id="addUnitSelect" class="selectpicker form-control" data-live-search="true" data-width="100%" data-style="cx-picker-btn" title="Wybierz jednostkę...">
+                            <?php foreach ($units as $u): ?>
+                                <option value="<?= (int)$u['id'] ?>"
+                                        data-name="<?= htmlspecialchars($u['name']) ?>">
+                                    <?= htmlspecialchars($u['name']) ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="cx-field cx-sm-6 cx-xl-3">
+                        <label class="cx-label" for="addVendorPartNo">Numer u dostawcy</label>
+                        <input type="text" id="addVendorPartNo" class="form-control" maxlength="100" placeholder="np. ABC-1234">
+                    </div>
+                    <div class="cx-field cx-sm-6 cx-xl-3">
+                        <label class="cx-label" for="addFullPackQuantity">Pełne opakowanie</label>
+                        <input type="text" id="addFullPackQuantity" class="form-control" placeholder="np. 100/1000/5000">
+                        <p class="cx-hint">Wielkości opakowań oddzielone `/`, np. 100/1000/5000. Puste = brak opakowania.</p>
+                    </div>
                 </div>
-                <!-- "Komentarz pozycji" — per-line comment captured at pick
-                     time and travels into purchase__rfq_item.comment /
-                     purchase__order_item.comment. Distinct from the
-                     variant/catalog "Uwagi do artykułu" above: this one
-                     is one-shot per cart line, not stored on the article.
-                     Lives next to Cena/Waluta so the user captures it as
-                     part of building the cart line, not only later via
-                     the Edytuj pozycję modal. -->
-                <div class="col-md-7" id="cartLineCommentWrap">
-                    <label for="cartLineComment">Komentarz pozycji:</label>
-                    <input type="text" id="cartLineComment" class="form-control" maxlength="500"
-                           placeholder="Jednorazowe uwagi — trafią do RFQ / zamówienia">
-                </div>
-            </div>
 
-            <div class="row mt-2" id="addVariantRow1" style="display:none">
-                <div class="col-md-3">
-                    <label for="addProducerSelect">Producent:</label>
-                    <select id="addProducerSelect" class="selectpicker form-control" data-live-search="true" data-width="100%" title="Wybierz producenta...">
-                        <?php foreach ($producers as $pr): ?>
-                            <option value="<?= (int)$pr['id'] ?>"
-                                    data-name="<?= htmlspecialchars($pr['name']) ?>">
-                                <?= htmlspecialchars($pr['name']) ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
+                <div id="addVariantRow2" class="cx-contents" style="display:none">
+                    <div class="cx-field cx-md-6">
+                        <label class="cx-label" for="addProducerPartNo">Numer części u producenta <span class="cx-opt">(opcjonalnie)</span></label>
+                        <input type="text" id="addProducerPartNo" class="form-control" maxlength="100" placeholder="np. MFR-5678 (opcjonalnie)">
+                    </div>
                 </div>
-                <div class="col-md-3">
-                    <label for="addUnitSelect">JM:</label>
-                    <select id="addUnitSelect" class="selectpicker form-control" data-live-search="true" data-width="100%" title="Wybierz jednostkę...">
-                        <?php foreach ($units as $u): ?>
-                            <option value="<?= (int)$u['id'] ?>"
-                                    data-name="<?= htmlspecialchars($u['name']) ?>">
-                                <?= htmlspecialchars($u['name']) ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-                <div class="col-md-3">
-                    <label for="addVendorPartNo">Numer u dostawcy:</label>
-                    <input type="text" id="addVendorPartNo" class="form-control" maxlength="100" placeholder="np. ABC-1234">
-                </div>
-                <div class="col-md-3">
-                    <label for="addFullPackQuantity">Pełne opakowanie:</label>
-                    <input type="text" id="addFullPackQuantity" class="form-control" placeholder="np. 100/1000/5000">
-                    <small class="form-text text-muted">Wielkości opakowań oddzielone `/`, np. 100/1000/5000. Puste = brak opakowania.</small>
-                </div>
-            </div>
 
-            <div class="row mt-2" id="addVariantRow2" style="display:none">
-                <div class="col-md-12">
-                    <label for="addProducerPartNo">Numer części u producenta (opcjonalnie):</label>
-                    <input type="text" id="addProducerPartNo" class="form-control" maxlength="100" placeholder="np. MFR-5678 (opcjonalnie)">
+                <div id="addVariantCommentRow" class="cx-contents" style="display:none">
+                    <div class="cx-field cx-md-6">
+                        <label class="cx-label" for="addComment">Komentarz <span class="cx-opt">(opcjonalnie)</span></label>
+                        <input type="text" id="addComment" class="form-control" maxlength="255" placeholder="Komentarz tylko dla nas — nie trafi do dostawcy">
+                    </div>
                 </div>
-            </div>
 
-            <div class="row mt-2" id="addVariantCommentRow" style="display:none">
-                <div class="col-md-12">
-                    <label for="addComment">Komentarz (opcjonalnie):</label>
-                    <input type="text" id="addComment" class="form-control" maxlength="255" placeholder="Komentarz tylko dla nas — nie trafi do dostawcy">
-                </div>
             </div>
+        </div>
 
-            <div class="row mt-4 align-items-center">
-                <div class="col-6 text-left">
-                    <button type="button" id="toggleAddVariantBtn" class="btn btn-outline-info"
-                            title="Dodaj nowy artykuł dostawcy do katalogu">
-                        <i class="bi bi-plus-square"></i> Artykuł
-                    </button>
-                </div>
-                <div class="col-6 text-right">
-                    <button type="button" id="clearSelectionBtn" class="btn btn-danger mr-1" title="Wyczyść wybór dostawcy i części">
-                        Wyczyść
-                    </button>
-                    <button type="button" id="addToCartBtn" class="btn btn-success" disabled>
-                        <i class="bi bi-plus-circle"></i> Dodaj
-                    </button>
-                </div>
+        <div class="cx-picker-foot">
+            <button type="button" id="toggleAddVariantBtn" class="btn btn-outline-info"
+                    title="Dodaj nowy artykuł dostawcy do katalogu">
+                <i class="bi bi-plus-square"></i> Artykuł
+            </button>
+            <div class="cx-foot-actions">
+                <button type="button" id="clearSelectionBtn" class="btn rx-btn-quiet" title="Wyczyść wybór dostawcy i części">
+                    Wyczyść
+                </button>
+                <button type="button" id="addToCartBtn" class="btn btn-success" disabled>
+                    <i class="bi bi-plus-circle"></i> Dodaj
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <!-- ===== Aktywne dokumenty dla wybranej pozycji =====
+         Chowane/pokazywane przez JS; nagłówek to prawdziwy przycisk
+         (data-toggle="collapse"), a obrót strzałki robi purchases.css. -->
+    <div class="rx-panel cx-docs" id="selectionDocsCard" style="display:none">
+        <button type="button" class="cx-docs-toggle" id="selectionDocsHeader"
+                data-toggle="collapse" data-target="#selectionDocsBody"
+                aria-expanded="false" aria-controls="selectionDocsBody">
+            <i class="bi bi-chevron-right" aria-hidden="true"></i>
+            <span>Aktywne dokumenty dla wybranej pozycji</span>
+            <span class="rx-count cx-count--warn" id="selectionDocsCount" style="display:none">0</span>
+            <span class="cx-docs-hint d-none d-sm-inline">kliknij, aby rozwinąć</span>
+        </button>
+        <div class="collapse" id="selectionDocsBody">
+            <div class="cx-docs-body" id="selectionDocsContent"></div>
+        </div>
+    </div>
+
+    <!-- ===== Koszyk (grupowany po dostawcy) ===== -->
+    <section id="cartCard" aria-labelledby="cxCartTitle" style="display:none">
+        <div class="cx-cart-head">
+            <h2 class="cx-cart-title" id="cxCartTitle">
+                <i class="bi bi-cart3" aria-hidden="true"></i> Koszyk
+                <span class="rx-count" id="cartCount">0</span>
+            </h2>
+            <button type="button" id="clearCartBtn" class="btn btn-sm rx-btn-quiet cx-btn-danger">
+                <i class="bi bi-trash"></i> Wyczyść koszyk
+            </button>
+        </div>
+        <!-- Przełącznik dostawców — zakładki renderuje JS (renderCartTabs);
+             to nie jest Bootstrapowe data-toggle="tab". -->
+        <div class="nav rx-tabs cx-vtabs" id="cartTabs" role="tablist" aria-label="Dostawcy w koszyku"></div>
+        <div id="cartBody" role="tabpanel"></div>
+    </section>
+
+    <!-- Pusty koszyk — JS pokazuje to zamiast #cartCard. -->
+    <div class="rx-panel cx-empty" id="cartEmpty" style="display:none">
+        <div class="rx-empty">
+            <div class="rx-empty-icon"><i class="bi bi-cart3"></i></div>
+            <div class="rx-empty-title">Koszyk jest pusty</div>
+            <div class="rx-empty-text">
+                Wybierz dostawcę i część powyżej, wpisz ilość i kliknij „Dodaj".
+                Pozycje zostaną pogrupowane według dostawcy, a stąd utworzysz
+                zapytanie albo zamówienie.
             </div>
         </div>
     </div>
 
     <!-- ===== Modal: szukaj numeru u dostawcy ===== -->
-    <div class="modal fade" id="vpSearchModal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal fade cx-modal" id="vpSearchModal" tabindex="-1" role="dialog" aria-labelledby="vpSearchModalTitle" aria-hidden="true">
         <div class="modal-dialog modal-lg" role="document">
             <div class="modal-content">
-                <div class="modal-header py-2">
-                    <h5 class="modal-title"><i class="bi bi-search"></i> Szukaj numeru u dostawcy</h5>
+                <div class="modal-header">
+                    <h5 class="modal-title" id="vpSearchModalTitle"><i class="bi bi-search"></i> Szukaj numeru u dostawcy</h5>
                     <button type="button" class="close" data-dismiss="modal" aria-label="Zamknij"><span>&times;</span></button>
                 </div>
                 <div class="modal-body">
-                    <input type="text" id="vpSearchInput" class="form-control" placeholder="Min. 2 znaki — numer dostawcy, numer producenta, część lub dostawca…" autocomplete="off">
+                    <input type="text" id="vpSearchInput" class="form-control" placeholder="Min. 2 znaki — numer dostawcy, numer producenta, część lub dostawca…" aria-label="Szukaj numeru u dostawcy" autocomplete="off">
                     <div id="vpSearchStatus" class="text-muted mt-2" style="display:none"></div>
-                    <div class="table-responsive mt-2" style="max-height:50vh; overflow-y:auto;">
-                        <table class="table table-sm table-striped mb-0">
-                            <thead class="thead-light">
-                                <tr><th>Numer u dostawcy</th><th>Nr producenta</th><th>Producent</th><th>Dostawca</th><th>Część</th><th>JM / opak.</th><th></th></tr>
+                    <div class="cx-search-scroll">
+                        <table class="table rx-table mb-0">
+                            <thead>
+                                <tr><th>Numer u dostawcy</th><th>Nr producenta</th><th>Producent</th><th>Dostawca</th><th>Część</th><th>JM / opak.</th><th><span class="sr-only">Akcja</span></th></tr>
                             </thead>
                             <tbody id="vpSearchResults"></tbody>
                         </table>
@@ -440,14 +548,12 @@ $units = $MsaDB->query(
         </div>
     </div>
 
-    
-
     <!-- ===== Help modal: shown when the user clicks "+ Artykuł" ===== -->
-    <div class="modal fade" id="addVariantHelpModal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal fade cx-modal" id="addVariantHelpModal" tabindex="-1" role="dialog" aria-labelledby="addVariantHelpTitle" aria-hidden="true">
         <div class="modal-dialog" role="document">
             <div class="modal-content">
-                <div class="modal-header py-2">
-                    <h5 class="modal-title"><i class="bi bi-info-circle"></i> Dodawanie nowego artykułu</h5>
+                <div class="modal-header">
+                    <h5 class="modal-title" id="addVariantHelpTitle"><i class="bi bi-info-circle"></i> Dodawanie nowego artykułu</h5>
                     <button type="button" class="close" data-dismiss="modal" aria-label="Zamknij"><span>&times;</span></button>
                 </div>
                 <div class="modal-body">
@@ -460,8 +566,8 @@ $units = $MsaDB->query(
                         <i class="bi bi-info-circle"></i> Cena i&nbsp;ilość są specyficzne dla konkretnego zamówienia &mdash; dlatego najpierw zapisujemy artykuł w&nbsp;katalogu, a&nbsp;dopiero potem dodajemy do koszyka.
                     </p>
                 </div>
-                <div class="modal-footer py-2">
-                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Anuluj</button>
+                <div class="modal-footer">
+                    <button type="button" class="btn rx-btn-quiet" data-dismiss="modal">Anuluj</button>
                     <button type="button" class="btn btn-primary" id="addVariantHelpContinue">Rozumiem, kontynuuj</button>
                 </div>
             </div>
@@ -474,46 +580,20 @@ $units = $MsaDB->query(
          delete-vendor-items, create-doc and clear-cart actions so the
          native window.confirm / no-confirm UX is replaced with a
          consistent themed dialog. -->
-    <div class="modal fade" id="cartConfirmModal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal fade cx-modal" id="cartConfirmModal" tabindex="-1" role="dialog" aria-labelledby="cartConfirmTitle" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered" role="document">
             <div class="modal-content">
-                <div class="modal-header py-2">
+                <div class="modal-header">
                     <h5 class="modal-title" id="cartConfirmTitle">Potwierdź</h5>
                     <button type="button" class="close" data-dismiss="modal" aria-label="Zamknij"><span>&times;</span></button>
                 </div>
                 <div class="modal-body" id="cartConfirmBody"></div>
-                <div class="modal-footer py-2">
-                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Anuluj</button>
+                <div class="modal-footer">
+                    <button type="button" class="btn rx-btn-quiet" data-dismiss="modal">Anuluj</button>
                     <button type="button" class="btn btn-danger" id="cartConfirmOk">Potwierdź</button>
                 </div>
             </div>
         </div>
-    </div>
-    <link rel="stylesheet" href="<?= asset('public_html/components/purchases/cart/purchases.css') ?>">
-    <div class="card mb-3" id="selectionDocsCard" style="display:none">
-        <div class="card-header py-2" id="selectionDocsHeader" role="button" data-toggle="collapse"
-                data-target="#selectionDocsBody" aria-expanded="false" aria-controls="selectionDocsBody">
-            <i class="bi bi-chevron-right text-muted mr-1"></i>
-            Aktywne dokumenty dla wybranej pozycji
-            <span class="badge badge-pill badge-warning align-middle ml-1" id="selectionDocsCount" style="display:none">0</span>
-        </div>
-        <div class="collapse" id="selectionDocsBody">
-            <div class="card-body py-2" id="selectionDocsContent"></div>
-        </div>
-    </div>
-
-    <!-- ===== Koszyk (grupowany po dostawcy) ===== -->
-    <div class="card mb-3" id="cartCard" style="display:none">
-        <div class="card-header">
-            <h5 class="mb-0">
-                Koszyk
-                <span class="badge badge-info" id="cartCount">0</span>
-                <button type="button" id="clearCartBtn" class="btn btn-sm btn-outline-secondary float-right">
-                    <i class="bi bi-trash"></i> Wyczyść koszyk
-                </button>
-            </h5>
-        </div>
-        <div class="card-body" id="cartBody"></div>
     </div>
 </div>
 

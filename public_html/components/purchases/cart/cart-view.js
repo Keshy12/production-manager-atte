@@ -108,7 +108,9 @@
     let $cartCurrencyWrap    = $('#cartCurrencyWrap');
     let $cartCard            = $('#cartCard');
     let $cartBody            = $('#cartBody');
+    let $cartTabs            = $('#cartTabs');    // vendor switcher above the groups
     let $cartCount           = $('#cartCount');
+    let $cartEmpty           = $('#cartEmpty');   // rx-empty shown instead of #cartCard
     let $clearBtn            = $('#clearCartBtn');
     let $selectionDocsCard   = $('#selectionDocsCard');
     let $selectionDocsHeader = $('#selectionDocsHeader');
@@ -143,7 +145,7 @@
     function setPickerMode(mode) {
         pickerMode = mode === 'add' ? 'add' : 'pick';
         // Visual hint on the picker card body.
-        let $card = $pickVariantRow.closest('.card');
+        let $card = $pickVariantRow.closest('.cx-picker');
         $card.toggleClass('picker-add-mode', pickerMode === 'add');
         if (pickerMode === 'add') {
             // The cart-add wrappers stay inside #pickVariantRow (where the
@@ -515,16 +517,19 @@
             'Uwaga: ilość nie odpowiada pełnej liczbie opakowań (wielkość: ' + formatQty(pack) + ')');
     }
 
-    function stateBadgeClass(state) {
+    // Odcień plakietki stanu dokumentu — te same kolory co na liście
+    // /purchase/documents (STATE_META w documents-view.js).
+    function stateTone(state) {
         switch (state) {
-            case 'draft':              return 'badge-secondary';
-            case 'sent':               return 'badge-primary';
-            case 'responded':          return 'badge-info';
-            case 'confirmed':          return 'badge-info';
-            case 'partially_received': return 'badge-warning';
-            case 'received':           return 'badge-success';
-            case 'cancelled':          return 'badge-danger';
-            default:                   return 'badge-secondary';
+            case 'sent':               return 'violet';
+            case 'responded':          return 'cyan';
+            case 'converted':          return 'green';
+            case 'confirmed':          return 'blue';
+            case 'in_progress':        return 'cyan';
+            case 'partially_received': return 'amber';
+            case 'received':           return 'green';
+            case 'cancelled':          return 'red';
+            default:                   return 'neutral';
         }
     }
 
@@ -536,8 +541,24 @@
         })[state] || state;
     }
 
-    function docTypeIcon(docType) {
-        return docType === 'rfq' ? '⚠' : '📦';
+    // Mały znacznik typu dokumentu (RFQ / PO) — zamiast dawnych emoji.
+    function docTypeTag(docType) {
+        return docType === 'rfq'
+            ? '<span class="cx-type-tag cx-type-tag--rfq" title="Zapytanie ofertowe">RFQ</span>'
+            : '<span class="cx-type-tag cx-type-tag--po" title="Zamówienie">PO</span>';
+    }
+
+    // Kapsułka z aktywnym dokumentem: [RFQ] numer + plakietka stanu.
+    // Z `id` to link do edycji w nowej karcie, bez — zwykły znacznik.
+    function docChipHtml(d) {
+        let title = stateBadgeLabel(d.state) + ' \u00b7 ' + formatQty(d.quantity) + ' \u00b7 ' + formatPrice(d.unit_price);
+        let inner = docTypeTag(d.doc_type) +
+            '<span class="cx-doc-num">' + escapeHtml(d.number) + '</span>' +
+            '<span class="rx-badge rx-badge--' + stateTone(d.state) + '">' + escapeHtml(stateBadgeLabel(d.state)) + '</span>';
+        if (d.id !== undefined && d.id !== null && d.id !== '') {
+            return '<a class="cx-doc badge-link" href="' + docEditUrl(d.doc_type, d.id) + '" target="_blank" rel="noopener" title="' + escapeHtml(title) + '">' + inner + '</a>';
+        }
+        return '<span class="cx-doc" title="' + escapeHtml(title) + '">' + inner + '</span>';
     }
 
 
@@ -925,6 +946,9 @@
     }
 
     function refreshVendorPartRow(preferredVpId) {
+        // Programmatic vendor changes (search modal, auto-complete, tabs)
+        // don't fire `change` — keep the cart switcher in step here too.
+        syncTabToPicker();
         // In add mode there's no existing variant to pick — skip the
         // pick-mode rebuild entirely.
         if (pickerMode === 'add') return;
@@ -1138,55 +1162,54 @@
         selectionDocsCache = { options: options, docs: docs };
         let html = '';
         let total = 0;
+        const th = function (label, right) {
+            return '<th scope="col"' + (right ? ' class="text-right"' : '') + '>' + label + '</th>';
+        };
         options.forEach(function (vp) {
             let list = docs[vp.id] || [];
             if (list.length === 0) return;
             total += list.length;
-            html += '<div class="selection-docs-vp mb-3">' +
-                '<div class="font-weight-bold mb-1">' + escapeHtml(vp.vendor_part_no) +
-                ' <span class="text-muted font-weight-normal">(' + list.length + ')</span>' +
+            html += '<div class="selection-docs-vp">' +
+                '<div class="cx-docs-vp-title">' + escapeHtml(vp.vendor_part_no) +
+                ' <span class="rx-sub">(' + list.length + ')</span>' +
                 '</div>' +
-                '<div class="table-responsive">' +
-                '<table class="table table-sm table-striped mb-0 selection-docs-table">' +
-                '<thead class="thead-light"><tr>' +
-                    '<th class="small text-uppercase text-muted align-middle text-nowrap p-1">Dokument</th>' +
-                    '<th class="small text-uppercase text-muted align-middle text-nowrap p-1">Typ</th>' +
-                    '<th class="small text-uppercase text-muted align-middle text-nowrap p-1">Status</th>' +
-                    '<th class="small text-uppercase text-muted align-middle text-nowrap p-1 text-right">Ilosc</th>' +
-                    '<th class="small text-uppercase text-muted align-middle text-nowrap p-1 text-right">Cena jedn.</th>' +
-                    '<th class="small text-uppercase text-muted align-middle text-nowrap p-1">Termin</th>' +
-                    '<th class="small text-uppercase text-muted align-middle text-nowrap p-1">Akcja</th>' +
+                '<div class="table-responsive cx-docs-table">' +
+                '<table class="table rx-table mb-0 selection-docs-table">' +
+                '<thead><tr>' +
+                    th('Dokument') + th('Status') + th('Ilość', true) + th('Cena jedn.', true) + th('Termin') + th('Akcja') +
                 '</tr></thead><tbody>';
             list.forEach(function (d) {
                 let editUrl = (d.id !== undefined && d.id !== null && d.id !== '') ? docEditUrl(d.doc_type, d.id) : null;
-                let docCell = '<span class="text-monospace">' + docTypeIcon(d.doc_type) + ' ' + (editUrl ? '<a href="' + editUrl + '" target="_blank" rel="noopener" class="text-reset text-decoration-none">' + escapeHtml(d.number) + '</a>' : escapeHtml(d.number)) + '</span>';
-                let typeBadge = '<span class="badge ' + (d.doc_type === 'rfq' ? 'badge-info' : 'badge-secondary') + '">' + (d.doc_type === 'rfq' ? 'RFQ' : 'PO') + '</span>';
-                let stateBadge = '<span class="badge ' + stateBadgeClass(d.state) + '">' + escapeHtml(stateBadgeLabel(d.state)) + '</span>';
+                let docCell = docTypeTag(d.doc_type) + ' ' + (editUrl
+                    ? '<a href="' + editUrl + '" target="_blank" rel="noopener" class="cx-doc-num">' + escapeHtml(d.number) + '</a>'
+                    : '<span class="cx-doc-num">' + escapeHtml(d.number) + '</span>');
+                let stateBadge = '<span class="rx-badge rx-badge--' + stateTone(d.state) + '">' + escapeHtml(stateBadgeLabel(d.state)) + '</span>';
                 let pack = (d.picked_pack_size !== null && d.picked_pack_size !== undefined && parseFloat(d.picked_pack_size) > 0) ? parseFloat(d.picked_pack_size) : null;
-                let qtyHtml = '<div>' + escapeHtml(formatQty(d.quantity)) + '</div>';
-                if (pack !== null) { qtyHtml += '<div><span class="badge badge-light border text-monospace" title="Wybrana wielkosc opakowania">opak. ' + escapeHtml(formatQty(pack)) + '</span></div>'; }
-                let priceHtml = (d.unit_price !== null && d.unit_price !== undefined) ? escapeHtml(formatPrice(d.unit_price)) : '<span class="text-muted">\u2014</span>';
+                let qtyHtml = '<div class="cx-qty">' + escapeHtml(formatQty(d.quantity)) + '</div>';
+                if (pack !== null) { qtyHtml += '<div><span class="cx-packchip" title="Wybrana wielkość opakowania">opak. ' + escapeHtml(formatQty(pack)) + '</span></div>'; }
+                let priceHtml = (d.unit_price !== null && d.unit_price !== undefined) ? escapeHtml(formatPrice(d.unit_price)) : '<span class="text-faint">\u2014</span>';
                 // Currency comes from the row payload (cart-active-docs.php
                 // SELECTs pri.currency / poi.currency). The DB default is
                 // 'PLN' so older rows still report a code; missing/null
                 // (e.g. a draft doc with no item-level currency yet) shows
                 // a muted dash rather than silently defaulting.
-                priceHtml += '<div><small class="text-muted">' + escapeHtml(d.currency || '\u2014') + '</small></div>';
-                let dateCell = (d.expected_date && d.expected_date !== '') ? escapeHtml(d.expected_date) : '<span class="text-muted">\u2014</span>';
-                let actionCell = editUrl ? '<a href="' + editUrl + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary" title="Otworz edycje w nowej karcie">Edytuj</a>' : '<span class="text-muted">\u2014</span>';
+                priceHtml += '<div class="rx-sub">' + escapeHtml(d.currency || '\u2014') + '</div>';
+                let dateCell = (d.expected_date && d.expected_date !== '') ? escapeHtml(d.expected_date) : '<span class="text-faint">\u2014</span>';
+                let actionCell = editUrl
+                    ? '<a href="' + editUrl + '" target="_blank" rel="noopener" class="btn btn-sm rx-btn-quiet" title="Otwórz edycję w nowej karcie"><i class="bi bi-box-arrow-up-right"></i> Edytuj</a>'
+                    : '<span class="text-faint">\u2014</span>';
                 html += '<tr>' +
-                    '<td class="align-middle text-nowrap p-1">' + docCell + '</td>' +
-                    '<td class="align-middle text-nowrap p-1">' + typeBadge + '</td>' +
-                    '<td class="align-middle text-nowrap p-1">' + stateBadge + '</td>' +
-                    '<td class="align-middle text-nowrap p-1 text-right">' + qtyHtml + '</td>' +
-                    '<td class="align-middle text-nowrap p-1 text-right">' + priceHtml + '</td>' +
-                    '<td class="align-middle text-nowrap p-1">' + dateCell + '</td>' +
-                    '<td class="align-middle text-nowrap p-1">' + actionCell + '</td>' +
+                    '<td class="align-middle">' + docCell + '</td>' +
+                    '<td class="align-middle">' + stateBadge + '</td>' +
+                    '<td class="align-middle text-right">' + qtyHtml + '</td>' +
+                    '<td class="align-middle text-right">' + priceHtml + '</td>' +
+                    '<td class="align-middle">' + dateCell + '</td>' +
+                    '<td class="align-middle">' + actionCell + '</td>' +
                 '</tr>';
             });
             html += '</tbody></table></div></div>';
         });
-        if (total === 0) { html = '<span class="text-muted">Brak aktywnych dokument\u00f3w dla tej pozycji.</span>'; }
+        if (total === 0) { html = '<p class="cx-docs-empty">Brak aktywnych dokumentów dla tej pozycji.</p>'; }
         $selectionDocsContent.html(html);
         $selectionDocsCard.show();
         updateSelectionDocsBadge();
@@ -1230,13 +1253,108 @@
         });
     }
 
-    function renderCart() {
-        if (cart.items.length === 0) {
-            $cartCard.hide();
-            return;
+    // ---- vendor switcher ----
+    // One tab per vendor that has cart items, plus at most ONE temporary
+    // empty tab (tempVendor) for a vendor picked in Dostawca that has no
+    // items yet. View-only state — never written to localStorage.
+    //   activeCartVendor — vendor id (string) of the visible group, or null
+    //   tempVendor       — { id, name } | null
+    //   lastPickerVendor — picker value seen by the last picker → tab sync
+    //                      (sync acts only when it changes: no loops, and
+    //                      "Wyczyść koszyk" is not undone by the next event)
+    //   pendingTabSync   — a sync was requested during an inline edit
+    let activeCartVendor = null;
+    let tempVendor = null;
+    let lastPickerVendor = null;
+    let pendingTabSync = false;
+
+    function cartVendorHasItems(vid) {
+        return cart.items.some(function (i) { return String(i.vendor_id) === String(vid); });
+    }
+
+    function pickerVendorId() {
+        let vid = parseInt($vendorSelect.val(), 10) || null;
+        return vid ? String(vid) : null;
+    }
+
+    function pickerVendorName() {
+        return $vendorSelect.find('option:selected').attr('data-name') || '';
+    }
+
+    // True while a cart row (qty/price/comment) or its article-comment
+    // editor is open — re-rendering the cart would discard that edit.
+    function isEditingCartRow() {
+        return $cartBody.find('.cart-item-row.is-editing, .cart-row-comment-input').length > 0;
+    }
+
+    // Picker → tab state (no rendering). Returns true when the state changed.
+    //   - vendor with items       → its tab, stale temp tab dropped
+    //   - vendor without items    → the (single) temp empty tab
+    //   - picker cleared          → keep the tab, but drop a temp empty one
+    function applyPickerToTabs(force) {
+        let pv = pickerVendorId();
+        if (!force && pv === lastPickerVendor) return false;
+        lastPickerVendor = pv;
+        let before = activeCartVendor + '|' + (tempVendor ? tempVendor.id : '');
+        if (pv === null) {
+            if (tempVendor) {
+                if (activeCartVendor === tempVendor.id) { activeCartVendor = null; }
+                tempVendor = null;
+            }
+        } else if (cartVendorHasItems(pv)) {
+            tempVendor = null;
+            activeCartVendor = pv;
+        } else {
+            tempVendor = { id: pv, name: pickerVendorName() || ('#' + pv) };
+            activeCartVendor = pv;
         }
-        $cartCard.show();
+        return before !== (activeCartVendor + '|' + (tempVendor ? tempVendor.id : ''));
+    }
+
+    // Picker → tab. Deferred while a row is being edited.
+    function syncTabToPicker() {
+        if (isEditingCartRow()) { pendingTabSync = true; return; }
+        if (applyPickerToTabs(false)) { renderCart(); }
+    }
+
+    // Runs a deferred sync once the edit is over (save / cancel).
+    function flushPendingTabSync() {
+        if (!pendingTabSync || isEditingCartRow()) return;
+        pendingTabSync = false;
+        if (applyPickerToTabs(true)) { renderCart(); }
+    }
+
+    // Tab order: vendor name, Polish collation, case-insensitive; ties by id.
+    function compareVendorTabs(a, b) {
+        let byName = String(a.label).localeCompare(String(b.label), 'pl', { sensitivity: 'accent' });
+        return byName !== 0 ? byName : ((parseInt(a.key, 10) || 0) - (parseInt(b.key, 10) || 0));
+    }
+
+    function renderCartTabs(byVendor, order) {
+        let hadFocus = $cartTabs.length > 0 && $.contains($cartTabs[0], document.activeElement);
+        let tabs = order.map(function (vid) {
+            return { key: String(vid), label: byVendor[vid].name || ('#' + vid), count: byVendor[vid].items.length, temp: false };
+        });
+        if (tempVendor) {
+            tabs.push({ key: tempVendor.id, label: tempVendor.name, count: 0, temp: true });
+        }
+        tabs.sort(compareVendorTabs);   // the temp tab is just another tab
+        $cartTabs.html(tabs.map(function (t) {
+            let on = t.key === activeCartVendor;
+            return '<button type="button" role="tab" class="nav-link cx-vtab' + (on ? ' active' : '') + (t.temp ? ' cx-vtab--temp' : '') + '"' +
+                ' id="cartTab-' + escapeHtml(t.key) + '" data-vendor="' + escapeHtml(t.key) + '"' +
+                ' aria-selected="' + (on ? 'true' : 'false') + '" aria-controls="cartBody" tabindex="' + (on ? '0' : '-1') + '"' +
+                ' title="' + (t.temp ? 'Dostawca wybrany w selektorze — jeszcze bez pozycji w koszyku' : 'Pokaż pozycje tego dostawcy i wybierz go w selektorze') + '">' +
+                '<span class="cx-vtab-name">' + escapeHtml(t.label) + '</span> <span class="rx-count">' + t.count + '</span>' +
+                '</button>';
+        }).join(''));
+        $cartBody.attr('aria-labelledby', 'cartTab-' + activeCartVendor);
+        if (hadFocus) { $cartTabs.find('.cx-vtab.active').trigger('focus'); }
+    }
+
+    function renderCart() {
         $cartCount.text(cart.items.length);
+        $clearBtn.prop('disabled', cart.items.length === 0);
 
         let byVendor = {};
         cart.items.forEach(function (item, idx) {
@@ -1245,9 +1363,43 @@
             }
             byVendor[item.vendor_id].items.push({ item: item, idx: idx });
         });
+        // Real vendors in tab order (same comparator as the tabs).
+        let order = Object.keys(byVendor).sort(function (a, b) {
+            return compareVendorTabs(
+                { key: a, label: byVendor[a].name || ('#' + a) },
+                { key: b, label: byVendor[b].name || ('#' + b) });
+        });
+
+        // The temp tab became a real one (an item was added for it).
+        if (tempVendor && byVendor[tempVendor.id]) { tempVendor = null; }
+        // The active vendor lost its last item: it stays as an empty tab
+        // only while the picker is still on it (so the user can keep adding).
+        if (activeCartVendor !== null && !byVendor[activeCartVendor]
+            && !(tempVendor && tempVendor.id === activeCartVendor)) {
+            if (pickerVendorId() === activeCartVendor) {
+                tempVendor = { id: activeCartVendor, name: pickerVendorName() || ('#' + activeCartVendor) };
+            } else {
+                activeCartVendor = null;
+            }
+        }
+        // Nothing active → first real tab, else the temp tab, else no tabs.
+        if (activeCartVendor === null) {
+            activeCartVendor = order.length > 0 ? order[0] : (tempVendor ? tempVendor.id : null);
+        }
+
+        if (activeCartVendor === null) {
+            $cartCard.hide();
+            $cartEmpty.show();
+            flushPendingTabSync();
+            return;
+        }
+        $cartEmpty.hide();
+        $cartCard.show();
+        renderCartTabs(byVendor, order);
 
         let html = '';
         Object.keys(byVendor).forEach(function (vid) {
+            if (String(vid) !== activeCartVendor) return;
             let group = byVendor[vid];
             // Per-currency line-value totals — a vendor group may span
             // multiple currencies (PLN + EUR etc.) so a single rolled-up
@@ -1263,99 +1415,130 @@
                 currencyBreakdown[cur] = (currencyBreakdown[cur] || 0) + val;
             });
             let breakdownHtml = Object.keys(currencyBreakdown).sort().map(function (cur) {
-                return '<div>Łącznie ' + escapeHtml(cur) + ': ' + formatPrice(currencyBreakdown[cur]) + '</div>';
+                return '<span class="cx-total">Łącznie <strong>' + formatPrice(currencyBreakdown[cur]) + '</strong> <span class="cx-cur">' + escapeHtml(cur) + '</span></span>';
             }).join('');
 
-            html += '<div class="vendor-group mb-4" data-vendor-id="' + vid + '">' +
-                '<div class="d-flex justify-content-between align-items-start mb-2">' +
-                '<div>' +
-                '<h6 class="mb-0">' +
-                    '<a href="#" class="text-muted select-vendor-link select-vendor-btn mr-1" data-vendor-id="' + vid + '" title="Wybierz tego dostawcę w selektorze, aby dodać kolejne pozycje"><i class="bi bi-plus-circle"></i></a>' +
-                    escapeHtml(group.name) +
-                    ' <small class="text-muted">(' + group.items.length + ' poz.)</small>' +
-                '</h6>' +
-                '<div class="text-muted small mt-1">' + breakdownHtml + '</div>' +
+            html += '<div class="rx-panel cx-group vendor-group" data-vendor-id="' + vid + '">' +
+                '<div class="cx-group-head">' +
+                    '<div class="cx-group-id">' +
+                        '<div class="cx-group-title">' +
+                            '<h3 class="cx-group-name">' + escapeHtml(group.name) + '</h3>' +
+                            '<span class="rx-pill" title="Liczba pozycji tego dostawcy w koszyku">' + group.items.length + ' poz.</span>' +
+                        '</div>' +
+                        '<div class="cx-totals">' + breakdownHtml + '</div>' +
+                    '</div>' +
+                    '<div class="cx-group-actions" role="group" aria-label="Utwórz dokument">' +
+                        '<button type="button" class="btn btn-sm cx-doc-btn cx-doc-btn--rfq create-doc-btn" data-doc-type="rfq" data-vendor-id="' + vid + '" title="Utwórz zapytanie ofertowe (RFQ) jako szkic i otwórz w nowej karcie">' +
+                            '<i class="bi bi-question-square"></i> Utwórz zapytanie</button>' +
+                        '<button type="button" class="btn btn-sm cx-doc-btn cx-doc-btn--po create-doc-btn" data-doc-type="po" data-vendor-id="' + vid + '" title="Utwórz zamówienie (PO) jako szkic i otwórz w nowej karcie">' +
+                            '<i class="bi bi-cart-check"></i> Utwórz zamówienie</button>' +
+                        '<button type="button" class="btn btn-sm rx-btn-quiet cx-btn-danger clear-vendor-items-btn" data-vendor-id="' + vid + '" title="Usuń wszystkie pozycje tego dostawcy z koszyka" aria-label="Usuń wszystkie pozycje tego dostawcy z koszyka">' +
+                            '<i class="bi bi-trash"></i></button>' +
+                    '</div>' +
                 '</div>' +
-                '<div class="btn-group btn-group-sm" role="group" aria-label="Utwórz dokument">' +
-                    '<button type="button" class="btn btn-outline-primary create-doc-btn" data-doc-type="rfq" data-vendor-id="' + vid + '" title="Utwórz zapytanie ofertowe (RFQ) jako szkic i otwórz w nowej karcie">' +
-                        '<i class="bi bi-question-square"></i> Utwórz zapytanie</button>' +
-                    '<button type="button" class="btn btn-outline-success create-doc-btn" data-doc-type="po" data-vendor-id="' + vid + '" title="Utwórz zamówienie (PO) jako szkic i otwórz w nowej karcie">' +
-                        '<i class="bi bi-cart-check"></i> Utwórz zamówienie</button>' +
-                    '<button type="button" class="btn btn-outline-danger clear-vendor-items-btn" data-vendor-id="' + vid + '" title="Usuń wszystkie pozycje tego dostawcy z koszyka">' +
-                        '<i class="bi bi-trash"></i></button>' +
+                '<div class="cx-head" aria-hidden="true">' +
+                    '<div>Część</div>' +
+                    '<div>Ilość</div>' +
+                    '<div>Cena</div>' +
+                    '<div>Wartość</div>' +
+                    '<div>Aktywne dok.</div>' +
+                    '<div>Komentarz pozycji</div>' +
+                    '<div></div>' +
                 '</div>' +
-                '</div>' +
-                '<div class="table-responsive">' +
-                '<table class="table table-sm table-striped">' +
-                '<thead class="thead-light">' +
-                '<tr>' +
-                    '<th>Część</th>' +
-                    '<th>Ilość</th>' +
-                    '<th>Cena</th>' +
-                    '<th>Wartość</th>' +
-                    '<th>Aktywne dok.</th>' +
-                    '<th>Komentarz pozycji:</th>' +
-                    '<th>Akcje</th>' +
-                '</tr>' +
-                '</thead><tbody>';
+                '<div class="cx-rows">';
 
             group.items.forEach(function (x) {
                 let item = x.item;
-                let lineTotal = (item.unit_price ? item.unit_price * item.quantity : 0);
+                let hasPrice = !(item.unit_price === null || item.unit_price === undefined);
                 let docs = cart.activeDocs[item.vendor_part_id] || [];
                 let docBadges = '';
                 if (!cart.activeDocsLoaded) {
-                    docBadges = '<small class="text-muted"><i class="bi bi-hourglass-split"></i> ladowanie\u2026</small>';
+                    docBadges = '<span class="rx-skel cx-skel-doc" aria-hidden="true"></span><span class="sr-only">Ładowanie aktywnych dokumentów…</span>';
                 } else if (docs.length === 0) {
-                    docBadges = '<span class="text-muted">\u2014</span>';
+                    docBadges = '<span class="text-faint">\u2014</span>';
                 } else {
-                    let inner = '';
-                    docs.forEach(function (d) {
-                        let cls   = 'badge ' + stateBadgeClass(d.state);
-                        let title = stateBadgeLabel(d.state) + ' \u00b7 ' + formatQty(d.quantity) + ' \u00b7 ' + formatPrice(d.unit_price);
-                        let label = docTypeIcon(d.doc_type) + ' ' + escapeHtml(d.number) + ' \u00b7 ' + escapeHtml(stateBadgeLabel(d.state));
-                        if (d.id !== undefined && d.id !== null && d.id !== '') {
-                            inner += '<a class="' + cls + ' badge-link text-decoration-none mb-1" href="' + docEditUrl(d.doc_type, d.id) + '" target="_blank" rel="noopener" title="' + escapeHtml(title) + '">' + label + '</a>';
-                        } else {
-                            inner += '<span class="' + cls + ' mb-1" title="' + escapeHtml(title) + '">' + label + '</span>';
-                        }
-                    });
-                    docBadges = '<div class="cart-active-doc-badges d-flex flex-column align-items-start">' + inner + '</div>';
+                    docBadges = '<div class="cart-active-doc-badges cx-doc-list">' + docs.map(docChipHtml).join('') + '</div>';
                 }
+
+                // Część cell carries prefixed sub-lines: vendor/producer
+                // numbers (merged when identical) and the description.
                 let vn = item.vendor_part_no || '';
                 let pn = item.producer_part_no || '';
-                let partCell = escapeHtml(item.part_name);
+                let partCell = '<div class="cx-part-name">' + escapeHtml(item.part_name) + '</div>';
+                let nums = '';
                 if (vn && pn && vn === pn) {
-                    partCell += '<div><small class="text-muted">Nr dost./prod.: <span class="font-weight-bold">' + escapeHtml(vn) + '</span></small></div>';
+                    nums += '<span>Nr dost./prod.:<span class="rx-partno">' + escapeHtml(vn) + '</span></span>';
                 } else {
-                    if (vn) partCell += '<div><small class="text-muted">Nr dost.: <span class="font-weight-bold">' + escapeHtml(vn) + '</span></small></div>';
-                    if (pn) partCell += '<div><small class="text-muted">Nr prod.: <span class="font-weight-bold">' + escapeHtml(pn) + '</span></small></div>';
+                    if (vn) nums += '<span>Nr dost.:<span class="rx-partno">' + escapeHtml(vn) + '</span></span>';
+                    if (pn) nums += '<span>Nr prod.:<span class="rx-partno">' + escapeHtml(pn) + '</span></span>';
                 }
-                if (item.description) { partCell += '<div><small class="text-muted">' + escapeHtml(item.description) + '</small></div>'; }
+                if (nums) partCell += '<div class="cx-nums">' + nums + '</div>';
+                if (item.description) { partCell += '<div class="rx-sub cx-part-desc">' + escapeHtml(item.description) + '</div>'; }
                 let vpLive = getVpById(item.vendor_part_id);
                 let liveCmt = vpLive ? (vpLive.private_comment || '') : '';
-                partCell += '<div class="cart-row-comment-line"><small class="text-muted"><i class="bi bi-journal-text"></i> Uwagi do artykulu: ' + (liveCmt ? escapeHtml(liveCmt) : '<em>Brak</em>') + '</small> <button type="button" class="btn btn-link btn-sm p-0 ml-1 cart-row-comment-edit" data-vp-id="' + item.vendor_part_id + '" title="' + (liveCmt ? 'Edytuj komentarz' : 'Dodaj komentarz') + '"><i class="bi bi-pencil"></i></button></div>';
-                let qtyCell = formatQty(item.quantity);
+                partCell += '<div class="cart-row-comment-line"><i class="bi bi-journal-text" aria-hidden="true"></i> Uwagi do artykułu: ' + (liveCmt ? escapeHtml(liveCmt) : '<em>Brak</em>') +
+                    '<button type="button" class="rx-link-btn cart-row-comment-edit" data-vp-id="' + item.vendor_part_id + '" title="' + (liveCmt ? 'Edytuj komentarz' : 'Dodaj komentarz') + '" aria-label="' + (liveCmt ? 'Edytuj komentarz do artykułu' : 'Dodaj komentarz do artykułu') + '"><i class="bi bi-pencil"></i></button></div>';
+
+                let qtyCell = '<span class="cx-qty">' + formatQty(item.quantity) + '</span>' +
+                    (item.unit_name ? ' <span class="rx-unit">' + escapeHtml(item.unit_name) + '</span>' : '');
                 let pickedPack = itemPickedPackSize(item);
-                if (item.full_pack_quantity && item.full_pack_quantity > 0) {
-                    let pkgs = item.quantity / item.full_pack_quantity;
+                let qtySub = '';
+                // Package count must divide by the pack size CHOSEN for
+                // this line (picked_pack_size), never by
+                // `full_pack_quantity` — the latter is always the SMALLEST
+                // tier of list__vendor_part_pack, so a 15 × 150 line on a
+                // part whose smallest pack is 100 used to render
+                // "22.5 opak. · opak. 150". itemPickedPackSize() already
+                // falls back to full_pack_quantity for legacy lines.
+                if (pickedPack !== null && pickedPack > 0) {
+                    let pkgs = item.quantity / pickedPack;
                     let evenPkgs = Math.abs(pkgs - Math.round(pkgs)) < 1e-9;
-                    qtyCell += '<div><small class="' + (evenPkgs ? 'text-muted' : 'text-warning') + '">' + parseFloat(pkgs.toFixed(2)) + ' opak.</small>';
-                    if (pickedPack !== null) { qtyCell += '<span class="badge badge-light border text-monospace ml-1" title="Wybrana wielkosc opakowania">opak. ' + formatQty(pickedPack) + '</span>'; }
-                    qtyCell += '</div>';
-                } else if (pickedPack !== null) {
-                    qtyCell += '<div><span class="badge badge-light border text-monospace ml-1" title="Wybrana wielkosc opakowania">opak. ' + formatQty(pickedPack) + '</span></div>';
+                    qtySub += '<span' + (evenPkgs ? '' : ' class="cx-uneven"') + '>' + parseFloat(pkgs.toFixed(2)) + ' opak.</span>';
+                    qtySub += '<span class="cx-packchip" title="Wybrana wielkość opakowania">opak. ' + formatQty(pickedPack) + '</span>';
                 }
-                html += '<tr class="cart-item-row" data-idx="' + x.idx + '"><td>' + partCell + '</td><td class="cart-cell-qty">' + qtyCell + '</td><td class="cart-cell-price">' + (item.unit_price === null || item.unit_price === undefined ? '<span class="text-muted">\u2014</span>' : formatPrice(item.unit_price) + '<div><small class="text-muted">' + escapeHtml(item.currency) + '/' + escapeHtml(item.unit_name) + '</small></div>') + '</td><td class="cart-cell-line-total">' + (item.unit_price === null || item.unit_price === undefined ? '<span class="text-muted">\u2014</span>' : formatPrice(item.unit_price * item.quantity) + (item.currency ? '<div><small class="text-muted">' + escapeHtml(item.currency) + '</small></div>' : '')) + '</td><td style="white-space: nowrap; min-width: 120px;">' + docBadges + '</td><td class="cart-cell-comment cart-row-line-comment-cell">' + (item.line_comment ? nl2brSafe(escapeHtml(item.line_comment)) : '<span class="text-muted">\u2014</span>') + '</td><td class="cart-cell-akcje" style="white-space: nowrap;"><button type="button" class="btn btn-sm btn-outline-primary edit-item-btn mr-1" data-idx="' + x.idx + '"' + (cart.activeDocsLoaded ? '' : ' disabled') + ' title="' + (cart.activeDocsLoaded ? 'Edytuj ilo\u015b\u0107 / cen\u0119 / uwagi' : '\u0141adowanie aktywnych dokument\u00f3w\u2026') + '"><i class="bi bi-pencil"></i></button><button type="button" class="btn btn-sm btn-danger remove-item-btn" data-idx="' + x.idx + '" title="Usu\u0144 pozycj\u0119"><i class="bi bi-trash"></i></button></td></tr>';
+                if (qtySub) qtyCell += '<div class="cx-qty-sub">' + qtySub + '</div>';
+
+                let priceCell = hasPrice
+                    ? '<span class="cx-money">' + formatPrice(item.unit_price) + '</span><div class="rx-sub">' + escapeHtml(item.currency) + '/' + escapeHtml(item.unit_name) + '</div>'
+                    : '<span class="text-faint">\u2014</span>';
+                let totalCell = hasPrice
+                    ? '<span class="cx-money">' + formatPrice(item.unit_price * item.quantity) + '</span>' + (item.currency ? '<div class="rx-sub">' + escapeHtml(item.currency) + '</div>' : '')
+                    : '<span class="text-faint">\u2014</span>';
+                let commentCell = item.line_comment
+                    ? '<span class="cx-line-comment">' + nl2brSafe(escapeHtml(item.line_comment)) + '</span>'
+                    : '<span class="text-faint">\u2014</span>';
+
+                // Każda komórka z wartością ma wewnętrzny .cart-cell-* —
+                // edycja inline podmienia jego zawartość, a etykieta
+                // (widoczna na wąskim ekranie) zostaje na miejscu.
+                html += '<div class="cx-row cart-item-row' + (docs.length > 0 ? ' has-docs' : '') + '" data-idx="' + x.idx + '">' +
+                    '<div class="cx-cell cx-cell--part">' + partCell + '</div>' +
+                    '<div class="cx-cell cx-cell--qty"><span class="rx-cell-label">Ilość</span><div class="cx-val cart-cell-qty">' + qtyCell + '</div></div>' +
+                    '<div class="cx-cell cx-cell--price"><span class="rx-cell-label">Cena</span><div class="cx-val cart-cell-price">' + priceCell + '</div></div>' +
+                    '<div class="cx-cell cx-cell--total"><span class="rx-cell-label">Wartość</span><div class="cx-val cart-cell-line-total">' + totalCell + '</div></div>' +
+                    '<div class="cx-cell cx-cell--docs"><span class="rx-cell-label">Aktywne dok.</span>' + docBadges + '</div>' +
+                    '<div class="cx-cell cx-cell--comment"><span class="rx-cell-label">Komentarz pozycji</span><div class="cx-val cart-cell-comment cart-row-line-comment-cell">' + commentCell + '</div></div>' +
+                    '<div class="cx-cell cx-cell--actions cart-cell-akcje">' +
+                        '<button type="button" class="btn btn-sm rx-btn-quiet cx-icon-btn edit-item-btn" data-idx="' + x.idx + '"' + (cart.activeDocsLoaded ? '' : ' disabled') + ' title="' + (cart.activeDocsLoaded ? 'Edytuj ilość / cenę / uwagi' : 'Ładowanie aktywnych dokumentów…') + '" aria-label="Edytuj pozycję"><i class="bi bi-pencil"></i></button>' +
+                        '<button type="button" class="btn btn-sm rx-btn-quiet cx-btn-danger cx-icon-btn remove-item-btn" data-idx="' + x.idx + '" title="Usuń pozycję" aria-label="Usuń pozycję"><i class="bi bi-trash"></i></button>' +
+                    '</div>' +
+                '</div>';
             });
 
-// Część cell carries prefixed sub-lines: vendor/producer
-                // numbers (merged when identical) and the description.
-
-            html += '</tbody></table></div>' +
-                '</div>';
+            html += '</div></div>';
         });
+        if (html === '') {
+            // Temp empty tab: nothing to create a document from yet.
+            html = '<div class="rx-panel cx-empty">' +
+                '<div class="rx-empty">' +
+                    '<div class="rx-empty-icon"><i class="bi bi-inbox"></i></div>' +
+                    '<div class="rx-empty-title">Brak pozycji dla tego dostawcy</div>' +
+                    '<div class="rx-empty-text">Dodaj pozycję powyżej — pojawi się tutaj.</div>' +
+                '</div>' +
+            '</div>';
+        }
         $cartBody.html(html);
+        flushPendingTabSync();
     }
 
     function addCurrentSelectionToCart() {
@@ -1607,21 +1790,26 @@ $cartQty.val('');
 
     // ---- event handlers ----
 
-    $vendorSelect.on('change', function () {
-        applyVendorFilter();
-        refreshVendorPartRow();
-        loadSelectionDocs();
-        // Pre-select the vendor's default currency so the next picked
-        // line auto-fills with the right code. Server-renders each
-        // vendor option with `data-default-currency="<code>"` (joined
-        // from list__vendor.default_currency → list__currency.code).
-        // User can still override per-line after this.
+    // Pre-select the vendor's default currency so the next picked
+    // line auto-fills with the right code. Server-renders each
+    // vendor option with `data-default-currency="<code>"` (joined
+    // from list__vendor.default_currency → list__currency.code).
+    // User can still override per-line after this. Shared by the
+    // vendor change handler and selectVendorInPicker (tab clicks).
+    function preselectVendorCurrency() {
         const $opt = $vendorSelect.find('option:selected');
         const defCur = ($opt.attr('data-default-currency') || 'PLN').toString();
         try {
             $cartCurrency.selectpicker('val', defCur);
             refreshSelectpicker($cartCurrency);
         } catch (e) { /* unknown code → silent no-op */ }
+    }
+
+    $vendorSelect.on('change', function () {
+        applyVendorFilter();
+        refreshVendorPartRow();   // also syncs the vendor tab (see its first line)
+        loadSelectionDocs();
+        preselectVendorCurrency();
     });
 
     $partSelect.on('change', function () {
@@ -2116,7 +2304,7 @@ $cartQty.val('');
         // attribute while activeDocsLoaded is false, but a stale click
         // can still slip through (devtools, race conditions). Guard.
         if (!cart.activeDocsLoaded) return;
-        const $tr = $(this).closest('tr.cart-item-row');
+        const $tr = $(this).closest('.cart-item-row');
         if ($tr.data('cart-editing')) return;
         const idx = parseInt($tr.attr('data-idx'), 10);
         const item = cart.items[idx];
@@ -2124,11 +2312,11 @@ $cartQty.val('');
         $tr.data('cart-editing', true);
 
         // Stash original cell HTML so Cancel can restore verbatim.
-        $tr.data('orig-qty-html',     $tr.find('td.cart-cell-qty').html());
-        $tr.data('orig-price-html',   $tr.find('td.cart-cell-price').html());
-        $tr.data('orig-value-html',   $tr.find('td.cart-cell-line-total').html());
-        $tr.data('orig-comment-html', $tr.find('td.cart-cell-comment').html());
-        $tr.data('orig-akcje-html',   $tr.find('td.cart-cell-akcje').html());
+        $tr.data('orig-qty-html',     $tr.find('.cart-cell-qty').html());
+        $tr.data('orig-price-html',   $tr.find('.cart-cell-price').html());
+        $tr.data('orig-value-html',   $tr.find('.cart-cell-line-total').html());
+        $tr.data('orig-comment-html', $tr.find('.cart-cell-comment').html());
+        $tr.data('orig-akcje-html',   $tr.find('.cart-cell-akcje').html());
         // Stash currency so the live value-cell updater can render the
         // sub-line during edit (the price input's currency hint shows
         // the same value, but reading it from a single source avoids
@@ -2145,41 +2333,42 @@ $cartQty.val('');
             const currentQty = parseFloat(item.quantity) || 0;
             const currentPkgs = currentQty / pickedPack;
             $tr.data('cart-edit-pack', pickedPack);
-            $tr.find('td.cart-cell-qty').empty().append(
-                '<input type="number" step="any" min="0" class="form-control form-control-sm text-right cart-edit-input cart-edit-qty" value="' + escapeHtml(currentQty) + '">' +
-                '<div class="d-flex align-items-center flex-wrap mt-1" style="gap:.25rem">' +
+            $tr.find('.cart-cell-qty').empty().append(
+                '<input type="number" step="any" min="0" class="form-control form-control-sm text-right cart-edit-input cart-edit-qty" value="' + escapeHtml(currentQty) + '" aria-label="Ilość">' +
+                '<div class="cx-edit-pack">' +
                     '<input type="number" step="1" min="0" class="form-control form-control-sm text-right cart-edit-input cart-edit-packages" ' +
-                    'style="width:6em" value="' + escapeHtml(parseFloat(currentPkgs.toFixed(2))) + '" ' +
-                    'title="Opak. — qty jest wyliczane jako opak. × wielkość">' +
-                    '<small class="text-muted">opak.</small>' +
-                    '<span class="badge badge-light border text-monospace" title="Wielkość opakowania (stała)">× ' + escapeHtml(formatQty(pickedPack)) + '</span>' +
+                    'value="' + escapeHtml(parseFloat(currentPkgs.toFixed(2))) + '" ' +
+                    'title="Opak. — qty jest wyliczane jako opak. × wielkość" aria-label="Liczba opakowań">' +
+                    '<span class="rx-sub">opak.</span>' +
+                    '<span class="cx-packchip" title="Wielkość opakowania (stała)">× ' + escapeHtml(formatQty(pickedPack)) + '</span>' +
                 '</div>' +
-                (unitName ? '<div><small class="text-muted">' + escapeHtml(unitName) + '</small></div>' : '')
+                (unitName ? '<div class="rx-sub">' + escapeHtml(unitName) + '</div>' : '')
             );
         } else {
-            $tr.find('td.cart-cell-qty').empty().append(
-                '<input type="number" step="any" min="0" class="form-control form-control-sm text-right cart-edit-input cart-edit-qty" value="' + escapeHtml(item.quantity || '') + '">' +
-                (unitName ? '<div><small class="text-muted">' + escapeHtml(unitName) + '</small></div>' : '')
+            $tr.find('.cart-cell-qty').empty().append(
+                '<input type="number" step="any" min="0" class="form-control form-control-sm text-right cart-edit-input cart-edit-qty" value="' + escapeHtml(item.quantity || '') + '" aria-label="Ilość">' +
+                (unitName ? '<div class="rx-sub">' + escapeHtml(unitName) + '</div>' : '')
             );
         }
 
         // Swap price cell. Currency / JM sub-line stays as a hint.
         const priceInputVal = item.unit_price === null || item.unit_price === undefined ? '' : item.unit_price;
-        $tr.find('td.cart-cell-price').empty().append(
-            '<input type="number" step="any" min="0" class="form-control form-control-sm text-right cart-edit-input cart-edit-price" value="' + escapeHtml(priceInputVal) + '">' +
-            '<div><small class="text-muted">' + escapeHtml(item.currency || 'PLN') + '/' + escapeHtml(unitName) + '</small></div>'
+        $tr.find('.cart-cell-price').empty().append(
+            '<input type="number" step="any" min="0" class="form-control form-control-sm text-right cart-edit-input cart-edit-price" value="' + escapeHtml(priceInputVal) + '" aria-label="Cena">' +
+            '<div class="rx-sub">' + escapeHtml(item.currency || 'PLN') + '/' + escapeHtml(unitName) + '</div>'
         );
 
         // Swap comment cell with a textarea.
-        $tr.find('td.cart-cell-comment').empty().append(
-            '<textarea rows="2" class="form-control form-control-sm cart-edit-comment" placeholder="Komentarz pozycji...">' + escapeHtml(item.line_comment || '') + '</textarea>'
+        $tr.find('.cart-cell-comment').empty().append(
+            '<textarea rows="2" class="form-control form-control-sm cart-edit-comment" placeholder="Komentarz pozycji..." aria-label="Komentarz pozycji">' + escapeHtml(item.line_comment || '') + '</textarea>'
         );
 
         // Swap actions cell — Save + Cancel only.
-        $tr.find('td.cart-cell-akcje').html(
-            '<button type="button" class="btn btn-sm btn-success cart-row-save mr-1" title="Zapisz (Enter / Ctrl+Enter)"><i class="bi bi-check-lg"></i></button>' +
-            '<button type="button" class="btn btn-sm btn-outline-secondary cart-row-cancel" title="Anuluj (Esc)"><i class="bi bi-x-lg"></i></button>'
+        $tr.find('.cart-cell-akcje').html(
+            '<button type="button" class="btn btn-sm btn-success cx-icon-btn cart-row-save" title="Zapisz (Enter / Ctrl+Enter)" aria-label="Zapisz"><i class="bi bi-check-lg"></i></button>' +
+            '<button type="button" class="btn btn-sm btn-outline-secondary cx-icon-btn cart-row-cancel" title="Anuluj (Esc)" aria-label="Anuluj"><i class="bi bi-x-lg"></i></button>'
         );
+        $tr.addClass('is-editing');   // presentational: highlights the row
 
         $tr.data('cart-edit-idx', idx);
         // Focus the first numeric input in the row (packages if shown,
@@ -2193,14 +2382,16 @@ $cartQty.val('');
     // it during the session — without this the row would show stale
     // Wartość after Cancel.
     $cartBody.on('click', '.cart-row-cancel', function () {
-        const $tr = $(this).closest('tr.cart-item-row');
+        const $tr = $(this).closest('.cart-item-row');
         if (!$tr.data('cart-editing')) return;
-        $tr.find('td.cart-cell-qty').html($tr.data('orig-qty-html'));
-        $tr.find('td.cart-cell-price').html($tr.data('orig-price-html'));
-        $tr.find('td.cart-cell-line-total').html($tr.data('orig-value-html'));
-        $tr.find('td.cart-cell-comment').html($tr.data('orig-comment-html'));
-        $tr.find('td.cart-cell-akcje').html($tr.data('orig-akcje-html'));
+        $tr.find('.cart-cell-qty').html($tr.data('orig-qty-html'));
+        $tr.find('.cart-cell-price').html($tr.data('orig-price-html'));
+        $tr.find('.cart-cell-line-total').html($tr.data('orig-value-html'));
+        $tr.find('.cart-cell-comment').html($tr.data('orig-comment-html'));
+        $tr.find('.cart-cell-akcje').html($tr.data('orig-akcje-html'));
         $tr.removeData('cart-editing');
+        $tr.removeClass('is-editing');
+        flushPendingTabSync();
         $tr.removeData(['orig-qty-html', 'orig-price-html', 'orig-value-html', 'orig-comment-html', 'orig-akcje-html', 'cart-edit-idx', 'cart-edit-pack', 'cart-edit-currency']);
     });
 
@@ -2208,7 +2399,7 @@ $cartQty.val('');
     // picker's Opak.↔Ilość pair. Whichever input was edited gets the
     // uneven-pack yellow flag; the other clears.
     function applyPackSync($source, isPackagesSource) {
-        const $tr = $source.closest('tr.cart-item-row');
+        const $tr = $source.closest('.cart-item-row');
         const pack = parseFloat($tr.data('cart-edit-pack'));
         if (!pack || pack <= 0) return;
         const raw = ($source.val() || '').toString().replace(',', '.');
@@ -2262,7 +2453,7 @@ $cartQty.val('');
         const price = (priceRaw === '') ? null : parseFloat(priceRaw.replace(',', '.'));
         const $cell = $tr.find('.cart-cell-line-total');
         if (isNaN(qty) || qty <= 0 || price === null || isNaN(price)) {
-            $cell.html('<span class="text-muted">—</span>');
+            $cell.html('<span class="text-faint">—</span>');
         } else {
             // The currency sub-line sits on the row's data-* via the
             // cart item. We pull from the price input's sibling
@@ -2272,22 +2463,22 @@ $cartQty.val('');
             // stash currency at edit-open time.
             const currency = $tr.data('cart-edit-currency') || '';
             $cell.html(
-                escapeHtml(formatPrice(qty * price)) +
+                '<span class="cx-money">' + escapeHtml(formatPrice(qty * price)) + '</span>' +
                 (currency
-                    ? '<div><small class="text-muted">' + escapeHtml(currency) + '</small></div>'
+                    ? '<div class="rx-sub">' + escapeHtml(currency) + '</div>'
                     : '')
             );
         }
     }
 
-    $cartBody.on('input', '.cart-edit-qty',     function () { applyPackSync($(this), false); updateCartLineTotalCell($(this).closest('tr.cart-item-row')); });
-    $cartBody.on('input', '.cart-edit-price',   function () { updateCartLineTotalCell($(this).closest('tr.cart-item-row')); });
-    $cartBody.on('input', '.cart-edit-packages', function () { applyPackSync($(this), true);  updateCartLineTotalCell($(this).closest('tr.cart-item-row')); });
+    $cartBody.on('input', '.cart-edit-qty',     function () { applyPackSync($(this), false); updateCartLineTotalCell($(this).closest('.cart-item-row')); });
+    $cartBody.on('input', '.cart-edit-price',   function () { updateCartLineTotalCell($(this).closest('.cart-item-row')); });
+    $cartBody.on('input', '.cart-edit-packages', function () { applyPackSync($(this), true);  updateCartLineTotalCell($(this).closest('.cart-item-row')); });
 
     // Save → write to cart.items[idx], persist, re-render. With-pack
     // lines read packages × pack_size; no-pack lines read the qty input.
     $cartBody.on('click', '.cart-row-save', function () {
-        const $tr = $(this).closest('tr.cart-item-row');
+        const $tr = $(this).closest('.cart-item-row');
         if (!$tr.data('cart-editing')) return;
         const idx = parseInt($tr.data('cart-edit-idx'), 10);
         const item = cart.items[idx];
@@ -2336,26 +2527,24 @@ $cartQty.val('');
     $cartBody.on('keydown', '.cart-edit-input', function (e) {
         if (e.key === 'Escape') {
             e.preventDefault();
-            $(this).closest('tr.cart-item-row').find('.cart-row-cancel').trigger('click');
+            $(this).closest('.cart-item-row').find('.cart-row-cancel').trigger('click');
         } else if (e.key === 'Enter') {
             e.preventDefault();
-            $(this).closest('tr.cart-item-row').find('.cart-row-save').trigger('click');
+            $(this).closest('.cart-item-row').find('.cart-row-save').trigger('click');
         }
     });
     $cartBody.on('keydown', '.cart-edit-comment', function (e) {
         if (e.key === 'Escape') {
             e.preventDefault();
-            $(this).closest('tr.cart-item-row').find('.cart-row-cancel').trigger('click');
+            $(this).closest('.cart-item-row').find('.cart-row-cancel').trigger('click');
         } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
             e.preventDefault();
-            $(this).closest('tr.cart-item-row').find('.cart-row-save').trigger('click');
+            $(this).closest('.cart-item-row').find('.cart-row-save').trigger('click');
         }
     });
 
     // Select this vendor in the picker so more items can be queued.
-    $cartBody.on('click', '.select-vendor-btn', function (e) {
-        e.preventDefault();
-        let vid = parseInt($(this).data('vendor-id'), 10) || null;
+    function selectVendorInPicker(vid) {
         if (!vid) return;
         // When a Part is selected beforehand, applyPartFilter() has hidden
         // every vendor that doesn't supply it. If the clicked vendor isn't
@@ -2375,6 +2564,7 @@ $cartQty.val('');
         applyVendorFilter();       // scope parts to this vendor
         refreshVendorPartRow();
         loadSelectionDocs();
+        preselectVendorCurrency();
         // Small visual confirmation on the picker button.
         try {
             let sp = $vendorSelect.data('selectpicker');
@@ -2386,8 +2576,38 @@ $cartQty.val('');
                 $btn.one('animationend', function () { $(this).removeClass('flash-selected'); });
             }
         } catch (err) { /* cosmetic only */ }
-        let card = document.getElementById('vendorPartRow');
-        if (card) { card.closest('.card').scrollIntoView({ behavior: 'smooth' }); }
+    }
+
+    // Vendor switcher. A tab shows that vendor's group and runs the picker
+    // flow (selectVendorInPicker, incl. currency preselect). A stale temp
+    // empty tab of another vendor is dropped. Blocked while a row is being
+    // edited — re-rendering would throw the edit away.
+    $cartTabs.on('click', '.cx-vtab', function () {
+        if (isEditingCartRow()) {
+            setAlert('Dokończ lub anuluj trwającą edycję w koszyku, zanim przełączysz dostawcę.', 'warning');
+            return;
+        }
+        let key = String($(this).attr('data-vendor') || '');
+        if (key === '') return;
+        let changed = false;
+        if (tempVendor && tempVendor.id !== key) { tempVendor = null; changed = true; }
+        if (activeCartVendor !== key) { activeCartVendor = key; changed = true; }
+        if (changed) { renderCart(); }
+        selectVendorInPicker(parseInt(key, 10) || null);
+    });
+
+    // Arrow keys / Home / End move focus between tabs; Enter/Space activate.
+    $cartTabs.on('keydown', '.cx-vtab', function (e) {
+        let $tabs = $cartTabs.find('.cx-vtab');
+        let i = $tabs.index(this);
+        let next = null;
+        if (e.key === 'ArrowRight') next = (i + 1) % $tabs.length;
+        else if (e.key === 'ArrowLeft') next = (i - 1 + $tabs.length) % $tabs.length;
+        else if (e.key === 'Home') next = 0;
+        else if (e.key === 'End') next = $tabs.length - 1;
+        if (next === null) return;
+        e.preventDefault();
+        $tabs.eq(next).trigger('focus');
     });
 
     // Remove all cart items of one vendor (with confirmation).
@@ -2450,10 +2670,10 @@ $cartQty.val('');
             const cur   = it.currency || 'PLN';
             const sub   = [];
             if (it.vendor_part_no) { sub.push('Nr dost.: ' + escapeHtml(it.vendor_part_no)); }
-            return '<tr class="cart-doc-pick-row" style="cursor:pointer; user-select:none;">' +
+            return '<tr class="cart-doc-pick-row">' +
                 '<td class="align-middle"><input type="checkbox" class="cart-doc-pick" data-vp-id="' + escapeHtml(it.vendor_part_id) + '" checked></td>' +
                 '<td>' + escapeHtml(it.part_name) +
-                    (sub.length ? '<div><small class="text-muted">' + sub.join(' · ') + '</small></div>' : '') + '</td>' +
+                    (sub.length ? '<div class="rx-sub">' + sub.join(' · ') + '</div>' : '') + '</td>' +
                 '<td class="text-right text-nowrap">' + escapeHtml(formatQty(it.quantity)) + (it.unit_name ? ' ' + escapeHtml(it.unit_name) : '') + '</td>' +
                 '<td class="text-right text-nowrap">' + (hasPrice ? escapeHtml(formatPrice(price)) + ' ' + escapeHtml(cur) : '—') + '</td>' +
                 '<td class="text-right text-nowrap">' + (hasPrice ? escapeHtml(formatPrice(qty * price)) + ' ' + escapeHtml(cur) : '—') + '</td>' +
@@ -2462,10 +2682,10 @@ $cartQty.val('');
 
         const bodyHtml =
             '<p>Dostawca: <strong>' + escapeHtml(vendorName) + '</strong></p>' +
-            '<div class="table-responsive mb-2" style="max-height: 45vh; overflow-y: auto;">' +
-                '<table class="table table-sm table-hover mb-0">' +
-                    '<thead class="thead-light"><tr>' +
-                        '<th style="width:1%"><input type="checkbox" id="cartDocPickAll" checked title="Zaznacz / odznacz wszystkie"></th>' +
+            '<div class="cx-pick-scroll mb-2">' +
+                '<table class="table rx-table mb-0">' +
+                    '<thead><tr>' +
+                        '<th class="cx-pick-col"><input type="checkbox" id="cartDocPickAll" checked title="Zaznacz / odznacz wszystkie"></th>' +
                         '<th>Część</th><th class="text-right">Ilość</th><th class="text-right">Cena/szt.</th><th class="text-right">Wartość</th>' +
                     '</tr></thead>' +
                     '<tbody>' + rowsHtml + '</tbody>' +
@@ -2571,7 +2791,7 @@ $cartQty.val('');
         // two duplicate documents. The matching restore lives in
         // the .always() handler below so the button comes back even
         // when the AJAX errors out.
-        const $group = $btn.closest('.btn-group');
+        const $group = $btn.closest('.cx-group-actions');
         const $buttons = $group.length ? $group.find('button') : $btn;
         const originalHtml = $btn.html();
         $buttons.prop('disabled', true);
@@ -2628,15 +2848,23 @@ $cartQty.val('');
     $clearBtn.on('click', function () {
         if (cart.items.length === 0) { return; }
         const count = cart.items.length;
+        const vendorCount = Object.keys(cart.items.reduce(function (acc, i) { acc[i.vendor_id] = true; return acc; }, {})).length;
         cartConfirm({
             title: 'Wyczyścić koszyk?',
-            body: '<p>' + count + ' pozycji zostanie trwale usuniętych z koszyka. Tej operacji nie można cofnąć.</p>',
+            body: '<p>Zostaną trwale usunięte wszystkie pozycje (<strong>' + count + '</strong>) oraz wszystkie zakładki dostawców (<strong>' + vendorCount + '</strong>). Tej operacji nie można cofnąć.</p>' +
+                  '<p class="text-muted small mb-0">Wybór w selektorze Dostawca zostanie bez zmian.</p>',
             okLabel: 'Wyczyść koszyk',
             okClass: 'btn-danger',
             onConfirm: function () {
                 cart.items = [];
                 cart.activeDocs = {};
                 clearSavedCart();
+                // Drop every tab (also the temp empty one) → #cartEmpty.
+                // lastPickerVendor = current picker value, so the next
+                // picker event does not bring a temp tab back by itself.
+                tempVendor = null;
+                activeCartVendor = null;
+                lastPickerVendor = pickerVendorId();
                 renderCart();
                 setAlert('Koszyk wyczyszczony.', 'info');
             }
@@ -2648,6 +2876,7 @@ $cartQty.val('');
     // pre-init is swallowed, leaving the vp picker's menu stale.
     $(function () {
         loadSavedCart();
+        applyPickerToTabs(true);   // picker vendor → its tab (or temp tab); else first real tab
         renderCart();
         refreshVendorPartRow();
         loadActiveDocs();   // badges for restored items

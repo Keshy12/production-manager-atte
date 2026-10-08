@@ -1,0 +1,747 @@
+/* Koszyk zakupowy — /purchase/cart.
+
+   Baza wyglądu to receipts-ui.css (wczytywany przed tym plikiem, bez
+   zmian): zmienne .rx-page, nagłówek .rx-head, kafelki .rx-stat, panel
+   .rx-panel, plakietki .rx-badge, stan pusty .rx-empty, szkielety, tabela
+   .rx-table. Kolejność ładowania w cart-view.php:
+       receipts-ui.css  →  purchases.css  →  cart-ui.css
+   Tutaj tylko to, czego nie ma na pozostałych stronach — wszystko pod
+   .cx-page, żeby nic nie wyciekło na resztę aplikacji.
+
+   purchases.css (wspólny z innymi stronami) zostaje nietknięty; jego
+   reguły .picker-add-mode, .packages-uneven, .flash-selected,
+   #selectionDocsHeader i .badge-link nadal działają — poniżej tylko je
+   dopasowujemy wyglądem. */
+
+.cx-page {
+    /* Kolory typu dokumentu — te same, co na liście /purchase/documents
+       (documents-ui.css), żeby RFQ i PO wyglądały tak samo wszędzie. */
+    --cx-rfq:       #cf8a4f;
+    --cx-rfq-ink:   #8a5228;
+    --cx-rfq-soft:  #f7ebdd;
+    --cx-rfq-line:  #ebd3b8;
+    --cx-po:        #4f6d92;
+    --cx-po-ink:    #34506f;
+    --cx-po-soft:   #dfe7f1;
+    --cx-po-line:   #b9c8da;
+
+    /* Tryb „nowy artykuł" (setPickerMode('add')). */
+    --cx-add:       #17a2b8;
+    --cx-add-soft:  #eaf7fa;
+
+    --cx-warn-ink:  #8a6100;
+    --cx-field-h:   2.25rem;
+}
+
+
+/* ---- Nagłówek ------------------------------------------------------ */
+
+/* Dwie zasady pod leadem — jedna pod drugą, ikona + tekst. */
+.cx-page .cx-rules {
+    display: block;
+    max-width: 44rem;
+    margin: .75rem 0 0;
+    padding: 0;
+    list-style: none;
+    font-size: .8rem;
+    color: var(--rx-muted);
+}
+.cx-page .cx-rules li {
+    display: flex;
+    align-items: baseline;
+    gap: .5rem;
+}
+.cx-page .cx-rules li + li { margin-top: .3rem; }
+.cx-page .cx-rules .bi { flex: 0 0 auto; color: var(--rx-faint); }
+.cx-page .cx-rules li > span { flex: 1 1 auto; min-width: 0; }
+.cx-page .cx-rules strong { color: var(--rx-ink-2); }
+
+/* Linki w nagłówku leżą bezpośrednio w .rx-head (jak .dx-head-links). */
+.cx-page .cx-head-links { display: flex; flex-wrap: wrap; gap: .4rem; align-self: flex-start; }
+
+
+
+/* ---- Ogólne drobiazgi ---------------------------------------------- */
+
+/* Pole formularza: etykieta nad kontrolką, jak .rx-cell-label. */
+.cx-page .cx-label {
+    display: block;
+    margin: 0 0 .25rem;
+    font-size: .68rem;
+    font-weight: 700;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: var(--rx-muted);
+}
+.cx-page .cx-label .cx-opt { font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--rx-faint); }
+
+.cx-page .cx-hint {
+    margin: .3rem 0 0;
+    font-size: .75rem;
+    color: var(--rx-muted);
+}
+
+/* Mały przycisk-ikona (ołówek, szukaj, usuń, zapisz/anuluj w wierszu). */
+.cx-page .cx-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    line-height: 1;
+}
+.cx-page .cx-icon-btn--field { width: var(--cx-field-h); height: var(--cx-field-h); flex-shrink: 0; }
+
+/* Czerwony wariant „cichego" przycisku — usuwanie. */
+.cx-page .cx-btn-danger:hover,
+.cx-page .cx-btn-danger:focus {
+    background: #fdecee;
+    border-color: #f1aeb5;
+    color: #a71d2a;
+}
+.cx-page .cx-btn-danger:focus { box-shadow: 0 0 0 .2rem rgba(220, 53, 69, .2); }
+
+/* Znacznik typu dokumentu (RFQ / PO) — kopia z documents-ui.css. */
+.cx-page .cx-type-tag {
+    flex-shrink: 0;
+    display: inline-block;
+    min-width: 2.2rem;
+    padding: .06rem .32rem;
+    border: 1px solid transparent;
+    border-radius: .2rem;
+    font-size: .62rem;
+    font-weight: 600;
+    letter-spacing: .05em;
+    line-height: 1.3;
+    text-align: center;
+}
+.cx-page .cx-type-tag--rfq { background: var(--cx-rfq-soft); border-color: var(--cx-rfq-line); color: var(--cx-rfq-ink); }
+.cx-page .cx-type-tag--po  { background: var(--cx-po-soft);  color: var(--cx-po-ink); }
+
+/* Wielkość opakowania jako mały znacznik z czcionką mono. */
+.cx-page .cx-packchip {
+    display: inline-block;
+    padding: .04rem .4rem;
+    border: 1px solid var(--rx-line);
+    border-radius: .2rem;
+    background: #fff;
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    font-size: .72rem;
+    color: var(--rx-ink-2);
+    white-space: nowrap;
+}
+.cx-page .cx-uneven { color: var(--cx-warn-ink); font-weight: 600; }
+
+/* Pola tekstowe i pickery: spójne z paskiem narzędzi z receipts-ui.css. */
+.cx-page .form-control,
+.cx-page .custom-select { border-color: var(--rx-line); color: var(--rx-ink); }
+.cx-page .form-control:focus { border-color: #80bdff; box-shadow: var(--rx-ring); }
+.cx-page .form-control:disabled { background: var(--rx-canvas); color: var(--rx-faint); }
+.cx-page .form-control::placeholder { color: var(--rx-faint); }
+/* Ostrzeżenie „ilość nie wypełnia opakowań" (reguła z purchases.css) —
+   powtórzone tu, bo reguła wyżej ma wyższą specyficzność niż ona. */
+.cx-page .form-control.packages-uneven { border-color: #ffc107; background-color: #fff8e1; }
+.cx-page .form-control.packages-uneven:focus { border-color: #ffb300; box-shadow: 0 0 0 .2rem rgba(255, 193, 7, .25); }
+
+.cx-page .input-group-text {
+    border-color: var(--rx-line);
+    background: var(--rx-canvas);
+    color: var(--rx-muted);
+    font-size: .82rem;
+    font-weight: 600;
+}
+
+
+/* ---- Panel wyboru pozycji ------------------------------------------ */
+
+/* .rx-panel ma overflow: hidden, a menu bootstrap-select jest doczepione
+   (data-container) do komórki wewnątrz panelu — przy hidden zostałoby
+   ucięte na krawędzi panelu. Zaokrąglenia nagłówka i stopki robimy więc
+   ręcznie. */
+.cx-page .cx-picker {
+    position: relative;
+    overflow: visible;
+    margin-bottom: 1rem;
+}
+.cx-page .cx-picker > .rx-panel-head {
+    background: var(--rx-canvas);
+    border-radius: var(--rx-radius) var(--rx-radius) 0 0;
+}
+.cx-page .cx-panel-note {
+    margin: 0;
+    font-size: .8rem;
+    color: var(--rx-muted);
+}
+.cx-page .cx-picker-body { padding: 1.1rem 1.25rem 1.15rem; }
+
+/* Tytuł i podpowiedź w dwóch wersjach (wybór / nowy artykuł) — przełącza
+   je klasa .picker-add-mode, którą JS dokłada na panelu. */
+.cx-page .cx-title-add,
+.cx-page .cx-note-add { display: none; }
+.cx-page .picker-add-mode .cx-title-pick,
+.cx-page .picker-add-mode .cx-note-pick { display: none; }
+.cx-page .picker-add-mode .cx-title-add,
+.cx-page .picker-add-mode .cx-note-add { display: inline; }
+.cx-page .rx-panel-title .bi { color: var(--rx-accent); }
+.cx-page .picker-add-mode .rx-panel-title .bi { color: var(--cx-add); }
+
+/* Tryb „nowy artykuł": lewa krawędź w kolorze turkusowym (reguła
+   .picker-add-mode z purchases.css), reszta spokojnie. Jej padding-left
+   i tło zerujemy — przesuwałyby nagłówek panelu. */
+.cx-page .cx-picker.picker-add-mode {
+    padding-left: 0;
+    background-color: #fff;
+    border-color: #a9dde6;
+    border-left: .3rem solid var(--cx-add);
+    box-shadow: 0 0 0 3px rgba(23, 162, 184, .1);
+}
+.cx-page .cx-picker.picker-add-mode > .rx-panel-head {
+    background: var(--cx-add-soft);
+    border-bottom-color: #cdeaf0;
+}
+
+/* Siatka 12 kolumn. Kontenery-wiersze z cart-view.js (#pickVariantRow,
+   #cartPriceRow, #addVariantRow1/2, #addVariantCommentRow) dostają
+   display: contents, więc ich dzieci układają się w jednej wspólnej
+   siatce. Chowanie/pokazywanie wiersza przez .hide()/.show() działa jak
+   dawniej: inline `display: none` wygrywa z klasą, a .show() zdejmuje
+   inline i wraca `contents`. */
+.cx-page .cx-fields {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: .85rem 1rem;
+    align-items: start;
+}
+.cx-page .cx-contents { display: contents; }
+.cx-page .cx-field { grid-column: span 12; min-width: 0; }
+
+.cx-page .cx-xs-6 { grid-column: span 6; }
+@media (min-width: 576px) {
+    .cx-page .cx-sm-6 { grid-column: span 6; }
+}
+@media (min-width: 768px) {
+    .cx-page .cx-md-3 { grid-column: span 3; }
+    .cx-page .cx-md-6 { grid-column: span 6; }
+}
+@media (min-width: 1200px) {
+    .cx-page .cx-xl-2 { grid-column: span 2; }
+    .cx-page .cx-xl-3 { grid-column: span 3; }
+    .cx-page .cx-xl-4 { grid-column: span 4; }
+    .cx-page .cx-xl-6 { grid-column: span 6; }
+    /* W trybie „nowy artykuł" wiersz wariantu jest schowany, więc
+       Dostawca i Część dzielą linię na pół (inaczej kolejne pola
+       dosuwałyby się do ich wolnych 4 kolumn). */
+    .cx-page .picker-add-mode .cx-field.cx-xl-4 { grid-column: span 6; }
+}
+
+/* Kontrolki: jedna wysokość, żeby pickery i pola w linii się zgadzały.
+   :not(.bootstrap-select) — plugin kopiuje klasę form-control z <select>
+   na swój wrapper (a ten ma mieć height: auto i padding: 0). */
+.cx-page .cx-fields .form-control:not(.form-control-sm):not(.bootstrap-select) {
+    height: var(--cx-field-h);
+    padding-top: .3rem;
+    padding-bottom: .3rem;
+    font-size: .9rem;
+}
+.cx-page .cx-fields .input-group > .form-control { height: var(--cx-field-h); }
+.cx-page .cx-fields .input-group-text { height: var(--cx-field-h); }
+
+/* data-style="cx-picker-btn" — to samo co .rx-picker-btn, ale na wysokość
+   pól formularza. Paddingu prawego nie ruszamy (miejsce na strzałkę). */
+.cx-page .cx-picker-btn {
+    height: var(--cx-field-h);
+    padding-top: .3rem;
+    padding-bottom: .3rem;
+    padding-left: .7rem;
+    font-size: .9rem;
+    line-height: 1.5;
+    background: #fff;
+    border: 1px solid var(--rx-line);
+    color: var(--rx-ink);
+}
+.cx-page .cx-picker-btn:hover { background: #fff; border-color: #cfd8e3; }
+.cx-page .cx-picker-btn:focus,
+.cx-page .bootstrap-select .cx-picker-btn:focus { outline: none !important; box-shadow: var(--rx-ring); border-color: #80bdff; }
+.cx-page .bootstrap-select.show > .cx-picker-btn { border-color: #80bdff; box-shadow: var(--rx-ring); }
+.cx-page .bootstrap-select .dropdown-menu {
+    border-color: var(--rx-line);
+    border-radius: .4rem;
+    box-shadow: 0 .5rem 1.25rem rgba(16, 24, 40, .12);
+    font-size: .88rem;
+}
+
+/* Numer u dostawcy + lupka obok. min-width: 0 na elemencie flex —
+   AGENTS.md (data-width="100%" + data-container + min-width: 0). */
+.cx-page .cx-with-btn { display: flex; align-items: flex-start; gap: .4rem; }
+.cx-page .cx-with-btn > .cx-grow { flex: 1 1 auto; min-width: 0; }
+.cx-page .cx-with-btn .bootstrap-select { min-width: 0; }
+
+/* Uwagi do artykułu pod pickerem wariantu. */
+.cx-page .cx-varinfo { margin-top: .4rem; font-size: .78rem; color: var(--rx-muted); }
+.cx-page .cx-varnote { overflow-wrap: anywhere; }
+.cx-page .cx-varnote .bi-journal-text { color: var(--rx-faint); }
+.cx-page .cx-varnote strong { color: var(--rx-ink-2); font-weight: 600; }
+.cx-page .cx-iconlink { margin-left: .25rem; font-size: .8rem; }
+.cx-page .cx-inline-edit { display: flex; align-items: center; gap: .3rem; margin-top: .25rem; }
+.cx-page .cx-inline-edit .form-control { flex: 1 1 auto; min-width: 0; }
+
+/* Wielkość opakowania: − [wartość] + oraz ołówek (dodaj nową). */
+.cx-page .cx-pack {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: .25rem;
+    margin-top: .45rem;
+}
+.cx-page .cx-pack-label { font-size: .72rem; line-height: 1.2; color: var(--rx-muted); }
+/* Stepper + ołówek (albo pole „nowa wielkość") w jednej linii, bez
+   zawijania. Elementy są zwarte (patrz niżej), żeby zmieściły się
+   w wąskiej komórce Opak.; poniżej 420 px, gdy komórka ma ~9 rem,
+   linia może się zawinąć zamiast wychodzić poza kolumnę. */
+.cx-page .cx-pack-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: .3rem;
+    min-width: 0;
+}
+@media (max-width: 419.98px) {
+    .cx-page .cx-pack-row { flex-wrap: wrap; }
+}
+.cx-page .cx-stepper {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: stretch;
+    gap: 2px;
+    height: 1.75rem;
+    padding: 2px;
+    background: #fff;
+    border: 1px solid var(--rx-line);
+    border-radius: .25rem;
+}
+.cx-page .cx-stepper button {
+    width: 1.45rem;
+    padding: 0;
+    border: 0;
+    border-radius: .18rem;
+    background: transparent;
+    color: var(--rx-ink-2);
+    font-weight: 700;
+    line-height: 1;
+    transition: background-color .12s ease;
+}
+.cx-page .cx-stepper button:hover:not(:disabled) { background: var(--rx-line-soft); }
+.cx-page .cx-stepper button:focus { outline: none; box-shadow: var(--rx-ring); }
+.cx-page .cx-stepper button:disabled { opacity: .35; }
+.cx-page .cx-step-val {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2.7rem;
+    padding: 0 .3rem;
+    border-radius: .18rem;
+    background: var(--rx-canvas);
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    font-size: .78rem;
+    font-weight: 700;
+    color: var(--rx-ink);
+}
+.cx-page .cx-mini-btn {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    padding: 0;
+    border: 1px solid var(--rx-line);
+    border-radius: .25rem;
+    background: #fff;
+    color: var(--rx-ink-2);
+    font-size: .75rem;
+    transition: background-color .12s ease, border-color .12s ease;
+}
+.cx-page .cx-mini-btn:hover { background: var(--rx-hover); border-color: #cfd8e3; }
+.cx-page .cx-mini-btn:focus { outline: none; box-shadow: var(--rx-ring); }
+/* Pole „nowa wielkość": JS przełącza je klasami d-none / d-flex. */
+.cx-page .cx-pack-edit { flex: 1 1 auto; align-items: center; flex-wrap: nowrap; gap: .25rem; min-width: 0; }
+.cx-page .cx-pack-edit .form-control { flex: 1 1 4rem; width: auto; min-width: 0; }
+.cx-page .cx-pack-edit .btn { flex: 0 0 auto; padding-left: .45rem; padding-right: .45rem; }
+
+/* Stopka panelu: Artykuł po lewej, Wyczyść + Dodaj po prawej. */
+.cx-page .cx-picker-foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem 1rem;
+    padding: .75rem 1.25rem;
+    border-top: 1px solid var(--rx-line);
+    background: var(--rx-canvas);
+    border-radius: 0 0 var(--rx-radius) var(--rx-radius);
+}
+.cx-page .cx-foot-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.cx-page .cx-picker-foot .btn {
+    height: var(--cx-field-h);
+    padding-top: 0;
+    padding-bottom: 0;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.cx-page .cx-picker-foot .btn:disabled { opacity: .5; }
+@media (max-width: 575.98px) {
+    .cx-page .cx-picker-foot > .btn { flex: 1 1 100%; }
+    .cx-page .cx-foot-actions { flex: 1 1 100%; }
+    .cx-page .cx-foot-actions .btn { flex: 1 1 0; }
+}
+
+
+/* ---- Aktywne dokumenty dla wybranej pozycji ------------------------ */
+
+.cx-page .cx-docs { margin-bottom: 1rem; }
+.cx-page .cx-docs-toggle {
+    display: flex;
+    align-items: center;
+    gap: .55rem;
+    width: 100%;
+    padding: .7rem 1.25rem;
+    border: 0;
+    background: transparent;
+    font-size: .92rem;
+    font-weight: 700;
+    color: var(--rx-ink);
+    text-align: left;
+    cursor: pointer;
+    user-select: none;
+}
+.cx-page .cx-docs-toggle:focus { outline: none; box-shadow: inset var(--rx-ring); }
+.cx-page .cx-docs-toggle .bi-chevron-right { color: var(--rx-faint); font-size: .8rem; }
+.cx-page .cx-docs-hint { margin-left: auto; font-size: .75rem; font-weight: 500; color: var(--rx-faint); }
+.cx-page .cx-count--warn { background: #fff3cd; color: #775300; }
+.cx-page .cx-docs-body { padding: .2rem 1.25rem 1rem; border-top: 1px solid var(--rx-line-soft); }
+.cx-page .cx-docs-empty { margin: .8rem 0 0; font-size: .88rem; color: var(--rx-muted); }
+.cx-page .selection-docs-vp { margin-top: .9rem; }
+.cx-page .cx-docs-vp-title { margin-bottom: .35rem; font-size: .85rem; font-weight: 700; color: var(--rx-ink); }
+.cx-page .cx-docs-vp-title .rx-sub { display: inline; font-weight: 500; }
+.cx-page .cx-docs-table { border: 1px solid var(--rx-line); border-radius: .4rem; overflow: hidden; font-size: .86rem; }
+.cx-page .cx-docs-table thead th { padding: .45rem .75rem; }
+.cx-page .cx-docs-table td { padding: .5rem .75rem; white-space: nowrap; }
+.cx-page .cx-docs-table .cx-doc-num { font-size: .84rem; }
+
+
+/* ---- Koszyk -------------------------------------------------------- */
+
+.cx-page .cx-cart-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem 1rem;
+    margin: 1.5rem 0 .75rem;
+}
+.cx-page .cx-cart-title {
+    display: flex;
+    align-items: center;
+    gap: .55rem;
+    margin: 0;
+    font-size: 1.15rem;
+    font-weight: 700;
+    letter-spacing: -.01em;
+    color: var(--rx-ink);
+}
+.cx-page .cx-cart-title .bi { color: var(--rx-accent); }
+.cx-page .cx-cart-title .rx-count { background: var(--rx-accent); color: #fff; }
+
+/* Przełącznik dostawców: wygląd .rx-tabs (receipts-ui.css) + przewijanie
+   w poziomie zamiast zawijania. Linia pod zakładkami zostaje w kontenerze
+   (overflow ucinałby zakładkę wchodzącą na nią o 1 px). */
+.cx-page .cx-vtabs {
+    flex-wrap: nowrap;
+    margin-top: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    -webkit-overflow-scrolling: touch;
+}
+.cx-page .cx-vtabs .nav-link {
+    flex: 0 0 auto;
+    margin-bottom: 0;
+    white-space: nowrap;
+    font-size: .92rem;
+}
+.cx-page .cx-vtab-name {
+    max-width: 15rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+/* Tymczasowa pusta zakładka (dostawca z selektora, jeszcze bez pozycji). */
+.cx-page .cx-vtab--temp .cx-vtab-name { font-style: italic; }
+.cx-page .cx-vtab--temp .rx-count { background: transparent; border: 1px dashed var(--rx-faint); color: var(--rx-muted); }
+
+/* Pusty koszyk — .rx-empty z receipts-ui.css, tylko mniej wysoki. */
+.cx-page .cx-empty .rx-empty { padding: 2.25rem 1.5rem; }
+
+/* Jedna karta na dostawcę. */
+.cx-page .cx-group {
+    margin-bottom: 1rem;
+    border-top: 3px solid var(--rx-accent);
+}
+.cx-page .cx-group-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: .6rem 1.25rem;
+    padding: .9rem 1.15rem .85rem 1.4rem;
+    border-bottom: 1px solid var(--rx-line);
+}
+.cx-page .cx-group-id { min-width: 0; }
+.cx-page .cx-group-title { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .6rem; }
+.cx-page .cx-group-name {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 700;
+    letter-spacing: -.01em;
+    color: var(--rx-ink);
+    overflow-wrap: anywhere;
+}
+.cx-page .cx-totals {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .15rem 1rem;
+    margin-top: .3rem;
+    font-size: .84rem;
+    color: var(--rx-muted);
+}
+.cx-page .cx-total strong { color: var(--rx-ink); font-variant-numeric: tabular-nums; }
+.cx-page .cx-cur { font-size: .74rem; font-weight: 600; color: var(--rx-muted); }
+
+.cx-page .cx-group-actions { display: flex; flex-wrap: wrap; gap: .4rem; }
+.cx-page .cx-group-actions .btn { font-weight: 600; white-space: nowrap; }
+.cx-page .cx-group-actions .btn:disabled { opacity: .55; }
+/* Tworzenie dokumentu: dwa równorzędne przyciski w kolorach typu
+   (glina = zapytanie, łupkowy błękit = zamówienie), jak na liście. */
+.cx-page .cx-doc-btn { border: 1px solid transparent; }
+.cx-page .cx-doc-btn--rfq { background: var(--cx-rfq-soft); border-color: var(--cx-rfq-line); color: var(--cx-rfq-ink); }
+.cx-page .cx-doc-btn--rfq:hover:not(:disabled) { background: #f2ddc6; border-color: var(--cx-rfq); color: #6e3f1b; }
+.cx-page .cx-doc-btn--po  { background: var(--cx-po-soft); border-color: var(--cx-po-line); color: var(--cx-po-ink); }
+.cx-page .cx-doc-btn--po:hover:not(:disabled)  { background: #cfdbea; border-color: var(--cx-po); color: #263d57; }
+.cx-page .cx-doc-btn:focus { box-shadow: var(--rx-ring); }
+
+@media (max-width: 575.98px) {
+    .cx-page .cx-group-actions { width: 100%; }
+    .cx-page .cx-group-actions .cx-doc-btn { flex: 1 1 100%; }
+    .cx-page .cx-group-actions .cx-btn-danger { flex: 1 1 100%; }
+}
+
+
+/* ---- Wiersze pozycji -----------------------------------------------
+   Siatka siedmiu kolumn; poniżej xl wiersz składa się w kartę. Kolumny
+   mają stałe minima, więc wyrównanie trzyma się między wierszami. */
+
+.cx-page .cx-head,
+.cx-page .cx-row {
+    display: grid;
+    grid-template-columns:
+        minmax(13rem, 2.3fr)     /* Część          */
+        minmax(7.5rem, .9fr)     /* Ilość          */
+        minmax(6.5rem, .8fr)     /* Cena           */
+        minmax(6.5rem, .8fr)     /* Wartość        */
+        minmax(9.5rem, 1.2fr)    /* Aktywne dok.   */
+        minmax(8rem, 1.3fr)      /* Komentarz      */
+        5.5rem;                  /* Akcje          */
+    column-gap: 1rem;
+    align-items: start;
+    padding: .85rem 1.15rem .85rem 1.4rem;
+}
+.cx-page .cx-head {
+    align-items: center;
+    padding-top: .55rem;
+    padding-bottom: .55rem;
+    background: var(--rx-canvas);
+    border-bottom: 1px solid var(--rx-line);
+    font-size: .68rem;
+    font-weight: 700;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: var(--rx-muted);
+}
+
+.cx-page .cx-row {
+    --rx-tone: transparent;
+    position: relative;
+    border-top: 1px solid var(--rx-line-soft);
+    transition: background-color .12s ease;
+}
+.cx-page .cx-rows > .cx-row:first-child { border-top: 0; }
+/* Pasek przy lewej krawędzi: bursztynowy, gdy do pozycji istnieje już
+   aktywny dokument (ostrzeżenie przed dublem). */
+.cx-page .cx-row::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 4px;
+    background: var(--rx-tone);
+}
+.cx-page .cx-row.has-docs { --rx-tone: #f0ad00; }
+.cx-page .cx-row:hover { background: var(--rx-hover); }
+/* Wiersz w trakcie edycji inline. */
+.cx-page .cx-row.is-editing {
+    --rx-tone: var(--rx-accent);
+    background: var(--rx-accent-soft);
+    box-shadow: inset 0 0 0 1px #b8d4ff;
+}
+
+.cx-page .cx-cell { min-width: 0; }
+.cx-page .cx-cell--actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .35rem; }
+.cx-page .cx-val { font-variant-numeric: tabular-nums; }
+.cx-page .cx-cell--qty .cx-val,
+.cx-page .cx-cell--price .cx-val,
+.cx-page .cx-cell--total .cx-val { padding-top: .08rem; }
+
+.cx-page .cx-part-name {
+    font-size: .95rem;
+    font-weight: 700;
+    letter-spacing: -.005em;
+    color: var(--rx-ink);
+    overflow-wrap: anywhere;
+}
+.cx-page .cx-nums {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .2rem .8rem;
+    margin-top: .3rem;
+    font-size: .76rem;
+    color: var(--rx-muted);
+}
+.cx-page .cx-nums .rx-partno { margin-left: .2rem; }
+.cx-page .cx-part-desc { margin-top: .25rem; }
+
+/* Uwagi do artykułu pod nazwą części + ołówek (edycja w miejscu). */
+.cx-page .cart-row-comment-line {
+    margin-top: .35rem;
+    font-size: .78rem;
+    color: var(--rx-muted);
+    overflow-wrap: anywhere;
+}
+.cx-page .cart-row-comment-line .bi-journal-text { color: var(--rx-faint); }
+.cx-page .cart-row-comment-line .rx-link-btn { margin-left: .2rem; font-size: .78rem; }
+.cx-page .cart-row-comment-line textarea { margin-top: .2rem; }
+.cx-page .cart-row-comment-line .btn { font-weight: 600; }
+
+.cx-page .cx-qty { font-size: 1rem; font-weight: 700; color: var(--rx-ink); }
+.cx-page .cx-qty-sub { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .4rem; margin-top: .2rem; font-size: .76rem; color: var(--rx-muted); }
+.cx-page .cx-money { font-weight: 700; color: var(--rx-ink); }
+.cx-page .cx-line-comment { font-size: .86rem; color: var(--rx-ink-2); overflow-wrap: anywhere; }
+
+/* Edycja inline: pola wstawiane przez cart-view.js do komórek. */
+.cx-page .cx-edit-pack { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem; margin-top: .3rem; }
+.cx-page .cart-edit-packages { width: 6em; }
+.cx-page .cart-edit-input,
+.cx-page .cart-edit-comment { min-width: 0; }
+
+/* Aktywne dokumenty: kapsułka-link na każdy dokument. Hover/focus
+   (filter + obrys) daje .cart-active-doc-badges .badge-link z purchases.css. */
+.cx-page .cx-doc-list { display: flex; flex-direction: column; align-items: flex-start; gap: .35rem; }
+.cx-page .cx-doc {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .25rem .4rem;
+    max-width: 100%;
+    padding: .2rem .4rem;
+    border: 1px solid var(--rx-line);
+    border-radius: .4rem;
+    background: #fff;
+    color: var(--rx-ink);
+    line-height: 1.2;
+}
+.cx-page a.cx-doc { text-decoration: none; color: var(--rx-ink); }
+.cx-page a.cx-doc:hover { border-color: #cfd8e3; }
+.cx-page .cx-doc .rx-badge { padding: .22rem .5rem; font-size: .68rem; }
+.cx-page .cx-doc-num {
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    font-size: .76rem;
+    font-weight: 700;
+    color: var(--rx-ink);
+    overflow-wrap: anywhere;
+}
+.cx-page .cx-skel-doc { width: 6rem; margin-top: .35rem; }
+
+/* Karta zamiast wiersza: poniżej xl (1200 px). */
+@media (max-width: 1199.98px) {
+    .cx-page .cx-head { display: none; }
+    .cx-page .cx-row {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-areas:
+            "part    part     actions"
+            "qty     price    total"
+            "docs    comment  comment";
+        row-gap: .75rem;
+        padding: .95rem 1rem .95rem 1.3rem;
+    }
+    .cx-page .cx-cell--part    { grid-area: part; }
+    .cx-page .cx-cell--qty     { grid-area: qty; }
+    .cx-page .cx-cell--price   { grid-area: price; }
+    .cx-page .cx-cell--total   { grid-area: total; }
+    .cx-page .cx-cell--docs    { grid-area: docs; }
+    .cx-page .cx-cell--comment { grid-area: comment; }
+    .cx-page .cx-cell--actions { grid-area: actions; align-self: start; }
+    .cx-page .cx-row .rx-cell-label { display: block; }
+}
+/* Telefon: dwie kolumny, przyciski akcji na całą szerokość. */
+@media (max-width: 575.98px) {
+    .cx-page .cx-row {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-areas:
+            "part    part"
+            "qty     price"
+            "total   docs"
+            "comment comment"
+            "actions actions";
+    }
+    .cx-page .cx-cell--actions { justify-content: stretch; flex-wrap: nowrap; }
+    .cx-page .cx-cell--actions .btn { flex: 1 1 0; width: auto; }
+    .cx-page .cx-group-head { padding-left: 1.1rem; padding-right: 1rem; }
+}
+
+
+/* ---- Okna modalne --------------------------------------------------- */
+
+.cx-page .cx-modal .modal-content {
+    border: 1px solid var(--rx-line);
+    border-radius: var(--rx-radius);
+    box-shadow: 0 1rem 2.5rem rgba(16, 24, 40, .18);
+    color: var(--rx-ink);
+}
+.cx-page .cx-modal .modal-header {
+    padding: .8rem 1.25rem;
+    background: var(--rx-canvas);
+    border-bottom: 1px solid var(--rx-line);
+    border-radius: var(--rx-radius) var(--rx-radius) 0 0;
+}
+.cx-page .cx-modal .modal-title { font-size: 1rem; font-weight: 700; }
+.cx-page .cx-modal .modal-title .bi { margin-right: .3rem; color: var(--rx-accent); }
+.cx-page .cx-modal .modal-body { padding: 1.1rem 1.25rem; font-size: .92rem; }
+.cx-page .cx-modal .modal-footer {
+    padding: .75rem 1.25rem;
+    background: var(--rx-canvas);
+    border-top: 1px solid var(--rx-line);
+    border-radius: 0 0 var(--rx-radius) var(--rx-radius);
+}
+.cx-page .cx-modal .modal-footer .btn { font-weight: 600; }
+
+/* Wyszukiwarka numerów: wyniki w przewijanym pojemniku. */
+.cx-page .cx-search-scroll { max-height: 50vh; overflow-y: auto; margin-top: .75rem; border: 1px solid var(--rx-line); border-radius: .4rem; }
+.cx-page .cx-search-scroll .rx-table { font-size: .86rem; }
+.cx-page .cx-search-scroll .rx-table thead th { position: sticky; top: 0; z-index: 1; }
+.cx-page #vpSearchStatus { font-size: .85rem; }
+
+/* Potwierdzenie utworzenia dokumentu: tabela z wyborem pozycji. */
+.cx-page .cx-pick-scroll { max-height: 45vh; overflow-y: auto; border: 1px solid var(--rx-line); border-radius: .4rem; }
+.cx-page .cx-pick-scroll .rx-table { font-size: .86rem; }
+.cx-page .cx-pick-scroll .rx-table thead th { position: sticky; top: 0; z-index: 1; }
+.cx-page .cx-pick-scroll .rx-table th.cx-pick-col { width: 1%; }
+.cx-page .cart-doc-pick-row { cursor: pointer; user-select: none; }
+.cx-page .cart-doc-pick-row:hover { background: var(--rx-hover); }
