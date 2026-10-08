@@ -12,13 +12,23 @@ class EmailDraftRepository {
 
     public function getById(int $id): ?EmailDraft {
         $MsaDB = $this->MsaDB;
-        $sql = "SELECT id, name, subject, body,
-                       applies_to AS appliesTo,
-                       is_active AS isActive,
-                       created_at AS createdAt,
-                       updated_at AS updatedAt
-                  FROM `email_draft`
-                 WHERE id = ?";
+        // The two `is_default_*` booleans live in a separate pointer
+        // table (`email_draft_default`, PK = doc_type), not on
+        // `email_draft` itself. Re-derive them per row via LEFT JOIN
+        // — safe because doc_type is a PK so each joined row is at
+        // most one, no row multiplication. Aliasing the main table
+        // as `e` is mandatory once we reference a join condition.
+        $sql = "SELECT e.id, e.name, e.subject, e.body,
+                       e.applies_to AS appliesTo,
+                       e.is_active AS isActive,
+                       IF(dr.draft_id = e.id, 1, 0) AS isDefaultRfq,
+                       IF(dp.draft_id = e.id, 1, 0) AS isDefaultPo,
+                       e.created_at AS createdAt,
+                       e.updated_at AS updatedAt
+                  FROM `email_draft` e
+                  LEFT JOIN `email_draft_default` dr ON dr.doc_type = 'rfq'
+                  LEFT JOIN `email_draft_default` dp ON dp.doc_type = 'po'
+                 WHERE e.id = ?";
         $stmt = $MsaDB->db->prepare($sql);
         $stmt->execute([$id]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -30,15 +40,23 @@ class EmailDraftRepository {
      */
     public function getAll(bool $activeOnly = false): array {
         $MsaDB = $this->MsaDB;
-        $where = $activeOnly ? "WHERE is_active = 1" : "";
-        $sql = "SELECT id, name, subject, body,
-                       applies_to AS appliesTo,
-                       is_active AS isActive,
-                       created_at AS createdAt,
-                       updated_at AS updatedAt
-                  FROM `email_draft`
+        $where = $activeOnly ? "WHERE e.is_active = 1" : "";
+        // Same LEFT JOIN pattern as getById(): the two `is_default_*`
+        // booleans live in `email_draft_default` (PK = doc_type).
+        // Re-deriving per row keeps the EmailDraft entity API stable
+        // while the storage shape changed underneath.
+        $sql = "SELECT e.id, e.name, e.subject, e.body,
+                       e.applies_to AS appliesTo,
+                       e.is_active AS isActive,
+                       IF(dr.draft_id = e.id, 1, 0) AS isDefaultRfq,
+                       IF(dp.draft_id = e.id, 1, 0) AS isDefaultPo,
+                       e.created_at AS createdAt,
+                       e.updated_at AS updatedAt
+                  FROM `email_draft` e
+                  LEFT JOIN `email_draft_default` dr ON dr.doc_type = 'rfq'
+                  LEFT JOIN `email_draft_default` dp ON dp.doc_type = 'po'
                   {$where}
-                 ORDER BY name ASC, id ASC";
+                 ORDER BY e.name ASC, e.id ASC";
         $stmt = $MsaDB->db->prepare($sql);
         $stmt->execute();
         $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
@@ -98,7 +116,7 @@ class EmailDraftRepository {
      * into `doc.availableEmailDrafts`.
      *
      * @param  ?string $docType  'rfq' | 'po' | null (null = no filter)
-     * @return array<int, array{id:int, name:string, subject:string, body:string}>
+     * @return array<int, array{id:int, name:string, subject:string, body:string, isDefaultRfq:bool, isDefaultPo:bool}>
      */
     public function getActiveForPicker(?string $docType = null): array {
         $MsaDB = $this->MsaDB;
@@ -107,18 +125,32 @@ class EmailDraftRepository {
                 "docType musi być jednym z: rfq, po (przekazano: " . var_export($docType, true) . ")"
             );
         }
+        // The two `is_default_*` booleans live in `email_draft_default`
+        // (PK = doc_type). Re-derive per row via LEFT JOIN so the
+        // returned array shape is unchanged from the pre-pointer
+        // version — the consumer (documents-send-ajax-load.php →
+        // documents-send.js) keeps reading `dr.isDefaultRfq` /
+        // `dr.isDefaultPo` without any caller-side changes.
         if ($docType === null) {
-            $sql = "SELECT id, name, subject, body
-                      FROM `email_draft`
-                     WHERE is_active = 1
-                     ORDER BY name ASC, id ASC";
+            $sql = "SELECT e.id, e.name, e.subject, e.body,
+                           IF(dr.draft_id = e.id, 1, 0) AS is_default_rfq,
+                           IF(dp.draft_id = e.id, 1, 0) AS is_default_po
+                      FROM `email_draft` e
+                      LEFT JOIN `email_draft_default` dr ON dr.doc_type = 'rfq'
+                      LEFT JOIN `email_draft_default` dp ON dp.doc_type = 'po'
+                     WHERE e.is_active = 1
+                     ORDER BY e.name ASC, e.id ASC";
             $params = [];
         } else {
-            $sql = "SELECT id, name, subject, body
-                      FROM `email_draft`
-                     WHERE is_active = 1
-                       AND (applies_to = :docType OR applies_to = 'both')
-                     ORDER BY name ASC, id ASC";
+            $sql = "SELECT e.id, e.name, e.subject, e.body,
+                           IF(dr.draft_id = e.id, 1, 0) AS is_default_rfq,
+                           IF(dp.draft_id = e.id, 1, 0) AS is_default_po
+                      FROM `email_draft` e
+                      LEFT JOIN `email_draft_default` dr ON dr.doc_type = 'rfq'
+                      LEFT JOIN `email_draft_default` dp ON dp.doc_type = 'po'
+                     WHERE e.is_active = 1
+                       AND (e.applies_to = :docType OR e.applies_to = 'both')
+                     ORDER BY e.name ASC, e.id ASC";
             $params = [':docType' => $docType];
         }
         $stmt = $MsaDB->db->prepare($sql);
@@ -126,18 +158,36 @@ class EmailDraftRepository {
         $out = [];
         foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
             $out[] = [
-                'id'      => (int)$r['id'],
-                'name'    => (string)$r['name'],
-                'subject' => (string)$r['subject'],
-                'body'    => $r['body'] === null ? '' : (string)$r['body'],
+                'id'           => (int)$r['id'],
+                'name'         => (string)$r['name'],
+                'subject'      => (string)$r['subject'],
+                'body'         => $r['body'] === null ? '' : (string)$r['body'],
+                'isDefaultRfq' => (bool)(int)$r['is_default_rfq'],
+                'isDefaultPo'  => (bool)(int)$r['is_default_po'],
             ];
         }
         return $out;
     }
 
     /**
+     * Single-default-per-type is enforced STRUCTURALLY via the
+     * `email_draft_default` pointer table (PK = doc_type), so the
+     * repository doesn't need to coordinate a clear-then-Update dance
+     * on sibling rows: there physically cannot be two pointer rows
+     * for the same type. Flag $isDefaultRfq = true upserts a pointer
+     * row keyed 'rfq' pointing at the new draft's id; flag = false
+     * deletes the 'rfq' pointer row (if any). The same applies
+     * independently to $isDefaultPo, so unchecking the RFQ default
+     * never disturbs the PO pointer row and vice versa.
+     *
      * @param  string $appliesTo  'rfq' | 'po' | 'both' — which wizard(s)
      *                            should surface this draft.
+     * @param  bool   $isDefaultRfq  Mark this draft as the global default
+     *                               for RFQ (lower priority than
+     *                               list__vendor.preferred_email_draft_rfq_id).
+     * @param  bool   $isDefaultPo   Mark this draft as the global default
+     *                               for PO (lower priority than
+     *                               list__vendor.preferred_email_draft_po_id).
      * @return int The new draft's id.
      */
     public function create(
@@ -145,7 +195,9 @@ class EmailDraftRepository {
         string $subject,
         string $body,
         bool $isActive,
-        string $appliesTo = 'both'
+        string $appliesTo = 'both',
+        bool $isDefaultRfq = false,
+        bool $isDefaultPo = false
     ): int {
         $MsaDB = $this->MsaDB;
         $name    = trim($name);
@@ -161,19 +213,48 @@ class EmailDraftRepository {
                 "Typ szablonu musi być jednym z: rfq, po, both (przekazano: " . var_export($appliesTo, true) . ")"
             );
         }
-        return $MsaDB->insert(
+        $newId = $MsaDB->insert(
             'email_draft',
             ['name', 'subject', 'body', 'applies_to', 'is_active', 'created_at', 'updated_at'],
             [$name, $subject, $body, $appliesTo, $isActive ? 1 : 0, date('Y-m-d H:i:s'), date('Y-m-d H:i:s')]
         );
+        // Promote-side invariant via the pointer table: structurally
+        // only one row per doc_type, so no sibling-clearing is needed.
+        // For CREATE the new row has no pointer of its own yet, so
+        // isDefault* = false is a no-op (we must not delete a pointer
+        // that points at a DIFFERENT draft — the create() call has
+        // no business touching it). Independence between RFQ and PO
+        // is maintained by handling each pointer write separately.
+        if ($isDefaultRfq) {
+            $this->upsertDefaultPointer('rfq', $newId);
+        }
+        if ($isDefaultPo) {
+            $this->upsertDefaultPointer('po', $newId);
+        }
+        return $newId;
     }
 
     /**
-     * Updates name / subject / body / applies_to / is_active in one shot
-     * and bumps updated_at to NOW(). Caller is responsible for guarding
-     * against drafts that are still referenced by list__vendor — this
-     * repo does not enforce that (the UI surfaces the list of vendors
-     * using each draft before allowing a destructive edit).
+     * Updates name / subject / body / applies_to / is_active in one
+     * shot and bumps updated_at to NOW(). Caller is responsible for
+     * guarding against drafts that are still referenced by
+     * list__vendor — this repo does not enforce that (the UI surfaces
+     * the list of vendors using each draft before allowing a
+     * destructive edit).
+     *
+     * The two `is_default_*` booleans live in `email_draft_default`
+     * (PK = doc_type), NOT on `email_draft`. Setting $isDefaultRfq =
+     * true upserts a pointer row keyed 'rfq' pointing at $id; setting
+     * it to false deletes the 'rfq' pointer row (if any). Same
+     * independently for $isDefaultPo. Because the pointer table's PK
+     * makes "one default per type" a structural invariant, the
+     * previous "clear siblings, then promote" two-step is no longer
+     * needed.
+     *
+     * @param  bool $isDefaultRfq  Mark this draft as the global default
+     *                             for RFQ.
+     * @param  bool $isDefaultPo   Mark this draft as the global default
+     *                             for PO.
      */
     public function update(
         int $id,
@@ -181,7 +262,9 @@ class EmailDraftRepository {
         string $subject,
         string $body,
         bool $isActive,
-        string $appliesTo = 'both'
+        string $appliesTo = 'both',
+        bool $isDefaultRfq = false,
+        bool $isDefaultPo = false
     ): bool {
         $MsaDB = $this->MsaDB;
         $name    = trim($name);
@@ -197,7 +280,7 @@ class EmailDraftRepository {
                 "Typ szablonu musi być jednym z: rfq, po, both (przekazano: " . var_export($appliesTo, true) . ")"
             );
         }
-        return $MsaDB->update(
+        $ok = $MsaDB->update(
             'email_draft',
             [
                 'name'       => $name,
@@ -210,6 +293,27 @@ class EmailDraftRepository {
             'id',
             $id
         );
+        // Same pointer-row pattern as create(), but the unset path
+        // is conditional: an UPDATE with isDefaultRfq = false means
+        // "this draft is no longer the RFQ default", which we honour
+        // by deleting the pointer IFF it currently points at this
+        // draft. If the pointer points at some OTHER draft we leave
+        // it alone — the caller is just saying "this draft isn't
+        // the default", not "clear the global RFQ default". This
+        // keeps the two flags independent: unsetting RFQ never
+        // disturbs the PO pointer, and unsetting a flag that wasn't
+        // pointing at this row is a safe no-op.
+        if ($isDefaultRfq) {
+            $this->upsertDefaultPointer('rfq', $id);
+        } else {
+            $this->deleteDefaultPointerIfTarget('rfq', $id);
+        }
+        if ($isDefaultPo) {
+            $this->upsertDefaultPointer('po', $id);
+        } else {
+            $this->deleteDefaultPointerIfTarget('po', $id);
+        }
+        return $ok;
     }
 
     public function toggleActive(int $id, bool $isActive): bool {
@@ -228,10 +332,10 @@ class EmailDraftRepository {
     /**
      * How many vendors point at each draft through their own preference
      * FKs (`list__vendor.preferred_email_draft_rfq_id` /
-     * `..._po_id`). This is the *vendor-level* default ΓÇö a higher
+     * `..._po_id`). This is the *vendor-level* default — a higher
      * priority than the global default held by the
-     * `email_draft_default` pointer table ΓÇö so the drafts list shows it
-     * as a count next to the "Domy┼¢lny" column: a draft can be nobody's
+     * `email_draft_default` pointer table — so the drafts list shows it
+     * as a count next to the "Domyślny" column: a draft can be nobody's
      * global default yet still be the one half a dozen vendors actually
      * send, and that only shows up here.
      *
@@ -242,7 +346,7 @@ class EmailDraftRepository {
      * The vendor table is small (tens of rows), so the OR join costs
      * nothing measurable.
      *
-     * Inactive vendors are counted too ΓÇö the FK is still there and the
+     * Inactive vendors are counted too — the FK is still there and the
      * number answers "how many vendors point here", not "how many send
      * mail today".
      *
@@ -276,7 +380,7 @@ class EmailDraftRepository {
      * `ON DUPLICATE KEY UPDATE draft_id = VALUES(draft_id)` is the
      * rotate case (a new draft is now the default; the existing
      * pointer row is updated to point at it). The PK on doc_type
-     * guarantees there is no sibling row to clear ΓÇö uniqueness is
+     * guarantees there is no sibling row to clear — uniqueness is
      * structural, not application-layer.
      *
      * Whitelist guard is a real safety requirement: $docType is
@@ -286,7 +390,7 @@ class EmailDraftRepository {
      *
      * @param  string $docType  'rfq' | 'po'
      * @param  int    $draftId  Target draft id (must exist in
-     *                          `email_draft` ΓÇö FK enforces this).
+     *                          `email_draft` — FK enforces this).
      * @return void
      * @throws \InvalidArgumentException if $docType is not whitelisted.
      */
@@ -307,7 +411,7 @@ class EmailDraftRepository {
 
     /**
      * Delete the pointer row for $docType, but ONLY IF it currently
-     * points at $draftId. Called from update() with flag=false ΓÇö
+     * points at $draftId. Called from update() with flag=false —
      * "this draft is no longer the default for this type" is honoured
      * by removing a pointer that targets this row, and is a safe
      * no-op if the pointer targets a different row (so the caller

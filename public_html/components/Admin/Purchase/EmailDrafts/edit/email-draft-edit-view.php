@@ -98,7 +98,15 @@ $edVarCatalog = [
     'Dokument' => [
         'document_type'    => 'Typ dokumentu: zapytanie albo zamówienie',
         'document_number'  => 'Numer dokumentu',
+        'vendor_document_number' => 'Numer dokumentu u dostawcy — gdy brak, wstawiamy nasz numer',
         'document_comment' => 'Komentarz z nagłówka dokumentu',
+    ],
+    // Wypełniane tylko przy PO powstałym z konwersji zapytania. Przy
+    // PO kupionym wprost i przy samym RFQ renderują się puste — brak
+    // powiązanego zapytania, więc nie ma czego podstawić.
+    'Zapytanie powiązane' => [
+        'rfq_number'                => 'Numer powiązanego zapytania (RFQ) — tylko przy konwersji na zamówienie',
+        'rfq_vendor_document_number' => 'Numer powiązanego zapytania u dostawcy — tylko przy konwersji na zamówienie',
     ],
     'Daty' => [
         'expected_reply_date'    => 'Oczekiwany termin odpowiedzi (zapytanie)',
@@ -118,6 +126,8 @@ $edVarCatalog = [
 $edSubjectVars = [
     'vendor_name'            => 'Nazwa dostawcy',
     'document_number'        => 'Numer dokumentu',
+    'vendor_document_number' => 'Numer dokumentu u dostawcy',
+    'rfq_number'             => 'Numer powiązanego zapytania',
     'document_type'          => 'Typ dokumentu: zapytanie albo zamówienie',
     'expected_reply_date'    => 'Oczekiwany termin odpowiedzi (zapytanie)',
     'expected_delivery_date' => 'Oczekiwany termin dostawy (zamówienie)',
@@ -263,6 +273,18 @@ $edBodyLen = mb_strlen($edBody);
     .ed-applies-to .btn:focus-within {
         z-index: 2;
         box-shadow: 0 0 0 0.18rem rgba(13, 110, 253, 0.25);
+    }
+
+    /* ---- Domyślny globalnie (checkboxy) ------------------------- */
+    /* Zaznaczony checkbox Bootstrapa to mały niebieski kwadrat — łatwo
+       go przeoczyć. Etykieta dostaje więc pogrubienie i niebieski
+       kolor, w tym samym tonie co zaznaczony segment „Typ dokumentu”. */
+    .ed-default-group .custom-control-input:checked ~ .custom-control-label {
+        font-weight: 600;
+        color: #0b5ed7;
+    }
+    .ed-default-group .custom-control-input:checked ~ .custom-control-label .bi {
+        color: #0b5ed7 !important;
     }
 
     /* Pola szablonu monospace — operator liczy znaki i pilnuje klamer. */
@@ -576,6 +598,44 @@ $edBodyLen = mb_strlen($edBody);
                         i&nbsp;w&nbsp;kroku 4 wysyłki — nawet jeśli dostawca nadal go
                         wskazuje. Kreator sięgnie wtedy po pierwszy pasujący szablon
                         z&nbsp;katalogu.
+                    </small>
+                </div>
+
+                <!-- ---- Domyślny globalnie ---- -->
+                <?php // Dwie niezależne flagi — jeden szablon może być domyślny
+                      // i dla RFQ, i dla PO. Odznaczony checkbox nie trafia do
+                      // zwykłego POST-a; endpoint (email-draft-edit-save.php)
+                      // traktuje brak klucza jako false. JS i tak wysyła '1' / '0'
+                      // jawnie (edTemplatePostData). ?>
+                <div class="form-group mt-3 mb-0">
+                    <label class="d-block mb-1" id="ed_default_label">Domyślny globalnie:</label>
+                    <div class="d-flex flex-wrap ed-default-group"
+                         role="group"
+                         aria-labelledby="ed_default_label">
+                        <div class="custom-control custom-checkbox mr-4">
+                            <input type="checkbox" class="custom-control-input"
+                                   id="ed_default_rfq" name="isDefaultRfq" value="1"
+                                   <?= ($draft !== null && $draft->isDefaultRfq) ? 'checked' : '' ?>>
+                            <label class="custom-control-label" for="ed_default_rfq">
+                                <i class="bi bi-patch-question text-muted" aria-hidden="true"></i>
+                                Domyślny dla RFQ
+                            </label>
+                        </div>
+                        <div class="custom-control custom-checkbox">
+                            <input type="checkbox" class="custom-control-input"
+                                   id="ed_default_po" name="isDefaultPo" value="1"
+                                   <?= ($draft !== null && $draft->isDefaultPo) ? 'checked' : '' ?>>
+                            <label class="custom-control-label" for="ed_default_po">
+                                <i class="bi bi-cart-check text-muted" aria-hidden="true"></i>
+                                Domyślny dla PO
+                            </label>
+                        </div>
+                    </div>
+                    <small class="form-text text-muted">
+                        Kolejność wyboru szablonu w&nbsp;kreatorze wysyłki: szablon
+                        wskazany przez dostawcę → domyślny globalny → pierwszy aktywny
+                        z&nbsp;katalogu. Domyślny globalny działa więc tylko wtedy, gdy
+                        dostawca nie ma własnego wyboru dla danego typu dokumentu.
                     </small>
                 </div>
 

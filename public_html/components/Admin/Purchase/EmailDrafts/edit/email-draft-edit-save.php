@@ -43,8 +43,19 @@ $id          = (int)($_POST['id']       ?? 0);
 $name        = $_POST['name']           ?? null;
 $subject     = $_POST['subject']        ?? null;
 $body        = $_POST['body']           ?? null;
-$isActiveRaw = $_POST['isActive']       ?? null;
-$appliesTo   = $_POST['applies_to']     ?? 'both';
+$isActiveRaw     = $_POST['isActive']       ?? null;
+$appliesTo       = $_POST['applies_to']     ?? 'both';
+// Globalne flagi „Domyślny dla RFQ / PO” (isDefaultRfq / isDefaultPo):
+// używane WYŁĄCZNIE jako fallback NIŻSZEGO priorytetu niż własne
+// ustawienie dostawcy (list__vendor.preferred_email_draft_rfq_id / _po_id).
+// Kreator wysyłki korzysta z nich tylko wtedy, gdy dany dostawca nie
+// wskazał własnego szablonu dla danego typu dokumentu — nie zastępują
+// preferencji dostawcy. Stąd: brak klucza w POST (odznaczone pole
+// checkbox) traktujemy jako „nie jest domyślny” (== false), a nie
+// jako błąd walidacji — zachowanie to odróżnia je od isActive, gdzie
+// brak klucza oznaczałby brak wymaganej decyzji operatora.
+$isDefaultRfqRaw = $_POST['isDefaultRfq']   ?? '0';
+$isDefaultPoRaw  = $_POST['isDefaultPo']    ?? '0';
 
 // Trim + null-ify puste stringi. Treść przycinamy tylko z brzegów —
 // wewnętrzne puste linie są częścią układu wiadomości.
@@ -124,6 +135,24 @@ if (!in_array($appliesTo, ['rfq', 'po', 'both'], true)) {
     exit();
 }
 
+// isDefaultRfq / isDefaultPo: checkbox wysyła '1' albo — gdy odznaczony —
+// nie wysyła klucza wcale (stąd domyślne '0' w odczycie powyżej). Obecny
+// klucz z wartością spoza '0'/'1' odrzucamy, tak jak robimy to dla
+// isActive — ciche domyślne false ukrywałoby fakt, że formularz przysłał
+// niejednoznaczną wartość, a te flagi zmieniają zachowanie kreatora
+// wysyłki dla wszystkich dostawców bez własnego szablonu. Brak klucza
+// (odznaczony checkbox) jest z kolei prawidłowy i oznacza false.
+if ($isDefaultRfqRaw !== '0' && $isDefaultRfqRaw !== '1' && $isDefaultRfqRaw !== 0 && $isDefaultRfqRaw !== 1) {
+    echo json_encode(['success' => false, 'error' => 'Nieprawidłowa flaga domyślnego szablonu RFQ.']);
+    exit();
+}
+if ($isDefaultPoRaw !== '0' && $isDefaultPoRaw !== '1' && $isDefaultPoRaw !== 0 && $isDefaultPoRaw !== 1) {
+    echo json_encode(['success' => false, 'error' => 'Nieprawidłowa flaga domyślnego szablonu PO.']);
+    exit();
+}
+$isDefaultRfq = ($isDefaultRfqRaw === '1' || $isDefaultRfqRaw === 1);
+$isDefaultPo  = ($isDefaultPoRaw  === '1' || $isDefaultPoRaw  === 1);
+
 // --- Persist ------------------------------------------------------------
 try {
     $MsaDB  = MsaDB::getInstance();
@@ -132,7 +161,7 @@ try {
     if ($id <= 0) {
         // CREATE — nazwa nie ma UNIQUE na poziomie schematu, duplikaty
         // przechodzą po cichu. Operator porządkuje je z poziomu listy.
-        $newId = $edRepo->create($name, $subject, $body, $isActive, $appliesTo);
+        $newId = $edRepo->create($name, $subject, $body, $isActive, $appliesTo, $isDefaultRfq, $isDefaultPo);
         echo json_encode([
             'success'  => true,
             'message'  => 'Szablon dodany pomyślnie.',
@@ -143,7 +172,7 @@ try {
     }
 
     // UPDATE
-    $ok = $edRepo->update($id, $name, $subject, $body, $isActive, $appliesTo);
+    $ok = $edRepo->update($id, $name, $subject, $body, $isActive, $appliesTo, $isDefaultRfq, $isDefaultPo);
 
     if (!$ok && $edRepo->getById($id) === null) {
         echo json_encode(['success' => false, 'error' => 'Nie znaleziono szablonu #' . $id . '.']);

@@ -137,6 +137,15 @@
         vendor_contact_email:   'a.kowalska@example.com',
         document_type:          'zapytanie',
         document_number:        'RFQ/2026/0001',
+        // Numer u dostawcy. Podgląd pokazuje wartość RÓŻNĄ od
+        // document_number, żeby operator widział, że to dwa niezależne
+        // pola. Gdyby tu wstać ten sam tekst, nie odróżniłby fallbacku
+        // (numeru naszego) od faktycznego numeru od dostawcy.
+        vendor_document_number: 'RFQ/DOST/2026/077',
+        // Podgląd pokazuje kontekst PO powstałego z konwersji — oba
+        // tokeny puste dla RFQ i dla PO bez powiązanego zapytania.
+        rfq_number:                 'RFQ/2026/0001',
+        rfq_vendor_document_number: 'RFQ/DOST/2026/077',
         expected_reply_date:    '2026-10-15',
         expected_delivery_date: '2026-11-02',
         document_comment:       'Pilne — linia SMD czeka na komplet.',
@@ -235,6 +244,11 @@
             // DOM) — serwer odrzuca wszystko spoza rfq/po/both, więc
             // pusty string dałby tam błąd zamiast sensownego domyślnego.
             applies_to: String($form.find('input[name="applies_to"]:checked').val() || 'both'),
+            // Globalne flagi „Domyślny dla RFQ / PO”. Odznaczony checkbox
+            // nie wchodzi do zwykłego POST-a, więc wysyłamy jawnie '1' / '0'
+            // — serwer widzi wtedy odznaczenie i czyści flagę w bazie.
+            isDefaultRfq: $form.find('input[name="isDefaultRfq"]').is(':checked') ? '1' : '0',
+            isDefaultPo:  $form.find('input[name="isDefaultPo"]').is(':checked')  ? '1' : '0',
         };
     }
 
