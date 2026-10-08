@@ -65,7 +65,7 @@
 
 .dx-page .dx-stats {
     display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(7, minmax(0, 1fr));
     gap: .5rem;
     margin-bottom: 1rem;
 }
@@ -84,11 +84,13 @@
 .dx-page .dx-stat--responded { --rx-tone: #17a2b8; --rx-tone-soft: #eef9fb; }
 .dx-page .dx-stat--progress  { --rx-tone: #007bff; --rx-tone-soft: #edf4ff; }
 .dx-page .dx-stat--received  { --rx-tone: #28a745; --rx-tone-soft: #eef8f1; }
+.dx-page .dx-stat--converted { --rx-tone: #28a745; --rx-tone-soft: #eef8f1; }
 .dx-page .dx-stat--cancelled { --rx-tone: #dc3545; --rx-tone-soft: #fff4f5; }
 
 /* Kafelki, które dotyczą tylko jednego typu, dostają w rogu ten sam
    cichy znacznik co wiersz. */
 .dx-page .dx-stats .rx-stat[data-stat="responded"]::after,
+.dx-page .dx-stats .rx-stat[data-stat="converted"]::after,
 .dx-page .dx-stats .rx-stat[data-stat="progress"]::after,
 .dx-page .dx-stats .rx-stat[data-stat="received"]::after {
     position: absolute;
@@ -102,7 +104,8 @@
     letter-spacing: .05em;
     line-height: 1.3;
 }
-.dx-page .dx-stats .rx-stat[data-stat="responded"]::after {
+.dx-page .dx-stats .rx-stat[data-stat="responded"]::after,
+.dx-page .dx-stats .rx-stat[data-stat="converted"]::after {
     content: "RFQ";
     background: var(--dx-rfq-soft);
     border-color: var(--dx-rfq-line);
@@ -115,8 +118,22 @@
     color: var(--dx-po-ink);
 }
 
+/* Kafelki zakończonych statusów przy włączonym „Ukryj zakończone":
+   wyszarzone, bez reakcji na najechanie i klik (układ się nie przesuwa). */
+.dx-page .dx-stats .rx-stat.is-disabled {
+    opacity: .45;
+    cursor: not-allowed;
+    background: var(--rx-canvas);
+    filter: grayscale(1);
+}
+.dx-page .dx-stats .rx-stat.is-disabled:hover {
+    border-color: var(--rx-line);
+    box-shadow: none;
+    transform: none;
+}
+
 @media (max-width: 991.98px) {
-    .dx-page .dx-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .dx-page .dx-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 @media (max-width: 575.98px) {
     .dx-page .dx-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -391,3 +408,9 @@
 @media (max-width: 575.98px) {
     .dx-page .dx-cell--action .btn { flex: 1 1 0; }
 }
+
+/* Przełącznik „Ukryj zakończone" w pasku filtrów */
+.dx-hide-done { min-height: 0; margin: 0 .25rem 0 0; white-space: nowrap; }
+.dx-hide-done .custom-control-label { font-size: .8125rem; color: var(--rx-muted); cursor: pointer; user-select: none; }
+.dx-hide-done .custom-control-input:checked ~ .custom-control-label { color: var(--rx-ink); }
+.dx-hide-done .custom-control-input:focus ~ .custom-control-label::before { box-shadow: var(--rx-ring); }

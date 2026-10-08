@@ -56,6 +56,7 @@ $numberSearch = trim((string)($_POST['number'] ?? ''));
 $dateFrom     = (string)($_POST['date_from'] ?? '');
 $dateTo       = (string)($_POST['date_to'] ?? '');
 $mode         = (string)($_POST['mode'] ?? 'data');
+$hideFinished = !empty($_POST['hide_finished']) && $_POST['hide_finished'] !== '0' && $_POST['hide_finished'] !== 'false';
 $page         = max(1, (int)($_POST['page'] ?? 1));
 $itemsPerPage = (int)($_POST['items_per_page'] ?? 20);
 if ($itemsPerPage < 1 || $itemsPerPage > 100) {
@@ -80,8 +81,11 @@ $includePo  = in_array($typeFilter, ['both', 'po'],  true);
 // function_exists guards so this file can be require'd twice in the same
 // request (defensive — current routing doesn't, but it's cheap).
 if (!function_exists('rfqDocsConds')) {
-    function rfqDocsConds($sanitizedVendors, $sanitizedStates, $numberSearch, $dateFrom, $dateTo, $validRfqStates, $MsaDB) {
+    function rfqDocsConds($sanitizedVendors, $sanitizedStates, $numberSearch, $dateFrom, $dateTo, $validRfqStates, $MsaDB, $hideFinished = false) {
         $c = ['1=1'];
+        if ($hideFinished) {
+            $c[] = "r.state NOT IN ('converted', 'cancelled')"; // zakończone i anulowane RFQ
+        }
         if (!empty($sanitizedVendors)) {
             $c[] = 'r.vendor_id IN (' . implode(',', $sanitizedVendors) . ')';
         }
@@ -108,8 +112,11 @@ if (!function_exists('rfqDocsConds')) {
     }
 }
 if (!function_exists('poDocsConds')) {
-    function poDocsConds($sanitizedVendors, $sanitizedStates, $numberSearch, $dateFrom, $dateTo, $validPoStates, $MsaDB) {
+    function poDocsConds($sanitizedVendors, $sanitizedStates, $numberSearch, $dateFrom, $dateTo, $validPoStates, $MsaDB, $hideFinished = false) {
         $c = ['1=1'];
+        if ($hideFinished) {
+            $c[] = "o.state NOT IN ('received', 'cancelled')"; // zakończone i anulowane PO
+        }
         if (!empty($sanitizedVendors)) {
             $c[] = 'o.vendor_id IN (' . implode(',', $sanitizedVendors) . ')';
         }
@@ -141,11 +148,11 @@ if (!function_exists('poDocsConds')) {
 $rfqWhereSql = '';
 $poWhereSql  = '';
 if ($includeRfq) {
-    $rfqConds    = rfqDocsConds($sanitizedVendors, $sanitizedStates, $numberSearch, $dateFrom, $dateTo, $validRfqStates, $MsaDB);
+    $rfqConds    = rfqDocsConds($sanitizedVendors, $sanitizedStates, $numberSearch, $dateFrom, $dateTo, $validRfqStates, $MsaDB, $hideFinished);
     $rfqWhereSql = 'WHERE ' . implode(' AND ', $rfqConds);
 }
 if ($includePo) {
-    $poConds    = poDocsConds($sanitizedVendors, $sanitizedStates, $numberSearch, $dateFrom, $dateTo, $validPoStates, $MsaDB);
+    $poConds    = poDocsConds($sanitizedVendors, $sanitizedStates, $numberSearch, $dateFrom, $dateTo, $validPoStates, $MsaDB, $hideFinished);
     $poWhereSql = 'WHERE ' . implode(' AND ', $poConds);
 }
 

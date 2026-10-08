@@ -99,6 +99,11 @@ $baseUrl = 'http://' . BASEURL;
             <span class="rx-stat-value" data-stat-value>–</span>
             <span class="rx-stat-label">Z odpowiedzią</span>
         </button>
+        <button type="button" class="rx-stat dx-stat--converted" data-stat="converted" aria-pressed="false"
+                title="Zapytania skonwertowane na zamówienie (PO)">
+            <span class="rx-stat-value" data-stat-value>–</span>
+            <span class="rx-stat-label">Skonwertowane</span>
+        </button>
         <button type="button" class="rx-stat dx-stat--progress" data-stat="progress" aria-pressed="false"
                 title="Zamówienia potwierdzone lub częściowo odebrane — czekają na towar">
             <span class="rx-stat-value" data-stat-value>–</span>
@@ -196,6 +201,11 @@ $baseUrl = 'http://' . BASEURL;
         </div>
 
         <div class="rx-toolbar-end">
+            <div class="custom-control custom-switch dx-hide-done"
+                 title="Ukrywa zapytania skonwertowane na PO, zamówienia odebrane w całości oraz dokumenty anulowane">
+                <input type="checkbox" class="custom-control-input" id="hideFinished" checked>
+                <label class="custom-control-label" for="hideFinished">Ukryj zakończone</label>
+            </div>
             <button type="button" id="refreshDocs" class="btn btn-sm rx-btn-quiet" title="Wczytaj listę ponownie">
                 <i class="bi bi-arrow-clockwise rx-spin-icon"></i>
                 <span class="d-none d-sm-inline">Odśwież</span>

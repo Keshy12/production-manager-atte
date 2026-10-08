@@ -7,6 +7,8 @@
 //   number         tekst (LIKE na rfq_number / po_number / vendor_po_number)
 //   date_from      'YYYY-MM-DD' (domyślnie dziś − 90 dni)
 //   date_to        'YYYY-MM-DD'
+//   hide_finished  0 | 1 (ukrywa RFQ `converted`, PO `received`
+//                 oraz `cancelled` w obu typach)
 //   page, items_per_page, snapshot_ts
 //   mode           'data' → {docs[], currentPage, snapshot_ts}
 //                  'count' → {totalCount}
@@ -62,11 +64,16 @@ $(document).ready(function () {
         }
     };
 
+    // Statusy „zakończone" (zielone) — znikają przy „Ukryj zakończone".
+    const FINISHED_STATES = ['converted', 'received', 'cancelled'];
+    const HIDDEN_TILE_TITLE = 'Ukryte — włączono „Ukryj zakończone"';
+
     // Kafelki → zestawy statusów (wartości opcji #states).
     const STAT_STATES = {
         draft:     ['draft'],
         sent:      ['sent'],
         responded: ['responded'],
+        converted: ['converted'],
         progress:  ['confirmed', 'in_progress', 'partially_received'],
         received:  ['received'],
         cancelled: ['cancelled']
@@ -82,7 +89,20 @@ $(document).ready(function () {
     const $list      = $('#docsTableBody');
     const $panel     = $('#docsPanel');
     const $refresh   = $('#refreshDocs');
+    const $hideDone  = $('#hideFinished');
 
+    // „Ukryj zakończone" to preferencja użytkownika (nie część filtrów
+    // czyszczonych przyciskiem) — trzymamy ją w localStorage.
+    const HIDE_DONE_KEY = 'docsHideFinished';
+    function loadHideDone() {
+        // Domyślnie WŁĄCZONE: brak zapisu = zaznaczone; tylko jawne '0' wyłącza.
+        try { return window.localStorage.getItem(HIDE_DONE_KEY) !== '0'; } catch (e) { return true; }
+    }
+    function saveHideDone(on) {
+        try { window.localStorage.setItem(HIDE_DONE_KEY, on ? '1' : '0'); } catch (e) { /* bez pamięci */ }
+    }
+
+    let hideDoneUiOn = null;
     let docType = 'both';
     let currentPage = 1;
     let totalCount = null;
@@ -178,7 +198,8 @@ $(document).ready(function () {
             states:  ($states.val() || []).map(String),
             number:  String($number.val() || '').trim(),
             from:    String($dateFrom.val() || ''),
-            to:      String($dateTo.val() || '')
+            to:      String($dateTo.val() || ''),
+            hideDone: $hideDone.is(':checked')
         };
     }
 
@@ -217,7 +238,8 @@ $(document).ready(function () {
             states:      states,
             number:      f.number,
             date_from:   f.from,
-            date_to:     f.to
+            date_to:     f.to,
+            hide_finished: f.hideDone ? 1 : 0
         };
     }
 
@@ -244,11 +266,48 @@ $(document).ready(function () {
         return 'utworzone do ' + fmtDate(f.to);
     }
 
+    function isFinishedTile(key) {
+        return (STAT_STATES[key] || []).some(function (s) { return FINISHED_STATES.indexOf(s) !== -1; });
+    }
+
+    // Wyszarza kafelki zakończonych statusów i blokuje te opcje w liście
+    // statusów, gdy „Ukryj zakończone" jest włączone.
+    function syncHideDoneUi(on) {
+        $('.dx-stats .rx-stat').each(function () {
+            const $t = $(this);
+            if (!isFinishedTile($t.attr('data-stat'))) return;
+            if ($t.attr('data-orig-title') === undefined) $t.attr('data-orig-title', $t.attr('title') || '');
+            $t.toggleClass('is-disabled', on)
+              .attr('aria-disabled', on ? 'true' : 'false')
+              .attr('title', on ? HIDDEN_TILE_TITLE : $t.attr('data-orig-title'));
+            if (on) {
+                $t.find('[data-stat-value]').text('–');
+                $t.removeClass('is-zero');
+            }
+        });
+        $states.find('option').each(function () {
+            if (FINISHED_STATES.indexOf($(this).val()) !== -1) $(this).prop('disabled', on);
+        });
+        if (typeof $.fn.selectpicker === 'function') $states.selectpicker('refresh');
+    }
+
+    // Zdejmuje zakończone statusy z aktywnego filtra statusu.
+    function dropFinishedStates() {
+        const current = ($states.val() || []).map(String);
+        const kept = current.filter(function (s) { return FINISHED_STATES.indexOf(s) === -1; });
+        if (kept.length !== current.length) setPicker($states, kept);
+    }
+
     function syncFilterUi(f) {
         $('#vendorCell').toggleClass('is-active', f.vendors.length > 0);
         $('#statesCell').toggleClass('is-active', f.states.length > 0);
         $('#dateRange').toggleClass('is-active', f.from !== '' || f.to !== '');
         $('#clearFilters').toggleClass('d-none', isDefault(f));
+
+        if (hideDoneUiOn !== f.hideDone) {
+            hideDoneUiOn = f.hideDone;
+            syncHideDoneUi(f.hideDone);
+        }
 
         const r = activeRange(f);
         $('#rangeSeg [data-range]').each(function () {
@@ -391,6 +450,8 @@ $(document).ready(function () {
         $('.dx-stats').addClass('is-loading');
         let pending = 0;
         Object.keys(STAT_STATES).forEach(function (key) {
+            // Zakończone kafelki są wyszarzone — bez zapytania.
+            if (f.hideDone && isFinishedTile(key)) return;
             pending++;
             const $tile = $('.dx-stats .rx-stat[data-stat="' + key + '"]');
             const xhr = $.ajax({
@@ -458,6 +519,13 @@ $(document).ready(function () {
 
     function emptyStateFor(f) {
         const datesSet = f.from !== '' || f.to !== '';
+        if (f.hideDone) {
+            return emptyHtml('bi-check2-circle', '',
+                'Brak aktywnych dokumentów',
+                'Zakończone i anulowane zapytania oraz zamówienia są ukryte.',
+                '<button type="button" class="btn btn-sm btn-primary js-show-finished">'
+              + '<i class="bi bi-eye"></i> Pokaż zakończone i anulowane</button>');
+        }
         const allDatesBtn = '<button type="button" class="btn btn-sm btn-primary js-range-all">'
                           + '<i class="bi bi-calendar3"></i> Pokaż wszystkie daty</button>';
         const clearBtn = '<button type="button" class="btn btn-sm rx-btn-quiet js-clear-filters">'
@@ -541,7 +609,8 @@ $(document).ready(function () {
                  + ' data-po-id="' + id + '"'
                  + ' data-po-number="' + esc(d.primary_number || ('#' + id)) + '"'
                  + ' data-vendor-name="' + esc(d.vendor_name || '') + '"'
-                 + ' data-vendor-po-number="' + esc(d.secondary_number || '') + '">'
+                 + ' data-vendor-po-number="' + esc(d.secondary_number || '') + '"'
+                 + ' data-after-confirm-url="' + esc(appUrl('/purchase/receipts/receive?po_id=' + id)) + '">'
                  + '<i class="bi bi-check2-square"></i> Potwierdź odbiór</button>';
         }
         if (d.type === 'po' && (d.state === 'confirmed' || d.state === 'partially_received' || d.state === 'in_progress')) {
@@ -741,11 +810,22 @@ $(document).ready(function () {
         filtersChanged(true);
     });
 
+    $hideDone.on('change', function () {
+        const on = $hideDone.is(':checked');
+        saveHideDone(on);
+        if (on) dropFinishedStates();
+        filtersChanged(true);
+    });
+    $(document).on('click', '.js-show-finished', function () {
+        $hideDone.prop('checked', false).trigger('change');
+    });
+
     $refresh.on('click', function () { filtersChanged(true); });
     $(document).on('click', '.js-docs-retry', function () { filtersChanged(true); });
 
     // Kafelek = filtr statusu; drugi klik zdejmuje filtr.
     $('.dx-stats').on('click', '.rx-stat', function () {
+        if ($(this).hasClass('is-disabled')) return;
         const set = STAT_STATES[$(this).attr('data-stat')] || [];
         const current = ($states.val() || []).map(String);
         setPicker($states, sameSet(current, set) ? [] : set.slice());
@@ -791,6 +871,9 @@ $(document).ready(function () {
     } else {
         applyFiltersToUi(defaultFilters());
     }
+
+    $hideDone.prop('checked', loadHideDone());
+    if ($hideDone.is(':checked')) dropFinishedStates();
 
     loadDocuments();
     loadStats();
