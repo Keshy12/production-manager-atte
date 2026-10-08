@@ -26,6 +26,13 @@ $MsaDB  = MsaDB::getInstance();
 $edRepo = new EmailDraftRepository($MsaDB);
 $drafts = $edRepo->getAll(false);   // aktywne + nieaktywne
 
+// Ile dostawców wskazuje na każdy szablon przez własny wybór
+// (preferred_email_draft_rfq_id / _po_id). To priorytet wyższy niż
+// domyślny globalny, więc licznik pokazujemy tylko tam, gdzie globalnego
+// domyślnego nie ma — inaczej plakietka „Domyślny" i licznik gadałyby
+// o dwóch różnych rzeczach naraz.
+$edUsage = $edRepo->getVendorUsageCounts();
+
 $editUrl = 'http://' . BASEURL . '/admin/purchase/email-drafts/edit';
 
 $edActiveCount = 0;
@@ -35,20 +42,24 @@ foreach ($drafts as $d) {
 $edInactiveCount = count($drafts) - $edActiveCount;
 
 /**
- * Plakietki `email_draft.applies_to`. Kolor niesie tę samą informację
- * co tekst: RFQ niebieskie (wcześniejszy etap, pytanie), PO
- * pomarańczowe (zobowiązanie zakupowe), „RFQ + PO" neutralne — nie
- * zawęża niczego, więc nie powinno krzyczeć kolorem.
+ * Plakietki `email_draft.applies_to`. Kolory są dokładnie te same co
+ * znaczniki typu na liście dokumentów (/purchase/documents,
+ * documents-ui.css → .dx-type-tag), żeby RFQ wyglądało tak samo
+ * niezależnie od tego, gdzie się na nie patrzy:
+ *   RFQ — ciepła glina/karmel (jasne tło + obrys),
+ *   PO  — chłodny łupkowy błękit (samo tło).
+ * „RFQ + PO" zostaje neutralne — nie zawęża niczego, więc nie powinno
+ * krzyczeć kolorem.
  */
 $edTypeBadges = [
     'rfq' => [
-        'class' => 'badge-info',
+        'class' => 'ed-badge-type--rfq',
         'icon'  => 'bi-patch-question',
         'label' => 'RFQ',
         'title' => 'Widoczny w kreatorze wysyłki tylko dla zapytań ofertowych.',
     ],
     'po' => [
-        'class' => 'badge-warning',
+        'class' => 'ed-badge-type--po',
         'icon'  => 'bi-cart-check',
         'label' => 'PO',
         'title' => 'Widoczny w kreatorze wysyłki tylko dla zamówień.',
@@ -60,6 +71,57 @@ $edTypeBadges = [
         'title' => 'Widoczny w kreatorze wysyłki dla zapytań ofertowych i zamówień.',
     ],
 ];
+
+/**
+ * Plakietki „domyślny globalnie” (`is_default_rfq` / `is_default_po`).
+ * Ten sam kolor co typ, tyle że w wariancie pełnym (mocniejsze tło,
+ * węższy odcień): to nie jest informacja o tym, „czego dotyczy
+ * szablon" (to mówi kolumna Typ), tylko „kto wybiera go w pierwszej
+ * kolejności". Ten sam odcień rodziny, więc RFQ w obu plakietkach
+ * wygląda tak samo, a odróżniają je ikona (gwiazdka) i etykieta.
+ */
+$edDefaultBadges = [
+    'rfq' => [
+        'class' => 'ed-badge-default--rfq',
+        'icon'  => 'bi-star-fill',
+        'label' => 'RFQ',
+        'title' => 'Domyślny dla zapytań ofertowych — używany, gdy dostawca nie ma własnego wyboru.',
+    ],
+    'po' => [
+        'class' => 'ed-badge-default--po',
+        'icon'  => 'bi-star-fill',
+        'label' => 'PO',
+        'title' => 'Domyślny dla zamówień — używany, gdy dostawca nie ma własnego wyboru.',
+    ],
+    'both' => [
+        'class' => 'ed-badge-default--both',
+        'icon'  => 'bi-star-fill',
+        'label' => 'RFQ + PO',
+        'title' => 'Domyślny dla zapytań ofertowych i zamówień — używany, gdy dostawca nie ma własnego wyboru.',
+    ],
+];
+
+/**
+ * Chip „N dostawców" przy jednym typie dokumentu. Krótki, bo komórka ma
+ * szerokość jednej kolumny: „RFQ 4" mówi to samo co „4 dostawcy mają
+ * ten szablon jako domyślny dla zapytań", a pełne zdanie wisi w
+ * title="" na hover.
+ */
+if (!function_exists('ed_vendor_chip')) {
+    function ed_vendor_chip(string $typeLabel, int $count, string $draftName): string {
+        $typeText  = $typeLabel === 'RFQ' ? 'zapytań ofertowych' : 'zamówień';
+        $title = sprintf(
+            '%d dostawców ma ten szablon jako domyślny dla %s.',
+            $count,
+            $typeText
+        );
+        return '<span class="ed-vendor-count" title="'
+            . htmlspecialchars($title . ' Szablon: ' . $draftName, ENT_QUOTES) . '">'
+            . '<span class="ed-vendor-count__n">' . $count . '</span> '
+            . htmlspecialchars($typeLabel, ENT_QUOTES)
+            . '</span>';
+    }
+}
 ?>
 <style>
     /* ID w kolumnie z cyframi o stałej szerokości — łatwiej skanować
@@ -126,6 +188,19 @@ $edTypeBadges = [
     .ed-badge-type .bi {
         margin-right: 0.1rem;
     }
+    /* Kolory typu — kopiowane z listy dokumentów (documents-ui.css,
+       .dx-type-tag--rfq / --po), żeby RFQ i PO wyglądały tak samo na
+       obu stronach. RFQ: ciepła glina/karmel — jasne tło + obrys.
+       PO: chłodny łupkowy błękit — samo tło. */
+    .ed-badge-type--rfq {
+        background-color: #f7ebdd;
+        border: 1px solid #ebd3b8;
+        color: #8a5228;
+    }
+    .ed-badge-type--po {
+        background-color: #dfe7f1;
+        color: #34506f;
+    }
     /* „RFQ + PO” to brak ograniczenia, nie wyróżnienie: jasne tło
        z obrysem, żeby plakietka nie znikła na białym wierszu, ale i nie
        konkurowała kolorem z RFQ / PO. */
@@ -137,6 +212,66 @@ $edTypeBadges = [
        ciągnie wzrok do szablonu, który i tak nigdzie się nie pojawi. */
     tr.ed-row--inactive .ed-badge-type {
         opacity: 0.6;
+    }
+    /* Plakietka „domyślny” — ta sama zasada jednej linii co typ. */
+    .ed-badge-default {
+        font-weight: 600;
+        white-space: nowrap;
+    }
+    .ed-badge-default .bi {
+        margin-right: 0.1rem;
+        font-size: 0.7rem;
+    }
+    /* Domyślny globalnie — ta sama rodzina kolorów co typ, w wariancie
+       pełnym (mocniejsze tło + obrys). RFQ zostaje ciepła glina, PO
+       chłodny błękit, „RFQ + PO" neutralny. */
+    .ed-badge-default--rfq {
+        background-color: #e8c9a5;
+        border: 1px solid #cf8a4f;
+        color: #6f4119;
+    }
+    .ed-badge-default--po {
+        background-color: #b9c8da;
+        border: 1px solid #4f6d92;
+        color: #2c4560;
+    }
+    .ed-badge-default--both {
+        background-color: #e2e6ea;
+        border: 1px solid #b6bfc7;
+        color: #495057;
+    }
+    /* Licznik dostawców, którym ten szablon jest domyślny. Celowo
+       najciszej: pusty, bez tła, z cienką ramką — to liczba
+       kontekstowa przy plakietce, nie kolejna informacja główna. */
+    .ed-vendor-count {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 0.15rem;
+        margin-left: 0.3rem;
+        padding: 0.08rem 0.3rem;
+        border: 1px solid #ced4da;
+        border-radius: 0.2rem;
+        background-color: #f8f9fa;
+        font-size: 0.62rem;
+        font-weight: 600;
+        color: #6c757d;
+        white-space: nowrap;
+        vertical-align: middle;
+    }
+    .ed-vendor-count .ed-vendor-count__n {
+        font-variant-numeric: tabular-nums;
+        color: #495057;
+    }
+    /* Nieaktywny szablon nie bierze udziału w wyborze (kreator go
+       pomija), więc domyślność też przygasamy — tak samo jak typ.
+       0.7 zamiast 0.6: pełny niebieski zostaje czytelny na szarym
+       tle wiersza, a nadal widać, że to nie działa. */
+    tr.ed-row--inactive .ed-badge-default {
+        opacity: 0.7;
+    }
+    /* Licznik dostawców przygasza tak samo jak plakietki wyżej. */
+    tr.ed-row--inactive .ed-vendor-count {
+        opacity: 0.7;
     }
     /* Nieaktywny = cichy, nie alarmujący. Stonowana plakietka zamiast
        czerwieni, która w tej tabeli znaczyłaby „błąd”. */
@@ -196,6 +331,8 @@ $edTypeBadges = [
                     <small class="text-muted">
                         Globalne szablony e-maili używane przy wysyłce zapytań i&nbsp;zamówień.
                         Dostawca wskazuje swój szablon na karcie „Preferowane szablony wiadomości”.
+                        Szablon domyślny globalnie jest używany tylko wtedy, gdy dostawca nie ma
+                        własnego wyboru dla danego typu dokumentu.
                     </small>
                 </div>
                 <a href="<?= htmlspecialchars($editUrl, ENT_QUOTES) ?>"
@@ -235,6 +372,8 @@ $edTypeBadges = [
                         <th style="min-width: 200px;">Nazwa</th>
                         <th>Temat</th>
                         <th class="text-center" style="width: 112px;">Typ</th>
+                        <th class="text-center" style="width: 112px;"
+                            title="Domyślny globalnie (gwiazdka). Cyfra obok — liczba dostawców, którym ten szablon jest domyślny, mimo że nie jest domyślny globalnie.">Domyślny</th>
                         <th class="text-center" style="width: 104px;">Status</th>
                         <th style="width: 130px;">Utworzono</th>
                         <th class="text-center" style="width: 64px;">Akcje</th>
@@ -266,6 +405,40 @@ $edTypeBadges = [
                         . htmlspecialchars($typeMeta['label'], ENT_QUOTES)
                         . '</span>';
 
+                    // Dwie niezależne flagi → trzy stany plus „brak”. Brak
+                    // to myślnik, tak jak w pozostałych pustych komórkach.
+                    $defaultKey = $d->isDefaultRfq && $d->isDefaultPo ? 'both'
+                        : ($d->isDefaultRfq ? 'rfq' : ($d->isDefaultPo ? 'po' : null));
+                    if ($defaultKey === null) {
+                        $defaultBadge = '<span class="text-muted">—</span>';
+                    } else {
+                        $defMeta = $edDefaultBadges[$defaultKey];
+                        $defaultBadge = '<span class="badge ed-badge-default ' . $defMeta['class'] . '"'
+                            . ' title="' . htmlspecialchars($defMeta['title'], ENT_QUOTES) . '">'
+                            . '<i class="bi ' . $defMeta['icon'] . '" aria-hidden="true"></i> '
+                            . htmlspecialchars($defMeta['label'], ENT_QUOTES)
+                            . '</span>';
+                    }
+
+                    // Licznik dostawców, którym ten szablon jest domyślny.
+                    // Tylko gdy NIE jest domyślny globalnie — wtedy ta
+                    // komórka opisuje dokładnie jeden fakt („nie jest
+                    // niczyim domyślny"), a licznik dopowiada, ilu
+                    // dostawców mimo to go wybrało. Typ: chip per typ
+                    // zgodnie z applies_to, bo „dostawca wybrał ten
+                    // szablon do RFQ" i „do PO" to dwie różne liczby.
+                    $usage = $edUsage[(int)$d->id] ?? ['rfqCount' => 0, 'poCount' => 0];
+                    if ($defaultKey === null) {
+                        $chips = '';
+                        if ($d->appliesTo !== 'po' && $usage['rfqCount'] > 0) {
+                            $chips .= self::ed_vendor_chip('RFQ', $usage['rfqCount'], $d->name);
+                        }
+                        if ($d->appliesTo !== 'rfq' && $usage['poCount'] > 0) {
+                            $chips .= self::ed_vendor_chip('PO', $usage['poCount'], $d->name);
+                        }
+                        $defaultBadge = '<span class="text-muted">—</span>' . $chips;
+                    }
+
                     // created_at przychodzi jako 'Y-m-d H:i:s'; w tabeli
                     // wystarczy data + godzina bez sekund.
                     $created = trim($d->createdAt);
@@ -280,6 +453,7 @@ $edTypeBadges = [
                         <td class="ed-name"><?= htmlspecialchars($d->name, ENT_QUOTES) ?></td>
                         <td><?= $subjectCell ?></td>
                         <td class="text-center"><?= $typeBadge ?></td>
+                        <td class="text-center"><?= $defaultBadge ?></td>
                         <td class="text-center"><?= $statusBadge ?></td>
                         <td class="ed-col-created"><?= $createdCell ?></td>
                         <td class="text-center">
