@@ -357,6 +357,66 @@ Anonymous function `$flattenBom` (lines 40–93) — recursive closure with path
 
 ---
 
+## Job 7 — `import-procurement-history-from-gsheet.php`
+
+**File:** `src/cron/import-procurement-history-from-gsheet.php`
+
+### Purpose
+One-shot CLI importer that seeds the procurement documents (`purchase__rfq`, `purchase__order`, `purchase__order_receipt` + items) from three Google Sheets into the MSA database. It is a **migration tool**, not a recurring job — meant to be run once (and re-run safely) when history needs to be brought in.
+
+### Inputs
+| Source | Details |
+|---|---|
+| Google Sheet — `Lista RFQ` (spreadsheet `19eiRJEs6yvy7r6ZpB74HjS-VwkCVJ5oHE9voCjUOO5U`, tab `RFQ_list`, A:T) | RFQs. Header row 1. Creation date format `yyyy-mm-dd HH:MM:SS`. |
+| Google Sheet — `Otwarte Zamowienia PO` (spreadsheet `1ELkiaSIUjDfY1wSHG5Pl5Y1MQ1-gJU9Sory1T7RRDwA`, tab `purchase_order_list`, A:W) | POs. Header row 1, data lives in rows ~5855–9159. |
+| Google Sheet — `Lista przyjętych zamówień` (spreadsheet `1F-uzgUWxYfUYaFNPhfcMyGpd8qrkMyXVBb6V_TlYnKA`, tab `to_warehouse`, A:Y) | GRNs. Header row 1; column 13 (PartNo) is intentionally **unlabeled** — script asserts it is empty before proceeding. |
+| MSA DB | `list__vendor`, `list__vendor_part`, `list__currency`, `user`, `magazine__list` — lookups for vendor / vendor-part / currency / user / magazine validation. |
+
+### Outputs (writes only in LIVE mode)
+| Target | Details |
+|---|---|
+| `purchase__rfq` + `purchase__rfq_item` | One row per RFQ sheet document; one line item per resolved line. State = `converted` if any PO references the RFQ ID, else `responded` (when priced lines exist, `responded_at = created_at`), else `sent`. |
+| `purchase__order` + `purchase__order_item` | One row per PO ID from the union of sheet B (authoritative) and sheet C (positions only present in sheet C → `qty_ordered = SUM(C qty)`). `state` follows `received` > `partially_received` > `confirmed` > `sent`. |
+| `purchase__order_receipt` + `purchase__order_receipt_item` | One receipt per `(PO ID, GRN date)` group; `document_number` = lowest GRN ID in the group; `comment` = `"Import z arkusza. GRN: <ids>"`. |
+| `list__vendor.default_currency` | For each vendor whose most recent priced line (across all sheets, GRN > PO > RFQ) is in a currency different from the current default. |
+| `purchase__number_counter` | `INSERT ... ON DUPLICATE KEY UPDATE last_value = GREATEST(last_value, VALUES(last_value))` — RFQ/PO per-vendor seq, GRN `vendor_id=0` seq. |
+
+### Re-run safety
+Documents are matched by their sheet number (`rfq_number` / `po_number` / receipt `document_number`) and **skipped** if already present in the DB — fully idempotent.
+
+A receipt is imported only when its PO was imported **by this run**. Receipts whose PO already exists in `purchase__order` from a previous run are skipped, because we cannot reliably map sheet `(PO, position)` to existing `purchase__order_item.id` without a stable ordinal column. Run `--step=all` once on a clean DB to get receipts in.
+
+### CLI flags
+- `--dry-run` — zero writes (no inserts, no counter updates, no vendor currency changes); still reads Sheets + DB.
+- `--step=all|rfq|po|grn` — run a single step.
+- `--user=ID` — explicit admin user for `created_by` / `received_by`; default = lowest `user_id` with `isAdmin=1 AND isActive=1`.
+- `--magazine=ID` — explicit sub-magazine for receipt items; default = `user.sub_magazine_id`. Aborts with a clear message if neither resolves to a real magazine.
+
+### Counter-table guard
+Refuses to run in LIVE mode if `purchase__number_counter` is in the OLD shape (`PK = (year, type)`, `enum('rfq','po','pz')`). In `--dry-run`, prints a WARNING and skips the counter step. Run `php src/cron/migrate-to-procurement-schema.php` first.
+
+### Locks
+- **Lock file:** `public_html/var/locks/procurement_history_import.lock`.
+- Standard `Locker::isLocked()` pre-check + shutdown-function unlock pattern (mirrored from `seed-component-procurement-from-gsheet.php`).
+
+### Skip report
+A CSV is appended to `public_html/var/logs/procurement-history-skipped-YYYY-MM-DD.csv` (LIVE only — never written in `--dry-run`) with one row per skipped line: `sheet, row, doc_id, position, vendor_id, vendor_part_no, part_no, reason`.
+
+### Side Effects
+- **DB writes (LIVE only):** All `purchase__*` header + item tables, `list__vendor.default_currency`, `purchase__number_counter`.
+- **No stock writes:** Never touches `inventory__parts`, never creates transfer groups.
+- **Google Sheets API:** Read-only (three `spreadsheets_values.get` calls, with 401-retry via the stored refresh token in the `google_oauth` MSA table).
+- **Per-document transactions:** `beginTransaction()` / `commit()` per document; `rollback()` on error with logged reason; continues with the next document.
+- **Daily log:** `public_html/var/logs/procurement-history-import-YYYY-MM-DD.log`.
+
+### Failure Handling
+- Sheet read errors: abort with a clear message (the auth path mirrors `seed-component-procurement-from-gsheet.php`; refresh token is persisted back into `google_oauth` after a 401).
+- Header-layout drift (sheet A/B/C text changes): abort with a per-column diff.
+- Per-document errors: rollback + log, continue with the next document.
+- Counter-table in OLD shape: warn-and-skip in `--dry-run`, abort in LIVE.
+
+---
+
 ## Quick Reference Table
 
 | Job | Lock file | DB writes | Google Sheets | Unique behaviour |
@@ -367,6 +427,7 @@ Anonymous function `$flattenBom` (lines 40–93) — recursive closure with path
 | `flowpin-sku-update` | `flowpin.lock` (non-blocking) | `inventory__*`, checkpoints, progress | — (local logs) | Full ERP sync; per-record transactions + checkpoints |
 | `bom-flat-tht-gs-upload` | `bom_flat_tht_gs_upload.lock` | — | `ds_php_bom_flat_tht` (spreadsheet 2) | Recursive BOM flatten, single-level source |
 | `bom-flat-sku-gs-upload` | `bom_flat_sku_gs_upload.lock` | — | `ds_php_bom_flat_sku` (spreadsheet 2) | Recursive BOM flatten, 3-level source path |
+| `import-procurement-history-from-gsheet` | `procurement_history_import.lock` | `purchase__*`, `list__vendor.default_currency`, `purchase__number_counter` | — (read-only) | One-shot historical migration; safe re-run |
 
 **Spreadsheet IDs:**
 - (1) `1rV1rbLXDdsOxT49sgJNm1Aicldg8ZvBdQo9yaX314QI` — used by `warehouse-data-gs-upload`
