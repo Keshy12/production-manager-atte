@@ -1,9 +1,10 @@
 /**
  * producers-view.js
  *
- * Admin view for /admin/purchase/producers. After the redesign this
- * page is filter-driven: no inline add form, just a filter card, an
- * AJAX-rendered table, and pagination. Adding a new producer is done
+ * Admin view for /admin/purchase/producers. The page is filter-driven:
+ * no inline add form, just a collapsible "Filtry" card (collapsed by
+ * default, with a pill counting non-default filters), an AJAX-rendered
+ * table, and pagination. Adding a new producer is done
  * via a dedicated edit page at /admin/purchase/producers/edit (the
  * "Dodaj producenta" button in the page header navigates there).
  *
@@ -101,40 +102,37 @@ $(document).ready(function() {
         // dim text CSS rule. Active rows are plain (white background).
         const rowClass = isActive ? '' : 'pr-row--inactive table-secondary';
 
-        const nameHtml = esc(p.name || '—');
+        const nameRaw = p.name || '—';
 
-        // Komentarz cell — same shape as vendor-parts: small/muted text
-        // with bi-journal-text icon, truncated with ellipsis at 200
-        // chars. Full text stays on the native title tooltip.
-        const COMMENT_TRUNCATE_AT = 200;
+        // Komentarz jako dopisek pod nazwą (bez własnej kolumny); gdy go
+        // nie ma, komórka zawiera samą nazwę. Skracanie robi CSS, pełny
+        // tekst w title.
         const rawCmt = (p.comment == null ? '' : String(p.comment)).trim();
-        let komentarzCell;
-        if (!rawCmt) {
-            komentarzCell = '<span class="text-muted">—</span>';
-        } else if (rawCmt.length > COMMENT_TRUNCATE_AT) {
-            const visible = esc(rawCmt.slice(0, COMMENT_TRUNCATE_AT).trimEnd()) + '…';
-            komentarzCell = '<small class="text-muted" title="' + esc(rawCmt) + '"><i class="bi bi-journal-text"></i> ' + visible + '</small>';
-        } else {
-            komentarzCell = '<small class="text-muted"><i class="bi bi-journal-text"></i> ' + esc(rawCmt) + '</small>';
-        }
+        const noteHtml = rawCmt
+            ? '<span class="pr-note" title="' + esc(rawCmt) + '">' + esc(rawCmt) + '</span>'
+            : '';
 
-        // Liczba artykułów — shows the count of list__vendor_part rows
-        // referencing this producer. 0 reads as '—' so the column
-        // doesn't look like "0 used" (which reads as a warning to the
-        // operator); positive counts render as a number.
+        // Liczba artykułów — 0 pokazujemy jako myślnik, żeby kolumna
+        // nie wyglądała jak ostrzeżenie; dodatnie wartości jako liczba.
         const vpCount = parseInt(p.vendorPartCount, 10);
         const vpCell = (isNaN(vpCount) || vpCount <= 0)
             ? '<span class="text-muted">—</span>'
             : '<span class="badge badge-info">' + vpCount + '</span>';
 
+        const statusBadge = isActive
+            ? '<span class="badge badge-success">Aktywny</span>'
+            : '<span class="badge pr-badge-off">Nieaktywny</span>';
+
         return '<tr class="' + rowClass + '" data-id="' + p.id + '">' +
             '<td class="pr-col-id text-center">' + p.id + '</td>' +
-            '<td>' + nameHtml + '</td>' +
-            '<td>' + komentarzCell + '</td>' +
-            '<td class="text-center">' + vpCell + '</td>' +
-            '<td>' +
-                '<a class="btn btn-sm btn-warning" href="' + editBase + p.id + '">' +
-                    '<i class="bi bi-pencil"></i> Edytuj' +
+            '<td><span class="pr-name">' + esc(nameRaw) + '</span>' + noteHtml + '</td>' +
+            '<td class="text-center pr-col-count">' + vpCell + '</td>' +
+            '<td class="text-center">' + statusBadge + '</td>' +
+            '<td class="text-center">' +
+                '<a class="btn btn-sm btn-warning" href="' + editBase + p.id + '"' +
+                    ' title="Edytuj producenta „' + esc(nameRaw) + '”"' +
+                    ' aria-label="Edytuj producenta">' +
+                    '<i class="bi bi-pencil"></i>' +
                 '</a>' +
             '</td>' +
         '</tr>';
@@ -143,6 +141,61 @@ $(document).ready(function() {
     function renderEmptyRow(message) {
         return '<tr><td colspan="5" class="text-center text-muted py-4">' +
             esc(message) + '</td></tr>';
+    }
+
+    // Liczba filtrów różnych od stanu domyślnego (status „Aktywne”,
+    // pusta fraza, wszystkie artykuły). Domyślny widok nie liczy się,
+    // bo operator nic w nim nie zmienił.
+    function countNonDefaultFilters() {
+        let n = 0;
+        if (getStatus('prFilterStatus') !== 'active') { n++; }
+        if (($('#prFilterSearch').val() || '').trim() !== '') { n++; }
+        if (getHasArticles() !== null) { n++; }
+        return n;
+    }
+
+    // Karta filtrów jest zwinięta, więc licznik w jej nagłówku jest
+    // jedynym sygnałem, że lista jest zawężona.
+    function updateFilterPill() {
+        const n = countNonDefaultFilters();
+        $('#prFilterPill').text(n).prop('hidden', n === 0);
+    }
+
+    // Pusty stan zastępuje tabelę. Gdy filtry coś zawężają, główną
+    // akcją jest ich wyczyszczenie; w widoku domyślnym — dodanie.
+    function showEmptyState() {
+        const filtered = countNonDefaultFilters() > 0;
+        const html = filtered
+            ? '<i class="bi bi-search"></i>' +
+              '<p class="mb-3 text-muted">Żaden producent nie pasuje do wybranych filtrów.</p>' +
+              '<button type="button" id="prEmptyClear" class="btn btn-outline-secondary btn-sm">' +
+                  '<i class="bi bi-x-circle"></i> Wyczyść filtry</button>'
+            : '<i class="bi bi-building"></i>' +
+              '<p class="mb-3 text-muted">Brak aktywnych producentów — kliknij <strong>Dodaj producenta</strong>, aby dodać pierwszego.</p>' +
+              '<a href="' + esc(window.PR_ADD_URL || '#') + '" class="btn btn-primary btn-sm">' +
+                  '<i class="bi bi-plus-circle"></i> Dodaj producenta</a>';
+        $('#prEmpty').html(html).prop('hidden', false);
+        $('#prTableWrap').prop('hidden', true);
+        $('#prEmptyClear').on('click', clearAllFilters);
+    }
+
+    function hideEmptyState() {
+        $('#prEmpty').prop('hidden', true).empty();
+        $('#prTableWrap').prop('hidden', false);
+    }
+
+    function updateCounts() {
+        $('#prCountBadge').text(totalCount).prop('hidden', false);
+        $('#prSummaryCount').text(totalCount);
+    }
+
+    function clearAllFilters() {
+        // Powrót do widoku domyślnego (Aktywne), tego samego, który
+        // licznik w nagłówku karty uznaje za „brak filtrów”.
+        setStatus('prFilterStatus', 'active');
+        setStatus('prFilterHasArticles', 'all');
+        $('#prFilterSearch').val('');
+        loadList();
     }
 
     function renderPagination() {
@@ -202,6 +255,7 @@ $(document).ready(function() {
     }
 
     function loadList(skipPageReset) {
+        updateFilterPill();
         if (isLoading) return;
         if (!skipPageReset) { currentPage = 1; }
 
@@ -215,21 +269,27 @@ $(document).ready(function() {
             .done(function(r) {
                 if (!r.success) {
                     setAlert(r.error || 'Błąd ładowania listy', 'danger');
+                    hideEmptyState();
                     $('#prTableBody').html(renderEmptyRow('Nie udało się załadować danych.'));
                     totalCount = 0;
+                    updateCounts();
                     renderPagination();
                     return;
                 }
                 totalCount = r.total || 0;
                 itemsPerPage = r.itemsPerPage || itemsPerPage;
+                updateCounts();
 
                 if (totalCount === 0) {
-                    $('#prTableBody').html(renderEmptyRow('Brak producentów spełniających kryteria'));
+                    $('#prTableBody').empty();
+                    showEmptyState();
+                    $('#prPaginationTop, #prPaginationBottom').empty();
                 } else {
+                    hideEmptyState();
                     const html = (r.rows || []).map(renderRow).join('');
                     $('#prTableBody').html(html);
+                    renderPagination();
                 }
-                renderPagination();
             })
             .fail(function() {
                 setAlert('Błąd komunikacji z serwerem', 'danger');
@@ -259,19 +319,8 @@ $(document).ready(function() {
     bindStatusGroup('prFilterStatus');
     bindStatusGroup('prFilterHasArticles');
 
-    // Per-section "Wyczyść" buttons.
-    $('#prClearStatus').on('click', function() {
-        setStatus('prFilterStatus', 'all');
-        loadList();
-    });
-    $('#prClearSearch').on('click', function() {
-        $('#prFilterSearch').val('');
-        loadList();
-    });
-    $('#prClearHasArticles').on('click', function() {
-        setStatus('prFilterHasArticles', 'all');
-        loadList();
-    });
+    // Jeden przycisk „Wyczyść filtry” zamiast trzech osobnych.
+    $('#prClearFilters').on('click', clearAllFilters);
 
     // First paint.
     loadList();

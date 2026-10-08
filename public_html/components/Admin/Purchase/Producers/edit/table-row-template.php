@@ -1,29 +1,30 @@
 <script type="text/template" data-template="producerRowTemplate">
     <!--
         Reference template for a Producer row. The actual rendering happens
-        in producers-view.js via the renderRow() template literal — this
-        file documents the column shape so future changes stay in sync.
+        in producers-view.js via renderRow() — this file documents the column
+        shape so future changes stay in sync. Styles live in the <style>
+        block of producers-view.php (all scoped under #prTable).
 
-        Variables interpolated by renderRow():
-          ${id}              int
-          ${rowClass}        'pr-row--inactive table-secondary' for inactive
-                             rows, '' otherwise. Inactive state is conveyed
-                             entirely by the row tint — no badge column.
-          ${nameHtml}        html-escaped producer name
-          ${komentarzCell}   small/muted text with bi-journal-text icon;
-                             truncated with ellipsis at 200 chars (full text
-                             stays on the native title tooltip)
-          ${vendorPartCount} int — number of `list__vendor_part` rows
-                             referencing this producer. Shows '—' when 0
-                             so the column doesn't read like "0 used".
-          ${editBtn}         <a class="btn btn-sm btn-warning" href="/atte_ms_new/admin/purchase/producers/edit?id=${id}">
-                             — the dedicated edit page (see edit/producer-edit-view.php).
-                             Was a <button class="edit-producer-btn"> + modal in the
-                             previous design.
+        Fields used by renderRow():
+          id, name, comment, isActive, vendorPartCount
+
+        Row classes:
+          inactive -> 'pr-row--inactive table-secondary' (grey text, name
+                      weight 500); active -> no extra class.
 
         Column order (matches <thead> in producers-view.php):
-          ID | Nazwa | Komentarz | Liczba artykułów | Akcje
+          ID | Producent | Artykuły | Status | Akcje
 
-        5 columns. colspan for in the empty-state row is also 5.
+        Cells:
+          ID         .pr-col-id.text-center  muted tabular digits
+          Producent  span.pr-name (semibold) + optional span.pr-note beneath it:
+                     the comment, single line, ellipsis, full text in title="".
+                     The comment has no column of its own — it only helps
+                     recognise the producer.
+          Artykuły   badge-info with count, '—' when 0
+          Status     badge-success 'Aktywny' / .pr-badge-off 'Nieaktywny' (muted, not red)
+          Akcje      one btn btn-sm btn-warning with bi-pencil, title + aria-label
+
+        5 columns. colspan in the fallback message row is also 5.
     -->
 </script>

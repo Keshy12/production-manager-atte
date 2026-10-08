@@ -1,17 +1,14 @@
 /**
  * vendor-parts-view.js
  *
- * Admin view for /admin/purchase/vendor-parts. After the redesign this
- * page is filter-driven: no add form, just a filter card, an AJAX-rendered
- * table, and pagination.
+ * Admin view for /admin/purchase/vendor-parts. The page is filter-driven:
+ * a collapsible filter card, an AJAX-rendered table (vp-list.php) and
+ * pagination. There is no add/edit form on this page.
  *
- * The edit flow is a dedicated page now — see /admin/purchase/vendor-parts/edit
- * (wired in index.php and rendered by edit/vendor-part-edit-view.php). Each row's
- * "Edytuj" button is a plain anchor that navigates there. The legacy modal
- * + vp-get.php / vp-update.php / vp-search-vendors.php endpoints and the
- * search wiring for them have been removed; vp-search-producers.php,
- * vp-search-parts.php, vp-search-units.php are still consumed by the
- * Vendors page's add-VP modal and remain in place.
+ * Adding and editing happen on a dedicated page — see
+ * /admin/purchase/vendor-parts/edit (rendered by
+ * edit/vendor-part-edit-view.php). Each row's pencil button is a plain
+ * anchor that navigates there.
  */
 
 $(document).ready(function() {
@@ -34,13 +31,15 @@ $(document).ready(function() {
         return Number.isInteger(f) ? f.toString() : parseFloat(f.toFixed(4)).toString();
     }
 
-    // Render the packs cell — comma-separated small badges. Empty state
-    // shows a muted em-dash so the column doesn't collapse.
-    function renderPacksHtml(packs) {
+    // Render the packs cell — small badges followed by the unit once, so
+    // the quantity and its unit read together. Empty state shows a muted
+    // em-dash so the column doesn't collapse.
+    function renderPacksHtml(packs, unitName) {
         if (!Array.isArray(packs) || packs.length === 0) {
-            return '<span class="vp-pack-badge vp-pack-badge--empty">—</span>';
+            return '<span class="vp-none">—</span>';
         }
-        return packs.map(p => '<span class="vp-pack-badge">' + esc(fmtQty(p)) + '</span>').join('');
+        const badges = packs.map(p => '<span class="vp-pack-badge">' + esc(fmtQty(p)) + '</span>').join('');
+        return badges + (unitName ? ' <span class="vp-pack-unit">' + esc(unitName) + '</span>' : '');
     }
 
     // ============================================================
@@ -102,68 +101,95 @@ $(document).ready(function() {
         };
     }
 
+    // Count filters that differ from the page defaults (status "active",
+    // everything else empty). Shown as a pill in the collapsed card header
+    // so a hidden filter never silently narrows the list.
+    function updateFilterCount() {
+        const f = gatherFilters();
+        let n = 0;
+        if (f.vendorIds.length)   n++;
+        if (f.producerIds.length) n++;
+        if (f.partIds.length)     n++;
+        if (f.status !== 'active') n++;
+        if (f.search.trim() !== '') n++;
+        if (f.dateFrom) n++;
+        if (f.dateTo)   n++;
+        $('#vpFilterCount').text(n).prop('hidden', n === 0);
+    }
+
     function renderRow(vp) {
         const isActive = vp.isActive === true || vp.isActive === 1 || vp.isActive === '1';
-        // Inactive rows are conveyed by the table-secondary tint + the
-        // dim text CSS rule. Active rows are plain (white background).
+        // Inactive rows are conveyed by the table-secondary tint, the dim
+        // text CSS rule and the muted status badge.
         const rowClass = isActive ? '' : 'vp-row--inactive table-secondary';
 
-        // Artykuł cell — part name + merged-or-separate vendor/producer
-        // numbers. Mirrors the cart-view.js part-cell build (lines
-        // 1230–1238 there) so both pages read identically.
-        let artykulCell = esc(vp.partName || '—');
+        // Artykuł cell — vendor part number is the primary line (that is
+        // what the admin recognises a row by), our catalogue part name is
+        // the muted line below. The producer number is shown only when it
+        // differs from the vendor one. Fallback to the part name when the
+        // vendor number is somehow empty.
         const vn = vp.vendorPartNo || '';
         const pn = vp.producerPartNo || '';
-        if (vn && pn && vn === pn) {
-            artykulCell += '<div><small class="text-muted">Nr dost./prod.: <span class="font-weight-bold">' + esc(vn) + '</span></small></div>';
+        const partName = vp.partName || '';
+        let artykulCell;
+        if (vn) {
+            artykulCell = '<span class="vp-code" title="' + esc(vn) + '">' + esc(vn) + '</span>';
+            if (partName) {
+                artykulCell += '<span class="vp-sub" title="' + esc(partName) + '">' + esc(partName) + '</span>';
+            }
         } else {
-            if (vn) artykulCell += '<div><small class="text-muted">Nr dost.: <span class="font-weight-bold">' + esc(vn) + '</span></small></div>';
-            if (pn) artykulCell += '<div><small class="text-muted">Nr prod.: <span class="font-weight-bold">' + esc(pn) + '</span></small></div>';
+            artykulCell = '<span class="vp-name">' + esc(partName || '—') + '</span>';
         }
+        if (pn && pn !== vn) {
+            artykulCell += '<span class="vp-code vp-code--sub" title="' + esc('Nr producenta: ' + pn) + '">prod.: ' + esc(pn) + '</span>';
+        }
+
+        // Comment: free text, mostly empty — a small icon next to the name
+        // with the full text in the tooltip instead of its own column.
+        const rawCmt = (vp.comment == null ? '' : String(vp.comment)).trim();
+        const commentIcon = rawCmt
+            ? '<i class="bi bi-journal-text vp-comment-icon" title="' + esc(rawCmt) + '" aria-label="Komentarz: ' + esc(rawCmt) + '"></i>'
+            : '';
 
         // Dostawca cell — vendor name on the main line, producer name as a
-        // muted sub-line. Producer sub-line is suppressed when missing so
-        // the cell stays compact for vendor-only rows.
-        let dostawcaCell = esc(vp.vendorName || '—');
+        // muted sub-line (omitted when missing).
+        let dostawcaCell = '<span class="vp-name">' + esc(vp.vendorName || '—') + '</span>';
         if (vp.producerName) {
-            dostawcaCell += '<div><small class="text-muted">' + esc(vp.producerName) + '</small></div>';
+            dostawcaCell += '<span class="vp-sub">' + esc(vp.producerName) + '</span>';
         }
 
-        // Komentarz cell — vp.comment rendered with the cart's journal
-        // glyph. Long comments are truncated with an ellipsis so a row
-        // never balloons vertically; the full text stays accessible via
-        // the native title tooltip. Truncation threshold picked to keep
-        // ~3-4 wrapped lines visible at the column's min-width.
-        const COMMENT_TRUNCATE_AT = 200;
-        const rawCmt = (vp.comment == null ? '' : String(vp.comment)).trim();
-        let komentarzCell;
-        if (!rawCmt) {
-            komentarzCell = '<span class="text-muted">—</span>';
-        } else if (rawCmt.length > COMMENT_TRUNCATE_AT) {
-            const visible = esc(rawCmt.slice(0, COMMENT_TRUNCATE_AT).trimEnd()) + '…';
-            komentarzCell = '<small class="text-muted" title="' + esc(rawCmt) + '"><i class="bi bi-journal-text"></i> ' + visible + '</small>';
-        } else {
-            komentarzCell = '<small class="text-muted"><i class="bi bi-journal-text"></i> ' + esc(rawCmt) + '</small>';
-        }
+        const statusBadge = isActive
+            ? '<span class="badge badge-success">Aktywny</span>'
+            : '<span class="badge vp-badge-off">Nieaktywny</span>';
+
+        const editTitle = 'Edytuj artykuł #' + vp.id;
 
         return '<tr class="' + rowClass + '" data-id="' + vp.id + '">' +
             '<td class="vp-col-id text-center">' + vp.id + '</td>' +
-            '<td>' + artykulCell + '</td>' +
+            '<td><div class="d-flex align-items-start"><div style="min-width:0;">' + artykulCell + '</div>' + commentIcon + '</div></td>' +
             '<td>' + dostawcaCell + '</td>' +
-            '<td>' + esc(vp.unitName || '—') + '</td>' +
-            '<td>' + renderPacksHtml(vp.packQuantities) + '</td>' +
-            '<td>' + komentarzCell + '</td>' +
-            '<td>' +
-                '<a class="btn btn-sm btn-warning" href="' + editBase + vp.id + '">' +
-                    '<i class="bi bi-pencil"></i> Edytuj' +
+            '<td>' + renderPacksHtml(vp.packQuantities, vp.unitName) + '</td>' +
+            '<td class="text-center">' + statusBadge + '</td>' +
+            '<td class="text-center">' +
+                '<a class="btn btn-sm btn-warning" href="' + editBase + vp.id + '"' +
+                    ' title="' + esc(editTitle) + '" aria-label="' + esc(editTitle) + '">' +
+                    '<i class="bi bi-pencil"></i>' +
                 '</a>' +
             '</td>' +
         '</tr>';
     }
 
-    function renderEmptyRow(message) {
-        return '<tr><td colspan="7" class="text-center text-muted py-4">' +
-            esc(message) + '</td></tr>';
+    // Pusty stan zastępuje tabelę; błąd ładowania nie oferuje „Dodaj”.
+    function showEmpty(message, withCta) {
+        $('#vpEmptyText').text(message);
+        $('#vpEmptyCta').prop('hidden', !withCta);
+        $('#vpTableWrap').prop('hidden', true);
+        $('#vpEmpty').prop('hidden', false);
+    }
+
+    function hideEmpty() {
+        $('#vpEmpty').prop('hidden', true);
+        $('#vpTableWrap').prop('hidden', false);
     }
 
     function renderPagination() {
@@ -231,12 +257,13 @@ $(document).ready(function() {
         setAlert('', null); // clear stale alerts on every reload
 
         const filters = gatherFilters();
+        updateFilterCount();
 
         postAjax('vp-list.php', filters)
             .done(function(r) {
                 if (!r.success) {
                     setAlert(r.error || 'Błąd ładowania listy', 'danger');
-                    $('#vpTableBody').html(renderEmptyRow('Nie udało się załadować danych.'));
+                    showEmpty('Nie udało się załadować danych.', false);
                     totalCount = 0;
                     $('#vpCountBadge').text('0');
                     renderPagination();
@@ -247,8 +274,9 @@ $(document).ready(function() {
                 $('#vpCountBadge').text(totalCount);
 
                 if (totalCount === 0) {
-                    $('#vpTableBody').html(renderEmptyRow('Brak artykułów spełniających kryteria'));
+                    showEmpty('Brak artykułów spełniających kryteria — zmień filtry albo kliknij Dodaj artykuł.', true);
                 } else {
+                    hideEmpty();
                     const html = (r.rows || []).map(renderRow).join('');
                     $('#vpTableBody').html(html);
                 }
@@ -256,7 +284,7 @@ $(document).ready(function() {
             })
             .fail(function() {
                 setAlert('Błąd komunikacji z serwerem', 'danger');
-                $('#vpTableBody').html(renderEmptyRow('Nie udało się załadować danych.'));
+                showEmpty('Nie udało się załadować danych.', false);
             })
             .always(function() {
                 isLoading = false;
@@ -380,35 +408,30 @@ $(document).ready(function() {
     }
     bindStatusGroup('vpFilterStatus');
 
-    // Per-section "Wyczyść" buttons.
-    $('#vpClearVendorProducer').on('click', function() {
-        // Reset BOTH pickers back to the full list cached at page load
-        // AND clear any current selection (per spec: shared Wyczyść must
-        // refresh both sides and drop the active pick). Clearing .val()
-        // before the rebuild keeps rebuildSelectKeepValid from re-pinning
-        // a value that's still in the full list.
+    // Single "Wyczyść filtry" button in the toolbar: resets every filter
+    // and reloads once (separate per-section buttons would race against
+    // the isLoading guard in loadList()).
+    $('#vpClearAll').on('click', function() {
+        // Reset BOTH vendor/producer pickers back to the full list cached
+        // at page load AND drop the current pick. Clearing .val() before
+        // the rebuild keeps rebuildSelectKeepValid from re-pinning a value.
         $('#vpFilterVendors').val(null);
         $('#vpFilterProducers').val(null);
         rebuildSelectKeepValid('#vpFilterVendors',   vpFullVendors);
         rebuildSelectKeepValid('#vpFilterProducers', vpFullProducers);
-        loadList();
-    });
-    $('#vpClearPart').on('click', function() {
         $('#vpFilterParts').val(null).selectpicker('refresh');
-        loadList();
-    });
-    $('#vpClearStatus').on('click', function() {
         setStatus('vpFilterStatus', 'all');
-        loadList();
-    });
-    $('#vpClearSearch').on('click', function() {
         $('#vpFilterSearch').val('');
-        loadList();
-    });
-    $('#vpClearDates').on('click', function() {
         $('#vpFilterDateFrom').val('');
         $('#vpFilterDateTo').val('');
         loadList();
+    });
+
+    // The pickers are first measured while their card is collapsed
+    // (display:none), so bootstrap-select can't size its menu correctly.
+    // Refresh them once the card is actually visible.
+    $('#vpFilterCollapse').on('shown.bs.collapse', function() {
+        $(this).find('.selectpicker').selectpicker('refresh');
     });
 
     // First paint — capture the full option lists BEFORE any cascade can

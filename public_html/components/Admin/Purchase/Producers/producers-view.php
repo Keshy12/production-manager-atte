@@ -12,50 +12,138 @@ if(!isset($_SESSION['isAdmin']) || $_SESSION['isAdmin'] !== true) {
 $MsaDB = MsaDB::getInstance();
 
 include('edit/table-row-template.php');
+
+$prAddUrl = 'http://' . BASEURL . '/admin/purchase/producers/edit';
 ?>
 
 <style>
-    /* Filter card visual language — mirrors /vendor-parts so the
-       operator's muscle memory carries over. alert-primary header +
-       alert-info body keeps the card visibly grouped with the rest
-       of the admin UI. */
+    /* Filtry są domyślnie zwinięte (jak w archiwum), więc sam nagłówek
+       karty musi mówić, że coś jest ustawione: licznik zmienionych
+       filtrów obok tytułu i strzałka, która obraca się po rozwinięciu. */
     #prFilterCard .card-header {
         cursor: pointer;
     }
-    #prFilterCard .card-header h6 {
-        letter-spacing: 0.02em;
+    #prFilterCard .pr-chevron {
+        transition: transform 0.2s ease;
     }
-    #prFilterCard .form-row + .form-row {
-        border-top: 1px dashed rgba(0, 0, 0, 0.08);
-        padding-top: 0.5rem;
-        margin-top: 0.5rem;
+    #prFilterCard .card-header[aria-expanded="true"] .pr-chevron {
+        transform: rotate(180deg);
     }
-    /* Status segmented control: visually a button group but backed by
-       radio inputs so it submits cleanly with form-encoded AJAX. */
-    .pr-status-group .btn {
-        font-size: 0.875rem;
+    #prFilterPill {
+        font-size: 0.75rem;
+        font-weight: 600;
+        vertical-align: middle;
     }
-    .pr-status-group .btn input[type="radio"] {
+    /* Przełączniki oparte o radio — wyglądają jak grupa przycisków,
+       a nadal przechodzą przez ten sam kod JS. */
+    #prFilterCard .btn-group-toggle .btn input[type="radio"] {
         display: none;
     }
-    /* Compact pagination — matches the archive / vendor-parts style. */
-    .pr-pagination .text-muted {
-        letter-spacing: 0.01em;
-    }
-    /* ID column tabular figures so digits line up across rows. */
+    /* Spinner ukrywany atrybutem hidden — Bootstrap 4 sam tego nie robi. */
+    #prSpinner[hidden] { display: none !important; }
+
+    /* ID w kolumnie z cyframi o stałej szerokości — łatwiej skanować
+       listę wzrokiem niż przy proporcjonalnych cyfrach. */
     #prTable td.pr-col-id, #prTable th.pr-col-id {
         font-variant-numeric: tabular-nums;
+        color: #adb5bd;
     }
-    /* Hide spinner once it finishes (Bootstrap 4 doesn't auto-hide
-       spinner-border without .show / d-none toggles). */
-    .pr-spinner[hidden] { display: none !important; }
-    /* Inactive rows get the existing table-secondary treatment; we also
-       dim the action button subtly so the status reads at a glance. */
-    tr.pr-row--inactive {
+    /* Gęsty rytm tabel administracyjnych: lżejsze nagłówki, ciaśniejsze
+       wiersze niż domyślny .table-sm. */
+    #prTable thead th {
+        border-top: 0;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: #6c757d;
+        white-space: nowrap;
+    }
+    #prTable tbody td {
+        vertical-align: middle;
+    }
+    /* Akcent po lewej przy najechaniu — wiersz „podnosi się” bez
+       rozpychania układu. */
+    #prTable tbody tr {
+        transition: box-shadow 0.12s ease, background-color 0.12s ease;
+    }
+    #prTable tbody tr:hover {
+        box-shadow: inset 3px 0 0 #0d6efd;
+    }
+    #prTable .pr-name {
+        display: block;
+        font-weight: 600;
+    }
+    /* Komentarz nie ma własnej kolumny — to dopisek pod nazwą, który
+       tylko podpowiada, o którego producenta chodzi. Jedna linia
+       z wielokropkiem, żeby długa notatka nie rozpychała tabeli; pełna
+       treść siedzi w title="". */
+    #prTable .pr-note {
+        display: block;
+        max-width: 36rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 0.78rem;
         color: #6c757d;
     }
-    tr.pr-row--inactive .btn-group .btn {
-        opacity: 0.85;
+    /* Liczba artykułów jako cyfry o stałej szerokości; zero pokazujemy
+       jako myślnik, żeby nie wyglądało jak ostrzeżenie. */
+    #prTable .pr-col-count {
+        font-variant-numeric: tabular-nums;
+    }
+    /* Wyszarzone wiersze nieaktywnych producentów — ten sam język
+       wizualny co szablony wiadomości i lista dostawców. */
+    #prTable tr.pr-row--inactive {
+        color: #6c757d;
+    }
+    #prTable tr.pr-row--inactive .pr-name {
+        font-weight: 500;
+    }
+    #prTable tr.pr-row--inactive .pr-note {
+        color: #adb5bd;
+    }
+    /* Nieaktywny = cichy, nie alarmujący. Stonowana plakietka zamiast
+       czerwieni, która w tej tabeli znaczyłaby „błąd”. */
+    #prTable .pr-badge-off {
+        background-color: #e9ecef;
+        color: #6c757d;
+        font-weight: 500;
+    }
+    /* Licznik przy nagłówku — plakietka, nie nawias w tekście. */
+    #prCountBadge {
+        background-color: #e7f1ff;
+        color: #0b5ed7;
+        font-size: 0.8rem;
+        font-weight: 600;
+        vertical-align: middle;
+        position: relative;
+        top: -0.15rem;
+    }
+    /* Paginacja: mała i cicha, żeby nie konkurowała z tabelą. */
+    #prPaginationTop .text-muted,
+    #prPaginationBottom .text-muted {
+        letter-spacing: 0.01em;
+    }
+    /* Pusty stan: świadomie duży i spokojny — to jedyna treść pod
+       kartą filtrów, gdy nic nie pasuje. */
+    #prEmpty {
+        border: 1px dashed #dee2e6;
+        border-radius: 0.35rem;
+        background-color: #fbfbfc;
+        padding: 3rem 1rem;
+        text-align: center;
+    }
+    #prEmpty > .bi {
+        font-size: 2.25rem;
+        color: #ced4da;
+        display: block;
+        margin-bottom: 0.75rem;
+    }
+    #prEmpty p {
+        max-width: 32rem;
+        margin-left: auto;
+        margin-right: auto;
     }
 </style>
 
@@ -64,10 +152,14 @@ include('edit/table-row-template.php');
         <div class="col-12 my-2">
             <div class="d-flex justify-content-between align-items-center">
                 <div>
-                    <h2 class="mb-1">Producenci</h2>
-                    <small class="text-muted">Zarządzaj katalogiem producentów komponentów.</small>
+                    <h2 class="mb-1">
+                        Producenci
+                        <span class="badge badge-pill ml-1" id="prCountBadge" hidden
+                              title="Liczba producentów spełniających filtry">0</span>
+                    </h2>
+                    <small class="text-muted">Katalog producentów komponentów, do których przypisujesz artykuły u&nbsp;dostawców.</small>
                 </div>
-                <a href="<?= 'http://' . BASEURL . '/admin/purchase/producers/edit' ?>"
+                <a href="<?= htmlspecialchars($prAddUrl, ENT_QUOTES) ?>"
                    class="btn btn-primary btn-sm">
                     <i class="bi bi-plus-circle"></i> Dodaj producenta
                 </a>
@@ -76,42 +168,22 @@ include('edit/table-row-template.php');
         </div>
     </div>
 
-    <!-- Filter card (collapsible, mirrors /vendor-parts) -->
-    <div class="card mt-3" id="prFilterCard">
-        <div class="card-header alert-primary" data-toggle="collapse" data-target="#prFilterCollapse" aria-expanded="false">
+    <!-- Filtry (zwinięte domyślnie, jak w archiwum) -->
+    <div class="card mt-4 mb-3" id="prFilterCard">
+        <div class="card-header alert-primary" data-toggle="collapse" data-target="#prFilterCollapse"
+             aria-expanded="false" aria-controls="prFilterCollapse">
             <div class="d-flex justify-content-between align-items-center">
-                <h6 class="mb-0"><i class="bi bi-funnel"></i> Filtry</h6>
-                <i class="bi bi-chevron-down"></i>
+                <h6 class="mb-0">
+                    <i class="bi bi-funnel"></i> Filtry
+                    <span class="badge badge-pill badge-primary ml-1" id="prFilterPill" hidden
+                          title="Liczba filtrów innych niż domyślne">0</span>
+                </h6>
+                <i class="bi bi-chevron-down pr-chevron"></i>
             </div>
         </div>
         <div id="prFilterCollapse" class="collapse alert-info">
             <div class="card-body p-3">
 
-                <!-- Status (segmented radio buttons) -->
-                <div class="form-row mb-2">
-                    <div class="col-md-10 col-12 mb-2">
-                        <label class="small mb-1 d-block"><strong>Status:</strong></label>
-                        <div class="btn-group btn-group-sm btn-group-toggle pr-status-group" data-toggle="buttons" role="group" aria-label="Status filtra">
-                            <label class="btn btn-outline-primary" data-status="all">
-                                <input type="radio" name="prFilterStatus" value="all"> Wszystkie
-                            </label>
-                            <label class="btn btn-outline-success active" data-status="active">
-                                <input type="radio" name="prFilterStatus" value="active" checked> Aktywne
-                            </label>
-                            <label class="btn btn-outline-danger" data-status="inactive">
-                                <input type="radio" name="prFilterStatus" value="inactive"> Nieaktywne
-                            </label>
-                        </div>
-                    </div>
-                    <div class="col-md-2 col-12 d-flex align-items-end">
-                        <button type="button" id="prClearStatus"
-                                class="btn btn-danger btn-sm btn-block mb-2">
-                            Wyczyść
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Szukaj -->
                 <div class="form-row mb-2">
                     <div class="col-md-10 col-12 mb-2">
                         <label class="small mb-1" for="prFilterSearch"><strong>Szukaj (nazwa / komentarz):</strong></label>
@@ -119,24 +191,37 @@ include('edit/table-row-template.php');
                             <div class="input-group-prepend">
                                 <span class="input-group-text"><i class="bi bi-search"></i></span>
                             </div>
-                            <input type="text" id="prFilterSearch" class="form-control"
-                                   placeholder="np. STM…"
-                                   autocomplete="off">
+                            <input type="text" id="prFilterSearch" class="form-control form-control-sm"
+                                   placeholder="np. STM…" autocomplete="off">
                         </div>
                     </div>
                     <div class="col-md-2 col-12 d-flex align-items-end">
-                        <button type="button" id="prClearSearch"
-                                class="btn btn-danger btn-sm btn-block mb-2">
+                        <button type="button" id="prClearFilters" class="btn btn-danger btn-sm btn-block mb-2">
                             Wyczyść
                         </button>
                     </div>
                 </div>
 
-                <!-- Tylko z artykułami -->
+                <hr class="my-2">
+
                 <div class="form-row">
-                    <div class="col-md-10 col-12 mb-2">
-                        <label class="small mb-1 d-block"><strong>Tylko z artykułami u dostawców:</strong></label>
-                        <div class="btn-group btn-group-sm btn-group-toggle pr-status-group" data-toggle="buttons" role="group" aria-label="Filtr artykułów">
+                    <div class="col-md-5 col-12 mb-2">
+                        <label class="small mb-1 d-block"><strong>Status:</strong></label>
+                        <div class="btn-group btn-group-sm btn-group-toggle" data-toggle="buttons" role="group" aria-label="Status filtra">
+                            <label class="btn btn-outline-primary" data-status="all">
+                                <input type="radio" name="prFilterStatus" value="all"> Wszystkie
+                            </label>
+                            <label class="btn btn-outline-success active" data-status="active">
+                                <input type="radio" name="prFilterStatus" value="active" checked> Aktywne
+                            </label>
+                            <label class="btn btn-outline-secondary" data-status="inactive">
+                                <input type="radio" name="prFilterStatus" value="inactive"> Nieaktywne
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-md-7 col-12 mb-2">
+                        <label class="small mb-1 d-block"><strong>Artykuły u dostawców:</strong></label>
+                        <div class="btn-group btn-group-sm btn-group-toggle" data-toggle="buttons" role="group" aria-label="Filtr artykułów">
                             <label class="btn btn-outline-primary active" data-hasarticles="all">
                                 <input type="radio" name="prFilterHasArticles" value="all" checked> Wszystkie
                             </label>
@@ -144,19 +229,13 @@ include('edit/table-row-template.php');
                                 <input type="radio" name="prFilterHasArticles" value="used"> Używane
                             </label>
                             <label class="btn btn-outline-primary" data-hasarticles="unused">
-                                <input type="radio" name="prFilterHasArticles" value="unused"> nieużywane
+                                <input type="radio" name="prFilterHasArticles" value="unused"> Nieużywane
                             </label>
                         </div>
                         <small class="form-text text-muted">
-                            „Używane" = producent przypisany do co najmniej jednego artykułu u dostawcy.
-                            „nieużywane" = brak przypisań (przydatne do porządków w katalogu).
+                            „Używane” = przypisany do co najmniej jednego artykułu u dostawcy.
+                            „Nieużywane” = brak przypisań (przydatne do porządków w katalogu).
                         </small>
-                    </div>
-                    <div class="col-md-2 col-12 d-flex align-items-end">
-                        <button type="button" id="prClearHasArticles"
-                                class="btn btn-danger btn-sm btn-block mb-2">
-                            Wyczyść
-                        </button>
                     </div>
                 </div>
 
@@ -164,26 +243,36 @@ include('edit/table-row-template.php');
         </div>
     </div>
 
+    <!-- Podsumowanie nad tabelą -->
+    <div class="d-flex justify-content-end align-items-center">
+        <small class="text-muted" id="prSummary">
+            Wyniki: <strong id="prSummaryCount">0</strong>
+        </small>
+    </div>
+
     <!-- Pagination top -->
-    <div id="prPaginationTop" class="pr-pagination"></div>
+    <div id="prPaginationTop"></div>
 
     <!-- Loading spinner (centered, hidden by default) -->
     <div class="d-flex justify-content-center my-2">
-        <div id="prSpinner" class="spinner-border text-primary pr-spinner" role="status" hidden>
+        <div id="prSpinner" class="spinner-border text-primary" role="status" hidden>
             <span class="sr-only">Ładowanie...</span>
         </div>
     </div>
 
+    <!-- Pusty stan (wypełniany i pokazywany przez JS) -->
+    <div id="prEmpty" class="mt-1" hidden></div>
+
     <!-- Table -->
-    <div class="table-responsive mt-3">
-        <table class="table table-hover" id="prTable">
+    <div class="table-responsive mt-1" id="prTableWrap">
+        <table class="table table-sm table-hover" id="prTable">
             <thead class="thead-light">
                 <tr>
-                    <th class="pr-col-id text-center" style="width: 70px;">ID</th>
-                    <th>Nazwa</th>
-                    <th style="min-width: 180px;">Komentarz</th>
-                    <th class="text-center" style="width: 140px;">Liczba artykułów</th>
-                    <th style="width: 110px;">Akcje</th>
+                    <th class="pr-col-id text-center" style="width: 56px;">ID</th>
+                    <th style="min-width: 240px;">Producent</th>
+                    <th class="text-center" style="width: 100px;">Artykuły</th>
+                    <th class="text-center" style="width: 104px;">Status</th>
+                    <th class="text-center" style="width: 64px;">Akcje</th>
                 </tr>
             </thead>
             <tbody id="prTableBody">
@@ -197,7 +286,11 @@ include('edit/table-row-template.php');
     </div>
 
     <!-- Pagination bottom -->
-    <div id="prPaginationBottom" class="pr-pagination mt-3"></div>
+    <div id="prPaginationBottom" class="mt-3"></div>
 </div>
 
+<script>
+    // Adres strony dodawania — używany w pustym stanie renderowanym przez JS.
+    window.PR_ADD_URL = <?= json_encode($prAddUrl) ?>;
+</script>
 <script src="<?= asset('public_html/components/Admin/Purchase/Producers/producers-view.js') ?>"></script>

@@ -100,71 +100,113 @@ $(document).ready(function() {
         };
     }
 
+    function dash() {
+        return '<span class="text-muted">—</span>';
+    }
+
+    // Powiązania: osoby kontaktowe + artykuły in one cell. Zero stays
+    // visible (dimmed) so a vendor with no links is easy to spot.
+    function linkCount(icon, count, label) {
+        const n = parseInt(count, 10);
+        const val = (isNaN(n) || n < 0) ? 0 : n;
+        return '<span title="' + label + ': ' + val + '">' +
+            '<i class="bi ' + icon + '"></i>' +
+            (val === 0 ? '<span class="vr-zero">0</span>' : String(val)) +
+        '</span>';
+    }
+
     function renderRow(v) {
         const isActive = v.isActive === true || v.isActive === 1 || v.isActive === '1';
         const rowClass = isActive ? '' : 'vr-row--inactive table-secondary';
 
-        const nameHtml = esc(v.name || '—');
+        // Name + muted second line (address). Comment is reduced to an
+        // icon whose title holds the full text.
+        const rawAddr = (v.address == null ? '' : String(v.address)).trim();
+        const rawCmt  = (v.comment == null ? '' : String(v.comment)).trim();
+        const noteIcon = rawCmt
+            ? '<i class="bi bi-journal-text vr-note" title="' + esc(rawCmt) + '"></i>'
+            : '';
+        const subHtml = (rawAddr || rawCmt)
+            ? '<span class="vr-sub"' + (rawAddr ? ' title="' + esc(rawAddr) + '"' : '') + '>' +
+                esc(rawAddr) + noteIcon + '</span>'
+            : '';
 
-        // Adres cell — muted em-dash when empty so the column doesn't
-        // collapse on rows that only have a name.
-        const addressHtml = (v.address && v.address.trim() !== '')
-            ? '<small class="text-muted">' + esc(v.address) + '</small>'
-            : '<span class="text-muted">—</span>';
-
-        // Komentarz cell — same truncate-at-200 + title tooltip as
-        // producer / vendor-parts listings.
-        const COMMENT_TRUNCATE_AT = 200;
-        const rawCmt = (v.comment == null ? '' : String(v.comment)).trim();
-        let komentarzCell;
-        if (!rawCmt) {
-            komentarzCell = '<span class="text-muted">—</span>';
-        } else if (rawCmt.length > COMMENT_TRUNCATE_AT) {
-            const visible = esc(rawCmt.slice(0, COMMENT_TRUNCATE_AT).trimEnd()) + '…';
-            komentarzCell = '<small class="text-muted" title="' + esc(rawCmt) + '"><i class="bi bi-journal-text"></i> ' + visible + '</small>';
-        } else {
-            komentarzCell = '<small class="text-muted"><i class="bi bi-journal-text"></i> ' + esc(rawCmt) + '</small>';
-        }
-
-        // Lead time — int + "dni" badge, or muted em-dash when null.
         const lt = parseInt(v.leadTimeDays, 10);
-        const leadTimeCell = (isNaN(lt) || lt === null)
-            ? '<span class="text-muted">—</span>'
-            : '<span class="badge badge-secondary">' + lt + ' dni</span>';
+        const leadTimeCell = isNaN(lt) ? dash() : lt + ' dni';
 
-        // Supplier / vendor-part counts — 0 reads as '—' so the
-        // column doesn't look like "0 used".
-        const spCount = parseInt(v.supplierCount, 10);
-        const spCell  = (isNaN(spCount) || spCount <= 0)
-            ? '<span class="text-muted">—</span>'
-            : '<span class="badge badge-info">' + spCount + '</span>';
+        const linksCell =
+            linkCount('bi-person', v.supplierCount, 'Osoby kontaktowe') +
+            linkCount('bi-box-seam', v.vendorPartCount, 'Artykuły u dostawcy');
 
-        const vpCount = parseInt(v.vendorPartCount, 10);
-        const vpCell  = (isNaN(vpCount) || vpCount <= 0)
-            ? '<span class="text-muted">—</span>'
-            : '<span class="badge badge-info">' + vpCount + '</span>';
+        const statusBadge = isActive
+            ? '<span class="badge badge-success">Aktywny</span>'
+            : '<span class="badge vr-badge-off">Nieaktywny</span>';
+
+        const label = esc(v.name || '');
 
         return '<tr class="' + rowClass + '" data-id="' + v.id + '">' +
             '<td class="vr-col-id text-center">' + v.id + '</td>' +
-            '<td>' + nameHtml + '</td>' +
-            '<td>' + addressHtml + '</td>' +
-            '<td>' + komentarzCell + '</td>' +
-            '<td class="text-center">' + leadTimeCell + '</td>' +
-            '<td class="text-center">' + spCell + '</td>' +
-            '<td class="text-center">' + vpCell + '</td>' +
-            '<td>' +
-                '<a class="btn btn-sm btn-warning" href="' + editBase + v.id + '">' +
-                    '<i class="bi bi-pencil"></i> Edytuj' +
+            '<td><span class="vr-name">' + esc(v.name || '—') + '</span>' + subHtml + '</td>' +
+            '<td class="text-center vr-col-num">' + leadTimeCell + '</td>' +
+            '<td class="text-center vr-col-num vr-links">' + linksCell + '</td>' +
+            '<td class="text-center">' + statusBadge + '</td>' +
+            '<td class="text-center">' +
+                '<a class="btn btn-sm btn-warning" href="' + editBase + v.id + '"' +
+                   ' title="Edytuj dostawcę „' + label + '”" aria-label="Edytuj dostawcę">' +
+                    '<i class="bi bi-pencil"></i>' +
                 '</a>' +
             '</td>' +
         '</tr>';
     }
 
     function renderEmptyRow(message) {
-        return '<tr><td colspan="8" class="text-center text-muted py-4">' +
+        return '<tr><td colspan="6" class="text-center text-muted py-4">' +
             esc(message) + '</td></tr>';
     }
 
+    // Counts filters that differ from the page defaults (status = active,
+    // everything else off). Date range counts as one filter.
+    function countActiveFilters() {
+        const f = gatherFilters();
+        let n = 0;
+        if (f.status !== 'active')        { n++; }
+        if (f.search.trim() !== '')       { n++; }
+        if (f.hasArticles !== null)       { n++; }
+        if (f.hasSuppliers !== null)      { n++; }
+        if (f.dateFrom !== '' || f.dateTo !== '') { n++; }
+        return n;
+    }
+
+    function updateFilterPill() {
+        const n = countActiveFilters();
+        $('#vrFilterPill').text(n).prop('hidden', n === 0);
+    }
+
+    // Empty state replaces the table; with extra filters on it offers a
+    // reset instead of "add", since the catalogue may not be empty.
+    function showEmpty(show) {
+        $('#vrEmpty').prop('hidden', !show);
+        $('#vrTableWrap').toggle(!show);
+        if (show) {
+            const filtered = countActiveFilters() > 0;
+            $('#vrEmptyText').text(filtered
+                ? 'Żaden dostawca nie spełnia wybranych kryteriów. Zmień lub wyczyść filtry.'
+                : 'Brak aktywnych dostawców — dodaj pierwszego lub zmień status w filtrach.');
+            $('#vrEmptyAdd').prop('hidden', filtered);
+            $('#vrEmptyClear').prop('hidden', !filtered);
+        }
+    }
+
+    // Back to the page defaults (same state as on first load).
+    function resetFilters() {
+        setStatus('vrFilterStatus', 'active');
+        setStatus('vrFilterHasArticles', 'all');
+        setStatus('vrFilterHasSuppliers', 'all');
+        $('#vrFilterSearch').val('');
+        $('#vrFilterDateFrom').val('');
+        $('#vrFilterDateTo').val('');
+        loadList();
+    }
     function renderPagination() {
         const pages = Math.max(1, Math.ceil(totalCount / itemsPerPage));
         const start = totalCount === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1;
@@ -172,10 +214,25 @@ $(document).ready(function() {
         const hasPrev = currentPage > 1;
         const hasNext = currentPage < pages;
 
+        // Range goes to the summary line above the table (right-aligned,
+        // like the counters on the email-drafts list).
+        $('#vrSummary').html(totalCount === 0 ? '' :
+            'Wyświetlanie <strong>' + start + '–' + end +
+            '</strong> z <strong>' + totalCount + '</strong>');
+        if (totalCount > 0) {
+            $('#vrCountBadge').text(totalCount).prop('hidden', false);
+        } else {
+            $('#vrCountBadge').prop('hidden', true);
+        }
+
+        // Single page: no pager needed.
+        if (pages <= 1) {
+            $('#vrPaginationBottom').empty();
+            return;
+        }
+
         const html =
-            '<div class="d-flex flex-column align-items-center my-2">' +
-                '<div class="text-muted small mb-2">Wyświetlanie <strong>' + start + '–' + end +
-                '</strong> z <strong>' + totalCount + '</strong> elementów</div>' +
+            '<div class="d-flex justify-content-center my-2">' +
                 '<div class="btn-group btn-group-sm" role="group">' +
                     '<button class="btn btn-outline-primary vr-page-btn" data-action="first" ' +
                         (hasPrev ? '' : 'disabled') + '>' +
@@ -195,7 +252,7 @@ $(document).ready(function() {
                 '</div>' +
             '</div>';
 
-        $('#vrPaginationTop, #vrPaginationBottom').html(html);
+        $('#vrPaginationBottom').html(html);
 
         // Build page dropdown items
         let pageItems = '';
@@ -230,11 +287,13 @@ $(document).ready(function() {
         setAlert('', null); // clear stale alerts on every reload
 
         const filters = gatherFilters();
+        updateFilterPill();
 
         postAjax('vendor-list.php', filters)
             .done(function(r) {
                 if (!r.success) {
                     setAlert(r.error || 'Błąd ładowania listy', 'danger');
+                    showEmpty(false);
                     $('#vrTableBody').html(renderEmptyRow('Nie udało się załadować danych.'));
                     totalCount = 0;
                     renderPagination();
@@ -244,8 +303,10 @@ $(document).ready(function() {
                 itemsPerPage = r.itemsPerPage || itemsPerPage;
 
                 if (totalCount === 0) {
-                    $('#vrTableBody').html(renderEmptyRow('Brak dostawców spełniających kryteria'));
+                    $('#vrTableBody').empty();
+                    showEmpty(true);
                 } else {
+                    showEmpty(false);
                     const html = (r.rows || []).map(renderRow).join('');
                     $('#vrTableBody').html(html);
                 }
@@ -281,28 +342,8 @@ $(document).ready(function() {
     bindStatusGroup('vrFilterHasArticles');
     bindStatusGroup('vrFilterHasSuppliers');
 
-    // Per-section "Wyczyść" buttons.
-    $('#vrClearStatus').on('click', function() {
-        setStatus('vrFilterStatus', 'all');
-        loadList();
-    });
-    $('#vrClearSearch').on('click', function() {
-        $('#vrFilterSearch').val('');
-        loadList();
-    });
-    $('#vrClearHasArticles').on('click', function() {
-        setStatus('vrFilterHasArticles', 'all');
-        loadList();
-    });
-    $('#vrClearHasSuppliers').on('click', function() {
-        setStatus('vrFilterHasSuppliers', 'all');
-        loadList();
-    });
-    $('#vrClearDates').on('click', function() {
-        $('#vrFilterDateFrom').val('');
-        $('#vrFilterDateTo').val('');
-        loadList();
-    });
+    // One reset button replaces the five per-section "Wyczyść" buttons.
+    $('#vrClearAll, #vrEmptyClear').on('click', resetFilters);
 
     // First paint.
     loadList();

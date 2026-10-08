@@ -231,7 +231,7 @@ function pr_render_packs(array $packs): string {
                 <div class="d-flex justify-content-between align-items-center">
                     <h6 class="mb-0">
                         <i class="bi bi-box-seam"></i>
-                        Artykuły u dostawców
+                        Artykuły producenta
                         <span class="badge badge-info ml-1"><?= (int)$vendorPartCount ?></span>
                     </h6>
                     <i class="bi bi-chevron-down"></i>
