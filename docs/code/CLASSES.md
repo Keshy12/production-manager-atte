@@ -456,7 +456,7 @@ Vendor / producer / RFQ / PO / receipt domain — added in v1.6 (`feature/compon
 **Used by:** `PurchaseActionHandler::createReceipt()`, `addItem()`.
 
 #### OrderReceipt
-**File:** `src/classes/Utils/Purchase/Order/class-orderreceipt.php` — Goods-receipt header (one row per delivery note / PZ-WZ).
+**File:** `src/classes/Utils/Purchase/Order/class-orderreceipt.php` — Goods-receipt header (one row per delivery note / GRN-WZ).
 
 - Constructor: `__construct(array $row)`.
 - Public typed properties: `id`, `poId`, `documentNumber`, `receivedBy`, `receivedAt`, `comment`.
@@ -475,7 +475,7 @@ Vendor / producer / RFQ / PO / receipt domain — added in v1.6 (`feature/compon
 
 - `createDocument(string $type, int $vendorId, int $userId): int` — creates an RFQ (`type='rfq'`) or PO (`type='po'`) in `state='draft'`. Auto-allocates the next number via `allocateDocumentNumber()`; admin can override before sending.
 - `addItem(string $type, int $docId, array $itemData): int` — appends one line item to an existing draft RFQ (`type='rfq'`) or PO (`type='po'`). Dispatches to `RFQItemRepository::create()` / `PurchaseOrderItemRepository::create()` with `picked_pack_size` plumbed through (must be `> 0` when provided, null otherwise). Used by the Koszyk `cart-create-document.php` endpoint.
-- `allocateDocumentNumber(string $type, int $year): string` — `SELECT ... FOR UPDATE` on `purchase__number_counter`, returns `PO/YYYY/NNNN` or `RFQ/YYYY/NNNN`.
+- `allocateDocumentNumber(string $type, int $vendorId): string` — `SELECT ... FOR UPDATE` on `purchase__number_counter` keyed on `(type, vendor_id)`, returns `RFQ/{vendor_id zero-padded to 5}/{seq zero-padded to 5}` / `PO/{vendor_id zero-padded to 5}/{seq zero-padded to 5}` / `GRN/{seq zero-padded to 6}` (e.g. `RFQ/00021/00001`, `PO/00021/00001`, `GRN/000001`). GRN is global — pass `$vendorId = 0`; RFQ and PO sequences are per-vendor and per-type.
 - `createPoFromRfQ(int $rfqId, int $userId): int` — converts an RFQ + items into a PO, copies `vendor_part_id`, `quantity`, `quantity_unit_id`, copies `unit_price` from the RFQ item as the starting point for negotiation.
 - `createReceipt(int $poId, array $items, int $userId): int` — validates `quantity_received ≤ quantity × 1.10` per line (lenient per §9.2), opens a `TransferGroupManager::createTransferGroup(..., 'purchase_receipt')`, inserts `inventory__parts` rows with positive `qty`, updates `purchase__order_item.quantity_received`, and (if everything received) transitions the PO to `'received'` (or `'partially_received'`).
 - `computeLastKnownPrice(int $vendorPartId, ?string $currency = null): ?float` — single-purpose helper for the "last known price" hint shown greyed-out in the RFQ/PO draft UI. Runs a query against `purchase__order_item` history for the given `vendor_part_id` (optionally filtered by `currency`) and returns the most recent non-null `unit_price`. **Never persisted** — always computed at read time.

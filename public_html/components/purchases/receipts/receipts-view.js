@@ -424,7 +424,8 @@ $(document).ready(function () {
                        + 'data-po-id="' + poId + '" '
                        + 'data-po-number="' + escAttr(poLabel) + '" '
                        + 'data-vendor-name="' + escAttr(p.vendorName || '') + '" '
-                       + 'data-vendor-po-number="' + escAttr(p.vendorPoNumber || '') + '">'
+                       + 'data-vendor-po-number="' + escAttr(p.vendorPoNumber || '') + '" '
+                       + 'data-after-confirm-url="' + escAttr(receiveUrl(poId)) + '">'
                        + '<i class="bi bi-check2-square"></i> Potwierdź odbiór'
                        + '</button>';
         }

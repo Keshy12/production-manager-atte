@@ -99,7 +99,7 @@ $(document).ready(function() {
             case 'sent':               return 'badge-primary';
             case 'responded':          return 'badge-info';
             case 'confirmed':          return 'badge-info';
-            // 'in_progress' = operator zaakceptował nagłówek PZ (Akceptuję)
+            // 'in_progress' = operator zaakceptował nagłówek GRN (Akceptuję)
             // ale nie wprowadził jeszcze pozycji. badge-info jak 'confirmed':
             // ten sam „status logistyczny, nie błąd" ton wizualny.
             case 'in_progress':        return 'badge-info';
@@ -1004,7 +1004,7 @@ $(document).ready(function() {
     }
 
     // Ten sam query string niesie info o zapisie do receipts-view.js
-    // (alert + podświetlenie wiersza). Kodujemy, bo numery PO/PZ mogą
+    // (alert + podświetlenie wiersza). Kodujemy, bo numery PO/GRN mogą
     // zawierać '/', '&' i spacje.
     function redirectToList(documentNumber, n, poState) {
         const params = [
@@ -1199,7 +1199,7 @@ $(document).ready(function() {
                 // Przyjęcie jest już zapisane — przy brakach pytamy, co
                 // z zamówieniem, i dopiero potem przekierowujemy. Przycisk
                 // zapisu zostaje zablokowany (setSubmitting(false) tu NIE
-                // wołamy), żeby nie dało się zapisać drugiego PZ.
+                // wołamy), żeby nie dało się zapisać drugiego GRN.
                 const shortItems = $.isArray(r.short_items) ? r.short_items : [];
                 if (r.has_short && shortItems.length > 0) {
                     openShortModal(r, items);

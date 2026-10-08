@@ -91,7 +91,7 @@ try {
             // Akcja „Przyjmij towar" dostępna dla confirmed, partially_received
             // i in_progress (handler acceptReceiptMetadata/createReceipt
             // blokują stan sent). sent = czekamy na potwierdzenie dostawcy.
-            // 'in_progress' = operator zaakceptował nagłówek PZ (Akceptuję),
+            // 'in_progress' = operator zaakceptował nagłówek GRN (Akceptuję),
             // ale nie wprowadził jeszcze pozycji — naturalny kolejny krok
             // to Zapisz z ilościami.
             'canReceive'           => in_array($state, ['confirmed','partially_received','in_progress'], true),

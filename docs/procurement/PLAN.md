@@ -154,7 +154,7 @@ or table reference; the codebase already does this in places.
    │ ──────────────────────  │       │ ─────────────────────────── │
    │ po_id                   │       │ receipt_id                   │
    │ received_by, received_at │       │ po_item_id                   │
-   │ document_number (PZ/WZ) │       │ quantity_received            │
+   │ document_number (GRN/WZ) │       │ quantity_received            │
    │                         │       │ → creates inventory__parts   │
    └─────────────────────────┘       └─────────────────────────────┘
 ```
@@ -328,7 +328,7 @@ CREATE TABLE `purchase__order` (
   `id`                    INT NOT NULL AUTO_INCREMENT,
   `vendor_id`             INT NOT NULL,
   `state`                 ENUM('draft','sent','confirmed','partially_received','received','cancelled') NOT NULL DEFAULT 'draft',
-  `po_number`             VARCHAR(64),                  -- our internal number, auto (PO/YYYY/NNNN)
+  `po_number`             VARCHAR(64),                  -- our internal number, auto (PO/{vendor_id:05d}/{seq:05d})
   `vendor_po_number`      VARCHAR(64),                  -- vendor's confirmation number
   `converted_from_rfq_id` INT DEFAULT NULL,
   `expected_delivery_date` DATE,
@@ -373,7 +373,7 @@ CREATE TABLE `purchase__order_item` (
 CREATE TABLE `purchase__order_receipt` (
   `id`              INT NOT NULL AUTO_INCREMENT,
   `po_id`           INT NOT NULL,
-  `document_number` VARCHAR(64),                     -- PZ / WZ number from vendor
+  `document_number` VARCHAR(64),                     -- GRN / WZ number from vendor
   `received_by`     INT NOT NULL,
   `received_at`     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `comment`         TEXT,
@@ -415,15 +415,15 @@ then keep the `lowstock__parts` table accurate without further work.
 
 ### 4.6 Document-number counter
 
-Auto-generated numbers use a small per-year counter (admin can still
-override before sending):
+Auto-generated numbers use a small per-(type, vendor_id) counter (admin
+can still override before sending):
 
 ```sql
 CREATE TABLE `purchase__number_counter` (
-  `year`       SMALLINT NOT NULL,
-  `type`       ENUM('rfq','po') NOT NULL,  -- 'po' not 'order'; 'order' is a SQL reserved word
+  `type`       ENUM('rfq','po','grn') NOT NULL,  -- 'po' not 'order'; 'order' is a SQL reserved word
+  `vendor_id`  INT NOT NULL DEFAULT 0,           -- 0 = sentinel for the global GRN sequence
   `last_value` INT NOT NULL DEFAULT 0,
-  PRIMARY KEY (`year`,`type`)
+  PRIMARY KEY (`type`,`vendor_id`)
 ) ENGINE=InnoDB;
 ```
 
@@ -431,17 +431,19 @@ Generated number formats:
 
 | Type | Format | Example |
 |---|---|---|
-| PO (Zamówienie) | `PO/YYYY/NNNN` | `PO/2026/0007` |
-| RFQ (Zapytanie ofertowe) | `RFQ/YYYY/NNNN` | `RFQ/2026/0003` |
+| PO (Zamówienie) | `PO/{vendor_id:05d}/{seq:05d}` | `PO/00021/00001` |
+| RFQ (Zapytanie ofertowe) | `RFQ/{vendor_id:05d}/{seq:05d}` | `RFQ/00021/00001` |
+| GRN (Przyjęcie towaru) | `GRN/{seq:06d}` | `GRN/000001` |
 
-> **Note on the `type` ENUM:** the values are `'rfq'` and `'po'` — the bare
-> SQL word `order` is reserved and avoided even inside an ENUM literal.
-> The `purchase__order` table name itself is fine because the
-> `purchase__` prefix qualifies it.
+> **Note on the `type` ENUM:** the values are `'rfq'`, `'po'`, and `'grn'` —
+> the bare SQL word `order` is reserved and avoided even inside an ENUM
+> literal. The `purchase__order` table name itself is fine because the
+> `purchase__` prefix qualifies it. `vendor_id = 0` is the sentinel row that
+> holds the single global GRN sequence; RFQ and PO sequences are per-vendor.
 
 Allocation must happen inside a `SELECT ... FOR UPDATE` transaction so two
 admins never grab the same number. The handler is in
-`PurchaseActionHandler::allocateDocumentNumber($type, $year)`.
+`PurchaseActionHandler::allocateDocumentNumber($type, $vendorId)`.
 
 ---
 
@@ -507,9 +509,11 @@ The `PurchaseActionHandler` (in `Order/`) orchestrates multi-step operations:
   inserts `inventory__parts` rows with positive `qty`, updates
   `purchase__order_item.quantity_received`, and (if everything received)
   transitions the PO to `'received'` (or `'partially_received'`).
-- `allocateDocumentNumber($type, $year)` — `SELECT ... FOR UPDATE` on
-  `purchase__number_counter`, returns `PO/YYYY/NNNN` or `RFQ/YYYY/NNNN`.
-  `$type` is `'rfq'` or `'po'` (never `'order'`).
+- `allocateDocumentNumber($type, $vendorId)` — `SELECT ... FOR UPDATE` on
+  `purchase__number_counter` keyed on `(type, vendor_id)`, returns
+  `RFQ/{vendor_id:05d}/{seq:05d}` / `PO/{vendor_id:05d}/{seq:05d}` /
+  `GRN/{seq:06d}`. `$type` is `'rfq'`, `'po'`, or `'grn'` (never `'order'`);
+  GRN passes `$vendorId = 0` because it is global.
 - `computeLastKnownPrice($vendorPartId, $currency = null)` — single-purpose
   helper for the "last known price" hint in the RFQ/PO draft UI. Runs a
   query against `purchase__order_item` history for the given `vendor_part_id`
@@ -697,7 +701,7 @@ When the vendor replies to an RFQ:
 | 4 | Reorder-screen part selection | Generic part picker (no forecast for v1). Forecast deferred |
 | 5 | RFQ vs PO at creation | Admin picks at creation time (modal with both options) |
 | 6 | Currency | Keep per-line `currency` column (PLN default) — some vendors invoice in EUR |
-| 7 | Order numbers | Auto-generate (`PO/YYYY/NNNN`, `ZO/YYYY/NNNN`) with admin override before sending |
+| 7 | Order numbers | Auto-generate (`PO/YYYY/NNNN`, `ZO/YYYY/NNNN`) with admin override before sending — **SUPERSEDED for the `PO` format:** the underlying decision (auto-generate with admin override) still stands, but the chosen format has changed; see §4.6 for the live `PO/{vendor_id:05d}/{seq:05d}` / `RFQ/{vendor_id:05d}/{seq:05d}` / `GRN/{seq:06d}` scheme |
 | 8 | Receipt over-delivery | Lenient: up to 110% of ordered per line; mismatch in unit flagged but allowed |
 | 9 | Inline VendorPart creation | Inline create from the reorder modal (admin supplies `vendor_part_no`, JM, full-pack, currency) |
 | 10 | Producer on order line | Fixed by VendorPart catalog. No `producer_id` on `purchase__*_item` |
@@ -820,7 +824,7 @@ New classes (under `Utils/Purchase/Order/`):
 `class-rfq.php`, `class-rfqrepository.php`,
 plus a skeleton `class-purchaseactionhandler.php` with
 `createDocument($type, $vendorId, $userId)`,
-`allocateDocumentNumber($type, $year)` and
+`allocateDocumentNumber($type, $year)` *(SUPERSEDED — see §4.6 / §5; live signature is `($type, $vendorId)` returning `RFQ/{vendor_id:05d}/{seq:05d}` / `PO/{vendor_id:05d}/{seq:05d}` / `GRN/{seq:06d}`)* and
 `computeLastKnownPrice(...)`.
 
 New routes: `/admin/purchase/rfqs`, `/admin/purchase/rfqs/edit`.
@@ -851,7 +855,7 @@ add `createReceipt(...)` to `PurchaseActionHandler`. Reuses
 
 New route: `/admin/purchase/orders/receive` (and AJAX endpoint).
 
-UI: receive-goods form per PO, document-number (PZ/WZ) field, sub-magazine
+UI: receive-goods form per PO, document-number (GRN/WZ) field, sub-magazine
 picker, per-line quantity entry with validation against remaining.
 
 ### P5 detail — Reorder screen + polish

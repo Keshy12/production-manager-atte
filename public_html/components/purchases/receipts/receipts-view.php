@@ -5,7 +5,7 @@
  * Lista w dwóch zakładkach:
  *   „Do przyjęcia"     — kolejka zamówień czekających na towar
  *                        (dane z receipts-queue.php, render w JS),
- *   „Historia przyjęć" — zapisane dokumenty PZ (render w PHP poniżej,
+ *   „Historia przyjęć" — zapisane dokumenty GRN (render w PHP poniżej,
  *                        filtrowanie i paginacja po stronie klienta).
  *
  * Nawigacja:
@@ -82,7 +82,7 @@ $historyCount = count($receipts);
             <h1 class="rx-title">Przyjęcia towaru</h1>
             <p class="rx-lead">
                 Zamówienia czekające na dostawę i historia przyjętych dokumentów.
-                Numer PZ nadawany jest automatycznie przy zapisie.
+                Numer GRN nadawany jest automatycznie przy zapisie.
             </p>
         </div>
 
@@ -221,7 +221,7 @@ $historyCount = count($receipts);
                 <div class="rx-search">
                     <i class="bi bi-search" aria-hidden="true"></i>
                     <input type="search" id="historySearch" class="form-control form-control-sm"
-                           placeholder="Szukaj: nr PZ, zamówienie, dostawca, przyjmujący"
+                           placeholder="Szukaj: nr GRN, zamówienie, dostawca, przyjmujący"
                            aria-label="Szukaj w historii" autocomplete="off">
                 </div>
 
@@ -294,7 +294,7 @@ $historyCount = count($receipts);
                                     <?php if ($r->documentNumber): ?>
                                         <div class="rx-doc"><?= rx_e($r->documentNumber) ?></div>
                                     <?php else: ?>
-                                        <div class="rx-doc rx-doc--none" title="Zapisany sam nagłówek — numer PZ nadawany jest przy zapisie ilości">bez numeru PZ</div>
+                                        <div class="rx-doc rx-doc--none" title="Zapisany sam nagłówek — numer GRN nadawany jest przy zapisie ilości">bez numeru GRN</div>
                                     <?php endif; ?>
                                     <div class="rx-sub">ID <?= (int)$r->id ?></div>
                                 </td>

@@ -178,10 +178,10 @@ SQL,
 
     'purchase__number_counter' => <<<'SQL'
 CREATE TABLE `purchase__number_counter` (
-  `year` smallint(6) NOT NULL,
-  `type` enum('rfq','po') NOT NULL,
+  `type` enum('rfq','po','grn') NOT NULL,
+  `vendor_id` int(11) NOT NULL DEFAULT 0,
   `last_value` int(11) NOT NULL DEFAULT 0,
-  PRIMARY KEY (`year`,`type`)
+  PRIMARY KEY (`type`,`vendor_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 SQL,
 
@@ -386,34 +386,172 @@ foreach ($columnAdds as $table => $cols) {
 
 echo "\n";
 
-// ── Widen purchase__number_counter.type to include 'pz' ──────────────
-// Goods-receiving (PurchaseActionHandler::createReceipt) auto-allocates
-// PZ/<year>/<seq> numbers from the same counter table used by RFQ/PO.
-// The original CREATE TABLE bakes in enum('rfq','po'), so fresh DBs
-// land without the new variant — this step widens the column. MODIFY on
-// an ENUM whose member set is unchanged is a no-op for already-migrated
-// DBs, but we still gate on a LIKE check against information_schema so
-// the log stays quiet (only "updated" prints when a real change happens).
-$counterTypeCol = (string) $db->query("
-    SELECT COLUMN_TYPE
-      FROM information_schema.COLUMNS
-     WHERE TABLE_SCHEMA = DATABASE()
-       AND TABLE_NAME   = 'purchase__number_counter'
-       AND COLUMN_NAME  = 'type'
-")->fetchColumn();
-if ($counterTypeCol === '' || strpos($counterTypeCol, "'pz'") === false) {
-    try {
-        $db->exec("ALTER TABLE `purchase__number_counter`
-                   MODIFY `type` ENUM('rfq','po','pz') NOT NULL");
-        echo "✓ purchase__number_counter.type: widened to include 'pz'\n";
+// ── Reshape purchase__number_counter ──────────────────────────────────
+// Migrate the counter to the per-(type, vendor_id) shape required by the
+// new document-numbering scheme (RFQ/00021/00001, PO/00021/00001, GRN/000001).
+// vendor_id=0 is the sentinel for the global GRN sequence; the enum
+// changes from ('rfq','po','pz') to ('rfq','po','grn').
+//
+// Steps:
+//   1. DROP the legacy PRIMARY KEY if it isn't already (type,vendor_id).
+//      MUST precede the column drop: on MariaDB (this server is 10.4.32)
+//      dropping a PK column does NOT auto-drop the PK index — the index
+//      keeps a dangling reference, and the subsequent DROP COLUMN fails
+//      with error 1072 ("Key column 'year' doesn't exist in table").
+//   2. Drop the `year` column (safe now — the PK no longer references it).
+//   3. Add the `vendor_id` column (DEFAULT 0 — lets legacy rows land in the
+//      GRN group without manual backfill; new RFQ/PO rows carry the real
+//      vendor_id and start fresh from 1).
+//   4. Collapse legacy rows that now share (type, vendor_id=0) by
+//      aggregating to MAX(last_value). Old shape was keyed by (year,type);
+//      after dropping `year`, multiple years of the same type would collide
+//      on the upcoming (type, vendor_id) PK.
+//   5. ADD PRIMARY KEY (type, vendor_id) (no DROP needed — step 1 handled
+//      any stale PK).
+//   6. Convert any `type='pz'` rows to `type='grn'` (must run before the
+//      enum MODIFY below — MariaDB refuses to drop an enum value still
+//      in use).
+//   7. MODIFY type ENUM('rfq','po','grn').
+// Each step is gated by an information_schema probe so re-runs are silent
+// no-ops on already-reshaped databases and safe to run after a previous
+// half-failed run.
+try {
+    // ── 1. Probe PK shape, then DROP the PRIMARY KEY if it isn't target ─
+    //    Must precede the column drop — see the block-level comment above
+    //    for the MariaDB-vs-MySQL divergence explanation.
+    $pkCols = (string) $db->query("
+        SELECT IFNULL(GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX SEPARATOR ','), '')
+          FROM information_schema.STATISTICS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME   = 'purchase__number_counter'
+           AND INDEX_NAME   = 'PRIMARY'
+    ")->fetchColumn();
+
+    if ($pkCols !== '' && $pkCols !== 'type,vendor_id') {
+        $db->exec("ALTER TABLE `purchase__number_counter` DROP PRIMARY KEY");
+        echo "✓ purchase__number_counter: legacy PRIMARY KEY ('{$pkCols}') dropped\n";
         $created++;
-    } catch (\PDOException $e) {
-        fwrite(STDERR, "✗ purchase__number_counter.type widen: " . $e->getMessage() . "\n");
-        $failed++;
+    } else {
+        echo "= purchase__number_counter PRIMARY KEY: nothing to drop (skipped)\n";
+        $skipped++;
     }
-} else {
-    echo "= purchase__number_counter.type: already includes 'pz' (skipped)\n";
-    $skipped++;
+
+    // ── 2. Drop `year` column ────────────────────────────────────────
+    //    Safe now — the PK no longer references it.
+    $yearProbe = $db->prepare(
+        "SELECT 1 FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME   = ?
+            AND COLUMN_NAME  = ?"
+    );
+    $yearProbe->execute(['purchase__number_counter', 'year']);
+    if ($yearProbe->fetchColumn()) {
+        $db->exec("ALTER TABLE `purchase__number_counter` DROP COLUMN `year`");
+        echo "✓ purchase__number_counter.year: dropped\n";
+        $created++;
+    } else {
+        echo "= purchase__number_counter.year: already absent (skipped)\n";
+        $skipped++;
+    }
+
+    // ── 3. Add `vendor_id` column ─────────────────────────────────────
+    $vendorIdProbe = $db->prepare(
+        "SELECT 1 FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME   = ?
+            AND COLUMN_NAME  = ?"
+    );
+    $vendorIdProbe->execute(['purchase__number_counter', 'vendor_id']);
+    if ($vendorIdProbe->fetchColumn()) {
+        echo "= purchase__number_counter.vendor_id: already exists (skipped)\n";
+        $skipped++;
+    } else {
+        $db->exec("ALTER TABLE `purchase__number_counter`
+                   ADD COLUMN `vendor_id` INT(11) NOT NULL DEFAULT 0 AFTER `type`");
+        echo "✓ purchase__number_counter.vendor_id: added (DEFAULT 0)\n";
+        $created++;
+    }
+
+    // ── 4. Collapse legacy rows that would collide on the new PK ─────
+    //    Old shape was (year, type); after dropping `year`, multiple years
+    //    of the same type collapse onto the same (type, vendor_id=0) key.
+    //    Aggregate to MAX(last_value) via a temporary table — idempotent:
+    //    a re-run on an already-unique table produces an identical 1:1 copy.
+    $dupCount = (int) $db->query("
+        SELECT COUNT(*) - COUNT(DISTINCT type, vendor_id)
+          FROM `purchase__number_counter`
+    ")->fetchColumn();
+    if ($dupCount > 0) {
+        $db->exec("CREATE TEMPORARY TABLE `_tmp_counter_reshape` (
+            `type`       ENUM('rfq','po','grn') NOT NULL,
+            `vendor_id`  INT(11)                NOT NULL DEFAULT 0,
+            `last_value` INT(11)                NOT NULL DEFAULT 0
+        ) ENGINE=Memory");
+        $db->exec("INSERT INTO `_tmp_counter_reshape` (`type`, `vendor_id`, `last_value`)
+                   SELECT `type`, `vendor_id`, MAX(`last_value`)
+                     FROM `purchase__number_counter`
+                    GROUP BY `type`, `vendor_id`");
+        $db->exec("TRUNCATE TABLE `purchase__number_counter`");
+        $db->exec("INSERT INTO `purchase__number_counter` (`type`, `vendor_id`, `last_value`)
+                   SELECT `type`, `vendor_id`, `last_value` FROM `_tmp_counter_reshape`");
+        $db->exec("DROP TEMPORARY TABLE `_tmp_counter_reshape`");
+        echo "✓ purchase__number_counter: collapsed {$dupCount} duplicate row(s) on (type,vendor_id)\n";
+        $created++;
+    } else {
+        echo "= purchase__number_counter: no duplicate (type,vendor_id) keys (skipped)\n";
+        $skipped++;
+    }
+
+    // ── 5. ADD PRIMARY KEY (type, vendor_id) ─────────────────────────
+    //    No DROP needed here — step 1 already removed any stale PK. Use
+    //    the pre-step-1 $pkCols value: if it was already target, both
+    //    step 1 and step 5 were no-ops.
+    if ($pkCols !== 'type,vendor_id') {
+        $db->exec("ALTER TABLE `purchase__number_counter`
+                   ADD PRIMARY KEY (`type`, `vendor_id`)");
+        echo "✓ purchase__number_counter: PRIMARY KEY (type,vendor_id) set\n";
+        $created++;
+    } else {
+        echo "= purchase__number_counter PRIMARY KEY: already (type,vendor_id) (skipped)\n";
+        $skipped++;
+    }
+
+    // ── 6. Convert legacy `type='pz'` rows to `'grn'` ────────────────
+    $pzRowCount = (int) $db->exec("
+        UPDATE `purchase__number_counter`
+           SET `type` = 'grn'
+         WHERE `type` = 'pz'
+    ");
+    if ($pzRowCount > 0) {
+        echo "✓ purchase__number_counter: {$pzRowCount} legacy 'pz' row(s) → 'grn'\n";
+        $created++;
+    } else {
+        echo "= purchase__number_counter: no legacy 'pz' rows (skipped)\n";
+        $skipped++;
+    }
+
+    // ── 7. MODIFY type ENUM('rfq','po','grn') ─────────────────────────
+    $counterTypeCol = (string) $db->query("
+        SELECT COLUMN_TYPE
+          FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME   = 'purchase__number_counter'
+           AND COLUMN_NAME  = 'type'
+    ")->fetchColumn();
+    if ($counterTypeCol !== ''
+        && strpos($counterTypeCol, "'grn'") !== false
+        && strpos($counterTypeCol, "'pz'")  === false) {
+        echo "= purchase__number_counter.type: already ENUM('rfq','po','grn') (skipped)\n";
+        $skipped++;
+    } else {
+        $db->exec("ALTER TABLE `purchase__number_counter`
+                   MODIFY `type` ENUM('rfq','po','grn') NOT NULL");
+        echo "✓ purchase__number_counter.type: set to ENUM('rfq','po','grn')\n";
+        $created++;
+    }
+} catch (\PDOException $e) {
+    fwrite(STDERR, "✗ purchase__number_counter reshape: " . $e->getMessage() . "\n");
+    $failed++;
 }
 
 echo "\n";
@@ -860,20 +998,51 @@ $vendorCurrencyFk = (int) $db->query("
 echo "list__vendor.default_currency FK → list__currency: "
    . ($vendorCurrencyFk > 0 ? "present ✓" : "MISSING ✗") . "\n";
 
-// purchase__number_counter.type must include 'pz' for the goods-receiving
-// flow (PurchaseActionHandler::createReceipt allocates PZ numbers from
-// this counter inside the same transaction as the receipt header insert).
+// purchase__number_counter must be in the per-(type, vendor_id) shape:
+// ENUM('rfq','po','grn'), vendor_id column present, PRIMARY KEY
+// (type, vendor_id). PurchaseActionHandler::allocateDocumentNumber() keys
+// on (type, vendor_id) and formats types by vote: CREATE RULE = revenue.
 $counterTypeNow = (string) $db->query("
     SELECT COLUMN_TYPE FROM information_schema.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE()
        AND TABLE_NAME   = 'purchase__number_counter'
        AND COLUMN_NAME  = 'type'
 ")->fetchColumn();
+$counterTypeOk = $counterTypeNow !== ''
+    && strpos($counterTypeNow, "'grn'") !== false
+    && strpos($counterTypeNow, "'pz'")  === false;
 echo "purchase__number_counter.type: "
-   . ($counterTypeNow !== '' && strpos($counterTypeNow, "'pz'") !== false
-       ? "includes 'pz' ✓"
-       : "missing 'pz' ✗ (got {$counterTypeNow})")
-   . "\n";
+    . ($counterTypeOk
+        ? "ENUM('rfq','po','grn') ✓"
+        : "wrong shape ✗ (got {$counterTypeNow})")
+    . "\n";
+
+$colExistsStmt->execute(['purchase__number_counter', 'vendor_id']);
+$counterVendorIdCol = (bool) $colExistsStmt->fetchColumn();
+echo "purchase__number_counter.vendor_id: "
+    . ($counterVendorIdCol ? "present ✓" : "MISSING ✗")
+    . "\n";
+
+// purchase__number_counter.year must be gone — half-failed runs that
+// dropped the PK but left the column (or the reverse) are caught here.
+$colExistsStmt->execute(['purchase__number_counter', 'year']);
+$counterYearAbsent = !$colExistsStmt->fetchColumn();
+echo "purchase__number_counter.year: "
+    . ($counterYearAbsent ? "absent ✓" : "still present ✗")
+    . "\n";
+
+$counterPkCols = (string) $db->query("
+    SELECT GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX SEPARATOR ',')
+      FROM information_schema.STATISTICS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME   = 'purchase__number_counter'
+       AND INDEX_NAME   = 'PRIMARY'
+")->fetchColumn();
+echo "purchase__number_counter PRIMARY KEY: "
+    . ($counterPkCols === 'type,vendor_id'
+        ? "(type,vendor_id) ✓"
+        : "wrong shape ✗ (got '{$counterPkCols}')")
+    . "\n";
 
 // purchase__rfq.responded_at / responded_by — used by
 // PurchaseActionHandler::markRfqResponded(). Fresh DBs get them via the
@@ -922,8 +1091,10 @@ $ok = $failed === 0
     && $vendorCurrencyType === 'int'
     && $vendorCurrencyFk > 0
     && $currencySeedCount >= 13
-    && $counterTypeNow !== ''
-    && strpos($counterTypeNow, "'pz'") !== false
+    && $counterTypeOk
+    && $counterVendorIdCol
+    && $counterYearAbsent
+    && $counterPkCols === 'type,vendor_id'
     && $fkCount === 24
     && empty($rfqResponseMissing)
     && $rfqResponderFk > 0

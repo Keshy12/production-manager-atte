@@ -51,7 +51,7 @@ $magazines = $MsaDB->query(
 
 // Aktualnie zalogowany — wyświetlany w prawym górnym rogu headera
 // ("Przyjmuje: <imię nazwisko>"), żeby operator widział, pod czyim
-// loginem zapisze się PZ, jeszcze zanim kliknie Zapisz.
+// loginem zapisze się GRN, jeszcze zanim kliknie Zapisz.
 $currentUserStmt = $MsaDB->db->prepare(
     "SELECT CONCAT(`name`, ' ', `surname`) FROM `user` WHERE `user_id` = ?"
 );

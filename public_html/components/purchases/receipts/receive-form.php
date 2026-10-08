@@ -223,7 +223,7 @@
                             <input type="text" class="form-control" id="vendorDocumentNumber"
                                    maxlength="100" placeholder="Opcjonalnie" autocomplete="off">
                             <small class="form-text text-muted receipt-field-hint">
-                                <i class="bi bi-info-circle"></i> Numer PZ zostanie nadany automatycznie.
+                                <i class="bi bi-info-circle"></i> Numer GRN zostanie nadany automatycznie.
                             </small>
                         </div>
 

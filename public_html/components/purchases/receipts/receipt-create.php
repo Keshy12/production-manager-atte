@@ -1,6 +1,6 @@
 <?php
 /**
- * AJAX: create a goods-receipt (PZ) against a confirmed / in_progress /
+ * AJAX: create a goods-receipt (GRN) against a confirmed / in_progress /
  * partially_received PO.
  *
  * Powers the goods-receiving UI on /purchase/receipts. Mirrors the
@@ -39,10 +39,10 @@
  *   - The whole call is wrapped in beginTransaction / commit / rollBack.
  *     PurchaseActionHandler::createReceipt joins the open transaction
  *     (its $ownedTransaction logic — see line ~514 in
- *     class-purchaseactionhandler.php) so the PZ number allocation,
+ *     class-purchaseactionhandler.php) so the GRN number allocation,
  *     header insert, item inserts, inventory ledger writes, and PO
  *     state transition commit atomically.
- *   - The PZ number is auto-allocated by the handler inside the
+ *   - The GRN number is auto-allocated by the handler inside the
  *     transaction (we pass null for $documentNumber). After commit we
  *     re-read it from the freshly-written receipt row.
  *
@@ -195,7 +195,7 @@ $poStateLabels = [
 
 try {
     $MsaDB->db->beginTransaction();
-    // createReceipt joins the open transaction, allocates the PZ number
+    // createReceipt joins the open transaction, allocates the GRN number
     // inside it, writes header + items + inventory ledger rows, and
     // transitions the PO state. Returns the new receipt id.
     $receiptId = $handler->createReceipt(
@@ -208,7 +208,7 @@ try {
     );
     $MsaDB->db->commit();
 
-    // Re-read the auto-allocated PZ number + post-write PO state so the
+    // Re-read the auto-allocated GRN number + post-write PO state so the
     // client gets a snapshot of what was actually persisted (the
     // handler returns just the receipt id).
     $receiptRepo = new OrderReceiptRepository($MsaDB);

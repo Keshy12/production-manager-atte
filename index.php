@@ -253,7 +253,7 @@ switch ($request) {
         require $componentsDir . '/purchases/receipts/receive-page.php';
         break;
     case 'purchase/receipts/view':
-        // Szczegóły przyjęcia (PZ) — osobna strona zamiast dawnego
+        // Szczegóły przyjęcia (GRN) — osobna strona zamiast dawnego
         // modala #receiptInfoModal. URL: /purchase/receipts/view?id=N.
         // Link „Szczegóły" w historii na /purchase/receipts prowadzi tutaj.
         requireAdmin();

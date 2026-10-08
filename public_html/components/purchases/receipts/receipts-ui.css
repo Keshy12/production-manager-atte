@@ -854,7 +854,7 @@
 }
 .rx-dochead-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .4rem; }
 
-/* Pieczątka z wynikiem dostawy — nawiązanie do papierowego PZ. */
+/* Pieczątka z wynikiem dostawy — nawiązanie do papierowego GRN. */
 .rx-stamp {
     --rx-s: #6b7785;
     display: inline-block;

@@ -224,7 +224,7 @@
 **Key files (List page):**
 - `rfqs-view.php` — list of RFQs with state-coloured badges, "Nowe zapytanie" form (vendor selectpicker + date + comment), client-side row filter
 - `modals.php` — send/cancel confirm modals
-- `rfq-{add,get,send,cancel}.php` — AJAX endpoints; `rfq-add` calls `PurchaseActionHandler::createDocument('rfq', …)` which allocates a `RFQ/YYYY/NNNN` number via `SELECT … FOR UPDATE`
+- `rfq-{add,get,send,cancel}.php` — AJAX endpoints; `rfq-add` calls `PurchaseActionHandler::createDocument('rfq', …)` which allocates a `RFQ/{vendor_id:05d}/{seq:05d}` number (e.g. `RFQ/00021/00001`) via `SELECT … FOR UPDATE` keyed on `(type, vendor_id)`
 - `table-row-template.php`, `rfqs-view.js`
 
 **Key files (Edit page, `Edit/`):**
@@ -237,17 +237,17 @@
 **Key Utils classes (foundation, `Atte\Utils\Purchase\Order`):**
 - `RFQ` + `RFQRepository` — header CRUD; `getById` / `getAll` join `list__vendor.name`; `setState`, `setSentAt`, `setRfqNumber`, `delete`
 - `RFQItem` + `RFQItemRepository` — line items; joined queries pull vendor / producer / part / unit names for the edit-page table
-- `PurchaseActionHandler` — orchestrator with `createDocument()`, `allocateDocumentNumber()` (`SELECT … FOR UPDATE` against `purchase__number_counter`), `computeLastKnownPrice()` (returns null gracefully until `purchase__order_item` ships in P3), `sendRfq()` (state guard + zero-items guard), `cancelRfq()`. `createPoFromRfq()` is a stub throwing "Implemented in P3".
+- `PurchaseActionHandler` — orchestrator with `createDocument()`, `allocateDocumentNumber()` (`SELECT … FOR UPDATE` against `purchase__number_counter`, keyed on `(type, vendor_id)`; see §5 / §9), `computeLastKnownPrice()`, `sendRfq()` (state guard + zero-items guard), `cancelRfq()`, `createPoFromRfq()` (RFQ → PO converter; was a stub returning "Implemented in P3" before that phase shipped).
 
 **Database tables:**
-- `purchase__number_counter` — per-year, per-type auto-number generator (PK `(year, type)`, ENUM 'rfq'/'po')
+- `purchase__number_counter` — per-vendor, per-type auto-number generator (PK `(type, vendor_id)`, ENUM 'rfq'/'po'/'grn'). `vendor_id = 0` holds the single global GRN sequence.
 - `purchase__rfq` — RFQ header with state machine
 - `purchase__rfq_item` — line items; cascades on RFQ delete
 
 **Notable behaviors:**
 - Document-number allocation uses `INSERT … ON DUPLICATE KEY UPDATE … + SELECT … FOR UPDATE` to avoid race conditions between two admins creating RFQs at the same time
 - `allocateDocumentNumber` is a "best-effort" transaction participant — joins an outer transaction if one is already open, otherwise opens its own
-- `computeLastKnownPrice()` returns null until P3 ships (the `purchase__order_item` table doesn't exist yet); gracefully swallowed via try/catch
+- `computeLastKnownPrice()` returns null when `purchase__order_item` has no history for the given part; gracefully swallowed via try/catch
 - Send-guard refuses to send a draft RFQ with zero line items
 - Cancel-guard refuses to cancel an RFQ in `converted` state (terminal)
 
@@ -272,7 +272,7 @@
 - `PurchaseOrder` + `PurchaseOrderRepository` — header CRUD with joined `list__vendor.name` and `purchase__rfq.rfq_number`; `getByRfq()` for the reverse-of-conversion lookup; date normalisation helper
 - `PurchaseOrderItem` + `PurchaseOrderItemRepository` — line items with 5-table join; `sumByPo()` (COALESCE for the list page's Wartość column) and `sumQuantityReceivedByPo()` (P4-ready)
 - `PurchaseActionHandler` activations:
-  - `createDocument('po', $vendorId, $userId)` — allocates `PO/YYYY/NNNN`, creates an empty PO draft, commits
+  - `createDocument('po', $vendorId, $userId)` — allocates `PO/{vendor_id:05d}/{seq:05d}` (e.g. `PO/00021/00001`), creates an empty PO draft, commits
   - `createPoFromRfq($rfqId, $userId)` — loads RFQ, copies items to PO items (carrying `unit_price`), transitions RFQ to `'converted'`, returns the new PO id
   - `computeLastKnownPrice($vendorPartId, ?$currency)` — now queries `purchase__order_item` history (filtering out zero prices); PDOException wrapper remains for resilience
 
@@ -303,7 +303,7 @@ The new lowercase-plural top-level folder under `public_html/components/` holds 
 - `receipts-view.php` — list of receipts (one row per delivery note), state badges, "Nowe przyjęcie" form.
 - `receipts-view.js` — table filter / sort.
 - `receipt-get.php` — per-receipt detail (AJAX; populates the "Szczegóły przyjęcia" modal).
-- `modals.php` — receive-goods form modal, lines, sub-magazine picker, document-number (PZ/WZ) field.
+- `modals.php` — receive-goods form modal, lines, sub-magazine picker, document-number (GRN/WZ) field.
 - `table-row-template.php` — jQuery row template for the AJAX list.
 
 **Key files (`purchases/documents/`, 1 file):**
@@ -323,7 +323,7 @@ The new lowercase-plural top-level folder under `public_html/components/` holds 
 
 #### Admin/Purchase/Receipts/ — Procurement Module — Receiving (P4) (5 files)
 
-**Purpose:** Goods-receiving log. Lists every receipt ever recorded (PZ / WZ documents against POs), with a click-through detail modal showing the per-receipt line items (vendor_part_no, part, producer, JM, ilość). This is the audit trail of what physically arrived against what was ordered.
+**Purpose:** Goods-receiving log. Lists every receipt ever recorded (GRN / WZ documents against POs), with a click-through detail modal showing the per-receipt line items (vendor_part_no, part, producer, JM, ilość). This is the audit trail of what physically arrived against what was ordered.
 
 **Key files:**
 - `receipts-view.php` — list of receipts (ID / Numer dokumentu / linked PO number / Dostawca / Pozycje count / Ilość łącznie / Przyjął / Data / Akcje). Loads via `OrderReceiptRepository::getAll(true)` which filters out receipts for cancelled POs.
@@ -334,7 +334,7 @@ The new lowercase-plural top-level folder under `public_html/components/` holds 
 
 #### Admin/Purchase/Orders/Receive/ — Procurement Module — Per-PO Receive (P4) (4 files)
 
-**Purpose:** Per-PO receiving form. Triggered by the "Przyjmij towar" button on the PO edit page header. Admin picks a sub-magazine and document number (PZ/WZ), enters `quantity_received` per line (with live "remaining / max 110%" hints), and submits. The handler runs the inventory ledger writes in one transaction.
+**Purpose:** Per-PO receiving form. Triggered by the "Przyjmij towar" button on the PO edit page header. Admin picks a sub-magazine and document number (GRN/WZ), enters `quantity_received` per line (with live "remaining / max 110%" hints), and submits. The handler runs the inventory ledger writes in one transaction.
 
 **Key files:**
 - `receive-view.php` — form page with state guard (only `confirmed`/`partially_received` POs are receivable), sub-magazine picker (server-rendered from `MagazineRepository::getAllMagazines(true)`), per-PO-item input table.

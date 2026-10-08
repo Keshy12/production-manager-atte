@@ -252,15 +252,15 @@ $canResume = $poState !== null && in_array($poState, ['confirmed', 'in_progress'
     <section class="rx-panel rx-sheet mb-3">
         <div class="rx-dochead">
             <div class="rx-dochead-main">
-                <div class="rx-eyebrow">Dokument przyjęcia (PZ)</div>
+                <div class="rx-eyebrow">Dokument przyjęcia (GRN)</div>
                 <?php if ($receipt->documentNumber): ?>
                     <h1 class="rx-docnum"><?= rx_e($receipt->documentNumber) ?></h1>
                 <?php else: ?>
-                    <!-- Sam nagłówek (krok „Akceptuję") — numer PZ nadawany
+                    <!-- Sam nagłówek (krok „Akceptuję") — numer GRN nadawany
                          jest dopiero przy zapisie ilości. -->
                     <h1 class="rx-docnum rx-docnum--none">
                         Przyjęcie #<?= (int)$receipt->id ?>
-                        <span class="rx-badge rx-badge--neutral">bez numeru PZ</span>
+                        <span class="rx-badge rx-badge--neutral">bez numeru GRN</span>
                     </h1>
                 <?php endif; ?>
                 <div class="rx-dochead-meta">
@@ -427,7 +427,7 @@ $canResume = $poState !== null && in_array($poState, ['confirmed', 'in_progress'
                             <th scope="col">Pozycja</th>
                             <th scope="col">Magazyn</th>
                             <th scope="col" class="text-right">Zamówiono</th>
-                            <th scope="col" class="text-right">W tym PZ</th>
+                            <th scope="col" class="text-right">W tym GRN</th>
                             <th scope="col" class="rx-state-col">Stan pozycji po przyjęciu</th>
                         </tr>
                         </thead>

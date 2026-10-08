@@ -12,13 +12,10 @@ class PurchaseActionHandler {
         $this->MsaDB = $MsaDB;
     }
 
-    public function allocateDocumentNumber(string $type, ?int $year = null): string {
-        $valid = ['rfq','po','pz'];
+    public function allocateDocumentNumber(string $type, int $vendorId): string {
+        $valid = ['rfq','po','grn'];
         if (!in_array($type, $valid, true)) {
             throw new \InvalidArgumentException("type must be one of: " . implode(', ', $valid));
-        }
-        if ($year === null) {
-            $year = (int)date('Y');
         }
 
         $MsaDB = $this->MsaDB;
@@ -33,25 +30,28 @@ class PurchaseActionHandler {
 
         try {
             $stmt = $MsaDB->db->prepare(
-                "INSERT INTO `purchase__number_counter` (`year`, `type`, `last_value`)
+                "INSERT INTO `purchase__number_counter` (`type`, `vendor_id`, `last_value`)
                  VALUES (?, ?, 1)
                  ON DUPLICATE KEY UPDATE `last_value` = `last_value` + 1"
             );
-            $stmt->execute([$year, $type]);
+            $stmt->execute([$type, $vendorId]);
 
             $stmt = $MsaDB->db->prepare(
                 "SELECT `last_value` FROM `purchase__number_counter`
-                 WHERE `year` = ? AND `type` = ?
+                 WHERE `type` = ? AND `vendor_id` = ?
                  FOR UPDATE"
             );
-            $stmt->execute([$year, $type]);
+            $stmt->execute([$type, $vendorId]);
             $row = $stmt->fetch(\PDO::FETCH_ASSOC);
             $n = $row ? (int)$row['last_value'] : 1;
 
             if ($ownedTransaction) {
                 $MsaDB->db->commit();
             }
-            return sprintf('%s/%04d/%04d', strtoupper($type), $year, $n);
+            if ($type === 'grn') {
+                return sprintf('GRN/%06d', $n);
+            }
+            return sprintf('%s/%05d/%05d', strtoupper($type), $vendorId, $n);
         } catch (\Throwable $e) {
             if ($ownedTransaction && $MsaDB->db->inTransaction()) {
                 $MsaDB->db->rollBack();
@@ -69,12 +69,11 @@ class PurchaseActionHandler {
         if ($userId   <= 0) throw new \InvalidArgumentException("userId must be positive.");
 
         $MsaDB = $this->MsaDB;
-        $year  = (int)date('Y');
 
         $MsaDB->db->beginTransaction();
         try {
             if ($type === 'rfq') {
-                $number = $this->allocateDocumentNumber('rfq', $year);
+                $number = $this->allocateDocumentNumber('rfq', $vendorId);
                 $repo   = new RFQRepository($MsaDB);
                 $id     = $repo->create($vendorId, $userId, null, null);
                 $repo->setRfqNumber($id, $number);
@@ -82,7 +81,7 @@ class PurchaseActionHandler {
                 return $id;
             }
             // type === 'po'
-            $number = $this->allocateDocumentNumber('po', $year);
+            $number = $this->allocateDocumentNumber('po', $vendorId);
             $repo   = new PurchaseOrderRepository($MsaDB);
             $id     = $repo->create($vendorId, $userId);
             $repo->setPoNumber($id, $number);
@@ -821,11 +820,9 @@ class PurchaseActionHandler {
             throw new \LogicException("Cannot convert an RFQ with no line items");
         }
 
-        $year = (int)date('Y');
-
         $MsaDB->db->beginTransaction();
         try {
-            $number = $this->allocateDocumentNumber('po', $year);
+            $number = $this->allocateDocumentNumber('po', $rfq->vendorId);
 
             $poId = $poRepo->create($rfq->vendorId, $userId, $rfqId);
             $poRepo->setPoNumber($poId, $number);
@@ -856,11 +853,11 @@ class PurchaseActionHandler {
     }
 
     /**
-     * Record a goods-receipt (PZ) against a confirmed PO.
+     * Record a goods-receipt (GRN) against a confirmed PO.
      *
-     * `$documentNumber` is the operator-supplied PZ/WZ number. When null
+     * `$documentNumber` is the operator-supplied GRN/WZ number. When null
      * (the common case from the goods-receiving UI) this method
-     * auto-allocates the next PZ number from purchase__number_counter
+     * auto-allocates the next GRN number from purchase__number_counter
      * inside the transaction — same counter pattern allocateDocumentNumber
      * uses for RFQ/PO. Passing an explicit non-empty string uses it
      * verbatim (no allocation, no uniqueness check — same behaviour as
@@ -1019,13 +1016,13 @@ class PurchaseActionHandler {
         }
 
         try {
-            // 5.0 Auto-allocate the PZ number inside the transaction so the
+            // 5.0 Auto-allocate the GRN number inside the transaction so the
             // counter increment is atomic with the header insert. allocateDocumentNumber
             // detects the open transaction and joins it (FOR UPDATE relies on it).
             // When the caller passed a non-empty documentNumber we use it verbatim —
             // no allocation, no uniqueness check (matches the PO/RFQ path).
             if ($documentNumber === null) {
-                $documentNumber = $this->allocateDocumentNumber('pz');
+                $documentNumber = $this->allocateDocumentNumber('grn', 0);
             }
 
             // 5.1 Resolve input_type_id (prefer a 'purchase%' row, fall back to id=1).
@@ -1354,7 +1351,7 @@ class PurchaseActionHandler {
                 );
                 $wasUpdated = true;
             } else {
-                // First accept for this PO. documentNumber stays null — PZ
+                // First accept for this PO. documentNumber stays null — GRN
                 // allocation only happens on the real Zapisz save (so we
                 // don't burn numbers on drafts that may never get items).
                 $draftId = $receiptRepo->create($poId, $userId, null, $comment, $receivedAt);
