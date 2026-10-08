@@ -224,4 +224,114 @@ class EmailDraftRepository {
             $id
         );
     }
+
+    /**
+     * How many vendors point at each draft through their own preference
+     * FKs (`list__vendor.preferred_email_draft_rfq_id` /
+     * `..._po_id`). This is the *vendor-level* default ΓÇö a higher
+     * priority than the global default held by the
+     * `email_draft_default` pointer table ΓÇö so the drafts list shows it
+     * as a count next to the "Domy┼¢lny" column: a draft can be nobody's
+     * global default yet still be the one half a dozen vendors actually
+     * send, and that only shows up here.
+     *
+     * One grouped query instead of two per-draft counts: the OR in the
+     * join is safe because the two counts are separate conditional
+     * sums, so a vendor referencing the same draft for both types is
+     * counted once in each and never double-counted inside one of them.
+     * The vendor table is small (tens of rows), so the OR join costs
+     * nothing measurable.
+     *
+     * Inactive vendors are counted too ΓÇö the FK is still there and the
+     * number answers "how many vendors point here", not "how many send
+     * mail today".
+     *
+     * @return array<int, array{rfqCount:int, poCount:int}> Keyed by
+     *         draft id; drafts nobody points at are absent.
+     */
+    public function getVendorUsageCounts(): array {
+        $MsaDB = $this->MsaDB;
+        $sql = "SELECT e.id AS draft_id,
+                       SUM(CASE WHEN v.preferred_email_draft_rfq_id = e.id THEN 1 ELSE 0 END) AS rfq_count,
+                       SUM(CASE WHEN v.preferred_email_draft_po_id  = e.id THEN 1 ELSE 0 END) AS po_count
+                  FROM `email_draft` e
+                  LEFT JOIN `list__vendor` v
+                    ON v.preferred_email_draft_rfq_id = e.id
+                    OR v.preferred_email_draft_po_id  = e.id
+                 GROUP BY e.id";
+        $stmt = $MsaDB->db->prepare($sql);
+        $stmt->execute();
+        $out = [];
+        foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
+            $out[(int)$r['draft_id']] = [
+                'rfqCount' => (int)$r['rfq_count'],
+                'poCount'  => (int)$r['po_count'],
+            ];
+        }
+        return $out;
+    }
+
+    /**
+     * Upsert the pointer row for $docType to point at $draftId.
+     * `ON DUPLICATE KEY UPDATE draft_id = VALUES(draft_id)` is the
+     * rotate case (a new draft is now the default; the existing
+     * pointer row is updated to point at it). The PK on doc_type
+     * guarantees there is no sibling row to clear ΓÇö uniqueness is
+     * structural, not application-layer.
+     *
+     * Whitelist guard is a real safety requirement: $docType is
+     * bound via PDO parameter, so this is mostly belt-and-braces,
+     * but it gives the caller a clear error if they mistype a
+     * doc-type instead of silently inserting a junk pointer row.
+     *
+     * @param  string $docType  'rfq' | 'po'
+     * @param  int    $draftId  Target draft id (must exist in
+     *                          `email_draft` ΓÇö FK enforces this).
+     * @return void
+     * @throws \InvalidArgumentException if $docType is not whitelisted.
+     */
+    private function upsertDefaultPointer(string $docType, int $draftId): void {
+        if (!in_array($docType, ['rfq', 'po'], true)) {
+            throw new \InvalidArgumentException(
+                "upsertDefaultPointer(): docType must be one of: rfq, po "
+                . "(passed: " . var_export($docType, true) . ")"
+            );
+        }
+        $stmt = $this->MsaDB->db->prepare(
+            "INSERT INTO `email_draft_default` (`doc_type`, `draft_id`, `updated_at`)
+                  VALUES (?, ?, NOW())
+             ON DUPLICATE KEY UPDATE `draft_id` = VALUES(`draft_id`), `updated_at` = NOW()"
+        );
+        $stmt->execute([$docType, $draftId]);
+    }
+
+    /**
+     * Delete the pointer row for $docType, but ONLY IF it currently
+     * points at $draftId. Called from update() with flag=false ΓÇö
+     * "this draft is no longer the default for this type" is honoured
+     * by removing a pointer that targets this row, and is a safe
+     * no-op if the pointer targets a different row (so the caller
+     * can't accidentally demote another draft's default by editing
+     * the wrong one). Keeps the two flags independent: deleting the
+     * 'rfq' pointer never touches the 'po' pointer row.
+     *
+     * Idempotent: a DELETE that matches no rows is a no-op (no error).
+     *
+     * @param  string $docType  'rfq' | 'po'
+     * @param  int    $draftId  Row id to limit the removal to.
+     * @return void
+     * @throws \InvalidArgumentException if $docType is not whitelisted.
+     */
+    private function deleteDefaultPointerIfTarget(string $docType, int $draftId): void {
+        if (!in_array($docType, ['rfq', 'po'], true)) {
+            throw new \InvalidArgumentException(
+                "deleteDefaultPointerIfTarget(): docType must be one of: rfq, po "
+                . "(passed: " . var_export($docType, true) . ")"
+            );
+        }
+        $stmt = $this->MsaDB->db->prepare(
+            "DELETE FROM `email_draft_default` WHERE `doc_type` = ? AND `draft_id` = ?"
+        );
+        $stmt->execute([$docType, $draftId]);
+    }
 }
