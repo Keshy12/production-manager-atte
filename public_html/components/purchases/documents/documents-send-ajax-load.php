@@ -27,6 +27,8 @@
  *       "sentAt":               'Y-m-d H:i:s' | null,
  *       "respondedAt":          'Y-m-d H:i:s' | null,  // tylko RFQ
  *       "vendorReference":      string | null,    // tylko RFQ
+ *       "rfqNumber":            string | null,    // tylko PO — numer powiązanego zapytania (RFQ/…); null przy PO bez konwersji
+ *       "rfqVendorReference":   string | null,    // tylko PO — numer oferty u dostawcy z powiązanego zapytania
  *       "expectedReplyDate":    'Y-m-d' | null,        // tylko RFQ
  *       "expectedDeliveryDate": 'Y-m-d' | null,        // tylko PO
  *       "createdBy":            int,
@@ -140,6 +142,8 @@ try {
         $expectedDate  = $doc->expectedReplyDate;
         $vendorPoNumber = null;
         $vendorReference = $doc->vendorReference;
+        $rfqNumber = null;
+        $rfqVendorReference = null;
 
         // responded_at nie jest jeszcze mapowane w RFQRepository::buildSelectJoin().
         // Czytamy bezpośrednio (kolumna dodana migracją P5+).
@@ -192,6 +196,13 @@ try {
         $expectedDate   = $doc->expectedDeliveryDate;
         $vendorPoNumber = $doc->vendorPoNumber;
         $vendorReference = null;
+        // Powiązane zapytanie (converted_from_rfq_id) — nasz numer
+        // oraz numer oferty u dostawcy. Dla PO zakupionego wprost
+        // (bez konwersji z RFQ) oba są null i w szablonie zostają
+        // puste (w odróżnieniu od {vendor_document_number}, który
+        // ma fallback na numer zamówienia).
+        $rfqNumber = $doc->convertedFromRfqNumber;
+        $rfqVendorReference = $doc->convertedFromRfqVendorReference;
         $vendorId       = $doc->vendorId;
 
         // valueBreakdown — kopia GROUP_CONCAT-subquery z documents-table.php
@@ -335,13 +346,19 @@ try {
     $emailDraftRepo      = new EmailDraftRepository($MsaDB);
     $availableEmailDrafts = $emailDraftRepo->getActiveForPicker($type);
 
-    // Vendor lead time (days) — krok 3 wizarda (PO) podpowiada
-    // "Planowana dostawa" jako data wysyłki + lead time. NULL / <= 0 =
-    // brak podpowiedzi.
-    $leadStmt = $MsaDB->db->prepare("SELECT `lead_time_days` FROM `list__vendor` WHERE `id` = ?");
+    // Vendor lead time (days) + vendor comment — krok 3 wizarda pokazuje
+    // je jako „Lead time" pod datą. lead_time_days NULL / <= 0 = brak
+    // wartości do pokazania; comment NULL = brak notatki.
+    //
+    // UWAGA: `comment` z repozytorium dokumentu ($doc->comment, wyżej) to
+    // komentarz DOKUMENTU, nie dostawcy. Tutaj czytamy comment Dostawcy
+    // z `list__vendor` — to inna kolumna w innej tabeli.
+    $leadStmt = $MsaDB->db->prepare("SELECT `lead_time_days`, `comment` FROM `list__vendor` WHERE `id` = ?");
     $leadStmt->execute([(int)$vendorId]);
-    $leadRaw = $leadStmt->fetchColumn();
+    $leadRow = $leadStmt->fetch(\PDO::FETCH_ASSOC);
+    $leadRaw = $leadRow !== false ? $leadRow['lead_time_days'] : false;
     $vendorLeadTimeDays = ($leadRaw !== false && $leadRaw !== null && (int)$leadRaw > 0) ? (int)$leadRaw : null;
+    $vendorComment = ($leadRow !== false && $leadRow['comment'] !== null) ? trim((string)$leadRow['comment']) : '';
 
     echo json_encode([
         'success' => true,
@@ -353,6 +370,9 @@ try {
             'vendorName'           => $doc->vendorName,
             'vendorPoNumber'       => $vendorPoNumber,
             'vendorReference'      => $vendorReference,
+            // Tylko PO — patrz $rfqNumber / $rfqVendorReference wyżej.
+            'rfqNumber'            => $rfqNumber,
+            'rfqVendorReference'   => $rfqVendorReference,
             'state'                => $state,
             'stateLabel'           => $stateLbl,
             'createdAt'            => $doc->createdAt,
@@ -361,6 +381,7 @@ try {
             'expectedReplyDate'    => $type === 'rfq' ? $expectedDate : null,
             'expectedDeliveryDate' => $type === 'po'  ? $expectedDate : null,
             'vendorLeadTimeDays'   => $vendorLeadTimeDays,
+            'vendorComment'        => $vendorComment,
             // Autor dokumentu — krok 4 podpisuje nim wygenerowany
             // szablon wiadomości do dostawcy ("Z poważaniem, …").
             'createdBy'            => (int)$doc->createdBy,

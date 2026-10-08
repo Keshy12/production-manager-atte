@@ -26,6 +26,7 @@ class PurchaseOrderRepository {
                        o.updated_at AS updatedAt,
                        v.name AS vendorName,
                        rfq.rfq_number AS convertedFromRfqNumber,
+                       rfq.vendor_reference AS convertedFromRfqVendorReference,
                        TRIM(CONCAT(u.name, ' ', u.surname)) AS createdByName
                 FROM `purchase__order` o
                 LEFT JOIN `list__vendor`  v   ON o.vendor_id            = v.id

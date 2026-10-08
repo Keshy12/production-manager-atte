@@ -923,6 +923,7 @@ function formatPrice($v) {
     }
 </style>
 
+<script src="<?= htmlspecialchars(asset('public_html/assets/js/shared/items-format.js'), ENT_QUOTES) ?>"></script>
 <script src="<?= htmlspecialchars(asset('public_html/components/Admin/Purchase/Documents/documents-edit.js')) ?>"></script>
 
 <?php

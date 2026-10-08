@@ -21,6 +21,12 @@ class PurchaseOrder {
     public ?string $vendorName;
     public ?string $rfqNumber;
     public ?string $convertedFromRfqNumber;
+    // Numer oferty u dostawcy z powiązanego zapytania RFQ (alias
+    // `rfq.vendor_reference` w PurchaseOrderRepository::buildSelectJoin()).
+    // Równa $rfqNumber, z której korzysta reszta kodu; żyje osobno,
+    // bo w szablonach wiadomości to niezależna zmienna obok numeru
+    // zapytania.
+    public ?string $convertedFromRfqVendorReference;
 
     public function __construct(array $row){        $this->id = (int)$row['id'];
         $this->vendorId = (int)$row['vendorId'];
@@ -39,5 +45,6 @@ class PurchaseOrder {
         $this->vendorName = $row['vendorName'] ?? null;
         $this->rfqNumber = $row['convertedFromRfqNumber'] ?? null;
         $this->convertedFromRfqNumber = $row['convertedFromRfqNumber'] ?? null;
+        $this->convertedFromRfqVendorReference = $row['convertedFromRfqVendorReference'] ?? null;
     }
 }

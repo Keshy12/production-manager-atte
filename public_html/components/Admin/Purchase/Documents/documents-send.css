@@ -847,7 +847,7 @@
     color: #868e96;
 }
 #send-wizard-root #send-step-4-body .send-items-unit {
-    color: #6c757d;
+    color: #6c757c;
     white-space: nowrap;
 }
 #send-wizard-root #send-step-4-body .send-items-no-val {
@@ -1616,4 +1616,144 @@
 #send-wizard-root + #send-success-wrap .send-success-alert .badge {
     vertical-align: middle;
     margin-left: .25rem;
+}
+
+/* --- Krok 3: data oczekiwana / planowana dostawa ---------------- */
+
+#send-wizard-root .send-exp-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .4rem .75rem;
+}
+#send-wizard-root .send-exp-input {
+    flex: 0 0 auto;
+    width: 100%;
+    max-width: 200px;
+}
+#send-wizard-root .send-exp-rel {
+    flex: 1 1 8rem;
+    min-width: 0;
+    font-size: .95rem;
+    font-weight: 600;
+}
+#send-wizard-root .send-exp-rel-future { color: #1e7e34; }
+#send-wizard-root .send-exp-rel-today  { color: #0b5ed7; }
+#send-wizard-root .send-exp-rel-past   { color: #b02a37; }
+#send-wizard-root .send-exp-rel .bi    { margin-right: .15rem; }
+#send-wizard-root .send-exp-quick-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .35rem;
+    margin-top: .6rem;
+}
+/* Informacje o dostawcy (PO): drugoplanowy blok pod przyciskami kroku. */
+#send-wizard-root .send-exp-lead {
+    margin-top: .75rem;
+    padding: .4rem .6rem;
+    border-left: 3px solid #ced4da;
+    background-color: #f8f9fa;
+    border-radius: 0 .25rem .25rem 0;
+    color: #6c757d;
+    font-size: .8rem;
+    line-height: 1.4;
+    min-width: 0;
+}
+#send-wizard-root .send-exp-lead-item + .send-exp-lead-item {
+    margin-top: .3rem;
+}
+/* Nazwa dostawcy = cichy kontekst (powtarza krok 1): mała, zwykła, szara. */
+#send-wizard-root .send-exp-lead-name {
+    margin-bottom: .3rem;
+    color: #868e96;
+    font-size: .75rem;
+    font-weight: 400;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+/* Etykieta „Lead time" odrobinę mocniejsza niż nazwa; kotwicą bloku jest wartość. */
+#send-wizard-root .send-exp-lead-label {
+    margin-right: .4rem;
+    font-size: .78rem;
+    font-weight: 500;
+    color: #6c757c;
+}
+#send-wizard-root .send-exp-lead-value {
+    color: #343a40;
+    font-weight: 600;
+}
+#send-wizard-root .send-exp-lead-note {
+    display: flex;
+    align-items: flex-start;
+    gap: .4rem;
+}
+#send-wizard-root .send-exp-lead-note > .bi {
+    flex: 0 0 auto;
+    margin-top: .1rem;
+}
+#send-wizard-root .send-exp-lead-note-body {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+#send-wizard-root .send-exp-lead-note-text {
+    font-style: italic;
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+#send-wizard-root .send-exp-lead-note-text.is-clamped {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+#send-wizard-root .send-exp-lead-more {
+    font-size: .75rem;
+}
+
+#send-wizard-root .send-exp-quick-group {
+    flex: 0 0 auto;
+}
+
+/* Przyciski kroku: plus = zielony, minus = czerwony (miękki odcień zamiast pełnego wypełnienia
+   na hover, żeby zielony licznik dni był czytelny). „Dziś" zostaje btn-outline-secondary. */
+#send-wizard-root .send-exp-quick--plus {
+    color: #1e7e34;
+    border-color: #28a745;
+    background-color: #fff;
+}
+#send-wizard-root .send-exp-quick--plus:hover,
+#send-wizard-root .send-exp-quick--plus:focus {
+    color: #155724;
+    background-color: #e6f4ea;
+    border-color: #28a745;
+}
+#send-wizard-root .send-exp-quick--minus {
+    color: #b02a37;
+    border-color: #dc3545;
+    background-color: #fff;
+}
+#send-wizard-root .send-exp-quick--minus:hover,
+#send-wizard-root .send-exp-quick--minus:focus {
+    color: #8a1f2b;
+    background-color: #fdecee;
+    border-color: #dc3545;
+}
+/* Łączna liczba dni w odczycie obok daty. */
+#send-wizard-root .send-exp-rel .send-exp-rel-days {
+    margin-left: .1rem;
+    font-size: .8rem;
+    font-weight: 600;
+    color: #6c757d;
+    white-space: nowrap;
+}
+
+/* Krok 4: liczba dni obok daty w pasku kontekstu. */
+#send-wizard-root #send-step-4-body .send-context-value .send-ctx-days {
+    margin-left: .1rem;
+    font-size: .8rem;
+    font-weight: 600;
+    color: #6c757d;
+    white-space: nowrap;
 }

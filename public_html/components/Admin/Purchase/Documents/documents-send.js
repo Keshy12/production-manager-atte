@@ -979,13 +979,18 @@ $(function () {
             });
         });
 
-        // Inicjalne zaznaczenie: domyślnie pre-zaznaczony główny kontakt,
-        // jeśli istnieje (pierwszy rekord, bo SQL sortuje isPrimary DESC).
+        // Inicjalne zaznaczenie:
+        //  a) jest dokładnie jeden kontakt → zaznaczamy go (jedyny wybór,
+        //     operator nie musi klikać, żeby przejść dalej);
+        //  b) w przeciwnym razie domyślnie pre-zaznaczony główny kontakt,
+        //     jeśli istnieje (pierwszy rekord, bo SQL sortuje isPrimary DESC).
         if (state.selectedSuppliers.length === 0) {
-            const primary = suppliers.find(function (s) { return s.isPrimary; });
-            if (primary) {
-                state.selectedSuppliers = [primary.id];
-                $('#send-supplier-list .contact-card[data-supplier-id="' + primary.id + '"]')
+            const auto = suppliers.length === 1
+                ? suppliers[0]
+                : suppliers.find(function (s) { return s.isPrimary; });
+            if (auto) {
+                state.selectedSuppliers = [auto.id];
+                $('#send-supplier-list .contact-card[data-supplier-id="' + auto.id + '"]')
                     .addClass('is-selected')
                     .find('.send-supplier-check').prop('checked', true);
             }
@@ -1046,6 +1051,22 @@ $(function () {
             : ymdFromDate(new Date());
     }
 
+    // Różnica w dniach (toYmd − fromYmd), liczona w UTC → bez błędów DST. Przyjmuje 'Y-m-d'
+    // oraz pełne daty ('Y-m-d H:i:s' / ISO) — bierze tylko pierwsze 10 znaków. Zły format → NaN.
+    // Wspólne dla kroków 3 i 4.
+    function diffDaysYmd(fromYmd, toYmd) {
+        const f = String(fromYmd).substring(0, 10).split('-');
+        const t = String(toYmd).substring(0, 10).split('-');
+        const a = Date.UTC(parseInt(f[0], 10), parseInt(f[1], 10) - 1, parseInt(f[2], 10));
+        const b = Date.UTC(parseInt(t[0], 10), parseInt(t[1], 10) - 1, parseInt(t[2], 10));
+        return Math.round((b - a) / 86400000);
+    }
+
+    // „16 dni" / „1 dzień" itd. — używa modułowego plPlural (niżej, hoisting). Wspólne dla kroków 3 i 4.
+    function plUnit(n, one, few, many) {
+        return n + ' ' + plPlural(n, one, few, many);
+    }
+
     // Data zapisana już na dokumencie (RFQ: reply, PO: delivery) albo ''.
     function docExpectedDate() {
         const d = state.doc;
@@ -1085,34 +1106,139 @@ $(function () {
             return;
         }
 
-        const leadHint = (isPo && d.vendorLeadTimeDays)
-            ? '<small class="form-text text-muted">Podpowiedź: data wysyłki + '
-                + escapeHtml(String(d.vendorLeadTimeDays)) + ' dni (czas realizacji dostawcy).</small>'
-            : '';
+        // Informacje o dostawcy pod kontrolką daty: nazwa + „Lead time" (liczba) + komentarz (wolny tekst).
+        // Nazwa i komentarz: RFQ i PO. „Lead time": tylko PO (to on wypełnia domyślną datę PO).
+        // Brak wszystkiego → pusty string, bez pustego kontenera.
+        // Komentarz dostawcy: undefined traktujemy jak brak; zawsze escapeHtml (tekst z bazy).
+        const leadDays = (isPo && d.vendorLeadTimeDays) ? parseInt(d.vendorLeadTimeDays, 10) : 0;
+        const vendorComment = (typeof d.vendorComment === 'string') ? d.vendorComment.trim() : '';
+        // Długi komentarz (> 120 znaków albo > 2 linie) jest przycinany do 2 linii + „pokaż więcej".
+        const commentIsLong = vendorComment.length > 120 || vendorComment.split('\n').length > 2;
+        let leadHint = '';
+        // Nazwa dostawcy = cichy kontekst nad wierszami. null / '' / undefined → brak elementu.
+        const vendorNameText = (typeof d.vendorName === 'string') ? d.vendorName.trim() : '';
+        if (leadDays > 0 || vendorComment || vendorNameText) {
+            leadHint = '<div class="send-exp-lead">'
+                + (vendorNameText
+                    ? '<div class="send-exp-lead-name" title="' + escapeHtml(vendorNameText) + '">'
+                        + escapeHtml(vendorNameText) + '</div>'
+                    : '')
+                + (leadDays > 0
+                    ? '<div class="send-exp-lead-item">'
+                        + '<span class="send-exp-lead-label">Lead time</span>'
+                        + '<span class="send-exp-lead-value">' + escapeHtml(plUnit(leadDays, 'dzień', 'dni', 'dni')) + '</span>'
+                    + '</div>'
+                    : '')
+                + (vendorComment
+                    ? '<div class="send-exp-lead-item send-exp-lead-note">'
+                        + '<i class="bi bi-chat-left-text" aria-hidden="true"></i>'
+                        + '<div class="send-exp-lead-note-body">'
+                            + '<div class="send-exp-lead-note-text' + (commentIsLong ? ' is-clamped' : '') + '" '
+                                + 'title="' + escapeHtml(vendorComment) + '">' + escapeHtml(vendorComment) + '</div>'
+                            + (commentIsLong
+                                ? '<button type="button" class="btn btn-link btn-sm p-0 send-exp-lead-more">pokaż więcej</button>'
+                                : '')
+                        + '</div>'
+                    + '</div>'
+                    : '')
+            + '</div>';
+        }
+
+        // plPlural / plUnit / diffDaysYmd są teraz na poziomie modułu (współdzielone z krokiem 4).
+
+        // Miesiąc = 30 dni (tak samo jak szybki wybór „+1 miesiąc"). Max dwie największe jednostki.
+        function humanizeDays(n) {
+            const months = Math.floor(n / 30);
+            const weeks = Math.floor((n % 30) / 7);
+            const days = n - months * 30 - weeks * 7;
+            const parts = [];
+            if (months) parts.push(plUnit(months, 'miesiąc', 'miesiące', 'miesięcy'));
+            if (weeks) parts.push(plUnit(weeks, 'tydzień', 'tygodnie', 'tygodni'));
+            if (days && !months) parts.push(plUnit(days, 'dzień', 'dni', 'dni'));
+            return parts.slice(0, 2).join(' i ');
+        }
+
+        function relativeHintHtml(ymd) {
+            if (!ymd) return '<span class="text-muted">nie ustawiono</span>';
+            const n = diffDaysYmd(sendBaseDateYmd(), ymd);
+            // Łączna liczba dni (z tego samego n) — tylko dla dziś/przyszłości; w „po terminie" już jest w „X temu".
+            const daysSpan = ' <span class="send-exp-rel-days">(' + plUnit(n, 'dzień', 'dni', 'dni') + ')</span>';
+            if (n === 0) return '<span class="send-exp-rel-today">dzisiaj' + daysSpan + '</span>';
+            if (n === 1) return '<span class="send-exp-rel-future">jutro' + daysSpan + '</span>';
+            if (n > 0) return '<span class="send-exp-rel-future">za ' + escapeHtml(humanizeDays(n)) + daysSpan + '</span>';
+            return '<span class="send-exp-rel-past"><i class="bi bi-exclamation-triangle"></i> po terminie ('
+                + escapeHtml(humanizeDays(-n)) + ' temu)</span>';
+        }
+
+        // Kroki względem aktualnej daty (data-days ze znakiem). 0 = „Dziś" → zawsze data bazowa.
+        // Grupy: Dziś | −/+ dzień | −/+ tydzień | −/+ miesiąc.
+        // Minus = czerwony (send-exp-quick--minus), plus = zielony (send-exp-quick--plus), Dziś = neutralny.
+        const quickGroups = [
+            [{ days: 0, text: 'Dziś' }],
+            [{ days: -1, text: '−1 dzień' }, { days: 1, text: '+1 dzień' }],
+            [{ days: -7, text: '−1 tydzień' }, { days: 7, text: '+1 tydzień' }],
+            [{ days: -30, text: '−1 miesiąc' }, { days: 30, text: '+1 miesiąc' }]
+        ];
+        const quickHtml = quickGroups.map(function (grp) {
+            return '<div class="btn-group btn-group-sm send-exp-quick-group">'
+                + grp.map(function (q) {
+                    const tone = q.days > 0 ? 'send-exp-quick--plus'
+                        : (q.days < 0 ? 'send-exp-quick--minus' : 'btn-outline-secondary');
+                    return '<button type="button" class="btn send-exp-quick ' + tone + '" data-days="' + q.days + '">'
+                        + escapeHtml(q.text) + '</button>';
+                }).join('')
+                + '</div>';
+        }).join('');
 
         $('#send-step-3-body').html(
             '<p class="text-muted">Pole opcjonalne. Data zostanie zapisana razem z wysyłką dokumentu.</p>'
-            + '<div class="form-group mb-0">'
+            + '<div class="form-group mb-0 send-exp">'
                 + '<label for="send-expected-date" class="font-weight-bold">' + escapeHtml(label) + ':</label>'
-                + '<div class="d-flex align-items-center" style="gap: .5rem;">'
-                    + '<input type="date" id="send-expected-date" class="form-control" style="max-width: 220px;" '
+                + '<div class="send-exp-row">'
+                    + '<input type="date" id="send-expected-date" class="form-control send-exp-input" '
                         + 'value="' + escapeHtml(state.expectedDate || '') + '">'
-                    + '<button type="button" class="btn btn-outline-secondary btn-sm" id="send-expected-date-clear">'
+                    + '<span class="send-exp-rel" id="send-expected-date-rel" aria-live="polite">'
+                        + relativeHintHtml(state.expectedDate || '') + '</span>'
+                    + '<button type="button" class="btn btn-outline-secondary btn-sm send-exp-clear" id="send-expected-date-clear">'
                         + '<i class="bi bi-x-lg"></i> Wyczyść'
                     + '</button>'
                 + '</div>'
+                + '<div class="send-exp-quick-row" role="group" aria-label="Szybki wybór daty">' + quickHtml + '</div>'
                 + leadHint
             + '</div>'
         );
 
-        $('#send-expected-date').on('change', function () {
-            state.expectedDate = $(this).val() || '';
+        // Jedna ścieżka zapisu: wartość → state + flaga „dotknięte" + odświeżenie podpowiedzi.
+        function setExpected(ymd) {
+            $('#send-expected-date').val(ymd);
+            state.expectedDate = ymd;
             state.expectedDateTouched = true;
+            $('#send-expected-date-rel').html(relativeHintHtml(ymd));
+        }
+
+        // Elementy powstały przed chwilą (.html() wyrzuca stare), więc nie ma wycieku handlerów.
+        $('#send-expected-date').on('change input', function () {
+            setExpected($(this).val() || '');
         });
         $('#send-expected-date-clear').on('click', function () {
-            $('#send-expected-date').val('');
-            state.expectedDate = '';
-            state.expectedDateTouched = true;
+            setExpected('');
+        });
+        $('#send-step-3-body .send-exp-lead-more').on('click', function () {
+            const $text = $(this).siblings('.send-exp-lead-note-text');
+            const expanded = $text.toggleClass('is-clamped').hasClass('is-clamped') === false;
+            $(this).text(expanded ? 'pokaż mniej' : 'pokaż więcej');
+        });
+        $('#send-step-3-body .send-exp-quick').on('click', function () {
+            const days = parseInt($(this).attr('data-days'), 10);
+            const base = sendBaseDateYmd();
+            if (days === 0) { // „Dziś": dokładnie data bazowa
+                setExpected(base);
+                return;
+            }
+            const current = $('#send-expected-date').val() || base; // puste pole → od daty bazowej
+            const next = addDaysYmd(current, days);
+            // Daty 'Y-m-d' porównują się poprawnie jako tekst; nie schodzimy przed datę bazową.
+            setExpected(next < base ? base : next);
         });
     }
 
@@ -1289,6 +1415,15 @@ $(function () {
         const isPo    = (DOC_TYPE === 'po');
         // Pusta/nieznana wartość → pusty string, nigdy "null"/"undefined".
         const blank = function (v) { return (v === null || v === undefined) ? '' : String(v); };
+        // Nasz własny numer dokumentu — wyliczany raz, bo używa go
+        // {document_number} oraz fallback {vendor_document_number}.
+        const ourNumber = blank(d.number || (d.id ? '#' + d.id : ''));
+        // Numer po stronie dostawcy: RFQ → vendor_reference, PO →
+        // vendor_po_number. Loader zwraca tylko właściwe pole dla typu.
+        // Pusty string / null → niżej pada fallback na nasz numer.
+        const vendorSideNumber = blank(
+            isPo ? d.vendorPoNumber : d.vendorReference
+        ).trim();
 
         return {
             vendor_name:           blank(d.vendorName),
@@ -1298,7 +1433,26 @@ $(function () {
             // d.vendorAddress. Gdyby szablon dostawcy zawierał ten token,
             // applyTemplate zostawi go w treści jako literał.
             document_type:         isPo ? 'zamówienie' : 'zapytanie',
-            document_number:       blank(d.number || (d.id ? '#' + d.id : '')),
+            document_number:       ourNumber,
+            // Numer dokumentu po stronie dostawcy: PO → vendor_po_number
+            // ("Numer u dostawcy"), RFQ → vendor_reference ("Numer oferty
+            // u dostawcy"). Loader kroku 4 zwraca tylko właściwe pole
+            // dla danego typu, drugie jest zawsze null.
+            // Fallback: gdy dostawca nie podał numeru (albo dokument nie
+            // był jeszcze potwierdzony / odpowiedzi nie było), wstawiamy
+            // NASZ numer — szablon „dotyczy: {vendor_document_number}"
+            // ma zawsze coś sensownego, a nie pustkę w mailu.
+            vendor_document_number: blank(vendorSideNumber || ourNumber),
+            // Powiązane zapytanie — tylko PO powstałe z konwersji
+            // (converted_from_rfq_id). Dla PO kupionego wprost oraz dla
+            // samego RFQ obie są puste i token renderuje się jako pusty
+            // string (jest w `vars`, więc applyTemplate podstawia '', a
+            // nie zostawia literału). Świadomie BEZ fallbacku na numer
+            // tego dokumentu — to numer innego dokumentu niż ten, o
+            // którym idzie wiadomość, więc podstawienie naszego byłoby
+            // mylące.
+            rfq_number:           blank(d.rfqNumber),
+            rfq_vendor_document_number: blank(d.rfqVendorReference),
             document_comment:      blank(d.comment),
             // Wartość z kroku 3 (jeszcze niezapisana) dla bieżącego typu;
             // drugi typ nie ma tu sensu, więc zostaje z dokumentu.
@@ -1315,7 +1469,7 @@ $(function () {
             // na zewnątrz, edycja wnętrza ich nie psuje).
             items: AtteItemsFormat.wrapItems(AtteItemsFormat.plainText(
                 lines,
-                { documentNumber: blank(d.number || (d.id ? '#' + d.id : '')) }
+                { documentNumber: ourNumber }
             )),
         };
     }
@@ -1328,7 +1482,10 @@ $(function () {
     // w tej sesji kreatora, nic się nie zapisuje do bazy.
     //
     // Pełny łańcuch rozstrzygania: wybór z pickera → preferencja
-    // dostawcy → PIERWSZY szablon z katalogu → szablon systemowy PL
+    // dostawcy → GLOBALNY domyślny (isDefaultRfq / isDefaultPo dla
+    // bieżącego typu dokumentu — zawsze PODRZĘDNY wobec preferencji
+    // dostawcy, więc wchodzi do gry tylko gdy preferencja nie trafiła
+    // w katalog) → PIERWSZY szablon z katalogu → szablon systemowy PL
     // (ten ostatni wyłącznie wtedy, gdy katalog nie ma nic dla
     // bieżącego typu dokumentu).
 
@@ -1378,10 +1535,25 @@ $(function () {
             }
         }
 
-        // Brak preferencji — albo preferencja wskazuje szablon spoza
-        // katalogu (dezaktywowany, albo nie dla tego typu dokumentu) →
-        // pierwsza pozycja listy. Dzięki temu picker i treść wiadomości
-        // zawsze pokazują to samo.
+        // Brak trafienia w preferencję dostawcy (albo preferencja
+        // wskazuje szablon spoza katalogu) → szukamy globalnego
+        // domyślnego dla bieżącego typu dokumentu. Flagi
+        // isDefaultRfq / isDefaultPo przychodzą z loadera; starsze
+        // snapshoty mogą ich nie mieć, więc nie zakładamy, że klucz
+        // istnieje — Boolean(…) zamienia undefined / null / 0 w false
+        // bez rzucania. Ten domyślny jest ZAWSZE podrzędny wobec
+        // preferencji dostawcy, więc korzystamy z niego tylko gdy `hit`
+        // jest pusty.
+        if (!hit) {
+            const defaultFlagKey = (DOC_TYPE === 'rfq') ? 'isDefaultRfq' : 'isDefaultPo';
+            hit = drafts.find(function (dr) {
+                return Boolean(dr[defaultFlagKey]);
+            });
+        }
+
+        // Żadna preferencja, żaden globalny domyślny (albo oba wskazują
+        // szablon spoza katalogu) → pierwsza pozycja listy. Dzięki
+        // temu picker i treść wiadomości zawsze pokazują to samo.
         applySelectedDraft(hit || drafts[0]);
     }
 
@@ -1560,6 +1732,7 @@ $(function () {
      * Używana tylko w meta nagłówka „Szczegóły".
      */
     function plPlural(n, one, few, many) {
+        n = Math.abs(n);
         if (n === 1) return one;
         const m10 = n % 10;
         const m100 = n % 100;
@@ -1592,6 +1765,15 @@ $(function () {
         const lines  = d.lines || [];
         const date   = step4ExpectedDate();
 
+        // Odległość od daty wysyłki (ta sama baza i diff co w kroku 3). Pusta data / zły format → ''.
+        const dateDaysHtml = function (ymd) {
+            if (!ymd) return '';
+            const n = diffDaysYmd(sendBaseDateYmd(), ymd);
+            if (isNaN(n)) return '';
+            const txt = n >= 0 ? plUnit(n, 'dzień', 'dni', 'dni') : plUnit(-n, 'dzień', 'dni', 'dni') + ' temu';
+            return ' <span class="send-ctx-days">(' + txt + ')</span>';
+        };
+
         const item = function (label, valueHtml, extraClass) {
             return '<div class="send-context-item' + (extraClass ? ' ' + extraClass : '') + '">'
                 + '<dt class="send-context-label">' + escapeHtml(label) + '</dt>'
@@ -1609,7 +1791,7 @@ $(function () {
             + item('Wartość', step4MoneyHtml(), 'send-context-money')
             + item(step4ExpectedLabel(),
                    date
-                       ? '<strong>' + escapeHtml(date) + '</strong>'
+                       ? '<strong>' + escapeHtml(date) + '</strong>' + dateDaysHtml(date)
                        : '<span class="text-muted">nie podano</span>')
         + '</dl>';
     }
@@ -1936,9 +2118,18 @@ $(function () {
         const selectedId = known ? state.selectedDraftId : drafts[0].id;
 
         const optionsHtml = drafts.map(function (dr) {
+            // Opcja oznaczona jako globalny domyślny dla bieżącego
+            // typu dokumentu dostaje w pickierze dopisek „(domyślny)”
+            // — tylko wtedy, gdy NIE jest aktualnie zaznaczona
+            // (aktywny wybór sam w sobie jest wizualną wskazówką;
+            // podwajanie byłoby szumem). Starsze snapshoty mogą nie
+            // mieć tej kolumny — Boolean(…) toleruje brak klucza.
+            const defaultFlagKey = (DOC_TYPE === 'rfq') ? 'isDefaultRfq' : 'isDefaultPo';
+            const isGlobalDefault = Boolean(dr[defaultFlagKey]);
+            const labelSuffix = (isGlobalDefault && dr.id !== selectedId) ? ' (domyślny)' : '';
             return '<option value="' + dr.id + '"'
                 + (selectedId === dr.id ? ' selected' : '') + '>'
-                + escapeHtml(dr.name)
+                + escapeHtml(dr.name + labelSuffix)
             + '</option>';
         }).join('');
 
@@ -2672,6 +2863,9 @@ $(function () {
         { group: 'Dostawca', name: 'vendor_contact_email',   label: 'E-mail osoby kontaktowej' },
         { group: 'Dokument', name: 'document_type',          label: 'Typ dokumentu' },
         { group: 'Dokument', name: 'document_number',        label: 'Numer dokumentu' },
+        { group: 'Dokument', name: 'vendor_document_number', label: 'Numer dokumentu u dostawcy' },
+        { group: 'Zapytanie', name: 'rfq_number',       label: 'Numer powiązanego zapytania' },
+        { group: 'Zapytanie', name: 'rfq_vendor_document_number', label: 'Numer zapytania u dostawcy' },
         { group: 'Dokument', name: 'document_comment',       label: 'Komentarz z nagłówka dokumentu' },
         { group: 'Daty',     name: 'expected_reply_date',    label: 'Oczekiwany termin odpowiedzi' },
         { group: 'Daty',     name: 'expected_delivery_date', label: 'Oczekiwany termin dostawy' },
