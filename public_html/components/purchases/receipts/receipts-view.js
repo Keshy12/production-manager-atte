@@ -144,6 +144,14 @@ $(document).ready(function () {
             + '/purchase/receipts/view?id=' + encodeURIComponent(id);
     }
 
+    // Ekran zamówienia (formularz PO) — cel kliknięcia w numer PO na
+    // kolejce. Ścieżka ta sama, którą buduje documents-view.js dla
+    // typu 'po', więc obie listy prowadzą do tego samego miejsca.
+    function editUrl(poId) {
+        return window.location.origin + ROOT_DIR
+            + '/admin/purchase/documents/edit?id=' + encodeURIComponent(poId) + '&type=po';
+    }
+
     // Klik w wiersz działa jak link: Ctrl/Cmd otwiera w nowej karcie,
     // a zaznaczanie tekstu w wierszu (kopiowanie numeru) nie nawiguje.
     function followRowLink(e, url) {
@@ -401,7 +409,15 @@ $(document).ready(function () {
         const canRx = p.canReceive !== false;
         const poLabel = p.poNumber || ('#' + poId);
 
-        let numberCell = '<div class="rx-po-number">' + esc(poLabel) + '</div>';
+        // Numer PO jest JAWNYM linkiem do ekranu zamówienia — jedynym
+        // klikalnym fragmentem wiersza. Bez tego (kiedy klik w cały wiersz
+        // prowadził do formularza) operator nie miał jak dostać się do
+        // zamówienia, a wyjątek „sent" blokował nawigację w ogóle.
+        // Zwykły <a href> zamiast delegacji na .queue-row: działa z
+        // Ctrl/Cmd (nowa karta), nie interceptujemy zaznaczania tekstu,
+        // a focus klawiaturowy i kopia w kontekstowym dostaje za darmo.
+        let numberCell = '<a class="rx-po-number rx-po-number--link" href="'
+                       + escAttr(editUrl(poId)) + '">' + esc(poLabel) + '</a>';
         numberCell += p.vendorPoNumber
             ? '<div class="rx-sub">Nr u dostawcy: ' + esc(p.vendorPoNumber) + '</div>'
             : '<div class="rx-sub text-faint">brak nr u dostawcy</div>';
@@ -619,13 +635,17 @@ $(document).ready(function () {
         applyQueueFilters();
     });
 
-    // Klik w wiersz (poza linkami/przyciskami) → formularz przyjęcia.
-    // Wiersze `sent` (.queue-row-pending) nie prowadzą do formularza.
-    $(document).on('click', '.queue-row', function (e) {
-        if ($(this).hasClass('queue-row-pending')) return;
-        if ($(e.target).closest('a, button, input, label').length) return;
-        followRowLink(e, receiveUrl(parseInt($(this).attr('data-po-id'), 10)));
-    });
+    // Wiersz kolejki NIE jest klikalny. Kolejka ma w komórce akcji
+    // dwa przyciski („Przyjmij towar" + kosz) i kilka pól do odczytu —
+    // kliknięcie w losowy fragment wiersza nie ma żadnego sensownego
+    // domyślnienia, a przy „niespodziewanej" nawigacji operator traci
+    // formularz, który właśnie wypełniał. Wyjątkiem jest numer PO:
+    // to jawny link do ekranu zamówienia (patrz queueRowHtml), dzięki
+    // któremu da się tam trafić także z wiersza `sent`.
+    //
+    // followRowLink() zostaje, bo nadal zasila klik w wierszach
+    // HISTORII przyjęć — tam klikalność całego wiersza jest w porządku
+    // i została podyktowana inną potrzebą (podgląd przyjęcia).
 
     // =====================================================================
     // ZAKŁADKA 2 — historia przyjęć

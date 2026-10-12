@@ -459,13 +459,15 @@
 .rx-page .is-later,
 .rx-page .is-nodate  { --rx-tone: #d3dae3; }
 
-.queue-row:not(.queue-row-pending) { cursor: pointer; }
-.queue-row:not(.queue-row-pending):hover { background: var(--rx-hover); }
-.queue-row:not(.queue-row-pending):hover .rx-po-number { color: var(--rx-accent-ink); }
+/* Wiersz kolejki NIE jest klikalny — brak `cursor: pointer` i brak
+   tła pod hoverem. Jedynym klikalnym fragmentem jest numer PO (link do
+   ekranu zamówienia); podświetlenie wiersza sugerowałoby akcję, której
+   nie ma, a operator myślałby, że kliknie gdziekolwiek i trafi tam, gdzie
+   chciał. Hover zostaje wyłącznie na samym linku, niżej. */
 
-/* `sent` — czeka na potwierdzenie dostawcy: wiersz nie prowadzi do
-   formularza. Delikatne kreskowanie zamiast przygaszenia — tekst
-   zostaje czytelny, a różnica widoczna na pierwszy rzut oka. */
+/* `sent` — czeka na potwierdzenie dostawcy. Delikatne kreskowanie
+   zamiast przygaszenia — tekst zostaje czytelny, a różnica widoczna na
+   pierwszy rzut oka. */
 .queue-row-pending {
     background-image: repeating-linear-gradient(-45deg, transparent 0 9px, rgba(111, 66, 193, .035) 9px 18px);
 }
@@ -481,6 +483,22 @@
     color: var(--rx-ink);
     overflow-wrap: anywhere;
     transition: color .12s ease;
+}
+/* Numer PO jako link do ekranu zamówienia — jedyny klikalny fragment
+   wiersza kolejki. Podkreślenie tylko na hover/focus, żeby kolumna nie
+   wyglądała jak lista linków, ale pod myszą było widać, że to cel. */
+.rx-po-number--link {
+    display: inline-block;
+    text-decoration: none;
+}
+.rx-po-number--link:hover,
+.rx-po-number--link:focus {
+    color: var(--rx-accent-ink);
+    text-decoration: underline;
+}
+.rx-po-number--link:focus-visible {
+    outline: 2px solid var(--rx-accent-ink);
+    outline-offset: 2px;
 }
 .rx-vendor { font-weight: 500; overflow-wrap: anywhere; }
 .rx-date-main { font-weight: 600; font-variant-numeric: tabular-nums; }
