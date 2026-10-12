@@ -1238,14 +1238,18 @@ a.rx-timeline-doc { color: var(--rx-accent-ink); }
  * Odstęp między nimi daje wyłącznie `gap` na .rx-action-cell — przycisk
  * nie ma własnego marginesu, bo podwoiłby gap.
  *
- * Wysokość: dziedziczona z `.btn-sm` (BS4 ~31px). Wcześniejsza reguła
- * `height: calc(2rem + 2px)` (~34px) była o 3px wyższa niż sąsiedni
- * `btn btn-sm rx-btn-quiet` Edytuj/Podgląd, przez co kosz optycznie
- * „wystawał" ponad wiersz. Stałe `width: 2rem` + `padding: 0` wystarczą
- * dla kwadratowego obrysu — pion przejmie metryka `.btn-sm`. */
+ * Wysokość: dziedziczona z `.btn-sm` (BS4 ~31px). Dwie wcześniejsze
+ * próby były złe: `height: calc(2rem + 2px)` (~34px) była o 3px za
+ * wysoka, a `padding: 0` zerowała padding PIONOWY i zostawiała ~23px,
+ * czyli przycisk był niższy niż Edytuj / Przyjmij towar obok niego.
+ *
+ * Teraz: `width` stałe (kwadratowy obrys) +zerowanie TYLKO paddingu
+ * poziomego. Padding pionowy zostaje z `.btn-sm`, więc wysokość jest
+ * identyczna z sąsiednimi przyciskami bez magicznych liczb. */
 .rx-close-po-btn {
     width: 2rem;
-    padding: 0;
+    padding-left: 0;
+    padding-right: 0;
     display: inline-flex;
     align-items: center;
     justify-content: center;
