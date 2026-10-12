@@ -306,8 +306,25 @@ function formatPrice($v) {
                         }
                     ?>
                     <?php if ($cancelAction !== null): ?>
+                        <?php
+                            // Etykieta mówi dokładnie to, co się stanie.
+                            // "Zamknij zamówienie" dla wariantu z wyborem
+                            // stanu (Odebrane / Anulowane) — tam operator
+                            // realnie cofa dokument. W wariancie prostego
+                            // anulowania nie ma wyboru, więc nie ma czego
+                            // "zamykać": mówimy wprost "Anuluj", a dla RFQ
+                            // "Anuluj zapytanie", bo to nie jest zamówienie.
+                            $cancelLabel = 'Anuluj dokument';
+                            $cancelIcon  = 'bi-x-circle';
+                            if ($cancelAction === 'close') {
+                                $cancelLabel = 'Zamknij zamówienie';
+                                $cancelIcon  = 'bi-slash-circle';
+                            } elseif ($type === 'rfq') {
+                                $cancelLabel = 'Anuluj zapytanie';
+                            }
+                        ?>
                         <button type="button"
-                                class="btn btn-sm btn-outline-danger rx-close-po-btn"
+                                class="btn btn-sm btn-outline-danger"
                                 data-action="<?= $cancelAction === 'close' ? 'close-po' : 'cancel-po' ?>"
                                 data-po-id="<?= (int)$doc->id ?>"
                                 data-po-number="<?= htmlspecialchars($docNumber, ENT_QUOTES) ?>"
@@ -317,10 +334,10 @@ function formatPrice($v) {
                                 data-received-qty="<?= htmlspecialchars((string)$cancelReceived, ENT_QUOTES) ?>"
                                 data-line-count="<?= (int)$cancelLineCount ?>"
                                 title="<?= $cancelAction === 'close'
-                                    ? 'Zamknij zamówienie (odebrane albo anulowane)'
-                                    : 'Anuluj dokument' ?>"
-                                aria-label="<?= $cancelAction === 'close' ? 'Zamknij zamówienie' : 'Anuluj dokument' ?>">
-                            <i class="bi bi-trash"></i>
+                                    ? 'Zamknij zamówienie — odebrane albo anulowane'
+                                    : $cancelLabel ?>"
+                                aria-label="<?= htmlspecialchars($cancelLabel, ENT_QUOTES) ?>">
+                            <i class="bi <?= $cancelIcon ?>"></i> <?= htmlspecialchars($cancelLabel, ENT_QUOTES) ?>
                         </button>
                     <?php endif; ?>
                     <?php if ($sendButton !== null): ?>
