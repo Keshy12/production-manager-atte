@@ -1025,11 +1025,39 @@ class PurchaseActionHandler {
                 $documentNumber = $this->allocateDocumentNumber('grn', 0);
             }
 
-            // 5.1 Resolve input_type_id (prefer a 'purchase%' row, fall back to id=1).
+            // 5.1 Resolve input_type_id.
+            //
+            // Resolution order (most-specific first):
+            //   1. exact name 'Przyjęcie z zamówienia PO'  — the new
+            //      production label inserted by
+            //      migrate-production-to-purchase-schema.php
+            //   2. name LIKE 'purchase%'                   — legacy
+            //      "Przyjęcie z purchase order ..." rows from older
+            //      installs
+            //   3. exact name 'Przyjecie z zamowienia PO'   — ASCII
+            //      fallback created by the dev DB's old migration
+            //      (Polish diacritics were stripped)
+            //   4. id = 1 fallback                          — keeps the
+            //      historical "Aktualizacja z Google Sheets" row
+            //      resolvable so dev doesn't break on a fresh DB
+            //      without the new label
+            //
+            // Implemented as one prepared statement with an ORDER BY
+            // CASE that maps each match to a priority (0..3) and
+            // breaks ties on id ASC so the pick is deterministic.
             $typeStmt = $MsaDB->db->prepare(
                 "SELECT id FROM `inventory__input_type`
-                 WHERE name LIKE 'purchase%' OR id = 1
-                 ORDER BY (name LIKE 'purchase%') DESC, id ASC
+                 WHERE name LIKE 'purchase%'
+                    OR name = 'Przyjęcie z zamówienia PO'
+                    OR name = 'Przyjecie z zamowienia PO'
+                    OR id = 1
+                 ORDER BY CASE
+                            WHEN name = 'Przyjęcie z zamówienia PO' THEN 0
+                            WHEN name LIKE 'purchase%'              THEN 1
+                            WHEN name = 'Przyjecie z zamowienia PO' THEN 2
+                            ELSE 3
+                          END ASC,
+                          id ASC
                  LIMIT 1"
             );
             $typeStmt->execute();
