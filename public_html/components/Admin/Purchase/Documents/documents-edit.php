@@ -256,6 +256,73 @@ function formatPrice($v) {
                     renderuje <a> do tej strony zamiast do wizarda send.
                 -->
                 <div class="rx-dochead-actions rx-no-print">
+                    <?php
+                        // Przycisk anulowania — NAJLEWIEJ w grupie akcji,
+                        // przed "Wyślij"/"Potwierdź odbiór" i "Przyjmij towar".
+                        // Kolejność jest tu functionalna: "Wróć" zostaje
+                        // skrajnie prawa (wyjście z ekranu), operacja
+                        // odwracalna w ramach sesji (zapisz/wyślij) jest
+                        // obok, a nieodwracalna (anulowanie) najdalej od
+                        // przycisków, po które się sięga reflexowo.
+                        //
+                        // Który modal? closePoFromReceive() przyjmuje
+                        // confirmed/in_progress/partially_received i pozwala
+                        // wybrać „Odebrane" albo „Anulowane" — czyli dokładnie
+                        // pytanie, które operator ma przy częściowej dostawie.
+                        // `sent` i `draft` są poza jego zasięgiem (i tak nie
+                        // ma się czego „zamykać jako odebrane"), więc idą
+                        // prostym oknem anulowania. Stany terminalne
+                        // (received / cancelled / converted) nie dostają
+                        // przycisku w ogóle — anulowanie byłoby bezprzedmiotowe.
+                        //
+                        // $cancelAction: 'close' (wybór stanu) albo 'cancel'.
+                        $cancelAction = null;
+                        if ($type === 'po') {
+                            if (in_array($doc->state, ['confirmed', 'in_progress', 'partially_received'], true)) {
+                                $cancelAction = 'close';
+                            } elseif (in_array($doc->state, ['draft', 'sent'], true)) {
+                                $cancelAction = 'cancel';
+                            }
+                        } else { // rfq
+                            // cancelRfq() odrzuca tylko stany terminalne.
+                            if (in_array($doc->state, ['draft', 'sent', 'responded'], true)) {
+                                $cancelAction = 'cancel';
+                            }
+                        }
+
+                        // Agregaty do okna „Zamknij zamówienie". Bez nich
+                        // modal pokazałby „przyjęto 0 z 0", co przy
+                        // częściowo odebranym zamówieniu jest po prostu
+                        // kłamstwem. $items jest już pobrane (linia ~70).
+                        $cancelOrdered = 0.0;
+                        $cancelReceived = 0.0;
+                        $cancelLineCount = 0;
+                        if ($type === 'po') {
+                            foreach ($items as $ci) {
+                                $cancelOrdered   += (float)$ci->quantity;
+                                $cancelReceived += (float)$ci->quantityReceived;
+                                $cancelLineCount++;
+                            }
+                        }
+                    ?>
+                    <?php if ($cancelAction !== null): ?>
+                        <button type="button"
+                                class="btn btn-sm btn-outline-danger rx-close-po-btn"
+                                data-action="<?= $cancelAction === 'close' ? 'close-po' : 'cancel-po' ?>"
+                                data-po-id="<?= (int)$doc->id ?>"
+                                data-po-number="<?= htmlspecialchars($docNumber, ENT_QUOTES) ?>"
+                                data-doc-type="<?= $type ?>"
+                                data-back-url="<?= htmlspecialchars('http://' . BASEURL . '/purchase/documents', ENT_QUOTES) ?>"
+                                data-ordered-qty="<?= htmlspecialchars((string)$cancelOrdered, ENT_QUOTES) ?>"
+                                data-received-qty="<?= htmlspecialchars((string)$cancelReceived, ENT_QUOTES) ?>"
+                                data-line-count="<?= (int)$cancelLineCount ?>"
+                                title="<?= $cancelAction === 'close'
+                                    ? 'Zamknij zamówienie (odebrane albo anulowane)'
+                                    : 'Anuluj dokument' ?>"
+                                aria-label="<?= $cancelAction === 'close' ? 'Zamknij zamówienie' : 'Anuluj dokument' ?>">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    <?php endif; ?>
                     <?php if ($sendButton !== null): ?>
                         <?php if (($sendButton['action'] ?? '') === 'confirm-po'): ?>
                             <button type="button"
@@ -946,3 +1013,14 @@ function formatPrice($v) {
 ?>
 <link rel="stylesheet" href="<?= htmlspecialchars(asset('public_html/components/purchases/documents/confirm-po-modal.css'), ENT_QUOTES) ?>">
 <script src="<?= htmlspecialchars(asset('public_html/components/purchases/documents/confirm-po-modal.js'), ENT_QUOTES) ?>"></script>
+
+<?php
+    // Okna „Zamknij zamówienie" / „Anuluj dokument" — te same, co na
+    // kolejce przyjęć i na liście dokumentów (jeden partial, trzy strony).
+    // $withCancel = true, bo przycisk w headerze potrzebuje obu wariantów:
+    // wyboru stanu dla confirmed/in_progress/partially_received oraz
+    // prostego potwierdzenia dla draft/sent i dla RFQ.
+    $withCancel = true;
+    include __DIR__ . '/../../../purchases/receipts/close-po-modal.php';
+?>
+<script src="<?= htmlspecialchars(asset('public_html/components/purchases/receipts/close-po.js'), ENT_QUOTES) ?>"></script>
