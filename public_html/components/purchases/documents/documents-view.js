@@ -581,10 +581,11 @@ $(document).ready(function () {
         }
         const priced = breakdown.filter(function (b) { return parseFloat(b.total) !== 0; });
         if (priced.length === 0) {
-            // "----" zamiast słownego "bez cen": kolumna Wartość trzyma się
-            // jednej szerokości, a seria myślników wyrównuje się wizualnie
-            // z sumami wyżej i niżej. Bezpieczeństwo nadal w title.
-            return '<span class="rx-sub dx-noprice" title="Pozycje nie mają jeszcze cen">----</span>';
+            // Ten sam znacznik co na ekranie dokumentu (`—` w text-muted),
+            // żeby pusta kolumna Wartość wyglądała identycznie w obu
+            // miejscach. Wcześniej było tu "----" w dx-noprice — reguła
+            // .dx-noprice zniknęła razem z tym znacznikiem.
+            return '<span class="text-muted">—</span>';
         }
         return priced.map(function (b) {
             return '<div class="dx-money">' + esc(fmtMoney(b.total))

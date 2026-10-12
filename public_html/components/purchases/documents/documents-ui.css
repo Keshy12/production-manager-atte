@@ -366,7 +366,6 @@
 }
 .dx-page .dx-money + .dx-money { margin-top: .1rem; }
 .dx-page .dx-cur { font-size: .74rem; font-weight: 600; color: var(--rx-muted); }
-.dx-page .dx-noprice { font-style: italic; }
 
 
 /* ---- Węższe ekrany: każdy dokument to karta ------------------------ */
