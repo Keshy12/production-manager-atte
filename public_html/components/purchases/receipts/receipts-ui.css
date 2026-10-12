@@ -1084,3 +1084,157 @@ a.rx-timeline-doc { color: var(--rx-accent-ink); }
         print-color-adjust: exact;
     }
 }
+
+
+/* ---- Współdzielone okna „Zamknij zamówienie" / „Anuluj zamówienie" ----
+ *
+ * Reguły te były pierwotnie w receipts.css (plik tylko dla formularza
+ * przyjęcia). Kolejka „Do przyjęcia" na /purchase/receipts potrzebuje
+ * tych samych modali (kosz przy każdym wierszu), a ten stylesheet
+ * ładuje zarówno formularz, jak i kolejkę. Wyjątek —
+ * .receipt-actionbar.receipt-step-locked #receiveClosePoBtn
+ * re-enable dla przycisku w pasku akcji — zostaje w receipts.css,
+ * bo dotyczy tylko formularza.
+ *
+ * Konwencja nazw: prefiks .receipt-close-* dla modala „Zamknij",
+ * .receipt-cancel-* dla modala „Anuluj". Stary selektor :has()
+ * zastąpiony klasą .is-selected (togglowaną przez close-po.js) —
+ * starsze przeglądarki (Chrome <105, Safari <15.4, Firefox <121)
+ * w ogóle nie obsługują :has(). */
+
+/* Mirror .receipt-short-saved — operator musi wiedzieć, na jakim
+   PO właśnie decyduje. Numer PO ma być pierwszą rzeczą, którą
+   widzi po otwarciu okna. */
+.receipt-close-summary {
+    color: #1e7e34;
+    font-weight: 600;
+}
+.receipt-close-summary .bi { margin-right: .25rem; }
+
+/* Ten sam język co .receipt-short-heading — etykieta sekcji drobnym
+   drukiem, wartości (lista pozycji) niżej. */
+.receipt-close-heading {
+    font-size: .75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: #6b7785;
+    margin-bottom: .35rem;
+}
+
+/* Lista pozycji jeszcze nie w pełni odebranych — ten sam układ
+   trójkolumnowy co .receipt-short-row (nr dostawcy / nazwa /
+   „przyjęto A z B"). Osobna klasa z prefiksem receipt-close-, żeby
+   nie walczyła z .receipt-short-row, gdy oba okna kiedyś współistnieją
+   w kodzie lub w cache przeglądarki. */
+.receipt-close-list {
+    max-height: 40vh;
+    overflow-y: auto;
+    border: 1px solid #e9ecef;
+    border-radius: .25rem;
+}
+.receipt-close-row {
+    display: grid;
+    grid-template-columns: minmax(6rem, 9rem) minmax(0, 1fr) auto;
+    align-items: baseline;
+    gap: .75rem;
+    padding: .5rem .75rem;
+    font-size: .875rem;
+}
+.receipt-close-row + .receipt-close-row { border-top: 1px solid #f1f3f5; }
+.receipt-close-no   { font-family: SFMono-Regular, Menlo, Consolas, monospace; font-weight: 700; overflow-wrap: anywhere; }
+.receipt-close-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.receipt-close-qty  { text-align: right; white-space: nowrap; color: #495057; }
+/* Dopisek „+ N więcej pozycji" pod listą przyciętą do 5 wierszy —
+   ten sam ton co .rx-progress-sub (szary, drobny druk). */
+.receipt-close-more {
+    font-size: .75rem;
+    color: #6b7785;
+    padding: .35rem .75rem .25rem;
+}
+
+/* Radio „Odebrane / Anulowane" — duże, klikalne pole, opis pomocniczy
+   pod etykietą. Ten sam układ pionowy co .receipt-short-choice, ale
+   bez flex-direction: column — radio po lewej, etykieta + opis po
+   prawej w jednym rzędzie, łamanie na wąskim ekranie. */
+.receipt-close-option {
+    display: flex;
+    align-items: flex-start;
+    gap: .5rem;
+    padding: .5rem .75rem;
+    border: 1px solid #e3e6ea;
+    border-radius: .25rem;
+    cursor: pointer;
+    transition: background-color .12s ease, border-color .12s ease;
+}
+.receipt-close-option + .receipt-close-option { margin-top: .25rem; }
+.receipt-close-option:hover { background-color: #f8f9fa; }
+.receipt-close-option input[type="radio"] {
+    margin-top: .2rem;
+    flex-shrink: 0;
+}
+.receipt-close-option-body {
+    display: flex;
+    flex-direction: column;
+    gap: .15rem;
+    min-width: 0;
+}
+.receipt-close-option-label { font-weight: 600; }
+.receipt-close-option input[type="radio"]:checked ~ .receipt-close-option-body {
+    /* Delikatne wyróżnienie wybranej opcji — bez niej operator nie
+       wie, czy radio faktycznie zaznaczył, bo w Bootstrap 4 natywny
+       wygląd jest dość dyskretny. */
+    color: #212529;
+}
+/* Podświetlenie wybranej opcji — klasa .is-selected togglowana
+   przez close-po.js (zamiast :has()). */
+.receipt-close-option.is-selected {
+    border-color: #ffc107;
+    background-color: #fff8e1;
+}
+
+/* Modal „Anuluj zamówienie" (prosty wariant, dla wierszy `sent`). */
+.receipt-cancel-summary { font-size: .95rem; }
+
+@media (max-width: 575.98px) {
+    .receipt-close-row { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
+    .receipt-close-qty { text-align: left; white-space: normal; }
+}
+
+
+/* ---- Kolejka: przycisk-kosz w kolumnie Akcja ----------------------
+ *
+ * Kompaktowy kwadratowy hit-area (ikona + minimalny padding), wyrównany
+ * w pionie do sąsiedniego .btn-sm. Kosz stoi PRZED przyciskiem głównym —
+ * jest wyjątkiem od codziennego toku, więc nie może być jego wizualnym
+ * „następstwem" (kliknięcie tu ma być mniej kuszące niż „Przyjmij towar").
+ *
+ * Odstęp między nimi daje wyłącznie `gap` na .rx-action-cell — przycisk
+ * nie ma własnego marginesu, bo podwoiłby gap. */
+.rx-close-po-btn {
+    width: 2rem;
+    height: calc(2rem + 2px); /* match BS4 btn-sm vertical metrics */
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.rx-action-cell {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: .3rem;
+    white-space: nowrap;
+}
+
+/* Na wąskich ekranach układamy przyciski jeden pod drugim, żeby
+   dłuższa etykieta „Dokończ przyjęcie" nie wyciskała kosza poza
+   komórkę. */
+@media (max-width: 575.98px) {
+    .rx-action-cell {
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    }
+}
