@@ -276,3 +276,15 @@ $baseUrl = 'http://' . BASEURL;
 <script src="<?= htmlspecialchars(asset('public_html/components/purchases/documents/documents-view.js'), ENT_QUOTES) ?>"></script>
 <script src="<?= htmlspecialchars(asset('public_html/components/purchases/documents/confirm-po-modal.js'), ENT_QUOTES) ?>"></script>
 <script src="<?= htmlspecialchars(asset('public_html/components/purchases/receipts/close-po.js'), ENT_QUOTES) ?>"></script>
+<script src="<?= htmlspecialchars(asset('public_html/components/purchases/documents/rfq-convert.js'), ENT_QUOTES) ?>"></script>
+
+<?php
+    // Modal „Utworzyć zamówienie z odpowiedzi?" (RFQ → PO) — ten sam
+    // partial jest też dołączany w /admin/purchase/documents/edit
+    // (jeden egzemplarz na stronę, identyfikatory statyczne). CTA
+    // „Utwórz zamówienie z odpowiedzi" jest też emitowany w dropdown-
+    // menu w wierszu RFQ `responded` (patrz documents-view.js →
+    // actionMenuItemsHtml). Renderowany RAZ, poza pętlą wierszy,
+    // bo to singleton modal.
+    include __DIR__ . '/rfq-convert-modal.php';
+?>

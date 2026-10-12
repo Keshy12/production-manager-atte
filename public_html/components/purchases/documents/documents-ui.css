@@ -267,7 +267,6 @@
     --dx-type: transparent;
     position: relative;
     border-top: 1px solid var(--rx-line-soft);
-    cursor: pointer;
     transition: background-color .12s ease;
 }
 .dx-page .dx-list > .dx-row:first-child { border-top: 0; }
@@ -282,8 +281,6 @@
 }
 .dx-page .dx-row.is-rfq { --dx-type: var(--dx-rfq); }
 .dx-page .dx-row.is-po  { --dx-type: var(--dx-po); }
-.dx-page .dx-row:hover { background: var(--rx-hover); }
-.dx-page .dx-row:hover .dx-number { color: var(--rx-accent-ink); }
 
 /* Anulowane: przygaszone, ale czytelne (akcje bez zmian). Typ zostaje
    widoczny — krawędź tylko blednie, nie przechodzi w szarość. */

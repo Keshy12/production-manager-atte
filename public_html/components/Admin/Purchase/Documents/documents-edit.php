@@ -406,9 +406,11 @@ function formatPrice($v) {
                             "Utwórz zamówienie" w koszyku (cart-view.js).
                         -->
                         <button type="button"
-                                id="rfq-convert-btn"
                                 class="btn btn-success btn-sm"
-                                data-rfq-id="<?= (int)$id ?>">
+                                data-action="rfq-convert"
+                                data-rfq-id="<?= (int)$id ?>"
+                                data-rfq-number="<?= htmlspecialchars($docNumber, ENT_QUOTES) ?>"
+                                data-rfq-vendor-name="<?= htmlspecialchars((string)($doc->vendorName ?? ''), ENT_QUOTES) ?>">
                             <i class="bi bi-cart-check"></i> Utwórz zamówienie z odpowiedzi
                         </button>
                     <?php endif; ?>
@@ -922,40 +924,13 @@ function formatPrice($v) {
 
 <?php if ($type === 'rfq' && $doc->state === 'responded'): ?>
 <!--
-    Potwierdzenie konwersji RFQ → PO. Otwierane przez #rfq-convert-btn
-    (documents-edit.js); dopiero [Utwórz zamówienie] wysyła POST do
-    document-rfq-convert-ajax.php.
+    Modal „Utworzyć zamówienie z odpowiedzi?" (RFQ → PO) — ten sam
+    partial jest też dołączany w /purchase/documents (jeden egzemplarz
+    na stronę, identyfikatory statyczne). Logika (delegowany handler
+    [data-action="rfq-convert"], AJAX, redirect) żyje w
+    rfq-convert.js.
 -->
-<div class="modal fade dx-modal" id="rfqConvertModal" tabindex="-1" role="dialog" aria-labelledby="rfqConvertModalTitle" aria-hidden="true">
-    <div class="modal-dialog" role="document">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="rfqConvertModalTitle">Utworzyć zamówienie z odpowiedzi?</h5>
-                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-                    <span aria-hidden="true">&times;</span>
-                </button>
-            </div>
-            <div class="modal-body">
-                <p class="mb-2">Na podstawie zapytania <strong><?= htmlspecialchars($docNumber) ?></strong>
-                    zostanie utworzone nowe zamówienie
-                    <?php if (!empty($doc->vendorName)): ?>
-                        dla dostawcy <strong><?= htmlspecialchars($doc->vendorName) ?></strong>
-                    <?php endif; ?>.
-                </p>
-                <ul class="small text-muted mb-0 pl-3">
-                    <li>Pozycje zostaną skopiowane wraz z cenami z odpowiedzi dostawcy.</li>
-                    <li>Zapytanie przejdzie w stan „<?= htmlspecialchars($stateBadgeLabel['converted'] ?? 'skonwertowane na PO') ?>” i nie będzie można go już zmieniać.</li>
-                </ul>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-dismiss="modal">Anuluj</button>
-                <button type="button" class="btn btn-success" id="rfqConvertConfirm">
-                    <i class="bi bi-cart-check"></i> Utwórz zamówienie
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
+<?php include __DIR__ . '/../../../purchases/documents/rfq-convert-modal.php'; ?>
 <?php endif; ?>
 
 <!--
@@ -1044,3 +1019,4 @@ function formatPrice($v) {
     include __DIR__ . '/../../../purchases/receipts/close-po-modal.php';
 ?>
 <script src="<?= htmlspecialchars(asset('public_html/components/purchases/receipts/close-po.js'), ENT_QUOTES) ?>"></script>
+<script src="<?= htmlspecialchars(asset('public_html/components/purchases/documents/rfq-convert.js'), ENT_QUOTES) ?>"></script>

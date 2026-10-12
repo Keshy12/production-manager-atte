@@ -1,17 +1,17 @@
-/**
+﻿/**
  * Inline-edit + add-cascade for /admin/purchase/documents/edit items
  * table. Single script backs both RFQ and PO; type is read from the
  * URL query string (?type=rfq|po) and stamped on every AJAX payload.
  *
- * Click pencil on a row → qty, price, AND comment cells swap to
- * <input>/<textarea>; actions cell swaps to Save / Cancel. Save →
+ * Click pencil on a row â†’ qty, price, AND comment cells swap to
+ * <input>/<textarea>; actions cell swaps to Save / Cancel. Save â†’
  * AJAX POST to document-item-update.php (with type=rfq|po), refresh
- * the editable cells in place. Cancel → restore originals.
+ * the editable cells in place. Cancel â†’ restore originals.
  *
- * Trash button → Bootstrap modal confirm → AJAX POST to
- * document-item-delete.php (with type) → fade out + remove <tr>.
+ * Trash button â†’ Bootstrap modal confirm â†’ AJAX POST to
+ * document-item-delete.php (with type) â†’ fade out + remove <tr>.
  *
- * 'Dodaj pozycję' toggle opens a Part → VendorPart cascade picker
+ * 'Dodaj pozycjÄ™' toggle opens a Part â†’ VendorPart cascade picker
  * with packages/qty bidirectional binding, price + currency + comment
  * inputs, and Save that POSTs to document-item-add.php (with type).
  *
@@ -20,7 +20,7 @@
  * picked_pack_size) are echoed back from data-* attrs unchanged.
  *
  * Follows the project AJAX conventions (jQuery $.ajax with form-encoded
- * payload → $_POST on the server). PO-specific quantityReceived
+ * payload â†’ $_POST on the server). PO-specific quantityReceived
  * column is read-only and is rendered by the PHP on initial page
  * load; the inline save doesn't touch it (receipts are not affected
  * by item-level edits).
@@ -49,9 +49,9 @@ $(function () {
     // Mirror the PHP helpers in rfqs-edit.php so success-time cell refresh
     // produces the same display as the initial server render.
     function formatPrice(n) {
-        if (n === null || n === undefined || n === '') return '—';
+        if (n === null || n === undefined || n === '') return 'â€”';
         let v = parseFloat(n);
-        if (isNaN(v)) return '—';
+        if (isNaN(v)) return 'â€”';
         return String(+parseFloat(parseFloat(v).toFixed(4)).toString());
     }
     function escapeHtml(s) {
@@ -60,7 +60,7 @@ $(function () {
             .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
-    // Header "Oczekiwana odpowiedź" / "Planowana dostawa" date — saved on
+    // Header "Oczekiwana odpowiedÅº" / "Planowana dostawa" date â€” saved on
     // change; an emptied field clears the date. Reverts to the last saved
     // value if the server rejects it.
     const $expectedDate = $('#doc-expected-date');
@@ -78,7 +78,7 @@ $(function () {
         .done(function (r) {
             if (!r || !r.success) {
                 $input.val($input.data('saved'));
-                setAlert((r && r.error) || 'Błąd zapisu daty.', 'danger');
+                setAlert((r && r.error) || 'BÅ‚Ä…d zapisu daty.', 'danger');
                 return;
             }
             $input.data('saved', val);
@@ -86,14 +86,14 @@ $(function () {
         })
         .fail(function (xhr, status) {
             $input.val($input.data('saved'));
-            setAlert((xhr && xhr.responseJSON && xhr.responseJSON.error) || status || 'Błąd sieci.', 'danger');
+            setAlert((xhr && xhr.responseJSON && xhr.responseJSON.error) || status || 'BÅ‚Ä…d sieci.', 'danger');
         })
         .always(function () {
             $input.prop('disabled', false);
         });
     });
 
-    // Enter saves, Esc cancels — for the qty / price inputs.
+    // Enter saves, Esc cancels â€” for the qty / price inputs.
     $tbody.on('keydown', '.doc-edit-input', function (e) {
         if (e.key === 'Enter') {
             e.preventDefault();
@@ -104,7 +104,7 @@ $(function () {
         }
     });
     // Same shortcuts in the comment textarea (Enter alone inserts a newline
-    // — only Ctrl/Cmd+Enter saves; Esc still cancels).
+    // â€” only Ctrl/Cmd+Enter saves; Esc still cancels).
     $tbody.on('keydown', '.doc-edit-comment', function (e) {
         if (e.key === 'Escape') {
             e.preventDefault();
@@ -135,7 +135,7 @@ $(function () {
         $tr.data('orig-akcje-html',   $tr.find('td.doc-cell-akcje').html());
 
         // Swap qty cell. With-pack lines show qty input + packages input +
-        // pack badge, two-way synced — mirrors the cart's inline
+        // pack badge, two-way synced â€” mirrors the cart's inline
         // edit (and the picker). No-pack lines fall back to a bare
         // qty input.
         const pickedPack = parseFloat($tr.data('picked-pack-size'));
@@ -149,9 +149,9 @@ $(function () {
                 '<div class="d-flex align-items-center flex-wrap mt-1" style="gap:.25rem">' +
                     '<input type="number" step="1" min="0" class="form-control form-control-sm text-right doc-edit-input doc-edit-packages" ' +
                     'style="width:6em" value="' + escapeHtml(parseFloat(currentPkgs.toFixed(2))) + '" ' +
-                    'title="Opak. — qty jest wyliczane jako opak. × wielkość">' +
+                    'title="Opak. â€” qty jest wyliczane jako opak. Ã— wielkoÅ›Ä‡">' +
                     '<small class="text-muted">opak.</small>' +
-                    '<span class="badge badge-light border text-monospace" title="Wielkość opakowania (stała)">× ' + escapeHtml(AtteItemsFormat.formatQty(pickedPack)) + '</span>' +
+                    '<span class="badge badge-light border text-monospace" title="WielkoÅ›Ä‡ opakowania (staÅ‚a)">Ã— ' + escapeHtml(AtteItemsFormat.formatQty(pickedPack)) + '</span>' +
                 '</div>'
             );
             if (unitName) {
@@ -179,7 +179,7 @@ $(function () {
             '<textarea rows="2" class="form-control form-control-sm doc-edit-comment" placeholder="Komentarz pozycji...">' + escapeHtml(comment) + '</textarea>'
         );
 
-        // Swap actions cell — show only Save + Cancel while editing.
+        // Swap actions cell â€” show only Save + Cancel while editing.
         $tr.find('td.doc-cell-akcje').html(
             '<button type="button" class="btn btn-sm btn-success doc-row-save mr-1" title="Zapisz (Enter / Ctrl+Enter)"><i class="bi bi-check-lg"></i></button>' +
             '<button type="button" class="btn btn-sm btn-outline-secondary doc-row-cancel" title="Anuluj (Esc)"><i class="bi bi-x-lg"></i></button>'
@@ -188,8 +188,8 @@ $(function () {
         $tr.find('.doc-edit-qty').trigger('focus').trigger('select');
     });
 
-    // Two-way sync between qty input and packages input — mirrors the
-    // cart's inline edit + picker's Opak.↔Ilość pair. Whichever input
+    // Two-way sync between qty input and packages input â€” mirrors the
+    // cart's inline edit + picker's Opak.â†”IloÅ›Ä‡ pair. Whichever input
     // was edited gets the uneven-pack yellow flag; the other clears.
     function applyPackSync($source, isPackagesSource) {
         const $tr = $source.closest('tr');
@@ -205,7 +205,7 @@ $(function () {
         }
         const newQty  = isPackagesSource ? val * pack : val;
         const newPkgs = isPackagesSource ? val       : val / pack;
-        // Write to the OTHER input only — never bounce back into the
+        // Write to the OTHER input only â€” never bounce back into the
         // currently focused one (would steal caret + duplicate digits).
         if (isPackagesSource) {
             if (document.activeElement !== $qtyInput[0]) {
@@ -223,7 +223,7 @@ $(function () {
         } else {
             $source.addClass('packages-uneven').attr(
                 'title',
-                'Uwaga: ilość nie odpowiada pełnej liczbie opakowań (wielkość: ' + AtteItemsFormat.formatQty(pack) + ')'
+                'Uwaga: iloÅ›Ä‡ nie odpowiada peÅ‚nej liczbie opakowaÅ„ (wielkoÅ›Ä‡: ' + AtteItemsFormat.formatQty(pack) + ')'
             );
         }
         const $other = isPackagesSource ? $qtyInput : $packagesInput;
@@ -233,15 +233,15 @@ $(function () {
         updateDocValueCell($tr);
     }
 
-    // Live-update the Wartość cell (qty × price) as the user edits qty,
-    // price, or packages during inline edit. Shows "—" when price is
+    // Live-update the WartoÅ›Ä‡ cell (qty Ã— price) as the user edits qty,
+    // price, or packages during inline edit. Shows "â€”" when price is
     // null/invalid or qty is missing.
     function updateDocValueCell($tr) {
         const qty = parseFloat(($tr.find('.doc-edit-qty').val() || '').toString().replace(',', '.'));
         const priceRaw = ($tr.find('.doc-edit-price').val() || '').toString().trim();
         const price = (priceRaw === '') ? null : parseFloat(priceRaw.replace(',', '.'));
         if (isNaN(qty) || qty <= 0 || price === null || isNaN(price)) {
-            $tr.find('td.doc-cell-value').html('<span class="text-muted">—</span>');
+            $tr.find('td.doc-cell-value').html('<span class="text-muted">â€”</span>');
         } else {
             $tr.find('td.doc-cell-value').html(
                 escapeHtml(formatPrice(qty * price)) +
@@ -254,7 +254,7 @@ $(function () {
     $tbody.on('input', '.doc-edit-price',    function () { updateDocValueCell($(this).closest('tr')); });
     $tbody.on('input', '.doc-edit-packages', function () { applyPackSync($(this), true);  updateDocValueCell($(this).closest('tr')); });
 
-    // Cancel → restore original cell HTML, leave edit mode.
+    // Cancel â†’ restore original cell HTML, leave edit mode.
     $tbody.on('click', '.doc-row-cancel', function () {
         const $tr = $(this).closest('tr');
         if (!$tr.data('doc-editing')) return;
@@ -266,7 +266,7 @@ $(function () {
         $tr.removeData(['orig-qty-html', 'orig-price-html', 'orig-comment-html', 'orig-akcje-html', 'doc-edit-pack']);
     });
 
-    // Save → AJAX POST, refresh editable cells on success.
+    // Save â†’ AJAX POST, refresh editable cells on success.
     $tbody.on('click', '.doc-row-save', function () {
         const $tr = $(this).closest('tr');
         const id = $tr.data('doc-item-id');
@@ -281,12 +281,12 @@ $(function () {
         const comment = ($commentInput.val() || '').toString();
 
         if (isNaN(qty) || qty <= 0) {
-            setAlert('Ilość musi być > 0.', 'warning');
+            setAlert('IloÅ›Ä‡ musi byÄ‡ > 0.', 'warning');
             $qtyInput.trigger('focus');
             return;
         }
         if (unitPrice !== null && (isNaN(unitPrice) || unitPrice < 0)) {
-            setAlert('Cena nie może być ujemna.', 'warning');
+            setAlert('Cena nie moÅ¼e byÄ‡ ujemna.', 'warning');
             $priceInput.trigger('focus');
             return;
         }
@@ -312,7 +312,7 @@ $(function () {
         })
         .done(function (r) {
             if (!r || !r.success) {
-                setAlert((r && r.error) || 'Błąd zapisu.', 'danger');
+                setAlert((r && r.error) || 'BÅ‚Ä…d zapisu.', 'danger');
                 $tr.find('.doc-row-save, .doc-row-cancel').prop('disabled', false);
                 return;
             }
@@ -336,7 +336,7 @@ $(function () {
                     '<small class="' + (evenPkgs ? 'text-muted' : 'text-warning') + '">' +
                         escapeHtml(String(parseFloat(pkgs.toFixed(2)))) + ' opak.' +
                     '</small>' +
-                    ' <span class="badge badge-light border text-monospace ml-1" title="Wybrana wielkość opakowania">' +
+                    ' <span class="badge badge-light border text-monospace ml-1" title="Wybrana wielkoÅ›Ä‡ opakowania">' +
                         'opak. ' + escapeHtml(AtteItemsFormat.formatQty(pack)) +
                     '</span>' +
                     '</div>';
@@ -349,7 +349,7 @@ $(function () {
             // Re-render price cell.
             const currency = r.currency || $tr.data('currency') || 'PLN';
             if (r.unit_price === null) {
-                $tr.find('td.doc-cell-price').html('<span class="text-muted">—</span>');
+                $tr.find('td.doc-cell-price').html('<span class="text-muted">â€”</span>');
             } else {
                 $tr.find('td.doc-cell-price').html(
                     escapeHtml(formatPrice(r.unit_price)) +
@@ -357,9 +357,9 @@ $(function () {
                 );
             }
 
-            // Re-render wartość cell (qty × price).
+            // Re-render wartoÅ›Ä‡ cell (qty Ã— price).
             if (r.unit_price === null) {
-                $tr.find('td.doc-cell-value').html('<span class="text-muted">—</span>');
+                $tr.find('td.doc-cell-value').html('<span class="text-muted">â€”</span>');
             } else {
                 $tr.find('td.doc-cell-value').html(
                     escapeHtml(formatPrice(r.line_total)) +
@@ -374,9 +374,9 @@ $(function () {
 
             // Restore the actions cell (edit + trash buttons) and exit edit mode.
             $tr.find('td.doc-cell-akcje').html(
-                '<button type="button" class="btn btn-sm btn-outline-primary doc-row-edit mr-1" title="Edytuj ilość / cenę / komentarz">' +
+                '<button type="button" class="btn btn-sm btn-outline-primary doc-row-edit mr-1" title="Edytuj iloÅ›Ä‡ / cenÄ™ / komentarz">' +
                 '<i class="bi bi-pencil"></i></button>' +
-                '<button type="button" class="btn btn-sm btn-outline-danger doc-row-delete" title="Usuń pozycję">' +
+                '<button type="button" class="btn btn-sm btn-outline-danger doc-row-delete" title="UsuÅ„ pozycjÄ™">' +
                 '<i class="bi bi-trash"></i></button>'
             );
             $tr.removeData('doc-editing');
@@ -385,7 +385,7 @@ $(function () {
             setAlert(r.message || 'Zapisano.', 'success');
         })
         .fail(function (xhr, status) {
-            const msg = (xhr && xhr.responseJSON && xhr.responseJSON.error) || status || 'Błąd sieci.';
+            const msg = (xhr && xhr.responseJSON && xhr.responseJSON.error) || status || 'BÅ‚Ä…d sieci.';
             setAlert(msg, 'danger');
             $tr.find('.doc-row-save, .doc-row-cancel').prop('disabled', false);
         });
@@ -398,14 +398,14 @@ $(function () {
     $tbody.on('click', '.doc-row-delete', function () {
         const $tr = $(this).closest('tr');
         if ($tr.data('doc-editing')) {
-            setAlert('Najpierw zakończ edycję pozycji.', 'warning');
+            setAlert('Najpierw zakoÅ„cz edycjÄ™ pozycji.', 'warning');
             return;
         }
         // Pull each piece of the row's identity from dedicated data-*
         // attrs (added on the row in rfqs-edit.php). Rendering them into
-        // separate containers matches the row's part-cell layout — no
+        // separate containers matches the row's part-cell layout â€” no
         // more "everything bold" string-blob modal.
-        const partName      = $tr.data('part-name')      || '—';
+        const partName      = $tr.data('part-name')      || 'â€”';
         const vendorName    = $tr.data('vendor-name')    || '';
         const vendorPartNo  = $tr.data('vendor-part-no') || '';
         const producerNo    = $tr.data('producer-part-no') || '';
@@ -426,19 +426,19 @@ $(function () {
 
         $('#docItemDeletePartName').text(partName);
 
-        // Vendor line: "Dostawca: <name>  ·  Nr dost.: <vendorPartNo>".
+        // Vendor line: "Dostawca: <name>  Â·  Nr dost.: <vendorPartNo>".
         // Producer number is rendered on its own line because the table
         // splits these onto separate rows when they differ.
         let vendorText = '';
         if (vendorName)    { vendorText += 'Dostawca: ' + vendorName; }
-        if (vendorPartNo)  { vendorText += (vendorText ? '  ·  ' : '') + 'Nr dost.: ' + vendorPartNo; }
+        if (vendorPartNo)  { vendorText += (vendorText ? '  Â·  ' : '') + 'Nr dost.: ' + vendorPartNo; }
         setLine($('#docItemDeleteVendorLine'), vendorText);
 
         setLine($('#docItemDeleteProducerLine'), producerNo ? 'Nr prod.: ' + producerNo : '');
 
         setLine($('#docItemDeleteDescLine'), description);
 
-        // Variant "Komentarz:" line — render Brak when empty, matching
+        // Variant "Komentarz:" line â€” render Brak when empty, matching
         // the table's muted-text empty state.
         if (vpComment) {
             $('#docItemDeleteCommentText').text(vpComment);
@@ -448,7 +448,7 @@ $(function () {
             $('#docItemDeleteCommentLine').show();
         }
 
-        $('#docItemDeleteMeta').text('Ilość: ' + AtteItemsFormat.formatQty(qty) + (unitName ? ' ' + unitName : ''));
+        $('#docItemDeleteMeta').text('IloÅ›Ä‡: ' + AtteItemsFormat.formatQty(qty) + (unitName ? ' ' + unitName : ''));
         $pendingDeleteRow = $tr;
         $('#docItemDeleteModal').modal('show');
     });
@@ -468,7 +468,7 @@ $(function () {
         .done(function (r) {
             $btn.prop('disabled', false);
             if (!r || !r.success) {
-                setAlert((r && r.error) || 'Błąd usuwania.', 'danger');
+                setAlert((r && r.error) || 'BÅ‚Ä…d usuwania.', 'danger');
                 return;
             }
             $tr.fadeOut(200, function () {
@@ -480,11 +480,11 @@ $(function () {
             });
             $('#docItemDeleteModal').modal('hide');
             $pendingDeleteRow = null;
-            setAlert(r.message || 'Pozycja usunięta.', 'success');
+            setAlert(r.message || 'Pozycja usuniÄ™ta.', 'success');
         })
         .fail(function (xhr, status) {
             $btn.prop('disabled', false);
-            const msg = (xhr && xhr.responseJSON && xhr.responseJSON.error) || status || 'Błąd sieci.';
+            const msg = (xhr && xhr.responseJSON && xhr.responseJSON.error) || status || 'BÅ‚Ä…d sieci.';
             setAlert(msg, 'danger');
         });
     });
@@ -502,7 +502,7 @@ $(function () {
     //
     // The current value is read from `data-vp-comment` on the <tr>
     // (stamped by rfqs-edit.php from $i->vendorPartComment). We never
-    // scrape the rendered HTML — PHP indentation inside the <small>
+    // scrape the rendered HTML â€” PHP indentation inside the <small>
     // leaves leading whitespace that fooled a regex-based strip in a
     // previous version. Cart reads from its JS cache instead; we mirror
     // that pattern with the row attribute.
@@ -530,7 +530,7 @@ $(function () {
         const cur = $tr.attr('data-vp-comment') || '';
         const $line = $btn.closest('.doc-row-vp-comment-line');
         $line.html(
-            '<textarea rows="2" class="form-control form-control-sm doc-row-vp-comment-input" placeholder="Uwagi do artykułu...">' +
+            '<textarea rows="2" class="form-control form-control-sm doc-row-vp-comment-input" placeholder="Uwagi do artykuÅ‚u...">' +
             escapeHtml(cur) +
             '</textarea>' +
             '<div class="mt-1">' +
@@ -579,13 +579,13 @@ $(function () {
             } else {
                 $btn.prop('disabled', false);
                 $line.find('.doc-row-vp-comment-cancel').prop('disabled', false);
-                setAlert('Błąd zapisu komentarza: ' + ((resp && resp.error) || 'nieznany'), 'danger');
+                setAlert('BÅ‚Ä…d zapisu komentarza: ' + ((resp && resp.error) || 'nieznany'), 'danger');
             }
         })
         .fail(function (xhr, status) {
             $btn.prop('disabled', false);
             $line.find('.doc-row-vp-comment-cancel').prop('disabled', false);
-            const msg = (xhr && xhr.responseJSON && xhr.responseJSON.error) || status || 'Błąd sieci.';
+            const msg = (xhr && xhr.responseJSON && xhr.responseJSON.error) || status || 'BÅ‚Ä…d sieci.';
             setAlert(msg, 'danger');
         });
     });
@@ -601,18 +601,18 @@ $(function () {
     });
 
     // ---- Add new item (inline form below the table) ----
-    // Pattern-matched after cart's "Wybierz dostawcę i część" card.
+    // Pattern-matched after cart's "Wybierz dostawcÄ™ i czÄ™Å›Ä‡" card.
     // Vendor is fixed for an RFQ so the cascade simplifies to
-    // Part → VendorPart. The card starts hidden behind the toggle
+    // Part â†’ VendorPart. The card starts hidden behind the toggle
     // button; opening it reveals the vendor line + part picker.
-    //   - Part picked  → Row 2 (VP picker + packages + qty) reveals.
-    //   - VP picked    → packages/qty inputs become visible inside
+    //   - Part picked  â†’ Row 2 (VP picker + packages + qty) reveals.
+    //   - VP picked    â†’ packages/qty inputs become visible inside
     //                    Row 2; Row 3 (price/currency/comment) and
     //                    Row 4 (actions) reveal.
-    // Bidirectional packages ↔ qty binding (mirrors cart's
+    // Bidirectional packages â†” qty binding (mirrors cart's
     // state.lastEdited / state.lastDerived pattern from cart-view.js
-    // lines 1700–1770). Neither input is ever disabled. Editing one
-    // re-derives the other; pack-stepper − / + cycles pickedPackSize
+    // lines 1700â€“1770). Neither input is ever disabled. Editing one
+    // re-derives the other; pack-stepper âˆ’ / + cycles pickedPackSize
     // and re-derives the field marked lastEdited.
 
     const $addWrapper = $('.doc-add-wrapper');
@@ -624,28 +624,28 @@ $(function () {
     const addState = {
         vendorId:       parseInt($addWrapper.attr('data-vendor-id'), 10),
         vendorName:     $addWrapper.attr('data-vendor-name') || '',
-        // Vendor's preferred currency — pre-selects the Waluta dropdown
+        // Vendor's preferred currency â€” pre-selects the Waluta dropdown
         // at form open and after each cascade reset. Mirrors cart-view.js
-        // lines 1591–1601 where the picker follows the vendor's default
-        // from list__vendor.default_currency → list__currency.code.
+        // lines 1591â€“1601 where the picker follows the vendor's default
+        // from list__vendor.default_currency â†’ list__currency.code.
         defaultCurrency: $addWrapper.attr('data-default-currency') || 'PLN',
         docId:          parseInt($addWrapper.attr('data-doc-id'), 10),
         vpsByPart:      JSON.parse($addWrapper.attr('data-vps-by-part') || '{}'),
         selectedVp:     null,
         pickedPackSize: null,
-        // 'qty' | 'packages' | null — which input the user typed in
+        // 'qty' | 'packages' | null â€” which input the user typed in
         // last. Drives the pack-stepper recompute: changing the picked
         // tier re-derives whichever field was NOT lastEdited.
         lastEdited:     null,
-        // 'qty' | 'packages' | null — which input is currently
+        // 'qty' | 'packages' | null â€” which input is currently
         // auto-derived from the other. null after the user types into
         // a field directly. (Reserved for symmetry with cart; not
         // actively branched on right now but kept for parity.)
         lastDerived:    null,
     };
 
-    // Use id selectors (not class) — bootstrap-select copies our custom
-    // class onto the generated wrapper div, so $addCard.find('.doc-add-…')
+    // Use id selectors (not class) â€” bootstrap-select copies our custom
+    // class onto the generated wrapper div, so $addCard.find('.doc-add-â€¦')
     // would return BOTH the wrapper and the <select>. Then .html() /
     // .prop() would clobber the wrapper's <button> + <div class=
     // "dropdown-menu"> with our raw options. id selectors hit only the
@@ -675,7 +675,7 @@ $(function () {
     // Vendor name into the small muted line above the part picker so
     // the user always sees which vendor this RFQ belongs to without
     // needing a picker (vendor is fixed for the duration of the RFQ).
-    $vendorName.text(addState.vendorName || '—');
+    $vendorName.text(addState.vendorName || 'â€”');
 
     // ---- Selectpicker helpers ----
     // Mirror cart-view.js's refreshSelectpicker so we keep the
@@ -687,7 +687,7 @@ $(function () {
 
     // Set the currency picker to the given code, falling back to the
     // vendor's default (then 'PLN') if the code isn't in the dropdown.
-    // Mirrors the cart's pattern at cart-view.js lines 1596–1601 —
+    // Mirrors the cart's pattern at cart-view.js lines 1596â€“1601 â€”
     // unknown codes are a silent no-op so a stale vendor default
     // can't crash the form.
     function setDocCurrency(code) {
@@ -703,7 +703,7 @@ $(function () {
 
     // ---- Helpers ----
 
-    // Cycle the picked pack size through the sorted list by ±1.
+    // Cycle the picked pack size through the sorted list by Â±1.
     // Returns the new picked value, or null if there is no list /
     // nothing to cycle to in the requested direction.
     function stepDocPackSize(packs, current, delta) {
@@ -711,7 +711,7 @@ $(function () {
         const sorted = packs.slice().sort(function (a, b) { return parseFloat(a) - parseFloat(b); });
         const idx = sorted.findIndex(function (p) { return parseFloat(p) === parseFloat(current); });
         if (idx === -1) {
-            // current not in list — jump to the boundary the user asked for.
+            // current not in list â€” jump to the boundary the user asked for.
             return parseFloat(delta > 0 ? sorted[sorted.length - 1] : sorted[0]);
         }
         const nextIdx = idx + delta;
@@ -725,7 +725,7 @@ $(function () {
         return '= ' + AtteItemsFormat.formatQty(picked) + ' ' + (unit || 'szt.') + '/opak.';
     }
 
-    // Non-blocking unevenness check (cart cart-view.js lines 385–388).
+    // Non-blocking unevenness check (cart cart-view.js lines 385â€“388).
     // True when there's nothing to flag: no pack size yet, qty missing,
     // or qty/pack rounds cleanly within an epsilon.
     function isEven(qty, pack) {
@@ -739,7 +739,7 @@ $(function () {
     // class is cleared first so only the most recently typed field
     // flags. When `even === true` both fields are left clean. Passing
     // `lastEdited = null` + NaN qty is the canonical "clear both"
-    // reset (cart cart-view.js lines 486–501, adapted).
+    // reset (cart cart-view.js lines 486â€“501, adapted).
     function applyEvenWarning(lastEdited, qty, pack) {
         $packagesInput.removeClass('packages-uneven').removeAttr('title');
         $qtyInput.removeClass('packages-uneven').removeAttr('title');
@@ -747,11 +747,11 @@ $(function () {
         if (!lastEdited || !lastEdited.length) return;
         lastEdited.addClass('packages-uneven');
         lastEdited.attr('title',
-            'Uwaga: ilość nie odpowiada pełnej liczbie opakowań (wielkość: ' + AtteItemsFormat.formatQty(pack) + ')');
+            'Uwaga: iloÅ›Ä‡ nie odpowiada peÅ‚nej liczbie opakowaÅ„ (wielkoÅ›Ä‡: ' + AtteItemsFormat.formatQty(pack) + ')');
     }
 
     // Render the pack-size UI: the "= N jm/opak." line is shown for
-    // any VP with at least one tier; the − [value] + chip group is
+    // any VP with at least one tier; the âˆ’ [value] + chip group is
     // shown only when there are 2+ tiers (single tier = redundant).
     // Caller still owns addState.pickedPackSize assignment.
     function populateDocPackStepper(vp, picked) {
@@ -761,7 +761,7 @@ $(function () {
         if (packs.length === 0 || picked === null || isNaN(picked)) {
             $packSizeDisplay.hide().text('');
             $packStepperRow.hide();
-            $packValue.text('—');
+            $packValue.text('â€”');
             $packPrev.prop('disabled', true);
             $packNext.prop('disabled', true);
             return;
@@ -799,7 +799,7 @@ $(function () {
         $vpSelect.selectpicker('refresh');
         $vpSummary.hide().empty();
 
-        // Pack / qty inputs reset. Neither is ever disabled — both
+        // Pack / qty inputs reset. Neither is ever disabled â€” both
         // stay editable so the bidirectional binding can re-derive
         // freely once a pack tier is set.
         $qtyWrap.hide();
@@ -808,7 +808,7 @@ $(function () {
         $packagesInput.val('');
         $packSizeDisplay.hide().text('');
         $packStepperRow.hide();
-        $packValue.text('—');
+        $packValue.text('â€”');
         $packPrev.prop('disabled', true);
         $packNext.prop('disabled', true);
 
@@ -828,7 +828,7 @@ $(function () {
     }
 
     function openAddForm() {
-        // Always start from a clean state — first-open, after Wyczyść,
+        // Always start from a clean state â€” first-open, after WyczyÅ›Ä‡,
         // and after a successful save-and-reload all need the same
         // empty form.
         resetAddForm();
@@ -850,9 +850,9 @@ $(function () {
     $addToggle.on('click', openAddForm);
     $cancelBtn.on('click', closeAddForm);
 
-    // ---- Cascade: part → VP ----
-    // Group VendorParts by producer for the current part — same
-    // optgroup pattern as cart (cart-view.js lines ~935–989).
+    // ---- Cascade: part â†’ VP ----
+    // Group VendorParts by producer for the current part â€” same
+    // optgroup pattern as cart (cart-view.js lines ~935â€“989).
     // Every VP for the picked part is listed (no client-side
     // exclusion), so the user can pick a VP that's already on the
     // document. The server enforces the exact-match conflict check
@@ -865,7 +865,7 @@ $(function () {
         addState.pickedPackSize = null;
         addState.lastEdited     = null;
         addState.lastDerived    = null;
-        // Clear unevenness flag — the previous VP's pack relationship
+        // Clear unevenness flag â€” the previous VP's pack relationship
         // no longer applies once the user re-picks the part.
         applyEvenWarning(null, NaN, addState.pickedPackSize);
         $vpSummary.hide().empty();
@@ -875,7 +875,7 @@ $(function () {
         $packagesInput.val('');
         $packSizeDisplay.hide().text('');
         $packStepperRow.hide();
-        $packValue.text('—');
+        $packValue.text('â€”');
         $packPrev.prop('disabled', true);
         $packNext.prop('disabled', true);
         $priceRow.hide();
@@ -886,7 +886,7 @@ $(function () {
         $saveBtn.prop('disabled', true);
 
         const allForPart = addState.vpsByPart[partId] || [];
-        // No more client-side excludeIds filter — every VP for the
+        // No more client-side excludeIds filter â€” every VP for the
         // picked part is now a candidate. Duplicate VP additions are
         // handled server-side via the merge modal (see save handler).
 
@@ -942,7 +942,7 @@ $(function () {
         addState.lastEdited  = null;
         addState.lastDerived = null;
 
-        // Summary under the VP picker: name · producer · JM badge.
+        // Summary under the VP picker: name Â· producer Â· JM badge.
         let summary = '<strong>' + escapeHtml(vp.vendor_part_no) + '</strong>';
         if (vp.producer_name) {
             summary += ' <span class="text-muted ml-1">(prod. ' + escapeHtml(vp.producer_name) + ')</span>';
@@ -953,7 +953,7 @@ $(function () {
 
         // Pack-size picker (visible when this VP has tiers). Default
         // tier = packs[0] (smallest). The "= N jm/opak." display is
-        // always shown for any non-empty pack list; the − [value] +
+        // always shown for any non-empty pack list; the âˆ’ [value] +
         // chip group is shown only when there are 2+ tiers.
         const packs = (vp && Array.isArray(vp.pack_quantities)) ? vp.pack_quantities : [];
         if (packs.length === 0) {
@@ -961,7 +961,7 @@ $(function () {
             $packagesInput.val('');
             addState.pickedPackSize = null;
             populateDocPackStepper(vp, null);
-            // VP has no pack tiers — unevenness has no meaning here;
+            // VP has no pack tiers â€” unevenness has no meaning here;
             // clear any flag carried over from the previous VP.
             applyEvenWarning(null, NaN, addState.pickedPackSize);
         } else {
@@ -972,7 +972,7 @@ $(function () {
         }
 
         // Qty + price + actions reveal. Neither qty nor packages is
-        // ever disabled — both stay editable so the bidirectional
+        // ever disabled â€” both stay editable so the bidirectional
         // binding can re-derive freely.
         $qtyWrap.show();
         $qtyInput.val('').trigger('focus');
@@ -995,7 +995,7 @@ $(function () {
             addState.pickedPackSize = null;
             addState.lastEdited     = null;
             addState.lastDerived    = null;
-            // Clear unevenness flag — no part → no amount context.
+            // Clear unevenness flag â€” no part â†’ no amount context.
             applyEvenWarning(null, NaN, addState.pickedPackSize);
             $vpSummary.hide().empty();
             $qtyWrap.hide();
@@ -1020,7 +1020,7 @@ $(function () {
             addState.pickedPackSize = null;
             addState.lastEdited     = null;
             addState.lastDerived    = null;
-            // Clear unevenness flag — no VP → no amount context.
+            // Clear unevenness flag â€” no VP â†’ no amount context.
             applyEvenWarning(null, NaN, addState.pickedPackSize);
             $vpSummary.hide().empty();
             $qtyWrap.hide();
@@ -1044,10 +1044,10 @@ $(function () {
         if (found) { selectDocVendorPart(found); }
     });
 
-    // ---- Bidirectional packages ↔ qty binding ----
+    // ---- Bidirectional packages â†” qty binding ----
     // Mirrors cart's state.lastEdited / state.lastDerived pattern
-    // (cart-view.js lines 1700–1770). Neither input is ever disabled.
-    // Reading parseFloat('') → NaN, treated as "empty" in both
+    // (cart-view.js lines 1700â€“1770). Neither input is ever disabled.
+    // Reading parseFloat('') â†’ NaN, treated as "empty" in both
     // branches (we clear the derived field instead of writing 0).
     $packagesInput.on('input', function () {
         addState.lastEdited  = 'packages';
@@ -1056,7 +1056,7 @@ $(function () {
         const pkgs = parseFloat(($(this).val() || '').toString().replace(',', '.'));
         if (pack === null || isNaN(pkgs) || pkgs <= 0) {
             // Empty / 0 / non-numeric: clear the derived qty (cart's
-            // behavior — do not write 0, leave blank or whatever user
+            // behavior â€” do not write 0, leave blank or whatever user
             // last typed).
             $qtyInput.val('');
         } else {
@@ -1079,7 +1079,7 @@ $(function () {
         } else {
             // No rounding (cart uses parseFloat directly): if the
             // qty/pack ratio is non-integer the input shows the
-            // decimal — that's the user-visible signal that the qty
+            // decimal â€” that's the user-visible signal that the qty
             // doesn't divide cleanly into the picked pack tier.
             const pkgs = qty / pack;
             $packagesInput.val(parseFloat(pkgs.toFixed(6)));
@@ -1091,11 +1091,11 @@ $(function () {
 
     $priceInput.on('input', refreshSaveEnabled);
 
-    // ---- Pack-size stepper − / + handlers ----
-    // No pencil / add-tier editor here — only existing tiers can be
+    // ---- Pack-size stepper âˆ’ / + handlers ----
+    // No pencil / add-tier editor here â€” only existing tiers can be
     // navigated. On click: update pickedPackSize, refresh the size
     // text + stepper value, then re-derive the field marked
-    // lastEdited (cart's cartAfterPackChange pattern, lines 1724–1770).
+    // lastEdited (cart's cartAfterPackChange pattern, lines 1724â€“1770).
     // If lastEdited is null (user picked a tier but never typed in
     // either packages or qty) we leave both inputs alone.
     function afterPackChange(newPack) {
@@ -1120,7 +1120,7 @@ $(function () {
             // ratio (qty / newPack) doesn't divide cleanly.
             applyEvenWarning($qtyInput, qty, newPack);
         }
-        // else: user hasn't typed in either input yet — leave both
+        // else: user hasn't typed in either input yet â€” leave both
         // inputs alone (and skip the warning call entirely).
         refreshSaveEnabled();
     }
@@ -1147,7 +1147,7 @@ $(function () {
         }
     });
 
-    // ---- Save → AJAX POST to doc-item-add.php ----
+    // ---- Save â†’ AJAX POST to doc-item-add.php ----
     $saveBtn.on('click', function () {
         if (addState.selectedVp === null) return;
 
@@ -1161,7 +1161,7 @@ $(function () {
 
         // ---- validation ----
         if (isNaN(qty) || qty <= 0) {
-            setAlert('Ilość musi być > 0.', 'warning');
+            setAlert('IloÅ›Ä‡ musi byÄ‡ > 0.', 'warning');
             $qtyInput.trigger('focus');
             return;
         }
@@ -1170,20 +1170,20 @@ $(function () {
             // pickedPackSize is auto-set to packs[0] > 0 in that branch,
             // so the > 0 check is a defensive guard.
             if (pack === null || isNaN(pack) || pack <= 0) {
-                setAlert('Wielkość opakowania musi być > 0.', 'warning');
+                setAlert('WielkoÅ›Ä‡ opakowania musi byÄ‡ > 0.', 'warning');
                 return;
             }
             const pkgs = parseFloat(($packagesInput.val() || '').toString().replace(',', '.'));
             // 0 / NaN = "use qty directly" (packages input left empty).
             // Negative is the only invalid value here.
             if (!isNaN(pkgs) && pkgs < 0) {
-                setAlert('Opakowania nie mogą być ujemne.', 'warning');
+                setAlert('Opakowania nie mogÄ… byÄ‡ ujemne.', 'warning');
                 $packagesInput.trigger('focus');
                 return;
             }
         }
         if (unitPrice !== null && (isNaN(unitPrice) || unitPrice < 0)) {
-            setAlert('Cena nie może być ujemna.', 'warning');
+            setAlert('Cena nie moÅ¼e byÄ‡ ujemna.', 'warning');
             $priceInput.trigger('focus');
             return;
         }
@@ -1214,7 +1214,7 @@ $(function () {
             if (resp && resp.success) {
                 setAlert(resp.message || 'Pozycja dodana.', 'success');
                 // Reload whole page so the new row picks up server-side
-                // formatting (qty trailing-zero strip, Wartość calc,
+                // formatting (qty trailing-zero strip, WartoÅ›Ä‡ calc,
                 // vendor-part-comment sub-line, JM badge).
                 window.location.reload();
                 return;
@@ -1223,18 +1223,18 @@ $(function () {
             // Merge-conflict path: the server found an exact-match
             // duplicate row. Show the modal with the three buttons
             // and stop. The buttons each take a different next-step:
-            //   [Anuluj]           — close, leave form alone (handled
+            //   [Anuluj]           â€” close, leave form alone (handled
             //                        by data-dismiss + the modal
             //                        hidden.bs.modal hook below)
-            //   [Dodaj mimo to]    — re-POST addPayload + force_insert=1
-            //   [Połącz]           — POST to MERGE_URL with
+            //   [Dodaj mimo to]    â€” re-POST addPayload + force_insert=1
+            //   [PoÅ‚Ä…cz]           â€” POST to MERGE_URL with
             //                        existing_item_id + add_qty (qty)
             if (resp && resp.needs_merge && resp.existing_item && resp.proposed) {
                 populateMergeModal(resp);
-                // Stash the proposed qty on the modal so the [Połącz]
+                // Stash the proposed qty on the modal so the [PoÅ‚Ä…cz]
                 // handler can ship it as `add_qty`. The body lines
                 // (priceLine, quantityLine) are rendered from the same
-                // payload by populateMergeModal — re-reading them from
+                // payload by populateMergeModal â€” re-reading them from
                 // the DOM would risk drift on number formatting.
                 $mergeModal.attr('data-proposed-qty', String(qty));
                 $mergeModal.modal('show');
@@ -1243,12 +1243,12 @@ $(function () {
 
             $saveBtn.prop('disabled', false);
             $cancelBtn.prop('disabled', false);
-            setAlert((resp && resp.error) || 'Błąd zapisu.', 'danger');
+            setAlert((resp && resp.error) || 'BÅ‚Ä…d zapisu.', 'danger');
         })
         .fail(function (xhr, status) {
             $saveBtn.prop('disabled', false);
             $cancelBtn.prop('disabled', false);
-            const msg = (xhr && xhr.responseJSON && xhr.responseJSON.error) || status || 'Błąd sieci.';
+            const msg = (xhr && xhr.responseJSON && xhr.responseJSON.error) || status || 'BÅ‚Ä…d sieci.';
             setAlert(msg, 'danger');
         });
     });
@@ -1256,13 +1256,13 @@ $(function () {
     // ---- Merge modal: helper + button wiring ----
     // The modal lives in documents-edit.php (id="docMergeModal").
     // populateMergeModal(resp) fills the body lines + stamps data-*
-    // attrs the [Połącz] handler reads to build its POST.
+    // attrs the [PoÅ‚Ä…cz] handler reads to build its POST.
     const $mergeModal = $('#docMergeModal');
 
     function formatMergePrice(p, currency) {
-        if (p === null || p === undefined || p === '') return '—';
+        if (p === null || p === undefined || p === '') return 'â€”';
         // Mirror the PHP formatPrice() helper on the read side. No
-        // raw cents — show with up to 4 decimals, strip trailing zeros.
+        // raw cents â€” show with up to 4 decimals, strip trailing zeros.
         return String(+parseFloat(parseFloat(p).toFixed(4)).toString()) + ' ' + (currency || '');
     }
 
@@ -1270,17 +1270,17 @@ $(function () {
         const existing = resp.existing_item || {};
         const proposed = resp.proposed      || {};
         const priceText = formatMergePrice(existing.unit_price, existing.currency);
-        // Modal title remains static ("Pozycja już istnieje na dokumencie").
-        $('#docMergeModalPartName').text(existing.vendor_part_no || '—');
+        // Modal title remains static ("Pozycja juÅ¼ istnieje na dokumencie").
+        $('#docMergeModalPartName').text(existing.vendor_part_no || 'â€”');
         $('#docMergeModalPriceLine').text('Cena: ' + priceText);
         $('#docMergeModalQuantityLine').text(
-            'Istniejąca ilość: ' + AtteItemsFormat.formatQty(existing.quantity)
-            + '   ·   Proponowana ilość: ' + AtteItemsFormat.formatQty(proposed.quantity)
+            'IstniejÄ…ca iloÅ›Ä‡: ' + AtteItemsFormat.formatQty(existing.quantity)
+            + '   Â·   Proponowana iloÅ›Ä‡: ' + AtteItemsFormat.formatQty(proposed.quantity)
         );
         $('#docMergeModalBody').html(
-            'Część <strong>' + escapeHtml(existing.vendor_part_no || '') + '</strong> jest już na tym dokumencie '
-            + 'z tą samą ceną (<strong>' + escapeHtml(String(formatMergePrice(existing.unit_price, existing.currency))) + '/jm</strong>). '
-            + 'Możesz połączyć ilości w jedną pozycję albo dodać nowy wiersz z tą samą ceną.'
+            'CzÄ™Å›Ä‡ <strong>' + escapeHtml(existing.vendor_part_no || '') + '</strong> jest juÅ¼ na tym dokumencie '
+            + 'z tÄ… samÄ… cenÄ… (<strong>' + escapeHtml(String(formatMergePrice(existing.unit_price, existing.currency))) + '/jm</strong>). '
+            + 'MoÅ¼esz poÅ‚Ä…czyÄ‡ iloÅ›ci w jednÄ… pozycjÄ™ albo dodaÄ‡ nowy wiersz z tÄ… samÄ… cenÄ….'
         );
         // Stash everything on the modal so the button handlers don't
         // have to chase fields back through DOM nodes.
@@ -1292,18 +1292,18 @@ $(function () {
     }
 
     // [Anuluj] is wired via data-dismiss="modal" + the hidden.bs.modal
-    // hook below — re-enabling save+cancel is the only cleanup needed.
+    // hook below â€” re-enabling save+cancel is the only cleanup needed.
     $mergeModal.on('hidden.bs.modal', function () {
-        // Always re-enable the form buttons — covers every dismissal
+        // Always re-enable the form buttons â€” covers every dismissal
         // path (X, Anuluj, Esc, click-outside). If the user chose
-        // [Połącz] / [Dodaj mimo to], the in-flight AJAX handlers
+        // [PoÅ‚Ä…cz] / [Dodaj mimo to], the in-flight AJAX handlers
         // re-disable as needed and finally reload the page.
         $saveBtn.prop('disabled', false);
         $cancelBtn.prop('disabled', false);
         $('.doc-merge-cancel, .doc-merge-confirm, .doc-merge-force').prop('disabled', false);
     });
 
-    // [Połącz] — POST to document-item-merge.php to atomically add
+    // [PoÅ‚Ä…cz] â€” POST to document-item-merge.php to atomically add
     // the proposed qty to the existing row.
     $('.doc-merge-confirm').on('click', function () {
         const $btn = $(this);
@@ -1317,7 +1317,7 @@ $(function () {
         const existingItemId = parseInt($mergeModal.attr('data-existing-item-id'), 10);
         const addQty         = parseFloat($mergeModal.attr('data-proposed-qty'));
         if (!existingItemId || isNaN(addQty) || addQty <= 0) {
-            setAlert('Nieprawidłowe dane połączenia.', 'danger');
+            setAlert('NieprawidÅ‚owe dane poÅ‚Ä…czenia.', 'danger');
             $mergeModal.modal('hide');
             return;
         }
@@ -1335,11 +1335,11 @@ $(function () {
         })
         .done(function (resp) {
             if (resp && resp.success) {
-                setAlert(resp.message || 'Pozycje połączone.', 'success');
+                setAlert(resp.message || 'Pozycje poÅ‚Ä…czone.', 'success');
                 window.location.reload();
                 return;
             }
-            setAlert((resp && resp.error) || 'Nie udało się połączyć pozycji.', 'danger');
+            setAlert((resp && resp.error) || 'Nie udaÅ‚o siÄ™ poÅ‚Ä…czyÄ‡ pozycji.', 'danger');
             // Re-enable modal buttons + form buttons so the user can retry.
             $btn.prop('disabled', false);
             $cancelBtnM.prop('disabled', false);
@@ -1348,8 +1348,8 @@ $(function () {
             $cancelBtn.prop('disabled', false);
         })
         .fail(function (xhr, status) {
-            const msg = (xhr && xhr.responseJSON && xhr.responseJSON.error) || status || 'Błąd sieci.';
-            setAlert('Nie udało się połączyć pozycji: ' + msg, 'danger');
+            const msg = (xhr && xhr.responseJSON && xhr.responseJSON.error) || status || 'BÅ‚Ä…d sieci.';
+            setAlert('Nie udaÅ‚o siÄ™ poÅ‚Ä…czyÄ‡ pozycji: ' + msg, 'danger');
             $btn.prop('disabled', false);
             $cancelBtnM.prop('disabled', false);
             $forceBtn.prop('disabled', false);
@@ -1358,7 +1358,7 @@ $(function () {
         });
     });
 
-    // [Dodaj mimo to] — re-POST the original add payload to
+    // [Dodaj mimo to] â€” re-POST the original add payload to
     // document-item-add.php with force_insert=1 so the server skips
     // the merge check and inserts the new row as a sibling.
     $('.doc-merge-force').on('click', function () {
@@ -1373,7 +1373,7 @@ $(function () {
         // Rebuild the payload from the current add-card state. We
         // can't trust the addPayload closure var directly because the
         // user may have edited the inputs between the merge detection
-        // and the click on this button. (Cheap to re-read — every
+        // and the click on this button. (Cheap to re-read â€” every
         // input is in addState already.)
         const qtyRaw   = ($qtyInput.val() || '').toString().replace(',', '.');
         const qty      = parseFloat(qtyRaw);
@@ -1405,7 +1405,7 @@ $(function () {
                 window.location.reload();
                 return;
             }
-            setAlert((resp && resp.error) || 'Nie udało się dodać pozycji.', 'danger');
+            setAlert((resp && resp.error) || 'Nie udaÅ‚o siÄ™ dodaÄ‡ pozycji.', 'danger');
             $btn.prop('disabled', false);
             $cancelBtnM.prop('disabled', false);
             $confirmBtn.prop('disabled', false);
@@ -1413,79 +1413,13 @@ $(function () {
             $cancelBtn.prop('disabled', false);
         })
         .fail(function (xhr, status) {
-            const msg = (xhr && xhr.responseJSON && xhr.responseJSON.error) || status || 'Błąd sieci.';
-            setAlert('Nie udało się dodać pozycji: ' + msg, 'danger');
+            const msg = (xhr && xhr.responseJSON && xhr.responseJSON.error) || status || 'BÅ‚Ä…d sieci.';
+            setAlert('Nie udaÅ‚o siÄ™ dodaÄ‡ pozycji: ' + msg, 'danger');
             $btn.prop('disabled', false);
             $cancelBtnM.prop('disabled', false);
             $confirmBtn.prop('disabled', false);
             $saveBtn.prop('disabled', false);
             $cancelBtn.prop('disabled', false);
-        });
-    });
-
-    // ---- RFQ → PO conversion ---------------------------------------
-    // CTA "Utwórz zamówienie z odpowiedzi" w headerze strony edycji RFQ
-    // (renderowane tylko w stanie `responded`). Klik → POST do
-    // document-rfq-convert-ajax.php → handler tworzy PO i przenosi
-    // RFQ do stanu `converted` → otwieramy nowe PO w osobnej karcie
-    // i przeładowujemy bieżącą stronę, żeby badge stanu się zaktualizował.
-    // Delegacja na `document`, bo button pojawia się dopiero po wyrenderowaniu
-    // strony edycji (osadzany w <body> przez includeWithVariables).
-    // Klik w CTA otwiera modal potwierdzenia (#rfqConvertModal w
-    // documents-edit.php); dopiero „Utwórz zamówienie" wysyła POST.
-    $(document).on('click', '#rfq-convert-btn', function () {
-        const $btn  = $(this);
-        const rfqId = parseInt($btn.data('rfq-id'), 10);
-        if (!rfqId || rfqId <= 0) {
-            setAlert('Nieprawidłowe ID RFQ.', 'danger');
-            return;
-        }
-        if ($btn.prop('disabled')) return;
-        $('#rfqConvertModal').modal('show');
-    });
-
-    $(document).on('click', '#rfqConvertConfirm', function () {
-        const $confirm = $(this);
-        const $btn     = $('#rfq-convert-btn');
-        const rfqId    = parseInt($btn.data('rfq-id'), 10);
-        if (!rfqId || rfqId <= 0) {
-            setAlert('Nieprawidłowe ID RFQ.', 'danger');
-            return;
-        }
-        if ($confirm.prop('disabled')) return;
-        $confirm.prop('disabled', true);
-        $btn.prop('disabled', true);
-
-        $.ajax({
-            url: COMPONENTS_PATH + ENDPOINT_BASE + 'document-rfq-convert-ajax.php',
-            method: 'POST',
-            dataType: 'json',
-            data: { rfq_id: rfqId }
-        })
-        .done(function (resp) {
-            if (resp && resp.success) {
-                setAlert('Utworzono zamówienie', 'success');
-                // Otwórz nowe PO w osobnej karcie, potem przeładuj bieżącą
-                // stronę, żeby badge stanu (`converted`) i disabled
-                // przycisk konwersji się odświeżyły.
-                if (resp.edit_url) {
-                    window.open(resp.edit_url, '_blank');
-                }
-                window.location.reload();
-                return;
-            }
-            $btn.prop('disabled', false);
-            $confirm.prop('disabled', false);
-            $('#rfqConvertModal').modal('hide');
-            const msg = (resp && resp.error) || 'Nieznany błąd';
-            setAlert(msg, 'danger');
-        })
-        .fail(function (xhr, status) {
-            $btn.prop('disabled', false);
-            $confirm.prop('disabled', false);
-            $('#rfqConvertModal').modal('hide');
-            const msg = (xhr && xhr.responseJSON && xhr.responseJSON.error) || status || 'Błąd sieci';
-            setAlert(msg, 'danger');
         });
     });
 

@@ -1236,10 +1236,15 @@ a.rx-timeline-doc { color: var(--rx-accent-ink); }
  * „następstwem" (kliknięcie tu ma być mniej kuszące niż „Przyjmij towar").
  *
  * Odstęp między nimi daje wyłącznie `gap` na .rx-action-cell — przycisk
- * nie ma własnego marginesu, bo podwoiłby gap. */
+ * nie ma własnego marginesu, bo podwoiłby gap.
+ *
+ * Wysokość: dziedziczona z `.btn-sm` (BS4 ~31px). Wcześniejsza reguła
+ * `height: calc(2rem + 2px)` (~34px) była o 3px wyższa niż sąsiedni
+ * `btn btn-sm rx-btn-quiet` Edytuj/Podgląd, przez co kosz optycznie
+ * „wystawał" ponad wiersz. Stałe `width: 2rem` + `padding: 0` wystarczą
+ * dla kwadratowego obrysu — pion przejmie metryka `.btn-sm`. */
 .rx-close-po-btn {
     width: 2rem;
-    height: calc(2rem + 2px); /* match BS4 btn-sm vertical metrics */
     padding: 0;
     display: inline-flex;
     align-items: center;

@@ -723,6 +723,23 @@ $(document).ready(function () {
             items.push('<a class="dropdown-item" href="' + url + '">'
                 + '<i class="bi bi-box-arrow-in-down"></i> Przyjmij towar</a>');
         }
+        if (d.type === 'rfq' && d.state === 'responded') {
+            // CTA otwiera #rfqConvertModal (współdzielony z header CTA
+            // na stronie edycji). Delegowany handler w rfq-convert.js
+            // czyta data-rfq-id / data-rfq-number / data-rfq-vendor-name
+            // z tego triggera, więc musi mieć te atrybuty. Selektor
+            // data-action (a nie id) — bo lista renderuje wiele wierszy
+            // i stałe id kolidowałoby między wierszami.
+            const number = esc(d.primary_number || ('#' + id));
+            const vendor = esc(d.vendor_name || '');
+            items.push('<button type="button" class="dropdown-item"'
+                + ' data-action="rfq-convert"'
+                + ' data-rfq-id="' + id + '"'
+                + ' data-rfq-number="' + number + '"'
+                + ' data-rfq-vendor-name="' + vendor + '">'
+                + '<i class="bi bi-cart-check"></i> Utwórz zamówienie z odpowiedzi'
+                + '</button>');
+        }
         return items.join('');
     }
 
@@ -790,8 +807,7 @@ $(document).ready(function () {
 
         const items = parseInt(d.item_count, 10) || 0;
 
-        return '<div class="dx-row is-' + type + (d.state === 'cancelled' ? ' is-cancelled' : '') + '"'
-             +   ' data-href="' + esc(editUrl) + '">'
+        return '<div class="dx-row is-' + type + (d.state === 'cancelled' ? ' is-cancelled' : '') + '">'
              + '<div class="dx-cell dx-cell--doc">' + docCell + '</div>'
              + '<div class="dx-cell dx-cell--vendor"><span class="rx-cell-label">Dostawca</span>'
              +   '<span class="rx-vendor">' + esc(d.vendor_name || '—') + '</span></div>'
@@ -990,18 +1006,6 @@ $(document).ready(function () {
         e.preventDefault();
         goToPage(parseInt($(this).attr('data-page'), 10) || 1,
             $(this).closest('#paginationBottom').length > 0);
-    });
-
-    // Klik w wiersz (poza linkami/przyciskami) → dokument. Ctrl/Cmd →
-    // nowa karta; zaznaczanie tekstu (kopiowanie numeru) nie nawiguje.
-    $list.on('click', '.dx-row', function (e) {
-        if ($(e.target).closest('a, button, input, label').length) return;
-        const url = $(this).attr('data-href');
-        if (!url) return;
-        const sel = window.getSelection ? String(window.getSelection()) : '';
-        if (sel !== '') return;
-        if (e.ctrlKey || e.metaKey) window.open(url, '_blank');
-        else window.location.href = url;
     });
 
     // ---- Powrót po zamknięciu / anulowaniu PO z tej strony (?closed=…) --
