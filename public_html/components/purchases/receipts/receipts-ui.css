@@ -632,6 +632,13 @@
     .rx-qcell--progress { grid-area: progress; }
     .rx-qcell--action   { grid-area: action; text-align: left; }
     .rx-qcell--action .btn { width: 100%; }
+    /* Powyższa reguła wymusiłaby na „Edytuj" i caret split-buttona
+       po 100% szerokości — caret zająłby pół komórki. Pozwalamy im
+       zachować naturalną szerokość, żeby split-button wyglądał tak
+       samo jak na desktopie (kosz zostaje pod swoim `width: 2rem`
+       wyżej — tamta reguła wygrywa specyficznością). */
+    .rx-qcell--action .btn-group { width: auto; }
+    .rx-qcell--action .btn-group > .btn { width: auto; }
     .rx-cell-label { display: block; }
     .rx-qgroup { padding-left: 1.3rem; }
 }
@@ -1262,6 +1269,70 @@ a.rx-timeline-doc { color: var(--rx-accent-ink); }
     justify-content: flex-end;
     gap: .3rem;
     white-space: nowrap;
+}
+
+/* Pozycje menu split-buttona Edytuj w wierszu kolejki.
+   Przejmują kolor odpowiednich przycisków ze strony edycji PO
+   (potwierdzenie → btn-primary niebieski, przyjęcie → btn-success
+   zielony), żeby operator widział to samo „co na ekranie zamówienia
+   po prawej", tylko w menu zamiast obok siebie.
+
+   Selektory celują w .rx-qcell--action (kolejka) — nie w .dropdown-item
+   globalnie. Modal #receiveCancelPoModal, modal #receiveClosePoModal
+   oraz dropdown pagera (rx-pager-menu) zostają z domyślnym stylem
+   BS4 — ten plik ich nie rusza.
+
+   Wiersz zielony / niebieski, biały napis, BS4-like padding i radius.
+   Hover ściemnia tło, focus dodaje focus-ring (BS4 default
+   outline:none; tu łapiemy go sami, bo własna klasa nie dziedziczy
+   BS4 ostylowania). Ikona w środku dostaje ten sam color w CSS,
+   żeby hover nie zostawiał jej czarnej — BS4 .dropdown-item:hover
+   nie zmienia koloru ikonki, a my chcemy spójny efekt. */
+.rx-qcell--action .rx-menu-btn-primary,
+.rx-qcell--action .rx-menu-btn-success {
+    display: flex;
+    align-items: center;
+    gap: .45rem;
+    margin: .15rem .25rem;
+    padding: .4rem .8rem;
+    border-radius: .2rem;
+    border: 1px solid transparent;
+    font-weight: 600;
+    line-height: 1.25;
+    white-space: nowrap;
+    transition: background-color .12s ease, box-shadow .12s ease;
+}
+
+.rx-qcell--action .rx-menu-btn-primary,
+.rx-qcell--action .rx-menu-btn-primary .bi { color: #fff; }
+.rx-qcell--action .rx-menu-btn-primary {
+    background-color: #007bff;
+}
+.rx-qcell--action .rx-menu-btn-primary:hover,
+.rx-qcell--action .rx-menu-btn-primary:focus {
+    background-color: #0069d9;
+    color: #fff;
+    text-decoration: none;
+}
+.rx-qcell--action .rx-menu-btn-primary:focus {
+    outline: 0;
+    box-shadow: 0 0 0 .2rem rgba(0, 123, 255, .35);
+}
+
+.rx-qcell--action .rx-menu-btn-success,
+.rx-qcell--action .rx-menu-btn-success .bi { color: #fff; }
+.rx-qcell--action .rx-menu-btn-success {
+    background-color: #28a745;
+}
+.rx-qcell--action .rx-menu-btn-success:hover,
+.rx-qcell--action .rx-menu-btn-success:focus {
+    background-color: #218838;
+    color: #fff;
+    text-decoration: none;
+}
+.rx-qcell--action .rx-menu-btn-success:focus {
+    outline: 0;
+    box-shadow: 0 0 0 .2rem rgba(40, 167, 69, .35);
 }
 
 /* Na wąskich ekranach układamy przyciski jeden pod drugim, żeby

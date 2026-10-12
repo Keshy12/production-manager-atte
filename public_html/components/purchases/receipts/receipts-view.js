@@ -401,6 +401,38 @@ $(document).ready(function () {
              + '<div class="rx-sub">przyjęto ' + esc(fmtQty(received)) + ' z ' + esc(fmtQty(ordered)) + '</div>';
     }
 
+    // Pozycje menu pod caretem split-buttona Edytuj w wierszu kolejki.
+    // Kolejka ma tylko PO, więc gałąz jest krótsza niż odpowiednik
+    // w documents-view.js:
+    //   - sent (canRx === false) → „Potwierdź odbiór" jako
+    //     <button data-action="confirm-po"> z pełnym zestawem atrybutów
+    //     data-* (patrz confirm-po-modal.js). Item jest niebieski
+    //     (.rx-menu-btn-primary) — ten sam odcień co .btn-primary na
+    //     stronie edycji PO.
+    //   - confirmed / partially_received       → „Przyjmij towar"
+    //   - in_progress                          → „Dokończ przyjęcie"
+    //     (zachowujemy rozróżnienie, które wcześniej żyło w inline label
+    //     akcji bezpośredniej). Item jest zielony (.rx-menu-btn-success) —
+    //     ten sam odcień co .btn-success na stronie edycji PO.
+    // Item to <a> dla receive, <button> dla confirm — zachowujemy
+    // dotychczasowe typy elementów (BS4 dropdown sam dopilnuje pozycjonowania).
+    function queueActionMenuHtml(p, poId, poLabel) {
+        if (p.canReceive === false) {
+            return '<button type="button" class="dropdown-item rx-menu-btn-primary"'
+                + ' data-action="confirm-po"'
+                + ' data-po-id="' + poId + '"'
+                + ' data-po-number="' + escAttr(poLabel) + '"'
+                + ' data-vendor-name="' + escAttr(p.vendorName || '') + '"'
+                + ' data-vendor-po-number="' + escAttr(p.vendorPoNumber || '') + '"'
+                + ' data-after-confirm-url="' + escAttr(receiveUrl(poId)) + '">'
+                + '<i class="bi bi-check2-square"></i> Potwierdź odbiór</button>';
+        }
+        const label = p.state === 'in_progress' ? 'Dokończ przyjęcie' : 'Przyjmij towar';
+        return '<a class="dropdown-item rx-menu-btn-success"'
+             + ' href="' + escAttr(receiveUrl(poId)) + '">'
+             + '<i class="bi bi-box-arrow-in-down"></i> ' + label + '</a>';
+    }
+
     function queueRowHtml(p, idx, group) {
         const poId  = parseInt(p.poId, 10);
         // canReceive === false tylko dla `sent` (czeka na potwierdzenie
@@ -463,30 +495,36 @@ $(document).ready(function () {
               + '<i class="bi bi-x-square"></i>'
               + '</button>';
 
-        let actionCell;
-        if (canRx) {
-            const label = p.state === 'in_progress' ? 'Dokończ przyjęcie' : 'Przyjmij towar';
-            actionCell = '<div class="rx-action-cell d-flex align-items-center justify-content-end">'
-                       + trashBtn
-                       + '<a class="btn btn-sm btn-primary receive-po-btn" href="' + escAttr(receiveUrl(poId)) + '"'
-                       + ' data-po-id="' + poId + '">'
-                       + '<i class="bi bi-box-arrow-in-down"></i> ' + label
-                       + '</a>'
-                       + '</div>';
-        } else {
-            actionCell = '<div class="rx-action-cell d-flex align-items-center justify-content-end">'
-                       + trashBtn
-                       + '<button type="button" class="btn btn-sm btn-outline-success" '
-                       + 'data-action="confirm-po" '
-                       + 'data-po-id="' + poId + '" '
-                       + 'data-po-number="' + escAttr(poLabel) + '" '
-                       + 'data-vendor-name="' + escAttr(p.vendorName || '') + '" '
-                       + 'data-vendor-po-number="' + escAttr(p.vendorPoNumber || '') + '" '
-                       + 'data-after-confirm-url="' + escAttr(receiveUrl(poId)) + '">'
-                       + '<i class="bi bi-check2-square"></i> Potwierdź odbiór'
-                       + '</button>'
-                       + '</div>';
-        }
+        // Edytuj/Podgląd jako split-button (ten sam wzorzec co
+        // documents-view.js → editControlHtml): etykieta Edytuj jest
+        // zwykłym linkiem do ekranu zamówienia, a caret otwiera menu
+        // z kolejnym krokiem (Przyjmij towar / Dokończ przyjęcie /
+        // Potwierdź odbiór). Kosz stoi przed split-buttonem, żeby
+        // „mniej kuszący" przycisk nie wyglądał jak wizualne
+        // następstwo Edytuj. Każdy wiersz kolejki ma co najmniej
+        // jedną pozycję menu; gdyby kiedyś tak nie było, editControl
+        // zwraca sam link bez careta (dokumenty robią tak samo).
+        const editLink = '<a class="btn btn-sm rx-btn-quiet" href="'
+                       + escAttr(editUrl(poId)) + '" title="Edytuj dokument">'
+                       + '<i class="bi bi-pencil-square"></i> Edytuj</a>';
+        const menu = queueActionMenuHtml(p, poId, poLabel);
+        const editControl = menu
+            ? '<div class="btn-group btn-group-sm">'
+              + editLink
+              + '<button type="button"'
+              +   ' class="btn btn-sm rx-btn-quiet dropdown-toggle dropdown-toggle-split"'
+              +   ' data-toggle="dropdown" aria-haspopup="true" aria-expanded="false"'
+              +   ' aria-label="Więcej akcji dla zamówienia">'
+              +   '<span class="sr-only">Więcej akcji dla zamówienia</span>'
+              + '</button>'
+              + '<div class="dropdown-menu dropdown-menu-right">' + menu + '</div>'
+              + '</div>'
+            : editLink;
+
+        const actionCell = '<div class="rx-action-cell d-flex align-items-center justify-content-end">'
+                         + trashBtn
+                         + editControl
+                         + '</div>';
 
         return '<div class="rx-qrow queue-row is-' + group + (canRx ? '' : ' queue-row-pending') + '"'
              +   ' data-po-id="' + poId + '" data-idx="' + idx + '" data-group="' + group + '">'
