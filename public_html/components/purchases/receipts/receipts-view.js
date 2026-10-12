@@ -411,15 +411,56 @@ $(document).ready(function () {
             stateCell += '<div class="rx-sub"><i class="bi bi-hourglass-split"></i> czeka na potwierdzenie dostawcy</div>';
         }
 
+        // Drugi przycisk w komórce akcji — mały, tylko ikona kosza:
+        //   - canReceive === true (confirmed/in_progress/partially_received)
+        //     → data-action="close-po": otwiera modal z wyborem stanu
+        //       (received / cancelled).
+        //   - canReceive === false (sent): closePoFromReceive() tego
+        //     stanu nie przyjmuje, więc jedyną legalną opcją jest
+        //     anulowanie → data-action="cancel-po" → prosty modal
+        //     #receiveCancelPoModal.
+        //
+        // Agregaty (ordered/received/lineCount) przekazujemy w data-*,
+        // żeby modal mógł pokazać podsumowanie bez okrągłego zapytania
+        // po pozycje (kolejka ich nie ma).
+        const orderedQty  = num(p.orderedQty);
+        const receivedQty = num(p.receivedQty);
+        const lineCount   = parseInt(p.lineCount, 10) || 0;
+        const trashBtn = canRx
+            ? '<button type="button" class="btn btn-sm btn-outline-danger rx-close-po-btn" '
+              + 'data-action="close-po" '
+              + 'data-po-id="' + poId + '" '
+              + 'data-po-number="' + escAttr(poLabel) + '" '
+              + 'data-ordered-qty="' + escAttr(orderedQty) + '" '
+              + 'data-received-qty="' + escAttr(receivedQty) + '" '
+              + 'data-line-count="' + escAttr(lineCount) + '" '
+              + 'title="Zamknij zamówienie (odebrane / anulowane)" '
+              + 'aria-label="Zamknij zamówienie">'
+              + '<i class="bi bi-trash"></i>'
+              + '</button>'
+            : '<button type="button" class="btn btn-sm btn-outline-danger rx-close-po-btn" '
+              + 'data-action="cancel-po" '
+              + 'data-po-id="' + poId + '" '
+              + 'data-po-number="' + escAttr(poLabel) + '" '
+              + 'title="Anuluj zamówienie" '
+              + 'aria-label="Anuluj zamówienie">'
+              + '<i class="bi bi-trash"></i>'
+              + '</button>';
+
         let actionCell;
         if (canRx) {
             const label = p.state === 'in_progress' ? 'Dokończ przyjęcie' : 'Przyjmij towar';
-            actionCell = '<a class="btn btn-sm btn-primary receive-po-btn" href="' + escAttr(receiveUrl(poId)) + '"'
+            actionCell = '<div class="rx-action-cell d-flex align-items-center justify-content-end">'
+                       + trashBtn
+                       + '<a class="btn btn-sm btn-primary receive-po-btn" href="' + escAttr(receiveUrl(poId)) + '"'
                        + ' data-po-id="' + poId + '">'
                        + '<i class="bi bi-box-arrow-in-down"></i> ' + label
-                       + '</a>';
+                       + '</a>'
+                       + '</div>';
         } else {
-            actionCell = '<button type="button" class="btn btn-sm btn-outline-success" '
+            actionCell = '<div class="rx-action-cell d-flex align-items-center justify-content-end">'
+                       + trashBtn
+                       + '<button type="button" class="btn btn-sm btn-outline-success" '
                        + 'data-action="confirm-po" '
                        + 'data-po-id="' + poId + '" '
                        + 'data-po-number="' + escAttr(poLabel) + '" '
@@ -427,7 +468,8 @@ $(document).ready(function () {
                        + 'data-vendor-po-number="' + escAttr(p.vendorPoNumber || '') + '" '
                        + 'data-after-confirm-url="' + escAttr(receiveUrl(poId)) + '">'
                        + '<i class="bi bi-check2-square"></i> Potwierdź odbiór'
-                       + '</button>';
+                       + '</button>'
+                       + '</div>';
         }
 
         return '<div class="rx-qrow queue-row is-' + group + (canRx ? '' : ' queue-row-pending') + '"'
@@ -858,6 +900,31 @@ $(document).ready(function () {
         });
 
         // Bez query stringu w pasku adresu F5 nie pokaże komunikatu ponownie.
+        if (window.history && window.history.replaceState) {
+            window.history.replaceState({}, '', window.location.pathname + window.location.hash);
+        }
+    }
+
+    // ---- powrót po zamknięciu PO z formularza przyjęcia (?closed=…) -----
+    //
+    // Osobna gałąź od powyższego „saved" — tu NIE było zapisu przyjęcia,
+    // więc nie ma wiersza do podświetlenia ani linku „Pokaż w historii".
+    // Operator wybrał stan wynikowy (received/cancelled) w oknie
+    // „Zamknij zamówienie" na formularzu. Komunikat krótszy, bez akcji,
+    // ale ten sam schemat strip-query po wyrenderowaniu.
+
+    const closedState = successParams.get('closed');
+    if (closedState !== null && closedState !== '') {
+        const closedPo = successParams.get('po');
+        const meta = stateMeta(closedState);
+        const icon = meta.tone === 'red'
+            ? '<i class="bi bi-x-circle-fill"></i> '
+            : '<i class="bi bi-check-circle-fill"></i> ';
+        let closedMsg = icon
+            + 'Zamówienie <strong>' + esc(closedPo || '—') + '</strong> zamknięto'
+            + ' — ma teraz status „<strong>' + esc(meta.label) + '</strong>".';
+        showAlert(closedMsg, 'success');
+
         if (window.history && window.history.replaceState) {
             window.history.replaceState({}, '', window.location.pathname + window.location.hash);
         }

@@ -66,6 +66,17 @@ if (!empty($receipts)) {
 // "../" — ścieżki względne PHP liczy od index.php, nie od tego pliku.
 include __DIR__ . '/../documents/confirm-po-modal.php';
 
+// Współdzielony modal „Zamknij zamówienie" + (na tej stronie) prosty
+// modal „Anuluj zamówienie" — otwierane z kolejki przyciskami-koszami:
+//   - data-action="close-po" → #receiveClosePoModal (received/cancelled)
+//   - data-action="cancel-po" → #receiveCancelPoModal (cancelled only)
+//
+// $withCancel = true → partial emituje DRUGI modal #receiveCancelPoModal
+// przeznaczony dla wierszy w stanie `sent` (dla których jedynym legalnym
+// wynikiem jest anulowanie przez documents/document-cancel-ajax.php).
+$withCancel = true;
+include __DIR__ . '/close-po-modal.php';
+
 $historyCount = count($receipts);
 ?>
 
@@ -350,3 +361,4 @@ $historyCount = count($receipts);
 
 <script src="<?= asset('public_html/components/purchases/receipts/receipts-view.js') ?>"></script>
 <script src="<?= asset('public_html/components/purchases/documents/confirm-po-modal.js') ?>"></script>
+<script src="<?= asset('public_html/components/purchases/receipts/close-po.js') ?>"></script>
