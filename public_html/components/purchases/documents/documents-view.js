@@ -651,7 +651,7 @@ $(document).ready(function () {
                 + commonAttrs
                 + ' title="Anuluj zamówienie"'
                 + ' aria-label="Anuluj zamówienie">'
-                + '<i class="bi bi-slash-circle"></i>'
+                + '<i class="bi bi-dash-square-fill"></i>'
                 + '</button>';
         }
         if (d.state === 'confirmed' || d.state === 'partially_received' || d.state === 'in_progress') {
@@ -660,7 +660,7 @@ $(document).ready(function () {
                 + commonAttrs
                 + ' title="Zamknij zamówienie (odebrane / anulowane)"'
                 + ' aria-label="Zamknij zamówienie">'
-                + '<i class="bi bi-slash-circle"></i>'
+                + '<i class="bi bi-dash-square-fill"></i>'
                 + '</button>';
         }
         return '';

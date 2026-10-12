@@ -314,14 +314,17 @@ function formatPrice($v) {
                             // anulowania nie ma wyboru, więc nie ma czego
                             // "zamykać": mówimy wprost "Anuluj", a dla RFQ
                             // "Anuluj zapytanie", bo to nie jest zamówienie.
+                            //
+                            // Ikona jest JEDNA dla obu wariantów — ten sam
+                            // gest co na kolejce przyjęć i w pasku akcji
+                            // formularza. Różni się tylko etykieta.
                             $cancelLabel = 'Anuluj dokument';
-                            $cancelIcon  = 'bi-x-circle';
                             if ($cancelAction === 'close') {
                                 $cancelLabel = 'Zamknij zamówienie';
-                                $cancelIcon  = 'bi-slash-circle';
                             } elseif ($type === 'rfq') {
                                 $cancelLabel = 'Anuluj zapytanie';
                             }
+                            $cancelIcon = 'bi-dash-square-fill';
                         ?>
                         <button type="button"
                                 class="btn btn-sm btn-outline-danger"

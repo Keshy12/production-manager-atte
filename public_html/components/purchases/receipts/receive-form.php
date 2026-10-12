@@ -399,13 +399,13 @@
              wyjątkiem od codziennego toku (działanie terminalne), więc
              nie może dominować nad „Zapisz przyjęcie" ani stać za nim.
              Ikona i kolor są takie same jak przycisk zamknięcia na
-             ekranie dokumentu (bi-slash-circle + btn-outline-danger) —
+             ekranie dokumentu (bi-dash-square-fill + btn-outline-danger) —
              ten sam gest co tam, rozpoznawalny bez czytania etykiety.
              Dawniej było bi-check2-square na btn-outline-warning, co
              kolidowało z „Zapisz przyjęcie" (btn-success z tym samym
              check2) i wyglądało jak zwykłe ostrzeżenie. -->
         <button type="button" class="btn btn-outline-danger mr-2" id="receiveClosePoBtn">
-            <i class="bi bi-slash-circle"></i> Zamknij zamówienie
+            <i class="bi bi-dash-square-fill"></i> Zamknij zamówienie
         </button>
         <button type="button" class="btn btn-outline-secondary mr-2" id="receiveCancelBtn">Anuluj</button>
         <button type="button" class="btn btn-success px-4" id="receiveSubmitBtn" disabled>
