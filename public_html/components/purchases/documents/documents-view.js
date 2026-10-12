@@ -581,7 +581,10 @@ $(document).ready(function () {
         }
         const priced = breakdown.filter(function (b) { return parseFloat(b.total) !== 0; });
         if (priced.length === 0) {
-            return '<span class="rx-sub dx-noprice" title="Pozycje nie mają jeszcze cen">bez cen</span>';
+            // "----" zamiast słownego "bez cen": kolumna Wartość trzyma się
+            // jednej szerokości, a seria myślników wyrównuje się wizualnie
+            // z sumami wyżej i niżej. Bezpieczeństwo nadal w title.
+            return '<span class="rx-sub dx-noprice" title="Pozycje nie mają jeszcze cen">----</span>';
         }
         return priced.map(function (b) {
             return '<div class="dx-money">' + esc(fmtMoney(b.total))

@@ -241,12 +241,12 @@
     display: grid;
     grid-template-columns:
         minmax(11rem, 1.25fr)   /* Dokument  */
-        minmax(8rem, 1.3fr)     /* Dostawca  */
-        minmax(9.5rem, 1fr)     /* Status    */
+        minmax(7rem, 1.1fr)      /* Dostawca  */
+        minmax(9.5rem, 1fr)      /* Status    */
         4.5rem                  /* Pozycje   */
-        minmax(7.5rem, .9fr)    /* Wartość   */
+        minmax(6.5rem, .8fr)     /* Wartość   */
         7rem                    /* Utworzony */
-        16rem;                  /* Akcje     */
+        18rem;                  /* Akcje     */
     column-gap: 1rem;
     align-items: center;
     padding: .8rem 1.15rem .8rem 1.4rem;
@@ -320,9 +320,17 @@
 .dx-page .dx-cell { min-width: 0; }
 .dx-page .dx-cell--items,
 .dx-page .dx-cell--value { text-align: right; }
+/* Przyciski w jednej linii i zawsze na tej samej wysokości.
+   `nowrap` bo `wrap` łamał komórkę na dwa wiersze, gdy w akcji stały
+   kosz + przycisk z długą etykietą + Edytuj/Podgląd — wiersz rósł
+   w pionie i przyciski w sąsiednich wierszach nie były wyrównane.
+   Kolumna Akcje (18rem) jest szersza o tę różnicę, którą Dostawca
+   i Wartość oddały. `align-items: center` trzyma je na osi wiersza
+   niezależnie od wysokości pozostałych komórek. */
 .dx-page .dx-cell--action {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    align-items: center;
     justify-content: flex-end;
     gap: .35rem;
 }
@@ -406,6 +414,11 @@
     .dx-page .dx-cell--items { text-align: right; }
 }
 @media (max-width: 575.98px) {
+    /* Na telefonie komórka akcji zajmuje całą szerokość wiersza i przyciski
+       dostają `flex: 1 1 0`. Bez `wrap` przy trzech przyciskach (w tym
+       koszu) etykiety wycisnęłyby się zamiast zawijać — desktopowe
+       `nowrap` nie może tu obowiązywać. */
+    .dx-page .dx-cell--action { flex-wrap: wrap; }
     .dx-page .dx-cell--action .btn { flex: 1 1 0; }
 }
 
