@@ -697,12 +697,15 @@ $(document).ready(function () {
 
         if (d.state === 'draft') {
             const url = esc(appUrl('/admin/purchase/documents/send?id=' + id + '&type=' + d.type));
-            items.push('<a class="dropdown-item" href="' + url + '">'
+            // Klasy kolorów (.rx-action-primary/-success) z receipts-ui.css —
+            // współdzielone z receipts-view.js → queueActionMenuHtml, żeby
+            // obie listy miały identyczny odcień dla tej samej akcji.
+            items.push('<a class="dropdown-item rx-action-primary" href="' + url + '">'
                 + '<i class="bi bi-send"></i> Wyślij</a>');
         }
         if (d.type === 'rfq' && d.state === 'sent') {
             const url = esc(appUrl('/admin/purchase/documents/respond?id=' + id + '&type=rfq'));
-            items.push('<a class="dropdown-item" href="' + url + '">'
+            items.push('<a class="dropdown-item rx-action-primary" href="' + url + '">'
                 + '<i class="bi bi-reply"></i> Oznacz odpowiedź</a>');
         }
         if (d.type === 'po' && d.state === 'sent') {
@@ -710,7 +713,7 @@ $(document).ready(function () {
             const vendor    = esc(d.vendor_name || '');
             const vendorPo  = esc(d.secondary_number || '');
             const afterUrl  = esc(appUrl('/purchase/receipts/receive?po_id=' + id));
-            items.push('<button type="button" class="dropdown-item" data-action="confirm-po"'
+            items.push('<button type="button" class="dropdown-item rx-action-primary" data-action="confirm-po"'
                 + ' data-po-id="' + id + '"'
                 + ' data-po-number="' + number + '"'
                 + ' data-vendor-name="' + vendor + '"'
@@ -721,7 +724,7 @@ $(document).ready(function () {
         if (d.type === 'po'
             && (d.state === 'confirmed' || d.state === 'partially_received' || d.state === 'in_progress')) {
             const url = esc(appUrl('/purchase/receipts/receive?po_id=' + id));
-            items.push('<a class="dropdown-item" href="' + url + '">'
+            items.push('<a class="dropdown-item rx-action-success" href="' + url + '">'
                 + '<i class="bi bi-box-arrow-in-down"></i> Przyjmij towar</a>');
         }
         if (d.type === 'rfq' && d.state === 'responded') {
@@ -733,7 +736,7 @@ $(document).ready(function () {
             // i stałe id kolidowałoby między wierszami.
             const number = esc(d.primary_number || ('#' + id));
             const vendor = esc(d.vendor_name || '');
-            items.push('<button type="button" class="dropdown-item"'
+            items.push('<button type="button" class="dropdown-item rx-action-success"'
                 + ' data-action="rfq-convert"'
                 + ' data-rfq-id="' + id + '"'
                 + ' data-rfq-number="' + number + '"'

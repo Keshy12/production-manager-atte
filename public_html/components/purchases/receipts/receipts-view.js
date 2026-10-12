@@ -407,18 +407,21 @@ $(document).ready(function () {
     //   - sent (canRx === false) → „Potwierdź odbiór" jako
     //     <button data-action="confirm-po"> z pełnym zestawem atrybutów
     //     data-* (patrz confirm-po-modal.js). Item jest niebieski
-    //     (.rx-menu-btn-primary) — ten sam odcień co .btn-primary na
+    //     (.rx-action-primary) — ten sam odcień co .btn-primary na
     //     stronie edycji PO.
     //   - confirmed / partially_received       → „Przyjmij towar"
     //   - in_progress                          → „Dokończ przyjęcie"
     //     (zachowujemy rozróżnienie, które wcześniej żyło w inline label
-    //     akcji bezpośredniej). Item jest zielony (.rx-menu-btn-success) —
+    //     akcji bezpośredniej). Item jest zielony (.rx-action-success) —
     //     ten sam odcień co .btn-success na stronie edycji PO.
     // Item to <a> dla receive, <button> dla confirm — zachowujemy
     // dotychczasowe typy elementów (BS4 dropdown sam dopilnuje pozycjonowania).
+    // Klasy kolorów są współdzielone z documents-view.js (actionMenuItemsHtml)
+    // — ich definicja siedzi w receipts-ui.css, który obie strony wczytują,
+    // więc odcień nie może się rozjechać między listami.
     function queueActionMenuHtml(p, poId, poLabel) {
         if (p.canReceive === false) {
-            return '<button type="button" class="dropdown-item rx-menu-btn-primary"'
+            return '<button type="button" class="dropdown-item rx-action-primary"'
                 + ' data-action="confirm-po"'
                 + ' data-po-id="' + poId + '"'
                 + ' data-po-number="' + escAttr(poLabel) + '"'
@@ -428,7 +431,7 @@ $(document).ready(function () {
                 + '<i class="bi bi-check2-square"></i> Potwierdź odbiór</button>';
         }
         const label = p.state === 'in_progress' ? 'Dokończ przyjęcie' : 'Przyjmij towar';
-        return '<a class="dropdown-item rx-menu-btn-success"'
+        return '<a class="dropdown-item rx-action-success"'
              + ' href="' + escAttr(receiveUrl(poId)) + '">'
              + '<i class="bi bi-box-arrow-in-down"></i> ' + label + '</a>';
     }

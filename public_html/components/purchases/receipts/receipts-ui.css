@@ -1271,68 +1271,62 @@ a.rx-timeline-doc { color: var(--rx-accent-ink); }
     white-space: nowrap;
 }
 
-/* Pozycje menu split-buttona Edytuj w wierszu kolejki.
-   Przejmują kolor odpowiednich przycisków ze strony edycji PO
-   (potwierdzenie → btn-primary niebieski, przyjęcie → btn-success
-   zielony), żeby operator widział to samo „co na ekranie zamówienia
-   po prawej", tylko w menu zamiast obok siebie.
+/* Pozycje menu split-buttona Edytuj — współdzielone między
+   /purchase/documents (actionMenuItemsHtml w documents-view.js)
+   i /purchase/receipts (queueActionMenuHtml w receipts-view.js).
+   Obie listy nadają te same klasy dla akcji o tym samym odcieniu,
+   więc odcień nie może się rozjechać między stronami.
 
-   Selektory celują w .rx-qcell--action (kolejka) — nie w .dropdown-item
-   globalnie. Modal #receiveCancelPoModal, modal #receiveClosePoModal
-   oraz dropdown pagera (rx-pager-menu) zostają z domyślnym stylem
-   BS4 — ten plik ich nie rusza.
+   Kolory tekstu odpowiadają odpowiednim przyciskom na stronie
+   edycji dokumentu /admin/purchase/documents/edit:
+     - .rx-action-primary → btn-primary (#007bff)
+     - .rx-action-success → btn-success (#28a745)
+   Wiersz dropdown-item pozostaje zwykły (BS4 padding, font-weight
+   dziedziczony z .dropdown-menu) — koloruje się tylko tekst
+   i ikona, żeby dropdown czytał się jako lista opcji, a nie
+   zestaw przycisków.
 
-   Wiersz zielony / niebieski, biały napis, BS4-like padding i radius.
-   Hover ściemnia tło, focus dodaje focus-ring (BS4 default
-   outline:none; tu łapiemy go sami, bo własna klasa nie dziedziczy
-   BS4 ostylowania). Ikona w środku dostaje ten sam color w CSS,
-   żeby hover nie zostawiał jej czarnej — BS4 .dropdown-item:hover
-   nie zmienia koloru ikonki, a my chcemy spójny efekt. */
-.rx-qcell--action .rx-menu-btn-primary,
-.rx-qcell--action .rx-menu-btn-success {
-    display: flex;
-    align-items: center;
-    gap: .45rem;
-    margin: .15rem .25rem;
-    padding: .4rem .8rem;
-    border-radius: .2rem;
-    border: 1px solid transparent;
-    font-weight: 600;
-    line-height: 1.25;
-    white-space: nowrap;
-    transition: background-color .12s ease, box-shadow .12s ease;
-}
+   Scope: celujemy w samą klasę, nie w .rx-qcell--action /
+   .dx-cell--action. Modal #receiveClosePoModal, #receiveCancelPoModal
+   i #send-confirm-po-modal nie nadają tych klas swoim
+   .dropdown-item (renderują zwykłe itemy); pager .rx-pager-menu
+   też nie. Dlatego reguła może być globalna — jedyne nadawane
+   klasy są w tych dwóch builderach, a tam, gdzie klasy nie ma,
+   pozostaje BS4 default.
 
-.rx-qcell--action .rx-menu-btn-primary,
-.rx-qcell--action .rx-menu-btn-primary .bi { color: #fff; }
-.rx-qcell--action .rx-menu-btn-primary {
-    background-color: #007bff;
-}
-.rx-qcell--action .rx-menu-btn-primary:hover,
-.rx-qcell--action .rx-menu-btn-primary:focus {
-    background-color: #0069d9;
-    color: #fff;
+   Hover: tint tego samego odcienia (8% alpha), nie wypełnienie.
+   Tekst ciemnieje, żeby zachować kontrast i nadal być czytelny.
+   Focus: inset ring 1px w kolorze akcji. BS4 .dropdown-item
+   nie daje własnego wskaźnika fokusu — dajemy go sami dla
+   klawiatury. */
+.rx-action-primary { color: #007bff; }
+.rx-action-primary:hover,
+.rx-action-primary:focus {
+    /* Hover/focus: ciemniejszy tekst (ten sam odcień co tło .btn-primary
+       w stanie :hover, żeby kolor tekstu zgadzał się z kolorem tła
+       odpowiadającego mu przycisku) + subtelny tint tła dla odróżnienia
+       od zwykłego dropdown-item. */
+    color: #0069d9;
+    background-color: rgba(0, 123, 255, .08);
     text-decoration: none;
 }
-.rx-qcell--action .rx-menu-btn-primary:focus {
+.rx-action-primary:focus {
     outline: 0;
-    box-shadow: 0 0 0 .2rem rgba(0, 123, 255, .35);
+    box-shadow: inset 0 0 0 1px #007bff;
 }
 
-.rx-qcell--action .rx-menu-btn-success,
-.rx-qcell--action .rx-menu-btn-success .bi { color: #fff; }
-.rx-qcell--action .rx-menu-btn-success {
-    background-color: #28a745;
-}
-.rx-qcell--action .rx-menu-btn-success:hover,
-.rx-qcell--action .rx-menu-btn-success:focus {
-    background-color: #218838;
-    color: #fff;
+.rx-action-success { color: #28a745; }
+.rx-action-success:hover,
+.rx-action-success:focus {
+    /* Jak wyżej — tekst w stanie hover zgadza się z tłem .btn-success
+       w stanie :hover (BS4 darken($success, 10%) = #218838). */
+    color: #218838;
+    background-color: rgba(40, 167, 69, .08);
     text-decoration: none;
 }
-.rx-qcell--action .rx-menu-btn-success:focus {
+.rx-action-success:focus {
     outline: 0;
-    box-shadow: 0 0 0 .2rem rgba(40, 167, 69, .35);
+    box-shadow: inset 0 0 0 1px #28a745;
 }
 
 /* Na wąskich ekranach układamy przyciski jeden pod drugim, żeby
