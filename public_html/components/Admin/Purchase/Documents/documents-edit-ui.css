@@ -121,6 +121,15 @@
 .dx-items td.doc-cell-price,
 .dx-items td.doc-cell-value,
 .dx-items td.doc-cell-received { font-variant-numeric: tabular-nums; }
+
+/* Pasek postępu pozycji (tylko PO w trakcie przyjęcia). Dziedziczy
+   wygląd z .rx-bar (receipts-ui.css) — tu tylko dopasowanie szerokości
+   do wąskiej, prawoskrątnej kolumny „Odebrane" i minimalny margines,
+   żeby nie zlewał się z liczbą nad nim. */
+.dx-items .doc-item-bar {
+    margin: .3rem 0 .1rem;
+    min-width: 4.5rem;
+}
 .dx-items td.doc-cell-qty,
 .dx-items td.doc-cell-value { font-weight: 700; }
 .dx-items td.doc-cell-qty .badge {

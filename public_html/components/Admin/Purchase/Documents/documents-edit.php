@@ -507,6 +507,15 @@ function formatPrice($v) {
     </section>
 
     <!-- ===== Pozycje ===== -->
+    <?php
+        // Pasek postępu na pozycji ma sens tylko tam, gdzie przyjęcie
+        // właśnie trwa: potwierdzone / w trakcie / częściowo odebrane.
+        // W szkicu nic nie przyjęto (pasek byłby zawsze pusty), a w stanie
+        // `received` wszystkie pozycje są domknięte i kolumna byłaby martwa.
+        // RFQ nie ma kolumny „Odebrane" w ogóle.
+        $showItemProgress = ($type === 'po')
+            && in_array($doc->state, ['confirmed', 'in_progress', 'partially_received'], true);
+    ?>
     <section class="rx-panel mb-3">
         <div class="rx-panel-head">
             <h2 class="rx-panel-title">
@@ -653,6 +662,35 @@ function formatPrice($v) {
                                 <?= htmlspecialchars(formatQty($i->quantityReceived ?? 0)) ?>
                                 <?php if (!empty($i->unitName)): ?>
                                     <div><small class="text-muted"><?= htmlspecialchars($i->unitName) ?></small></div>
+                                <?php endif; ?>
+                                <?php if ($showItemProgress): ?>
+                                    <?php
+                                        // Postęp pozycji: ile z zamówionego
+                                        // faktycznie przyjęto. Ta sama wizualna
+                                        // rodzina co .rx-bar na ekranie przyjęcia
+                                        // (ten sam CSS jest tu wpinany).
+                                        $ordLine   = (float)($i->quantity ?? 0);
+                                        $recLine   = (float)($i->quantityReceived ?? 0);
+                                        $pctLine   = $ordLine > 0
+                                            ? max(0.0, min(100.0, ($recLine / $ordLine) * 100))
+                                            : 0.0;
+                                        $missing   = max(0.0, $ordLine - $recLine);
+                                        $lineDone  = $missing <= 1e-6;
+                                    ?>
+                                    <div class="rx-bar doc-item-bar" role="progressbar"
+                                         aria-valuemin="0" aria-valuemax="100"
+                                         aria-valuenow="<?= (int)round($pctLine) ?>"
+                                         title="Przyjęto <?= htmlspecialchars(formatQty($recLine)) ?> z <?= htmlspecialchars(formatQty($ordLine)) ?>">
+                                        <span class="<?= $lineDone ? 'is-done' : '' ?>"
+                                              style="width: <?= number_format($pctLine, 1, '.', '') ?>%"></span>
+                                    </div>
+                                    <div>
+                                        <small class="<?= $lineDone ? 'text-success' : 'text-muted' ?>">
+                                            <?= $lineDone
+                                                ? 'w całości'
+                                                : 'brakuje ' . htmlspecialchars(formatQty($missing)) ?>
+                                        </small>
+                                    </div>
                                 <?php endif; ?>
                             </td>
                         <?php endif; ?>
