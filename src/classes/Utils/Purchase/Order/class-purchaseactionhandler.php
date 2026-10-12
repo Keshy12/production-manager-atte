@@ -1240,6 +1240,103 @@ class PurchaseActionHandler {
     }
 
     /**
+     * Zamyka zamówienie (PO) ze strony formularza przyjęcia — operator
+     * sam wybiera stan wynikowy (`received` albo `cancelled`) w oknie
+     * potwierdzenia. Obsługiwane scenariusze:
+     *   - część pozycji nie zostanie dostarczona (np. dostawca wysłał
+     *     zamiennik) i operator chce zakończyć PO jako w pełni odebrane
+     *     (`received`) bez zapisywania braków;
+     *   - dostawa się nie odbędzie / cofnęliśmy płatność i trzeba
+     *     zamknąć PO jako anulowane (`cancelled`), nawet jeśli nic nie
+     *     zostało przyjęte.
+     *
+     * Dozwolone ze stanów `confirmed`, `in_progress`,
+     * `partially_received`. W odróżnieniu od {@see closePoAsReceived()}
+     * metoda NIE wymaga istniejącego wiersza `purchase__order_receipt`
+     * — cały sens tego wejścia to umożliwienie zamknięcia PO, na
+     * którym nie przyjęto jeszcze nic (np. `confirmed` → `cancelled`).
+     *
+     * Jest to CELOWE rozszerzenie węższego guarda {@see cancelPo()},
+     * który blokuje `partially_received → cancelled` (strona edycji PO
+     * zakazuje anulowania po przyjęciu choćby części dostawy — chroni
+     * to rozliczone pozycje przed wycofaniem). Tutaj operator jawnie
+     * wybiera wynik w oknie potwierdzenia, więc dopuszczamy ten ruch;
+     * nadal odrzucamy stany `draft`/`sent` (zamówienie nie zostało
+     * jeszcze potwierdzone przez dostawcę — anulowanie takiego PO
+     * należy do cancelPo na stronie edycji) oraz stany już terminalne
+     * (`received`, `cancelled`).
+     *
+     * Oba stany wynikowe są traktowane jako terminalne — po `received`
+     * `OrderReceiptRepository::delete()` odmawia kasowania przyjęcia
+     * dla tego PO (zob. delete() w
+     * class-orderreceiptrepository.php), więc nie da się już cofnąć
+     * historii przyjęcia. `cancelled` wyłącza PO z kolejki i listy
+     * aktywnych dokumentów.
+     *
+     * Transakcja: tak jak `createReceipt()` — dołączamy otwartą
+     * transakcję wywołującego zamiast otwierać własną
+     * (`$ownedTransaction = !$MsaDB->db->inTransaction();`). Dziś żaden
+     * endpoint nie otacza tego wywołania własną transakcją, ale wzorzec
+     * zostaje spójny z resztą handlera.
+     *
+     * Komunikaty błędów po polsku — trafiają do operatora przez
+     * endpoint AJAX (`receipt-close-po.php`).
+     *
+     * @param int    $poId
+     * @param int    $userId
+     * @param string $targetState    'received' (domyślnie) lub 'cancelled'
+     * @return array{poId: int, poState: string}
+     */
+    public function closePoFromReceive(int $poId, int $userId, string $targetState = 'received'): array {
+        if ($poId <= 0) {
+            throw new \InvalidArgumentException("poId must be positive.");
+        }
+        if ($userId <= 0) {
+            throw new \InvalidArgumentException("userId must be positive.");
+        }
+        if (!in_array($targetState, ['received', 'cancelled'], true)) {
+            throw new \InvalidArgumentException(
+                "Stan zamknięcia musi być 'received' albo 'cancelled', podano: {$targetState}."
+            );
+        }
+
+        $MsaDB  = $this->MsaDB;
+        $poRepo = new PurchaseOrderRepository($MsaDB);
+
+        $po = $poRepo->getById($poId);
+        if ($po === null) {
+            throw new \LogicException("Nie znaleziono zamówienia.");
+        }
+        if (!in_array($po->state, ['confirmed', 'in_progress', 'partially_received'], true)) {
+            throw new \LogicException(
+                "Zamówienie jest w stanie '{$po->state}'. Zamknięcie z tej strony jest możliwe tylko dla zamówień potwierdzonych, w trakcie przyjęcia lub częściowo odebranych."
+            );
+        }
+
+        // Tu NIE sprawdzamy istnienia wiersza purchase__order_receipt —
+        // cały sens tej ścieżki to umożliwienie zamknięcia PO, na
+        // którym nie przyjęto jeszcze nic (np. confirmed → cancelled).
+
+        $ownedTransaction = !$MsaDB->db->inTransaction();
+        if ($ownedTransaction) {
+            $MsaDB->db->beginTransaction();
+        }
+
+        try {
+            $poRepo->setState($poId, $targetState);
+            if ($ownedTransaction) {
+                $MsaDB->db->commit();
+            }
+            return ['poId' => $poId, 'poState' => $targetState];
+        } catch (\Throwable $e) {
+            if ($ownedTransaction && $MsaDB->db->inTransaction()) {
+                $MsaDB->db->rollBack();
+            }
+            throw $e;
+        }
+    }
+
+    /**
      * Persist receipt-header metadata (vendor doc number, comment, date)
      * and transition the PO into 'in_progress', without booking any items.
      *
