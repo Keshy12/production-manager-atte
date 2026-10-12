@@ -250,10 +250,13 @@ $(document).ready(function () {
     //   poId      int    wymagane
     //   poNumber  string — etykieta w UI; '' lub '#id' gdy brak
     //   backUrl   string? — j.w. (opcjonalny URL powrotu)
+    //   docType   'po'|'rfq' — rodzaj dokumentu; steruje wysyłanym
+    //             typem do document-cancel-ajax.php oraz tekstem okna
+    //             (zamówienie / zapytanie ofertowe). Domyślnie 'po'.
     function openCancel(opts) {
         if (!opts || !opts.poId) {
             if (typeof window.setAlert === 'function') {
-                window.setAlert('Brak identyfikatora zamówienia.', 'danger');
+                window.setAlert('Brak identyfikatora dokumentu.', 'danger');
             } else {
                 console.error('ReceiptClosePo.openCancel: brak poId');
             }
@@ -268,14 +271,21 @@ $(document).ready(function () {
 
         const poId     = parseInt(opts.poId, 10);
         const poNumber = opts.poNumber || ('#' + poId);
+        const isRfq    = (opts.docType || 'po') === 'rfq';
 
-        const summaryHtml = 'Zamówienie <strong>' + esc(poNumber) + '</strong>'
-            + ' zostanie <strong>anulowane</strong>. Anulowanie oznacza,'
-            + ' że dostawa się nie odbędzie.';
+        // Zapytanie ofertowe nie ma „dostawy" — anulowanie oznacza, że
+        // odpowiedzi nie będziemy szukać. Zakup jest w drugiej części
+        // zdania, więc dla RFQ mówimy o wycofaniu zapytania.
+        const subject = isRfq ? 'Zapytanie ofertowe' : 'Zamówienie';
+        const summaryHtml = subject + ' <strong>' + esc(poNumber) + '</strong>'
+            + ' zostanie <strong>anulowane</strong>. Anulowanie oznacza, że '
+            + (isRfq ? 'odpowiedzi nie będziemy szukać.'
+                     : 'dostawa się nie odbędzie.');
         $('#receiveCancelPoSummary').html(summaryHtml);
         $('#receiveCancelPoError').addClass('d-none').empty();
 
-        $modal.attr('data-current-po-id', poId).attr('data-current-po-number', poNumber);
+        $modal.attr('data-current-po-id', poId).attr('data-current-po-number', poNumber)
+              .attr('data-current-doc-type', isRfq ? 'rfq' : 'po');
         if (opts.backUrl) {
             $modal.attr('data-current-back-url', String(opts.backUrl));
         } else {
@@ -372,13 +382,18 @@ $(document).ready(function () {
         const originalHtml = $btn.html();
         const poId     = parseInt($modal.attr('data-current-po-id'), 10);
         const poNumber = $modal.attr('data-current-po-number') || '';
+        // Rodzaj dokumentu ustawiony przy otwarciu okna — 'po' albo 'rfq'.
+        // document-cancel-ajax.php używa go, żeby wybrać cancelPo() czy
+        // cancelRfq(); bez tego każdy RFQ zostałby anulowany jako PO.
+        const docType  = ($modal.attr('data-current-doc-type') === 'rfq') ? 'rfq' : 'po';
+        const subject  = (docType === 'rfq') ? 'zapytania ofertowego' : 'zamówienia';
         // j.w. — brak data-current-back-url → domyślna ścieżka modułu.
         const backUrl = $modal.attr('data-current-back-url')
             || (ROOT_DIR + '/purchase/receipts');
 
         if (!poId || poId <= 0) {
             if (typeof window.setAlert === 'function') {
-                window.setAlert('Brak identyfikatora zamówienia.', 'danger');
+                window.setAlert('Brak identyfikatora dokumentu.', 'danger');
             }
             return;
         }
@@ -391,12 +406,12 @@ $(document).ready(function () {
             $btn.prop('disabled', false).html(originalHtml);
         };
 
-        cancelAjax({ type: 'po', id: poId })
+        cancelAjax({ type: docType, id: poId })
             .done(function (res) {
                 if (!res || !res.success) {
                     restore();
                     $('#receiveCancelPoError')
-                        .text((res && res.error) || 'Nie udało się anulować zamówienia.')
+                        .text((res && res.error) || ('Nie udało się anulować ' + subject + '.'))
                         .removeClass('d-none');
                     return;
                 }
@@ -442,6 +457,8 @@ $(document).ready(function () {
     // Opcjonalny atrybut data-back-url na triggerze zmienia stronę
     // powrotu po sukcesie (np. /purchase/documents zamiast domyślnego
     // /purchase/receipts). Brak atrybutu → stare zachowanie.
+    // Opcjonalny data-doc-type ('rfq') przełącza anulowanie na
+    // cancelRfq() i zmienia tekst okna; brak → 'po'.
 
     $(document).on('click', '[data-action="close-po"]', function (e) {
         e.preventDefault();
@@ -479,8 +496,10 @@ $(document).ready(function () {
         const number = $trigger.attr('data-po-number') || '';
         if (!poId || poId <= 0) return;
         const backUrl = $trigger.attr('data-back-url') || '';
+        const docType = $trigger.attr('data-doc-type') || '';
         const opts = { poId: poId, poNumber: number };
         if (backUrl) opts.backUrl = backUrl;
+        if (docType) opts.docType = docType;
         openCancel(opts);
     });
 });
