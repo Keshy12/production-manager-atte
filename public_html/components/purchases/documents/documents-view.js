@@ -592,8 +592,17 @@ $(document).ready(function () {
         }).join('');
     }
 
-    // Następny krok — ten sam przycisk, który strona edycji pokazuje
-    // w nagłówku dla danego stanu.
+    // Następny krok — przycisk dokumentacyjny, NIE logistyczny.
+//
+// Świadomie NIE ma tu „Potwierdź odbiór" ani „Przyjmij towar". Oba
+// kroki dotyczą fizycznego obiegu towaru i mają swoje miejsce na
+// stronie edycji dokumentu oraz w kolejce /purchase/receipts. Na
+// liście dokumentów tylko odstraszały od jednego wejścia — i robiły
+// kolumnę Akcji nieczytelną, bo do kosza dochodził jeszcze przycisk
+// z najdłuższą etykietą w rzędzie.
+//
+// Zostaje tylko to, czego nie da się zrobić z innego miejsca: wysłanie
+// szkicu i oznaczenie odpowiedzi na RFQ.
     function nextStepHtml(d) {
         const id = parseInt(d.id, 10);
         if (d.state === 'draft') {
@@ -606,26 +615,14 @@ $(document).ready(function () {
                  + esc(appUrl('/admin/purchase/documents/respond?id=' + id + '&type=rfq')) + '">'
                  + '<i class="bi bi-reply"></i> Oznacz odpowiedź</a>';
         }
-        if (d.type === 'po' && d.state === 'sent') {
-            return '<button type="button" class="btn btn-sm btn-outline-success"'
-                 + ' data-action="confirm-po"'
-                 + ' data-po-id="' + id + '"'
-                 + ' data-po-number="' + esc(d.primary_number || ('#' + id)) + '"'
-                 + ' data-vendor-name="' + esc(d.vendor_name || '') + '"'
-                 + ' data-vendor-po-number="' + esc(d.secondary_number || '') + '"'
-                 + ' data-after-confirm-url="' + esc(appUrl('/purchase/receipts/receive?po_id=' + id)) + '">'
-                 + '<i class="bi bi-check2-square"></i> Potwierdź odbiór</button>';
-        }
-        if (d.type === 'po' && (d.state === 'confirmed' || d.state === 'partially_received' || d.state === 'in_progress')) {
-            return '<a class="btn btn-sm btn-success" href="'
-                 + esc(appUrl('/purchase/receipts/receive?po_id=' + id)) + '">'
-                 + '<i class="bi bi-box-arrow-in-down"></i> Przyjmij towar</a>';
-        }
         return '';
     }
 
-    // Przycisk-kosz obok „Potwierdź odbiór" / „Przyjmij towar" — współdzielony
-    // z kolejką /purchase/receipts (patrz receipts-view.js → queueRowHtml).
+    // Przycisk zamknięcia — współdzielony z kolejką /purchase/receipts
+    // (patrz receipts-view.js → queueRowHtml). Stoi pierwszy w komórce
+    // akcji; obok niego zostaje tylko next-step (Wyślij / Oznacz odpowiedź,
+    // jeśli w danym stanie w ogóle jest) oraz Edytuj/Podgląd.
+    //
     // Tylko dla PO w stanach, w których operacja ma sens:
     //   - `sent` → cancel-po (prosty modal anulowania, closePoFromReceive()
     //     tego stanu nie przyjmuje, więc jedyną legalną opcją jest

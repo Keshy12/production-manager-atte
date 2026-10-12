@@ -20,11 +20,16 @@
  * Akcje w wierszu:
  *   - Edytuj / Podgląd (zależnie od flagi editable) →
  *     /admin/purchase/documents/edit?id=N&type=rfq|po (edit_url z serwera),
- *   - następny krok, ten sam co w nagłówku strony edycji:
+ *   - zamknięcie / anulowanie dokumentu (tylko PO, patrz close-po-btn
+ *     w documents-view.js),
+ *   - następny krok dokumentacyjny:
  *       szkic       → Wyślij            /admin/purchase/documents/send?id=N&type=…
  *       RFQ wysłane → Oznacz odpowiedź  /admin/purchase/documents/respond?id=N&type=rfq
- *       PO wysłane  → Potwierdź odbiór  (współdzielony confirm-po-modal)
- *       PO w realizacji → Przyjmij towar /purchase/receipts/receive?po_id=N
+ *
+ * Świadomie NIE ma tu „Potwierdź odbiór" ani „Przyjmij towar" — oba
+ * kroki dotyczą obiegu towaru i zostały na stronie edycji dokumentu
+ * oraz w kolejce /purchase/receipts. Dlatego modal „Potwierdź odbiór"
+ * nie jest już tu wpinany (patrz niżej).
  *
  * Domyślny zakres dat: ostatnie 90 dni — widoczny w pasku (przycisk
  * „90 dni" zaznaczony) i w linijce podsumowania.
@@ -46,10 +51,6 @@ $activeVendors = $MsaDB->query(
       ORDER BY name ASC"
 );
 
-// Współdzielony modal „Potwierdź odbiór" (PO w stanie `sent`) — ten sam
-// partial, którego używają /purchase/receipts i strona edycji.
-include __DIR__ . '/confirm-po-modal.php';
-
 // Współdzielony modal „Zamknij zamówienie" + (na tej stronie) prosty
 // modal „Anuluj zamówienie" — ten sam partial co /purchase/receipts,
 // zaimportowany z ../receipts/close-po-modal.php. Przyciski-kosze w
@@ -67,7 +68,6 @@ $baseUrl = 'http://' . BASEURL;
 
 <link rel="stylesheet" href="<?= asset('public_html/components/purchases/receipts/receipts-ui.css') ?>">
 <link rel="stylesheet" href="<?= asset('public_html/components/purchases/documents/documents-ui.css') ?>">
-<link rel="stylesheet" href="<?= asset('public_html/components/purchases/documents/confirm-po-modal.css') ?>">
 
 <div class="rx-page dx-page" id="documentsView">
 
@@ -257,5 +257,4 @@ $baseUrl = 'http://' . BASEURL;
 </div>
 
 <script src="<?= htmlspecialchars(asset('public_html/components/purchases/documents/documents-view.js'), ENT_QUOTES) ?>"></script>
-<script src="<?= htmlspecialchars(asset('public_html/components/purchases/documents/confirm-po-modal.js'), ENT_QUOTES) ?>"></script>
 <script src="<?= htmlspecialchars(asset('public_html/components/purchases/receipts/close-po.js'), ENT_QUOTES) ?>"></script>
