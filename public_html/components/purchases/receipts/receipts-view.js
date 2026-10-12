@@ -406,14 +406,19 @@ $(document).ready(function () {
     // w documents-view.js:
     //   - sent (canRx === false) → „Potwierdź odbiór" jako
     //     <button data-action="confirm-po"> z pełnym zestawem atrybutów
-    //     data-* (patrz confirm-po-modal.js). Item jest niebieski
-    //     (.rx-action-primary) — ten sam odcień co .btn-primary na
-    //     stronie edycji PO.
+    //     data-* (patrz confirm-po-modal.js). Item jest zielony
+    //     (.rx-action-success) — „Potwierdź odbiór" to potwierdzenie
+    //     faktu, akcja zamykająca etap, więc zielona.
     //   - confirmed / partially_received       → „Przyjmij towar"
     //   - in_progress                          → „Dokończ przyjęcie"
     //     (zachowujemy rozróżnienie, które wcześniej żyło w inline label
-    //     akcji bezpośredniej). Item jest zielony (.rx-action-success) —
-    //     ten sam odcień co .btn-success na stronie edycji PO.
+    //     akcji bezpośredniej). Item jest niebieski (.rx-action-primary) —
+    //     akcja, która zabiera operatora do dalszej pracy z towarem.
+    //
+    // Odcienie celowo NIE odzwierciedlają klasy przycisku na stronie
+    // edycji (tam „Przyjmij towar" jest zielony). To decyzja
+    // produktowa, nie Follow the Edit Page: w menu kolor rozróżnia
+    // rodzaj akcji, a nie dokładnie ten sam przycisk.
     // Item to <a> dla receive, <button> dla confirm — zachowujemy
     // dotychczasowe typy elementów (BS4 dropdown sam dopilnuje pozycjonowania).
     // Klasy kolorów są współdzielone z documents-view.js (actionMenuItemsHtml)
@@ -421,7 +426,7 @@ $(document).ready(function () {
     // więc odcień nie może się rozjechać między listami.
     function queueActionMenuHtml(p, poId, poLabel) {
         if (p.canReceive === false) {
-            return '<button type="button" class="dropdown-item rx-action-primary"'
+            return '<button type="button" class="dropdown-item rx-action-success"'
                 + ' data-action="confirm-po"'
                 + ' data-po-id="' + poId + '"'
                 + ' data-po-number="' + escAttr(poLabel) + '"'
@@ -431,7 +436,7 @@ $(document).ready(function () {
                 + '<i class="bi bi-check2-square"></i> Potwierdź odbiór</button>';
         }
         const label = p.state === 'in_progress' ? 'Dokończ przyjęcie' : 'Przyjmij towar';
-        return '<a class="dropdown-item rx-action-success"'
+        return '<a class="dropdown-item rx-action-primary"'
              + ' href="' + escAttr(receiveUrl(poId)) + '">'
              + '<i class="bi bi-box-arrow-in-down"></i> ' + label + '</a>';
     }

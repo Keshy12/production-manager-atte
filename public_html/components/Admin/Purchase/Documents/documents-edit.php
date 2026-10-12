@@ -99,11 +99,13 @@ if ($type === 'po') {
 // State guard: single source of truth lives on the action handler.
 $allowedEdit = in_array($doc->state, PurchaseActionHandler::allowedEditStates($type), true);
 
-// "Wyślij dokument" / "Wyślij ponownie" / "Oznacz odpowiedź" —
-// jeden button w prawym górnym rogu headera, obok "Wróć". Mapa
-// stanów specyfikacji: draft → Wyślij dokument; PO sent / confirmed
-// → Wyślij ponownie; RFQ sent → Oznacz odpowiedź; RFQ responded
-// → Wyślij ponownie; inne stany → brak buttona.
+// "Wyślij dokument" / "Wyślij ponownie" / "Oznacz odpowiedź" /
+// "Potwierdź odbiór" — jeden button w prawym górnym rogu headera,
+// obok "Wróć". Mapa stanów: draft → Wyślij dokument;
+// PO sent → Potwierdź odbiór; RFQ sent → Oznacz odpowiedź;
+// RFQ responded → Wyślij ponownie; PO confirmed → brak buttona
+// (wysyłka powtórna usunięta, zostało samo „Przyjmij towar");
+// inne stany → brak buttona.
 //
 // Klucz 'action' w tablicy to dyskryminator routingu: PO w stanie
 // `sent` triggeruje modal "Potwierdź odbiór" (data-action="confirm-po"),
@@ -135,9 +137,12 @@ if ($type === 'rfq') {
         // the rendered HTML to emit a <button data-action="confirm-po">
         // instead of the wizard <a>.
         $sendButton = ['label' => 'Potwierdź odbiór', 'icon' => 'bi-check2-square', 'action' => 'confirm-po'];
-    } elseif ($doc->state === 'confirmed') {
-        $sendButton = ['label' => 'Wyślij ponownie',  'icon' => 'bi-arrow-clockwise'];
     }
+    // PO `confirmed` celowo NIE ma już przycisku wysyłki. Powtarzna
+    // wysyłka potwierdzonego zamówienia do dostawcy rzadko coś daje,
+    // a w nagłówku ustępowała miejsco „Przyjmij towar" — jedynej
+    // akcji, która dla `confirmed` faktycznie coś robi. Usunięte na
+    // wyraźne życzenie operatora.
 }
 
 // Vendor's preferred currency — pre-selects the Waluta picker in the

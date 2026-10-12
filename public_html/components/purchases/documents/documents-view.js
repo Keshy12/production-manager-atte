@@ -697,9 +697,15 @@ $(document).ready(function () {
 
         if (d.state === 'draft') {
             const url = esc(appUrl('/admin/purchase/documents/send?id=' + id + '&type=' + d.type));
-            // Klasy kolorów (.rx-action-primary/-success) z receipts-ui.css —
-            // współdzielone z receipts-view.js → queueActionMenuHtml, żeby
-            // obie listy miały identyczny odcień dla tej samej akcji.
+// Klasy kolorów (.rx-action-primary/-success) z receipts-ui.css —
+// współdzielone z receipts-view.js → queueActionMenuHtml, żeby
+// obie listy miały identyczny odcień dla tej samej akcji.
+//
+// Odcienie rozróżniają RODZAJ akcji, nie kopiują klasy przycisku
+// ze strony edycji: „Potwierdź odbiór" i „Utwórz zamówienie" są
+// zielone (kończą etap / zakładają nowy), „Wyślij", „Oznacz odpowiedź"
+// i „Przyjmij towar" niebieskie (kierują operatora dalej). Mapping
+// ustalony wprost przez operatora — nie „wygląda jak na edycji".
             items.push('<a class="dropdown-item rx-action-primary" href="' + url + '">'
                 + '<i class="bi bi-send"></i> Wyślij</a>');
         }
@@ -713,7 +719,7 @@ $(document).ready(function () {
             const vendor    = esc(d.vendor_name || '');
             const vendorPo  = esc(d.secondary_number || '');
             const afterUrl  = esc(appUrl('/purchase/receipts/receive?po_id=' + id));
-            items.push('<button type="button" class="dropdown-item rx-action-primary" data-action="confirm-po"'
+            items.push('<button type="button" class="dropdown-item rx-action-success" data-action="confirm-po"'
                 + ' data-po-id="' + id + '"'
                 + ' data-po-number="' + number + '"'
                 + ' data-vendor-name="' + vendor + '"'
@@ -724,7 +730,7 @@ $(document).ready(function () {
         if (d.type === 'po'
             && (d.state === 'confirmed' || d.state === 'partially_received' || d.state === 'in_progress')) {
             const url = esc(appUrl('/purchase/receipts/receive?po_id=' + id));
-            items.push('<a class="dropdown-item rx-action-success" href="' + url + '">'
+            items.push('<a class="dropdown-item rx-action-primary" href="' + url + '">'
                 + '<i class="bi bi-box-arrow-in-down"></i> Przyjmij towar</a>');
         }
         if (d.type === 'rfq' && d.state === 'responded') {
