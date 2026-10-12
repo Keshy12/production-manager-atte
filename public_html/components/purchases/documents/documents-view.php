@@ -18,18 +18,25 @@
  * filtrami poza statusem. Klik w kafelek ustawia filtr statusu.
  *
  * Akcje w wierszu:
- *   - Edytuj / Podgląd (zależnie od flagi editable) →
- *     /admin/purchase/documents/edit?id=N&type=rfq|po (edit_url z serwera),
- *   - zamknięcie / anulowanie dokumentu (tylko PO, patrz close-po-btn
- *     w documents-view.js),
- *   - następny krok dokumentacyjny:
- *       szkic       → Wyślij            /admin/purchase/documents/send?id=N&type=…
- *       RFQ wysłane → Oznacz odpowiedź  /admin/purchase/documents/respond?id=N&type=rfq
+ *   - kosz („x") → anulowanie/zamknięcie dokumentu (PO wszystkie
+ *     nieterminalne stany: draft, sent, confirmed, in_progress,
+ *     partially_received; RFQ: draft, sent, responded). Terminalne
+ *     stany (PO received/cancelled, RFQ converted/cancelled) kosza
+ *     nie mają. Pattern jest ten sam co w kolejce /purchase/receipts
+ *     — patrz documents-view.js → closePoBtnHtml(),
+ *   - Edytuj / Podgląd jako split-button: etykieta jest linkiem do
+ *     dokumentu, a caret otwiera menu z kolejnymi krokami:
+ *       szkic                         → Wyślij
+ *       RFQ wysłane                   → Oznacz odpowiedź
+ *       PO wysłane                    → Potwierdź odbiór (modal #send-confirm-po-modal)
+ *       PO confirmed / in_progress /
+ *       partially_received           → Przyjmij towar
+ *     Wiersz terminalny (bez pozycji w menu) dostaje zwykły link,
+ *     bez careta.
  *
- * Świadomie NIE ma tu „Potwierdź odbiór" ani „Przyjmij towar" — oba
- * kroki dotyczą obiegu towaru i zostały na stronie edycji dokumentu
- * oraz w kolejce /purchase/receipts. Dlatego modal „Potwierdź odbiór"
- * nie jest już tu wpinany (patrz niżej).
+ * Świadomie BEZ samodzielnych przycisków obok siebie — kosz + split
+ * Edytuj/Podgląd, nic więcej. Dlatego też modal „Potwierdź odbiór"
+ * (confirm-po-modal.php) jest tu wpinany — patrz niżej.
  *
  * Domyślny zakres dat: ostatnie 90 dni — widoczny w pasku (przycisk
  * „90 dni" zaznaczony) i w linijce podsumowania.
@@ -51,15 +58,24 @@ $activeVendors = $MsaDB->query(
       ORDER BY name ASC"
 );
 
+// Współdzielony modal „Potwierdź odbiór PO" — wpinany tu, bo pozycja
+// „Potwierdź odbiór" jest teraz w menu pod caretem Edytuj/Podgląd
+// (patrz documents-view.js → actionMenuItemsHtml, branch d.type==='po'
+// i d.state==='sent'). Identyczny partial jak na /purchase/receipts
+// i na stronie edycji PO.
+include __DIR__ . '/confirm-po-modal.php';
+
 // Współdzielony modal „Zamknij zamówienie" + (na tej stronie) prosty
 // modal „Anuluj zamówienie" — ten sam partial co /purchase/receipts,
 // zaimportowany z ../receipts/close-po-modal.php. Przyciski-kosze w
-// wierszach PO (patrz documents-view.js → rowHtml()) otwierają jeden
-// z tych modali — closePoFromReceive() odrzuca `sent`, więc dla
-// `sent` PO delegujemy anulowanie przez documents/document-cancel-ajax.php.
+// wierszach (patrz documents-view.js → closePoBtnHtml) otwierają jeden
+// z tych modali. close-po.js na podstawie data-back-url odsyła po
+// sukcesie z powrotem na /purchase/documents; data-doc-type="rfq"
+// przełącza cancelPo() na cancelRfq() i zmienia tekst okna.
 //
 // $withCancel = true → partial emituje DRUGI modal #receiveCancelPoModal
-// przeznaczony dla wierszy PO w stanie `sent`.
+// przeznaczony dla wierszy PO w stanie `draft`/`sent` oraz RFQ w stanach
+// `draft`/`sent`/`responded`.
 $withCancel = true;
 include __DIR__ . '/../receipts/close-po-modal.php';
 
@@ -68,6 +84,7 @@ $baseUrl = 'http://' . BASEURL;
 
 <link rel="stylesheet" href="<?= asset('public_html/components/purchases/receipts/receipts-ui.css') ?>">
 <link rel="stylesheet" href="<?= asset('public_html/components/purchases/documents/documents-ui.css') ?>">
+<link rel="stylesheet" href="<?= asset('public_html/components/purchases/documents/confirm-po-modal.css') ?>">
 
 <div class="rx-page dx-page" id="documentsView">
 
@@ -257,4 +274,5 @@ $baseUrl = 'http://' . BASEURL;
 </div>
 
 <script src="<?= htmlspecialchars(asset('public_html/components/purchases/documents/documents-view.js'), ENT_QUOTES) ?>"></script>
+<script src="<?= htmlspecialchars(asset('public_html/components/purchases/documents/confirm-po-modal.js'), ENT_QUOTES) ?>"></script>
 <script src="<?= htmlspecialchars(asset('public_html/components/purchases/receipts/close-po.js'), ENT_QUOTES) ?>"></script>

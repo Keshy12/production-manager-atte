@@ -241,12 +241,12 @@
     display: grid;
     grid-template-columns:
         minmax(11rem, 1.25fr)   /* Dokument  */
-        minmax(7rem, 1.1fr)      /* Dostawca  */
-        minmax(9.5rem, 1fr)      /* Status    */
+        minmax(8rem, 1.15fr)    /* Dostawca  */
+        minmax(9.5rem, 1fr)     /* Status    */
         4.5rem                  /* Pozycje   */
-        minmax(6.5rem, .8fr)     /* Wartość   */
+        minmax(6.5rem, .8fr)    /* Wartość   */
         7rem                    /* Utworzony */
-        18rem;                  /* Akcje     */
+        11rem;                  /* Akcje     */
     column-gap: 1rem;
     align-items: center;
     padding: .8rem 1.15rem .8rem 1.4rem;
@@ -324,9 +324,10 @@
    `nowrap` bo `wrap` łamał komórkę na dwa wiersze, gdy w akcji stały
    kosz + przycisk z długą etykietą + Edytuj/Podgląd — wiersz rósł
    w pionie i przyciski w sąsiednich wierszach nie były wyrównane.
-   Kolumna Akcje (18rem) jest szersza o tę różnicę, którą Dostawca
-   i Wartość oddały. `align-items: center` trzyma je na osi wiersza
-   niezależnie od wysokości pozostałych komórek. */
+   Następne kroki (Wyślij / Oznacz odpowiedź / Potwierdź odbiór /
+   Przyjmij towar) są teraz w menu pod caretem Edytuj/Podgląd,
+   więc komórka akcji trzyma już tylko kosz + split-button edycji;
+   Kolumna Akcje (11rem) oddała różnicę kolumnie Dostawca. */
 .dx-page .dx-cell--action {
     display: flex;
     flex-wrap: nowrap;
@@ -334,7 +335,8 @@
     justify-content: flex-end;
     gap: .35rem;
 }
-.dx-page .dx-cell--action .btn { white-space: nowrap; font-weight: 600; }
+.dx-page .dx-cell--action .btn,
+.dx-page .dx-cell--action .btn-group { white-space: nowrap; font-weight: 600; flex-shrink: 0; }
 
 /* Numer dokumentu + znacznik typu. */
 /* (wygląd .dx-type-tag — sekcja „Typ dokumentu" na górze pliku) */
@@ -415,11 +417,15 @@
 }
 @media (max-width: 575.98px) {
     /* Na telefonie komórka akcji zajmuje całą szerokość wiersza i przyciski
-       dostają `flex: 1 1 0`. Bez `wrap` przy trzech przyciskach (w tym
-       koszu) etykiety wycisnęłyby się zamiast zawijać — desktopowe
-       `nowrap` nie może tu obowiązywać. */
+       dostają `flex: 1 1 0`. Bez `wrap` przy dwóch kontrolkach (kosz +
+       split-button edycji) etykiety wycisnęłyby się zamiast zawijać —
+       desktopowe `nowrap` nie może tu obowiązywać. Selektor celuje
+       w .btn BEZPOŚREDNIO w komórce, dzięki czemu wewnętrzne .btn
+       split-buttona (.dx-cell--action > .btn-group > .btn) nie
+       wchodzą w selektor i zostają w naturalnym rozmiarze BS4. */
     .dx-page .dx-cell--action { flex-wrap: wrap; }
-    .dx-page .dx-cell--action .btn { flex: 1 1 0; }
+    .dx-page .dx-cell--action > .btn,
+    .dx-page .dx-cell--action > .btn-group { flex: 1 1 auto; min-width: 0; }
 }
 
 /* Przełącznik „Ukryj zakończone" w pasku filtrów */

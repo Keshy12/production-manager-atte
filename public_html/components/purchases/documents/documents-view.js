@@ -592,78 +592,180 @@ $(document).ready(function () {
         }).join('');
     }
 
-    // Następny krok — przycisk dokumentacyjny, NIE logistyczny.
-//
-// Świadomie NIE ma tu „Potwierdź odbiór" ani „Przyjmij towar". Oba
-// kroki dotyczą fizycznego obiegu towaru i mają swoje miejsce na
-// stronie edycji dokumentu oraz w kolejce /purchase/receipts. Na
-// liście dokumentów tylko odstraszały od jednego wejścia — i robiły
-// kolumnę Akcji nieczytelną, bo do kosza dochodził jeszcze przycisk
-// z najdłuższą etykietą w rzędzie.
-//
-// Zostaje tylko to, czego nie da się zrobić z innego miejsca: wysłanie
-// szkicu i oznaczenie odpowiedzi na RFQ.
-    function nextStepHtml(d) {
-        const id = parseInt(d.id, 10);
-        if (d.state === 'draft') {
-            return '<a class="btn btn-sm btn-primary" href="'
-                 + esc(appUrl('/admin/purchase/documents/send?id=' + id + '&type=' + d.type)) + '">'
-                 + '<i class="bi bi-send"></i> Wyślij</a>';
-        }
-        if (d.type === 'rfq' && d.state === 'sent') {
-            return '<a class="btn btn-sm btn-primary" href="'
-                 + esc(appUrl('/admin/purchase/documents/respond?id=' + id + '&type=rfq')) + '">'
-                 + '<i class="bi bi-reply"></i> Oznacz odpowiedź</a>';
-        }
-        return '';
-    }
+    // Następne kroki dokumentu (Wyślij / Oznacz odpowiedź / Potwierdź
+    // odbiór / Przyjmij towar) NIE są już osobnymi przyciskami obok Edytuj.
+    // Stoją w menu pod caretem split-buttona edycji — patrz
+    // actionMenuItemsHtml() poniżej. To samo z logistycznymi (Potwierdź
+    // odbiór / Przyjmij towar), które wcześniej na tej liście nie
+    // pojawiały się, a których brak był powodem długiej kolumny Akcji.
 
     // Przycisk zamknięcia — współdzielony z kolejką /purchase/receipts
     // (patrz receipts-view.js → queueRowHtml). Stoi pierwszy w komórce
-    // akcji; obok niego zostaje tylko next-step (Wyślij / Oznacz odpowiedź,
-    // jeśli w danym stanie w ogóle jest) oraz Edytuj/Podgląd.
+    // akcji; obok niego zostaje Edytuj/Podgląd (split button z menu
+    // następnych kroków). close-po.js → #receiveClosePoModal (received/
+    // cancelled) albo #receiveCancelPoModal (cancelled only) obsługuje
+    // oba warianty — patrz delegacja [data-action="close-po"|"cancel-po"].
     //
-    // Tylko dla PO w stanach, w których operacja ma sens:
-    //   - `sent` → cancel-po (prosty modal anulowania, closePoFromReceive()
-    //     tego stanu nie przyjmuje, więc jedyną legalną opcją jest
-    //     PurchaseActionHandler::cancelPo() przez document-cancel-ajax.php);
-    //   - confirmed / in_progress / partially_received → close-po (modal
-    //     z wyborem received/cancelled przez receipt-close-po.php).
-    // RFQ, draft, received i cancelled PO nie dostają kosza.
+    // Stan → akcja:
+    //   PO    draft             cancel-po (prosty modal anulowania;
+    //                            cancelPo() pozwala na `draft`, closePo
+    //                            FromReceive() tego stanu nie przyjmuje)
+    //   PO    sent              cancel-po (prosty modal anulowania,
+    //                            jedyne legalne wyjście z `sent`)
+    //   PO    confirmed /       close-po  (modal z wyborem received
+    //         in_progress /     / cancelled przez receipt-close-po.php)
+    //         partially_received
+    //   PO    received /        terminal — bez przycisku
+    //         cancelled
+    //   RFQ   draft / sent /    cancel-po (z data-doc-type="rfq", żeby
+    //         responded         handler wysłał cancelRfq() zamiast
+    //                            cancelPo() i zmienił tekst okna)
+    //   RFQ   converted /       terminal — bez przycisku
+    //         cancelled
     //
     // data-back-url informuje close-po.js, że po sukcesie redirect ma
     // trafić z powrotem na /purchase/documents (a nie domyślne
     // /purchase/receipts z receipts-view.js).
     function closePoBtnHtml(d) {
-        if (d.type !== 'po') return '';
         const id = parseInt(d.id, 10);
         // `esc` w tym pliku ucieka i cudzysłowy (→ &quot;/&#39;), więc nadaje się
         // do atrybutów — nie potrzeba osobnego escAttr.
         const number = esc(d.primary_number || ('#' + id));
         const backUrl = esc(appUrl('/purchase/documents'));
+        const docTypeAttr = (d.type === 'rfq') ? ' data-doc-type="rfq"' : '';
         const commonAttrs = ' data-po-id="' + id + '"'
             + ' data-po-number="' + number + '"'
-            + ' data-back-url="' + backUrl + '"';
+            + ' data-back-url="' + backUrl + '"'
+            + docTypeAttr;
 
-        if (d.state === 'sent') {
-            return '<button type="button" class="btn btn-sm btn-outline-danger rx-close-po-btn"'
-                + ' data-action="cancel-po"'
-                + commonAttrs
-                + ' title="Anuluj zamówienie"'
-                + ' aria-label="Anuluj zamówienie">'
-                + '<i class="bi bi-x-square"></i>'
-                + '</button>';
+        if (d.type === 'po') {
+            if (d.state === 'draft' || d.state === 'sent') {
+                return '<button type="button" class="btn btn-sm btn-outline-danger rx-close-po-btn"'
+                    + ' data-action="cancel-po"'
+                    + commonAttrs
+                    + ' title="Anuluj zamówienie"'
+                    + ' aria-label="Anuluj zamówienie">'
+                    + '<i class="bi bi-x-square"></i>'
+                    + '</button>';
+            }
+            if (d.state === 'confirmed' || d.state === 'partially_received' || d.state === 'in_progress') {
+                return '<button type="button" class="btn btn-sm btn-outline-danger rx-close-po-btn"'
+                    + ' data-action="close-po"'
+                    + commonAttrs
+                    + ' title="Zamknij zamówienie (odebrane / anulowane)"'
+                    + ' aria-label="Zamknij zamówienie">'
+                    + '<i class="bi bi-x-square"></i>'
+                    + '</button>';
+            }
+            // PO `received` / `cancelled` — stan terminalny, bez przycisku.
+            return '';
         }
-        if (d.state === 'confirmed' || d.state === 'partially_received' || d.state === 'in_progress') {
-            return '<button type="button" class="btn btn-sm btn-outline-danger rx-close-po-btn"'
-                + ' data-action="close-po"'
-                + commonAttrs
-                + ' title="Zamknij zamówienie (odebrane / anulowane)"'
-                + ' aria-label="Zamknij zamówienie">'
-                + '<i class="bi bi-x-square"></i>'
-                + '</button>';
+
+        if (d.type === 'rfq') {
+            if (d.state === 'draft' || d.state === 'sent' || d.state === 'responded') {
+                return '<button type="button" class="btn btn-sm btn-outline-danger rx-close-po-btn"'
+                    + ' data-action="cancel-po"'
+                    + commonAttrs
+                    + ' title="Anuluj zapytanie"'
+                    + ' aria-label="Anuluj zapytanie">'
+                    + '<i class="bi bi-x-square"></i>'
+                    + '</button>';
+            }
+            // RFQ `converted` / `cancelled` — stan terminalny, bez przycisku.
+            return '';
         }
+
         return '';
+    }
+
+    // Pozycje menu pod caretem split-buttona Edytuj/Podgląd. Renderowane
+    // tylko wtedy, gdy stan wiersze na to pozwala — terminalne (PO
+    // received/cancelled, RFQ converted/cancelled) i tak ich nie mają,
+    // więc caller ukrywa caret i zostaje zwykły link Edytuj.
+    //
+    // Konwencje data-* dla każdej pozycji:
+    //   - Wyślij / Oznacz odpowiedź / Przyjmij towar → zwykły <a href>;
+    //     router je obsługuje po stronie serwera.
+    //   - Potwierdź odbiór → <button data-action="confirm-po"> z
+    //     atrybutami, których wymaga confirm-po-modal.js (patrz jego
+    //     nagłówek: poId, poNumber, vendorName, vendorPoNumber,
+    //     afterConfirmUrl).
+    function actionMenuItemsHtml(d) {
+        const id = parseInt(d.id, 10);
+        const items = [];
+
+        if (d.state === 'draft') {
+            const url = esc(appUrl('/admin/purchase/documents/send?id=' + id + '&type=' + d.type));
+            items.push('<a class="dropdown-item" href="' + url + '">'
+                + '<i class="bi bi-send"></i> Wyślij</a>');
+        }
+        if (d.type === 'rfq' && d.state === 'sent') {
+            const url = esc(appUrl('/admin/purchase/documents/respond?id=' + id + '&type=rfq'));
+            items.push('<a class="dropdown-item" href="' + url + '">'
+                + '<i class="bi bi-reply"></i> Oznacz odpowiedź</a>');
+        }
+        if (d.type === 'po' && d.state === 'sent') {
+            const number    = esc(d.primary_number || ('#' + id));
+            const vendor    = esc(d.vendor_name || '');
+            const vendorPo  = esc(d.secondary_number || '');
+            const afterUrl  = esc(appUrl('/purchase/receipts/receive?po_id=' + id));
+            items.push('<button type="button" class="dropdown-item" data-action="confirm-po"'
+                + ' data-po-id="' + id + '"'
+                + ' data-po-number="' + number + '"'
+                + ' data-vendor-name="' + vendor + '"'
+                + ' data-vendor-po-number="' + vendorPo + '"'
+                + ' data-after-confirm-url="' + afterUrl + '">'
+                + '<i class="bi bi-check2-square"></i> Potwierdź odbiór</button>');
+        }
+        if (d.type === 'po'
+            && (d.state === 'confirmed' || d.state === 'partially_received' || d.state === 'in_progress')) {
+            const url = esc(appUrl('/purchase/receipts/receive?po_id=' + id));
+            items.push('<a class="dropdown-item" href="' + url + '">'
+                + '<i class="bi bi-box-arrow-in-down"></i> Przyjmij towar</a>');
+        }
+        return items.join('');
+    }
+
+    // Kontrolka edycji — zwykły link Edytuj/Podgląd, opcjonalnie z
+    // doczepionym caretem otwierającym menu następnych kroków.
+    // Bootstrap 4 split button wymaga `<a>` + `.dropdown-toggle-split`,
+    // Bootstrap sam dopisuje strzałkę przez `::after`. Dropdown
+    // obsługuje delegowany `data-toggle="dropdown"` z bootstrap.min.js
+    // (już wczytany na stronie); per-row init nie jest potrzebny.
+    function editControlHtml(d) {
+        const editUrl = d.edit_url || appUrl('/admin/purchase/documents/edit?id=' + d.id + '&type=' + d.type);
+        const editable = !!d.editable;
+        const linkClass = 'btn btn-sm rx-btn-quiet';
+        const linkAttrs = ' href="' + esc(editUrl) + '"'
+            + ' title="' + (editable ? 'Edytuj dokument' : 'Podgląd dokumentu (tylko do odczytu)') + '"';
+        const link = editable
+            ? '<a class="' + linkClass + '"' + linkAttrs + '><i class="bi bi-pencil-square"></i> Edytuj</a>'
+            : '<a class="' + linkClass + '"' + linkAttrs + '><i class="bi bi-eye"></i> Podgląd</a>';
+
+        const menu = actionMenuItemsHtml(d);
+        if (!menu) return link;
+
+        return '<div class="btn-group btn-group-sm">'
+            + link
+            + '<button type="button"'
+            +   ' class="btn btn-sm rx-btn-quiet dropdown-toggle dropdown-toggle-split"'
+            +   ' data-toggle="dropdown" aria-haspopup="true" aria-expanded="false"'
+            +   ' aria-label="Więcej akcji dla dokumentu">'
+            +   '<span class="sr-only">Więcej akcji dla dokumentu</span>'
+            + '</button>'
+            + '<div class="dropdown-menu dropdown-menu-right">' + menu + '</div>'
+            + '</div>';
+    }
+
+    // Komórka akcji w wierszu: kosz (gdy jest sensowny) + kontrolka edycji.
+    // Kontrolka edycji sama decyduje, czy jest zwykłym linkiem czy
+    // split-buttonem z menu (na podstawie actionMenuItemsHtml) — więc
+    // tu wystarczy złożyć kosz z kontrolką i ich opakować.
+    function actionCellHtml(d) {
+        return '<div class="dx-cell dx-cell--action">'
+             + closePoBtnHtml(d)
+             + editControlHtml(d)
+             + '</div>';
     }
 
     function rowHtml(d) {
@@ -686,12 +788,6 @@ $(document).ready(function () {
             docCell += '<div class="rx-sub text-faint">' + (type === 'rfq' ? 'Zapytanie' : 'Zamówienie') + ' #' + parseInt(d.id, 10) + '</div>';
         }
 
-        const editBtn = d.editable
-            ? '<a class="btn btn-sm rx-btn-quiet" href="' + esc(editUrl) + '" title="Edytuj dokument">'
-              + '<i class="bi bi-pencil-square"></i> Edytuj</a>'
-            : '<a class="btn btn-sm rx-btn-quiet" href="' + esc(editUrl) + '" title="Podgląd dokumentu (tylko do odczytu)">'
-              + '<i class="bi bi-eye"></i> Podgląd</a>';
-
         const items = parseInt(d.item_count, 10) || 0;
 
         return '<div class="dx-row is-' + type + (d.state === 'cancelled' ? ' is-cancelled' : '') + '"'
@@ -701,7 +797,7 @@ $(document).ready(function () {
              +   '<span class="rx-vendor">' + esc(d.vendor_name || '—') + '</span></div>'
              + '<div class="dx-cell dx-cell--status">'
              +   '<span class="rx-badge rx-badge--' + meta.tone + '">' + esc(meta.label) + '</span>'
-             +   (hint ? '<div class="rx-sub">' + esc(hint) + '</div>' : '')
+             + (hint ? '<div class="rx-sub">' + esc(hint) + '</div>' : '')
              + '</div>'
              + '<div class="dx-cell dx-cell--items"><span class="rx-cell-label">Pozycje</span>'
              +   (items > 0 ? '<span class="rx-pill">' + items + '</span>'
@@ -709,24 +805,10 @@ $(document).ready(function () {
              + '</div>'
              + '<div class="dx-cell dx-cell--value"><span class="rx-cell-label">Wartość</span>' + valueHtml(d.value_breakdown) + '</div>'
              + '<div class="dx-cell dx-cell--created"><span class="rx-cell-label">Utworzony</span>' + createdHtml(d.created_at) + '</div>'
-             // Komórka akcji: kosz + next-step są zgrupowane (ten sam
-             // koncept co .rx-action-cell na kolejce — ciasny flex `gap`
-             // .3rem, żeby wizualnie czytały się jako para). editBtn
-             // stoi OBOK tej pary, oddzielony gapem .dx-cell--action
-             // (.35rem), żeby nie wciskać kosza między next-step a Edytuj.
-             + (function () {
-                 const trash = closePoBtnHtml(d);
-                 const next  = nextStepHtml(d);
-                 if (trash && next) {
-                     return '<div class="dx-cell dx-cell--action">'
-                          + '<div class="rx-action-cell">' + trash + next + '</div>'
-                          + editBtn
-                          + '</div>';
-                 }
-                 // Brak kosza (RFQ / draft PO / received / cancelled PO)
-                 // → bez zmian względem poprzedniego zachowania.
-                 return '<div class="dx-cell dx-cell--action">' + next + editBtn + '</div>';
-             })()
+             // Komórka akcji: kosz + kontrolka edycji (split-button
+             // lub zwykły link — zależnie od tego, czy wiersz ma
+             // kolejne kroki w menu).
+             + actionCellHtml(d)
              + '</div>';
     }
 
