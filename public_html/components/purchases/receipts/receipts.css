@@ -418,6 +418,17 @@
     transition: opacity .15s ease;
 }
 
+/* Wyjątek: przycisk „Zamknij zamówienie" w pasku akcji musi być
+   klikalny w KAŻDYM kroku kreatora (łącznie z krokiem 1, gdy operator
+   jeszcze nie zaakceptował nagłówka) — zamknięcie PO bez ani jednego
+   przyjęcia to właśnie przypadek „nic nie wpisano, chcę zakończyć".
+   Bez tej reguły .receipt-step-locked z parent #receiveActionBar
+   zablokowałby wszystkie kliknięcia w obrębie paska akcji. */
+.receipt-actionbar.receipt-step-locked #receiveClosePoBtn {
+    pointer-events: auto;
+    opacity: 1;
+}
+
 /* Przełączanie edycja ↔ podsumowanie w karcie „Dokument przyjęcia". */
 #receiptDocumentEdit,
 #receiptDocumentSummary { transition: opacity .15s ease; }

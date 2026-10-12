@@ -61,6 +61,7 @@ $currentUserName = (string)($currentUserStmt->fetchColumn() ?: ('#' . (int)($_SE
 $poId = (int)($_GET['po_id'] ?? 0);
 ?>
 <link rel="stylesheet" href="<?= htmlspecialchars(asset('public_html/components/purchases/cart/purchases.css'), ENT_QUOTES) ?>">
+<link rel="stylesheet" href="<?= htmlspecialchars(asset('public_html/components/purchases/receipts/receipts-ui.css'), ENT_QUOTES) ?>">
 <link rel="stylesheet" href="<?= htmlspecialchars(asset('public_html/components/purchases/receipts/receipts.css'), ENT_QUOTES) ?>">
 
 <?php if ($poId <= 0): ?>
@@ -81,4 +82,5 @@ $poId = (int)($_GET['po_id'] ?? 0);
     </div>
 
     <script src="<?= htmlspecialchars(asset('public_html/components/purchases/receipts/receive-page.js'), ENT_QUOTES) ?>"></script>
+    <script src="<?= htmlspecialchars(asset('public_html/components/purchases/receipts/close-po.js'), ENT_QUOTES) ?>"></script>
 <?php endif; ?>

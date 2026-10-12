@@ -1148,6 +1148,37 @@ $(document).ready(function() {
             });
     });
 
+    // ---- okno „Zamknij zamówienie" (akcja z paska formularza) ----------
+    //
+    // Cała logika (modal, AJAX, redirect) żyje teraz w close-po.js
+    // (window.ReceiptClosePo.open). Tu zostaje tylko cienki binding
+    // #receiveClosePoBtn → wywołanie z agregatami z receiveState.
+    // close-po.js jest ładowany po receive-page.js (patrz receive-page.php),
+    // więc API jest dostępne gdy ten binding się odpala.
+
+    $('#receiveClosePoBtn').on('click', function() {
+        // Ten sam bramkarz co przy zapisie — żeby podwójne kliknięcia
+        // nie otwierały dwóch okien naraz. (Zamknięcie nie blokuje
+        // stanu submit-formy, ale spójność z resztą modali ma sens.)
+        if (receiveState.submitting) return;
+        if (!window.ReceiptClosePo) {
+            // close-po.js nie załadował się (np. edge-case w przyszłości).
+            // Bez tego rozwala się flow — lepiej zatrzymać klik niż
+            // wysłać pusty request.
+            showAlert('Moduł zamykania zamówienia nie jest dostępny.', 'danger');
+            return;
+        }
+        const items = receiveState.items || [];
+        // Z formularza przyjęcia znamy pozycje per-PO — przekazujemy je
+        // wprost, modal pokaże listę nieodebranych pozycji (max 5).
+        window.ReceiptClosePo.open({
+            poId:     receiveState.poId,
+            poNumber: receiveState.poNumber,
+            items:    items,
+            // orderedTotal/receivedTotal/lineCount open() przeliczy z items.
+        });
+    });
+
     $('#receiveSubmitBtn').on('click', function() {
         if (receiveState.submitting) return;
         // Ostatnia bramka kroku 1 — przycisk jest wyłączony, ale klik

@@ -385,9 +385,22 @@
             <i class="bi bi-box-seam receipt-actionbar-icon text-primary mr-2"></i>
             <div>
                 <span class="font-weight-bold d-block" id="receiveSummary">Przyjmujesz 0 z 0 pozycji</span>
-                <small class="text-muted d-block receipt-actionbar-hint" id="receiveHint"></small>
+<small class="text-muted d-block receipt-actionbar-hint" id="receiveHint"></small>
             </div>
         </div>
+        <!-- „Zamknij zamówienie" — operator decyduje, czy PO ma być
+             odebrane (część pozycji nie zostanie dostarczona, a chcemy
+             zamknąć jako w pełni odebrane) albo anulowane (dostawa się
+             nie odbędzie). Dostępny w KAŻDYM kroku kreatora (łącznie z
+             krokiem 1 przed akceptacją nagłówka) — CSS re-enable dla
+             .receipt-step-locked jest w receipts.css. Treść i akcja
+             okna potwierdzenia (#receiveClosePoModal) poniżej.
+             Kolejność w pasku: Zamknij → Anuluj → Zapisz. Zamknięcie jest
+             wyjątkiem od codziennego toku (działanie terminalne), więc
+             nie może dominować nad „Zapisz przyjęcie" ani stać za nim. -->
+        <button type="button" class="btn btn-outline-warning mr-2" id="receiveClosePoBtn">
+            <i class="bi bi-check2-square"></i> Zamknij zamówienie
+        </button>
         <button type="button" class="btn btn-outline-secondary mr-2" id="receiveCancelBtn">Anuluj</button>
         <button type="button" class="btn btn-success px-4" id="receiveSubmitBtn" disabled>
             <i class="bi bi-check2-circle"></i> Zapisz przyjęcie
@@ -440,7 +453,7 @@
                         </button>
                         <small class="text-muted">Zamówienie przejdzie w stan „Odebrane" i nie będzie już można dostarczyć brakujących pozycji.</small>
                     </div>
-                    <div class="receipt-short-choice receipt-short-choice-primary">
+<div class="receipt-short-choice receipt-short-choice-primary">
                         <button type="button" class="btn btn-primary" id="receiveShortKeepBtn" data-dismiss="modal">
                             <i class="bi bi-hourglass-split"></i> Zostaw otwarte
                         </button>
@@ -450,3 +463,20 @@
             </div>
         </div>
     </div>
+
+    <!-- ===== Okno „Zamknij zamówienie" (współdzielone z kolejką) =====
+         Decyzja operatora o wyniku zamknięcia. Wywoływane z
+         #receiveClosePoBtn w pasku akcji. Treść (podsumowanie + lista
+         nieodebranych pozycji + radio stan wynikowy) wypełnia
+         window.ReceiptClosePo.open() z close-po.js (ładowanego przez
+         receive-page.php). W odróżnieniu od #receiveShortModal tu
+         operator MUSI wybrać wynik (domyślnie: Odebrane) i kliknąć
+         „Zamknij zamówienie" — samo zamknięcie okna (×, Escape) jest
+         traktowane jak rezygnacja.
+
+         Markup jest współdzielony z kolejką /purchase/receipts — ten
+         sam partial jest też dołączany w receipts-view.php (z
+         $withCancel=true). Bootstrap 4 trzyma okno w singleton-stanie
+         po pierwszym wywołaniu modal('show'), więc NIE include'uj tego
+         pliku więcej niż raz na stronie. -->
+    <?php include __DIR__ . '/close-po-modal.php'; ?>
