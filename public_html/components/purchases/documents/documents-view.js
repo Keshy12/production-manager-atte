@@ -637,10 +637,10 @@ $(document).ready(function () {
     function closePoBtnHtml(d) {
         if (d.type !== 'po') return '';
         const id = parseInt(d.id, 10);
-        // escAttr, nie esc: numer jest wartością atrybutu, a numer u
-        // dostawcy potrafi zawierać cudzysłów (np. 5" montaż).
-        const number = escAttr(d.primary_number || ('#' + id));
-        const backUrl = escAttr(appUrl('/purchase/documents'));
+        // `esc` w tym pliku ucieka i cudzysłowy (→ &quot;/&#39;), więc nadaje się
+        // do atrybutów — nie potrzeba osobnego escAttr.
+        const number = esc(d.primary_number || ('#' + id));
+        const backUrl = esc(appUrl('/purchase/documents'));
         const commonAttrs = ' data-po-id="' + id + '"'
             + ' data-po-number="' + number + '"'
             + ' data-back-url="' + backUrl + '"';
