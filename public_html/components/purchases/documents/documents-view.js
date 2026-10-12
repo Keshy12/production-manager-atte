@@ -621,6 +621,51 @@ $(document).ready(function () {
         return '';
     }
 
+    // Przycisk-kosz obok „Potwierdź odbiór" / „Przyjmij towar" — współdzielony
+    // z kolejką /purchase/receipts (patrz receipts-view.js → queueRowHtml).
+    // Tylko dla PO w stanach, w których operacja ma sens:
+    //   - `sent` → cancel-po (prosty modal anulowania, closePoFromReceive()
+    //     tego stanu nie przyjmuje, więc jedyną legalną opcją jest
+    //     PurchaseActionHandler::cancelPo() przez document-cancel-ajax.php);
+    //   - confirmed / in_progress / partially_received → close-po (modal
+    //     z wyborem received/cancelled przez receipt-close-po.php).
+    // RFQ, draft, received i cancelled PO nie dostają kosza.
+    //
+    // data-back-url informuje close-po.js, że po sukcesie redirect ma
+    // trafić z powrotem na /purchase/documents (a nie domyślne
+    // /purchase/receipts z receipts-view.js).
+    function closePoBtnHtml(d) {
+        if (d.type !== 'po') return '';
+        const id = parseInt(d.id, 10);
+        // escAttr, nie esc: numer jest wartością atrybutu, a numer u
+        // dostawcy potrafi zawierać cudzysłów (np. 5" montaż).
+        const number = escAttr(d.primary_number || ('#' + id));
+        const backUrl = escAttr(appUrl('/purchase/documents'));
+        const commonAttrs = ' data-po-id="' + id + '"'
+            + ' data-po-number="' + number + '"'
+            + ' data-back-url="' + backUrl + '"';
+
+        if (d.state === 'sent') {
+            return '<button type="button" class="btn btn-sm btn-outline-danger rx-close-po-btn"'
+                + ' data-action="cancel-po"'
+                + commonAttrs
+                + ' title="Anuluj zamówienie"'
+                + ' aria-label="Anuluj zamówienie">'
+                + '<i class="bi bi-trash"></i>'
+                + '</button>';
+        }
+        if (d.state === 'confirmed' || d.state === 'partially_received' || d.state === 'in_progress') {
+            return '<button type="button" class="btn btn-sm btn-outline-danger rx-close-po-btn"'
+                + ' data-action="close-po"'
+                + commonAttrs
+                + ' title="Zamknij zamówienie (odebrane / anulowane)"'
+                + ' aria-label="Zamknij zamówienie">'
+                + '<i class="bi bi-trash"></i>'
+                + '</button>';
+        }
+        return '';
+    }
+
     function rowHtml(d) {
         const type = d.type === 'rfq' ? 'rfq' : 'po';
         const editUrl = d.edit_url || appUrl('/admin/purchase/documents/edit?id=' + d.id + '&type=' + type);
@@ -664,7 +709,24 @@ $(document).ready(function () {
              + '</div>'
              + '<div class="dx-cell dx-cell--value"><span class="rx-cell-label">Wartość</span>' + valueHtml(d.value_breakdown) + '</div>'
              + '<div class="dx-cell dx-cell--created"><span class="rx-cell-label">Utworzony</span>' + createdHtml(d.created_at) + '</div>'
-             + '<div class="dx-cell dx-cell--action">' + nextStepHtml(d) + editBtn + '</div>'
+             // Komórka akcji: kosz + next-step są zgrupowane (ten sam
+             // koncept co .rx-action-cell na kolejce — ciasny flex `gap`
+             // .3rem, żeby wizualnie czytały się jako para). editBtn
+             // stoi OBOK tej pary, oddzielony gapem .dx-cell--action
+             // (.35rem), żeby nie wciskać kosza między next-step a Edytuj.
+             + (function () {
+                 const trash = closePoBtnHtml(d);
+                 const next  = nextStepHtml(d);
+                 if (trash && next) {
+                     return '<div class="dx-cell dx-cell--action">'
+                          + '<div class="rx-action-cell">' + trash + next + '</div>'
+                          + editBtn
+                          + '</div>';
+                 }
+                 // Brak kosza (RFQ / draft PO / received / cancelled PO)
+                 // → bez zmian względem poprzedniego zachowania.
+                 return '<div class="dx-cell dx-cell--action">' + next + editBtn + '</div>';
+             })()
              + '</div>';
     }
 
@@ -859,6 +921,40 @@ $(document).ready(function () {
         if (e.ctrlKey || e.metaKey) window.open(url, '_blank');
         else window.location.href = url;
     });
+
+    // ---- Powrót po zamknięciu / anulowaniu PO z tej strony (?closed=…) --
+    //
+    // Osobna gałąź od ewentualnego „saved" (tego nie mamy — close-po.js
+    // wysyła tylko ?closed=…&po=…). Tu NIE było zapisu przyjęcia, więc
+    // nie ma wiersza do podświetlenia ani linku „Pokaż w historii".
+    // Operator wybrał stan wynikowy (received/cancelled) w oknie
+    // „Zamknij zamówienie" lub potwierdził anulowanie w „Anuluj
+    // zamówienie" — close-po.js przekierował tu z powrotem z
+    // data-back-url = /purchase/documents.
+
+    const bootParams = new URLSearchParams(window.location.search);
+    const bootClosed = bootParams.get('closed');
+    if (bootClosed !== null && bootClosed !== '') {
+        const bootPo = bootParams.get('po') || '';
+        const meta = stateMeta(bootClosed);
+        const icon = meta.tone === 'red'
+            ? '<i class="bi bi-x-circle-fill"></i> '
+            : '<i class="bi bi-check-circle-fill"></i> ';
+        const msg = icon
+            + 'Zamówienie <strong>' + esc(bootPo || '—') + '</strong> '
+            + (bootClosed === 'cancelled' ? 'anulowano' : 'zamknięto')
+            + ' — ma teraz status „<strong>' + esc(meta.label) + '</strong>".';
+        // setAlert (z header.js) → Bootstrapowy alert do .alert-host
+        // #alertContainer, ten sam co na /purchase/receipts.
+        if (typeof setAlert === 'function') {
+            setAlert(msg, 'success');
+        }
+
+        // Bez query stringu w pasku adresu F5 nie pokaże komunikatu ponownie.
+        if (window.history && window.history.replaceState) {
+            window.history.replaceState({}, '', window.location.pathname + window.location.hash);
+        }
+    }
 
     // =====================================================================
     // Start

@@ -50,6 +50,18 @@ $activeVendors = $MsaDB->query(
 // partial, którego używają /purchase/receipts i strona edycji.
 include __DIR__ . '/confirm-po-modal.php';
 
+// Współdzielony modal „Zamknij zamówienie" + (na tej stronie) prosty
+// modal „Anuluj zamówienie" — ten sam partial co /purchase/receipts,
+// zaimportowany z ../receipts/close-po-modal.php. Przyciski-kosze w
+// wierszach PO (patrz documents-view.js → rowHtml()) otwierają jeden
+// z tych modali — closePoFromReceive() odrzuca `sent`, więc dla
+// `sent` PO delegujemy anulowanie przez documents/document-cancel-ajax.php.
+//
+// $withCancel = true → partial emituje DRUGI modal #receiveCancelPoModal
+// przeznaczony dla wierszy PO w stanie `sent`.
+$withCancel = true;
+include __DIR__ . '/../receipts/close-po-modal.php';
+
 $baseUrl = 'http://' . BASEURL;
 ?>
 
@@ -244,5 +256,6 @@ $baseUrl = 'http://' . BASEURL;
     <div id="paginationBottom"></div>
 </div>
 
-<script src="<?= asset('public_html/components/purchases/documents/documents-view.js') ?>"></script>
-<script src="<?= asset('public_html/components/purchases/documents/confirm-po-modal.js') ?>"></script>
+<script src="<?= htmlspecialchars(asset('public_html/components/purchases/documents/documents-view.js'), ENT_QUOTES) ?>"></script>
+<script src="<?= htmlspecialchars(asset('public_html/components/purchases/documents/confirm-po-modal.js'), ENT_QUOTES) ?>"></script>
+<script src="<?= htmlspecialchars(asset('public_html/components/purchases/receipts/close-po.js'), ENT_QUOTES) ?>"></script>
