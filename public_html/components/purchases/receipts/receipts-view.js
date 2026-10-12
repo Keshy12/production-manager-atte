@@ -452,7 +452,7 @@ $(document).ready(function () {
               + 'data-line-count="' + escAttr(lineCount) + '" '
               + 'title="Zamknij zamówienie (odebrane / anulowane)" '
               + 'aria-label="Zamknij zamówienie">'
-              + '<i class="bi bi-dash-square-fill"></i>'
+              + '<i class="bi bi-x-square"></i>'
               + '</button>'
             : '<button type="button" class="btn btn-sm btn-outline-danger rx-close-po-btn" '
               + 'data-action="cancel-po" '
@@ -460,7 +460,7 @@ $(document).ready(function () {
               + 'data-po-number="' + escAttr(poLabel) + '" '
               + 'title="Anuluj zamówienie" '
               + 'aria-label="Anuluj zamówienie">'
-              + '<i class="bi bi-dash-square-fill"></i>'
+              + '<i class="bi bi-x-square"></i>'
               + '</button>';
 
         let actionCell;

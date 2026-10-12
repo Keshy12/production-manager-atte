@@ -324,7 +324,7 @@ function formatPrice($v) {
                             } elseif ($type === 'rfq') {
                                 $cancelLabel = 'Anuluj zapytanie';
                             }
-                            $cancelIcon = 'bi-dash-square-fill';
+                            $cancelIcon = 'bi-x-square';
                         ?>
                         <button type="button"
                                 class="btn btn-sm btn-outline-danger"
