@@ -932,6 +932,14 @@
     border-left: 3px solid #ffc107;
     border-radius: .25rem;
     font-size: .9rem;
+}
+/* `pre-wrap` TYLKO na ciele komentarza, nie na .rx-note. Kontener .rx-note
+   zawiera w źródle PHP wcięcia i złamania wierszy między elementami —
+   pod white-space: pre-wrap każda z nich renderowała się dosłownie, więc
+   nad etykietą i przed treścią pojawiały się puste linie i długie
+   wcięcia. .rx-note-body zawiera już sam tekst, więc zachowujemy tylko
+   jego wewnętrzne złamania wiersza. */
+.rx-note-body {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
 }

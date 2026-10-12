@@ -354,7 +354,7 @@ $canResume = $poState !== null && in_array($poState, ['confirmed', 'in_progress'
         <?php if ($commentBody !== null): ?>
             <div class="rx-note">
                 <div class="rx-note-label"><i class="bi bi-chat-left-text"></i> Uwagi do przyjęcia</div>
-                <?= rx_e($commentBody) ?>
+                <div class="rx-note-body"><?= rx_e($commentBody) ?></div>
             </div>
         <?php endif; ?>
 
