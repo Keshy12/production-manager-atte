@@ -541,14 +541,32 @@ $(document).ready(function() {
         // „Nr dostawcy" — numer katalogowy + uwagi (do urządzenia i do PO).
         // Żółty = uwagi do urządzenia (vendor_part.comment, system-level),
         // niebieski = uwagi do pozycji PO (kupiec zostawił przy zamówieniu).
+        //
+        // Dwa uwagowe wiersze wyglądają podobnie, a pochodzą z zupełnie
+        // różnych miejsc — pomylenie ich jest kosztowne (operator myśli,
+        // że kupiec coś zaznaczył na tym zamówieniu, a to notatka
+        // systemowa, albo odwrotnie). Każdy wiersz ma więc w `title`
+        // jednoznaczne źródło: skąd komentarz pochodzi i jak długo żyje.
+        //
+        // Uwagi zapisujemy w title jako tekst jednoliniowy — przeglądarki
+        // i tak zwijają w title każdą newline na spację.
+        const vendorPartNote = String(item.vendorPartComment || '').replace(/\s+/g, ' ').trim();
+        const poItemNote     = String(item.comment || '').replace(/\s+/g, ' ').trim();
+
         let numCell = '<span class="text-monospace">' + esc(item.vendorPartNo || '—') + '</span>';
-        if (item.vendorPartComment && String(item.vendorPartComment).trim() !== '') {
-            numCell += '<div><small class="text-warning">'
+        if (vendorPartNote !== '') {
+            numCell += '<div title="'
+                     + escAttr('Uwagi do urządzenia — zapisane przy tym artykule u dostawcy. '
+                              + 'Obowiązują przy każdym zamówieniu tego artykułu.')
+                     + '"><small class="text-warning">'
                      + '<i class="bi bi-journal-text"></i> ' + esc(item.vendorPartComment)
                      + '</small></div>';
         }
-        if (item.comment && String(item.comment).trim() !== '') {
-            numCell += '<div><small class="text-info">'
+        if (poItemNote !== '') {
+            numCell += '<div title="'
+                     + escAttr('Uwagi do pozycji — zapisane przez kupca w tym zamówieniu. '
+                              + 'Dotyczą wyłącznie tego zamówienia.')
+                     + '"><small class="text-info">'
                      + '<i class="bi bi-chat-left-text"></i> ' + esc(item.comment)
                      + '</small></div>';
         }
