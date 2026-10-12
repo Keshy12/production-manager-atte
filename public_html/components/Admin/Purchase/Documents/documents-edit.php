@@ -482,15 +482,9 @@ function formatPrice($v) {
                             <?php
                                 $vn = $i->vendorPartNo ?? '';
                                 $pn = $i->producerPartNo ?? '';
-                                if ($vn && $pn && $vn === $pn): ?>
-                                <div><small class="text-muted">Nr dost./prod.: <span class="font-weight-bold"><?= htmlspecialchars($vn) ?></span></small></div>
-                                <?php else: ?>
-                                <?php if ($vn): ?>
+                                // Nr prod. is rendered in the next (Producer) column - do not duplicate it here.
+                                if ($vn): ?>
                                     <div><small class="text-muted">Nr dost.: <span class="font-weight-bold"><?= htmlspecialchars($vn) ?></span></small></div>
-                                <?php endif; ?>
-                                <?php if ($pn): ?>
-                                    <div><small class="text-muted">Nr prod.: <span class="font-weight-bold"><?= htmlspecialchars($pn) ?></span></small></div>
-                                <?php endif; ?>
                                 <?php endif; ?>
                             <?php if (!empty($i->partDescription)): ?>
                                 <div><small class="text-muted"><?= htmlspecialchars($i->partDescription) ?></small></div>
