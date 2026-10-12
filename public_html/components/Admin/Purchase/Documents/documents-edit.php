@@ -283,16 +283,24 @@ function formatPrice($v) {
                             </a>
                         <?php endif; ?>
                     <?php endif; ?>
-                    <?php if ($type === 'po' && $doc->state === 'confirmed'): ?>
+                    <?php if ($type === 'po' && in_array($doc->state, ['confirmed', 'partially_received'], true)): ?>
                         <!--
-                            Przyjęcie towaru: dostępne dla PO w stanie `confirmed`.
+                            Przyjęcie towaru: dostępne dla PO w stanie `confirmed`
+                            oraz `partially_received`.
                             Klik prowadzi do /purchase/receipts/receive?po_id=N, gdzie
                             operator wpisuje faktycznie dostarczone ilości per pozycja.
                             Receive handler (PurchaseActionHandler::createReceipt)
-                            akceptuje też stany in_progress / partially_received, więc
-                            jeśli chcesz pokazać ten button także w nich — wystarczy
-                            rozszerzyć warunek. Na ten moment trzymamy się zakresu
-                            zgłoszonego przez operatora (tylko `confirmed`).
+                            akceptuje też stan `in_progress` — jeśli chcesz pokazać ten
+                            button także w nim, wystarczy dopisać go tu (formularz
+                            przyjęcia już dziś go przyjmuje).
+
+                            `partially_received` wróciło tu, bo operator dostawał
+                            częściowe zamówienie i ekran nie dawał mu żadnego
+                            wyjścia do dokończenia odbioru — a receive handler
+                            właśnie na to pozwala. Etykieta zostaje „Przyjmij towar",
+                            żeby przycisk wyglądał tak samo niezależnie od stanu
+                            (kolejka na /purchase/receipts używa w tym stanie
+                            tej samej etykiety).
                         -->
                         <a href="http://<?= BASEURL ?>/purchase/receipts/receive?po_id=<?= (int)$doc->id ?>"
                            class="btn btn-success btn-sm">
@@ -778,13 +786,20 @@ function formatPrice($v) {
     </div>
     <?php endif; ?>
 
-    <p class="dx-footnote">
-        <?php if ($allowedEdit): ?>
+    <?php
+        // Przypadek nieedytowalny NIE dostaje już przypisu u dołu. Był
+        // czystym szumem dla operatora: stan dokumentu i tak widać na
+        // plakietce w nagłówku, brak ołówków przy pozycjach mówi o
+        // read-only tak samo wyraźnie, a dla PO w trakcie przyjęcia
+        // (partially_received / in_progress) tekst „pozycje są tylko do
+        // odczytu" był mylący — dokument jest w trakcie, nie zablokowany.
+        // Uwagi o edycji inline zostają tylko tam, gdzie faktycznie można.
+    ?>
+    <?php if ($allowedEdit): ?>
+        <p class="dx-footnote">
             Ilość, cena i komentarz pozycji są edytowalne inline (przycisk ołówka w kolumnie Akcje).
-        <?php else: ?>
-            Dokument w stanie <code><?= htmlspecialchars($doc->state) ?></code> — pozycje są tylko do odczytu.
-        <?php endif; ?>
-    </p>
+        </p>
+    <?php endif; ?>
 </div>
 
 <div class="modal fade dx-modal" id="docItemDeleteModal" tabindex="-1" role="dialog" aria-labelledby="docItemDeleteModalTitle" aria-hidden="true">
