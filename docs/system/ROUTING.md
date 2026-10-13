@@ -17,7 +17,8 @@ index.php                         ← single entry point
     ├─ str_replace('/atte_ms_new/', '', ...)   remove prefix
     │
     ▼
-switch ($request)                 ← match against 25 cases
+switch ($request)                 ← match against 33 cases
+                                                (see §4 for the full list)
     │
     ├─ includeWithVariables($headerDir, ['title' => ...])
     │       │
@@ -100,12 +101,19 @@ default:
 | `admin/components/from-orders` | — | **Redirect only** | `header('Location: http://' . BASEURL . '/admin/synchronization/sheets#import-orders')` (`index.php:85–86`). Exits immediately. |
 | `admin/components/update-prices` | — | **Redirect only** | `header('Location: http://' . BASEURL . '/admin/synchronization/sheets#update-prices')` (`index.php:88–90`). Exits immediately. |
 | `admin/magazines/edit` | Edycja Magazynów | `public_html/components/admin/magazines/edit/edit-magazines-view.php` | Admin route. Auth check inside component. |
+| `admin/purchase/vendors` | Dostawcy | `public_html/components/Admin/Purchase/Vendors/vendors-view.php` | Admin route. Procurement module (P1). `Admin/` capitalized. |
+| `admin/purchase/producers` | Producenci | `public_html/components/Admin/Purchase/Producers/producers-view.php` | Admin route. Procurement module (P1). |
+| `admin/purchase/vendor-parts` | Artykuły u dostawców | `public_html/components/Admin/Purchase/VendorParts/vendor-parts-view.php` | Admin route. Procurement module (P1). |
+| `admin/purchase/vendor-parts/edit` | Dodaj / Edytuj artykuł u dostawcy | `public_html/components/Admin/Purchase/VendorParts/edit/vendor-part-edit-view.php` | Admin route. Dual-mode page (mirrors `admin/purchase/producers/edit`): `?id=N` (N > 0) → EDIT existing vendor-part (pre-populated fields); absent / `id<=0` → CREATE new vendor-part (empty form). The form posts to `public_html/components/Admin/Purchase/VendorParts/edit/vendor-part-edit-save.php` (a real .php file so the .htaccess POST rule serves it directly). The save endpoint dispatches CREATE vs UPDATE based on the `id` POST field and returns `edit_url` on CREATE so the client can navigate to the edit page for the freshly-created vendor-part. |
+| `admin/purchase/cart` | Koszyk zakupowy | `public_html/components/purchases/cart/cart-view.php` | Admin route. Procurement UX: cart-style entry point for creating new RFQ/PO documents. Lives under `components/purchases/`; AJAX endpoints are called by real path via `COMPONENTS_PATH`. |
+| `admin/purchase/receipts` | Przyjęcia | `public_html/components/purchases/receipts/receipts-view.php` | Admin route. Procurement module (P4): goods-receipt list with per-receipt line-item detail modal. Under `components/purchases/`. |
+| `admin/purchase/documents` | Zapytania i zamówienia | `public_html/components/purchases/documents/documents-view.php` | Admin route. **Placeholder** — future combined RFQ+PO table with filtration. Linked from top-nav "Zamówienia komponentów". |
 | `admin/synchronization/flowpin` | Flowpin - Status Aktualizacji | `public_html/components/Admin/Synchronization/flowpin/flowpin-status-view.php` | **Note:** `Admin/` directory is capitalized. |
 | `admin/synchronization/sheets` | Flowpin - Arkusze | `public_html/components/Admin/Synchronization/sheets/flowpin-sheets-view.php` | **Note:** `Admin/` directory is capitalized. |
 | `test` | — | `public_html/components/tests/test1.php` | Dev/test only. **No header included** (`index.php:108–110`). |
 | `flowpin/test` | Flowpin Warehouse State | `public_html/components/tests/warehouse_state_view.php` | Dev/test only. **⚠ File not found** in `public_html/components/tests/` — likely broken path or missing file. |
 
-**Total routes: 26** (25 switch cases + 1 shared component for both production types).
+**Total routes: 33** (25 page cases + 2 redirect-only + 2 dev/test + 4 misc legacy; see §4 for the full table).
 
 ---
 

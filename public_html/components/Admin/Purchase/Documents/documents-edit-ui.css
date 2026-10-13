@@ -1,0 +1,342 @@
+/* Edycja dokumentu zakupu (RFQ / PO) — /admin/purchase/documents/edit.
+
+   Ten plik NIE jest samodzielny: strona wczytuje przed nim
+   purchases/receipts/receipts-ui.css i korzysta z jego klas rx-*
+   (.rx-page, .rx-crumbs, .rx-sheet, .rx-dochead, .rx-facts, .rx-panel,
+   .rx-table, .rx-badge, .rx-empty, .rx-btn-quiet …). Tutaj są tylko
+   dodatki z prefiksem dx-* oraz dopasowanie tego, co wstrzykuje
+   documents-edit.js (pola edycji inline, formularz „Dodaj pozycję").
+
+   Nic tu nie zmienia `display` elementów, które JS pokazuje/ukrywa
+   (.doc-add-card, #doc-add-*-row, #doc-add-*-wrap) — te kontrolują
+   style inline z jQuery .show()/.hide(). */
+
+
+/* ---- Kolor typu dokumentu (RFQ / PO) -------------------------------- */
+/* Te same kolory co lista /purchase/documents (documents-ui.css) —
+   skopiowane tu jako zmienne lokalne, bo tamten plik nie jest
+   wczytywany na tej stronie. Typ wybiera klasa na kontenerze
+   (.dx-edit--rfq / .dx-edit--po), którą wystawia PHP.
+   Typ (kolor akcentu) i stan (.rx-badge) to dwie osobne osie:
+   plakietka stanu zostaje w swoich kolorach, a typ zawsze mówi też
+   słowami (etykieta .dx-type-tag). */
+
+.dx-edit--rfq {
+    --dx-type:       #cf8a4f;
+    --dx-type-ink:   #8a5228;
+    --dx-type-soft:  #f7ebdd;
+    --dx-type-line:  #ebd3b8;
+}
+.dx-edit--po {
+    --dx-type:       #4f6d92;
+    --dx-type-ink:   #34506f;
+    --dx-type-soft:  #dfe7f1;
+    --dx-type-line:  #b9c8da;
+}
+
+/* 1. Pasek na górze arkusza — główny sygnał typu. Grubszy niż
+   domyślne 4 px i jednolity (bez niebieskiego gradientu). */
+.dx-edit .rx-sheet::before {
+    height: 6px;
+    background: var(--dx-type);
+}
+/* Cienka linia pod nagłówkiem arkusza w jasnym odcieniu typu. */
+.dx-edit .rx-dochead { border-bottom-color: var(--dx-type-line); }
+
+/* 2. Etykieta typu słowami (nad numerem) jako znacznik — to samo
+   co chip typu na liście. Tekst zostaje, więc typ da się odczytać
+   bez rozróżniania kolorów. */
+.dx-type-tag {
+    display: inline-block;
+    padding: .25rem .6rem;
+    border: 1px solid var(--dx-type-line);
+    border-radius: .3rem;
+    background: var(--dx-type-soft);
+    color: var(--dx-type-ink);
+}
+
+/* 3. Ciche powtórzenia: licznik pozycji, linia pod nagłówkiem
+   tabeli, przycisk „Dodaj pozycję". */
+.dx-edit .rx-panel-head .rx-count {
+    background: var(--dx-type-soft);
+    color: var(--dx-type-ink);
+}
+.dx-edit .dx-items thead th { border-bottom-color: var(--dx-type-line); }
+.dx-edit .dx-add-toggle:hover,
+.dx-edit .dx-add-toggle:focus {
+    background: var(--dx-type-soft);
+    border-color: var(--dx-type);
+    color: var(--dx-type-ink);
+}
+.dx-edit .dx-add-card > .rx-panel-head { border-bottom-color: var(--dx-type-line); }
+.dx-edit .dx-add-card > .rx-panel-head .rx-panel-title .bi { color: var(--dx-type); }
+
+
+/* ---- Nagłówek arkusza ---------------------------------------------- */
+
+.dx-edit .rx-fact dd .dx-datefield {
+    min-width: 9.5rem;
+    border-color: var(--rx-line);
+    font-weight: 500;
+    color: var(--rx-ink);
+}
+.dx-edit .rx-fact dd .dx-datefield:focus {
+    border-color: #80bdff;
+    box-shadow: var(--rx-ring);
+}
+.dx-edit .rx-fact dd .dx-datefield:disabled { opacity: .6; }
+
+/* Przyciski akcji w rogu arkusza — główny przycisk ma być wyraźny,
+   ale nie rozpychać nagłówka. */
+.dx-edit .rx-dochead-actions .btn { font-weight: 600; white-space: nowrap; }
+
+
+/* ---- Panel „Pozycje" ----------------------------------------------- */
+
+.dx-total {
+    font-size: .8rem;
+    font-weight: 600;
+    color: var(--rx-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+.dx-items td { vertical-align: top; }
+.dx-items tbody tr[data-doc-item-id] { transition: background-color .12s ease; }
+.dx-items tbody tr[data-doc-item-id]:hover { background: var(--rx-hover); }
+
+/* Wiersz w trakcie edycji inline (JS nie dodaje klasy, więc patrzymy
+   na to, czy w wierszu są pola edycji). */
+.dx-items tbody tr:has(.doc-edit-input) {
+    background: var(--rx-accent-soft);
+    box-shadow: inset 3px 0 0 var(--rx-accent);
+}
+
+.dx-partname { margin-top: 0; font-weight: 700; color: var(--rx-ink); }
+.dx-items td small { font-weight: 400; }
+.dx-items td small.text-muted { color: var(--rx-muted) !important; }
+.dx-items td .font-weight-bold { color: var(--rx-ink-2); }
+
+/* Liczby: wyrównane cyfry, ilość i wartość trochę mocniejsze. */
+.dx-items td.doc-cell-qty,
+.dx-items td.doc-cell-price,
+.dx-items td.doc-cell-value,
+.dx-items td.doc-cell-received { font-variant-numeric: tabular-nums; }
+
+/* Pasek postępu pozycji (tylko PO w trakcie przyjęcia). Dziedziczy
+   wygląd z .rx-bar (receipts-ui.css) — tu tylko dopasowanie szerokości
+   do wąskiej, prawoskrątnej kolumny „Odebrane" i minimalny margines,
+   żeby nie zlewał się z liczbą nad nim. */
+.dx-items .doc-item-bar {
+    margin: .3rem 0 .1rem;
+    min-width: 4.5rem;
+}
+.dx-items td.doc-cell-qty,
+.dx-items td.doc-cell-value { font-weight: 700; }
+.dx-items td.doc-cell-qty .badge {
+    background: var(--rx-line-soft);
+    border-color: var(--rx-line) !important;
+    color: var(--rx-ink-2);
+    font-weight: 600;
+}
+.dx-items td.doc-cell-qty .text-warning { color: #b07d00 !important; font-weight: 600; }
+
+.dx-items td.doc-cell-comment {
+    min-width: 11rem;
+    font-size: .85rem;
+    color: var(--rx-ink-2);
+    overflow-wrap: anywhere;
+}
+
+/* Uwagi do artykułu (PHP + to, co JS podmienia po zapisie). */
+.doc-row-vp-comment-line {
+    margin-top: .3rem;
+    font-size: .8rem;
+    color: var(--rx-ink-2);
+}
+.doc-row-vp-comment-line .bi { color: var(--rx-faint); }
+.doc-row-vp-comment-line .btn-link { color: var(--rx-accent-ink); line-height: 1; vertical-align: baseline; }
+.doc-row-vp-comment-line .btn-link:hover { color: var(--rx-accent); }
+.doc-row-vp-comment-line textarea { min-width: 14rem; }
+
+/* Pola inline w komórkach tabeli (wstrzykiwane przez JS). */
+.dx-items .form-control {
+    min-width: 5.5rem;
+    border-color: #cfd8e3;
+    background: #fff;
+}
+.dx-items .form-control:focus { border-color: #80bdff; box-shadow: var(--rx-ring); }
+
+/* Przyciski w kolumnie Akcje — ciche, kolor dopiero po najechaniu. */
+.dx-items td.doc-cell-akcje .btn { padding: .2rem .5rem; border-radius: .3rem; }
+.dx-items td.doc-cell-akcje .doc-row-edit,
+.dx-items td.doc-cell-akcje .doc-row-delete {
+    background: #fff;
+    border-color: var(--rx-line);
+    color: var(--rx-ink-2);
+}
+.dx-items td.doc-cell-akcje .doc-row-edit:hover   { background: var(--rx-accent-soft); border-color: var(--rx-accent); color: var(--rx-accent-ink); }
+.dx-items td.doc-cell-akcje .doc-row-delete:hover { background: #fdecee; border-color: #f1aeb5; color: #a71d2a; }
+
+/* Stan pusty: wersja z PHP (.dx-empty-cell zawiera .rx-empty) oraz
+   prosty wiersz „Brak pozycji." doklejany przez JS po usunięciu
+   ostatniej pozycji. */
+.dx-items tbody td[colspan] {
+    padding: 2.25rem 1rem;
+    text-align: center;
+    color: var(--rx-muted);
+}
+.dx-items tbody td.dx-empty-cell { padding: 0; }
+.dx-items .rx-empty { padding: 2.25rem 1.5rem; }
+.dx-items .rx-empty-icon { width: 3rem; height: 3rem; font-size: 1.3rem; margin-bottom: .6rem; }
+
+
+/* ---- „Dodaj pozycję" ----------------------------------------------- */
+
+/* Przycisk otwierający formularz: przerywana ramka zamiast przycisku
+   w kolorze — zaprasza, ale nie krzyczy. Pokazuje/ukrywa go JS. */
+.dx-add-toggle {
+    padding: .8rem 1rem;
+    background: #fff;
+    border: 2px dashed #c4cfdc;
+    border-radius: var(--rx-radius);
+    color: var(--rx-ink-2);
+    font-weight: 700;
+    transition: border-color .15s ease, background-color .15s ease, color .15s ease;
+}
+.dx-add-toggle:hover,
+.dx-add-toggle:focus {
+    background: var(--rx-accent-soft);
+    border-color: var(--rx-accent);
+    color: var(--rx-accent-ink);
+}
+.dx-add-toggle:focus { outline: none; box-shadow: var(--rx-ring); }
+
+/* Panel z formularzem. .rx-panel ma overflow:hidden — tu je znosimy,
+   bo menu bootstrap-select (data-container na komórce w środku)
+   wystawałoby poza panel i byłoby ucięte. */
+.dx-add-card { overflow: visible; }
+.dx-add-card > .rx-panel-head {
+    background: var(--rx-canvas);
+    border-radius: var(--rx-radius) var(--rx-radius) 0 0;
+}
+.dx-add-card > .rx-panel-head .rx-panel-title .bi { color: var(--rx-accent); }
+.dx-add-body { padding: 1.1rem 1.25rem 1rem; }
+
+/* Etykiety pól — ten sam styl co etykiety w .rx-facts. */
+.dx-add-body label {
+    margin-bottom: .25rem;
+    font-size: .66rem;
+    font-weight: 700;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: var(--rx-muted);
+}
+.dx-add-body .form-control {
+    border-color: #cfd8e3;
+    background: #fff;
+}
+.dx-add-body .form-control:focus { border-color: #80bdff; box-shadow: var(--rx-ring); }
+.dx-add-body textarea.form-control { min-height: calc(1.5em + .5rem + 2px); resize: vertical; }
+
+/* Pickery bootstrap-select: te same obramowanie i wysokość co pola. */
+.dx-add-body .bootstrap-select { min-width: 0; }
+.dx-add-body .bootstrap-select > .dropdown-toggle {
+    background: #fff;
+    border: 1px solid #cfd8e3;
+    color: var(--rx-ink);
+}
+.dx-add-body .bootstrap-select > .dropdown-toggle:hover { border-color: #b3c0d0; }
+.dx-add-body .bootstrap-select > .dropdown-toggle:focus,
+.dx-add-body .bootstrap-select.show > .dropdown-toggle {
+    outline: none !important;
+    border-color: #80bdff;
+    box-shadow: var(--rx-ring);
+}
+.dx-add-body .bootstrap-select .dropdown-menu { border-color: var(--rx-line); box-shadow: 0 .6rem 1.4rem rgba(16, 24, 40, .12); }
+.dx-add-body .bootstrap-select .dropdown-item.active,
+.dx-add-body .bootstrap-select .dropdown-item:active { background: var(--rx-accent); }
+
+/* Podsumowanie wybranego numeru u dostawcy + opakowania. */
+.dx-add-body #doc-add-vp-summary { color: var(--rx-ink-2) !important; }
+.dx-add-body .doc-add-pack-size-display { color: var(--rx-muted) !important; font-weight: 600; }
+.dx-add-body #doc-add-pack-stepper-row .btn {
+    background: #fff;
+    border-color: #cfd8e3;
+    color: var(--rx-ink-2);
+    font-weight: 700;
+}
+.dx-add-body #doc-add-pack-stepper-row .btn:hover:not(:disabled) { background: var(--rx-accent-soft); color: var(--rx-accent-ink); }
+.dx-add-body #doc-add-pack-stepper-row #doc-add-pack-value:disabled {
+    opacity: 1;
+    min-width: 3rem;
+    background: var(--rx-line-soft);
+    color: var(--rx-ink);
+}
+
+/* Ostrzeżenie „ilość nie wypełnia opakowań" — klasę dodaje JS
+   zarówno w formularzu, jak i w edycji inline. Ta sama reguła jest
+   też w <style> na stronie; tu tylko dopasowanie do reszty. */
+.packages-uneven { border-color: #ffc107; background-color: #fff8e1; }
+.packages-uneven:focus { border-color: #ffb300; box-shadow: 0 0 0 .2rem rgba(255, 193, 7, .25); }
+
+.dx-add-body .doc-add-save { font-weight: 600; }
+
+
+/* ---- Podpis pod tabelą --------------------------------------------- */
+
+.dx-footnote {
+    margin: 0 .25rem;
+    font-size: .8rem;
+    color: var(--rx-muted);
+}
+.dx-footnote code {
+    padding: .05rem .4rem;
+    border-radius: .2rem;
+    background: var(--rx-line-soft);
+    color: var(--rx-ink-2);
+}
+
+
+/* ---- Modale (usuń / konwersja RFQ→PO / łączenie pozycji) ----------- */
+/* Modale siedzą w <body>, poza .rx-page, więc zmienne rx-* trzeba
+   zdefiniować tu jeszcze raz. Struktura i id-ki bez zmian. */
+
+.dx-modal {
+    --rx-ink: #1d2733;
+    --rx-ink-2: #3c4a5a;
+    --rx-muted: #6b7785;
+    --rx-line: #e3e8ee;
+    --rx-canvas: #f6f8fb;
+}
+.dx-modal .modal-content {
+    border: 1px solid var(--rx-line);
+    border-radius: .6rem;
+    box-shadow: 0 1rem 2.5rem rgba(16, 24, 40, .18);
+    overflow: hidden;
+}
+.dx-modal .modal-header {
+    padding: .9rem 1.25rem;
+    background: var(--rx-canvas);
+    border-bottom: 1px solid var(--rx-line);
+}
+.dx-modal .modal-title { font-size: 1rem; font-weight: 700; color: var(--rx-ink); }
+.dx-modal .modal-body { color: var(--rx-ink-2); }
+.dx-modal .modal-body .border.rounded {
+    background: var(--rx-canvas);
+    border-color: var(--rx-line) !important;
+    border-radius: .4rem !important;
+}
+.dx-modal .modal-footer {
+    padding: .75rem 1.25rem;
+    background: #fff;
+    border-top: 1px solid var(--rx-line);
+}
+.dx-modal .modal-footer .btn { font-weight: 600; }
+
+
+/* ---- Wąskie ekrany ------------------------------------------------- */
+
+@media (max-width: 767.98px) {
+    .dx-add-body { padding: 1rem; }
+    .dx-items td.doc-cell-comment { min-width: 9rem; }
+}

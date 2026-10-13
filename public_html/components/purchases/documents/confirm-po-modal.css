@@ -1,0 +1,72 @@
+/*
+ * Modal "Potwierdź odbiór PO" — style specyficzne dla tego widgetu.
+ *
+ * Bootstrap 4 ma utility na większość layoutu (modal, modal-dialog,
+ * modal-header/body/footer, form-group, alert), więc ten arkusz
+ * dodaje tylko to, czego utility nie ma:
+ *
+ *   - wygodniejszy padding w .modal-body
+ *   - lekko powiększony, pogrubiony nagłówek-kontekst
+ *   - margines .form-group (BS4 default to 1rem — tu .75rem
+ *     zostawia więcej powietrza przy dwóch polach + backdate)
+ *   - backdate wrap (display:none domyślnie, .is-open pokazuje)
+ *   - drobne wizualne dopieszczenia ikonki / linku-toggle
+ *
+ * Żadnych wartości w px tam, gdzie da się użyć utility — kolory,
+ * pozycjonowanie, font-size pochodzą z utility BS4 albo dziedziczą.
+ */
+
+/* Wygodniejsze paddingi wewnątrz body — wąskie okno, mało pól. */
+#send-confirm-po-modal .modal-body {
+    padding: 1.25rem 1.5rem;
+}
+
+/* Kontekst ("PO/2026/0042 — Farnell") — lekko większy niż default. */
+#send-confirm-context {
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: #212529;
+}
+
+/* Form-group spacing: dwa pola + backdate, mniejszy odstęp niż default
+   (BS4 daje 1rem) daje zwarty, ale nie ciasny layout. */
+#send-confirm-po-modal .form-group {
+    margin-bottom: .75rem;
+}
+
+/* Backdate toggle: początkowo ukryty wrap; .is-open go pokazuje.
+   Paddingi i kolor niech przejmą się utility z PHP. */
+[data-confirm-backdate-wrap] {
+    display: none;
+    margin-top: .5rem;
+}
+[data-confirm-backdate-wrap].is-open {
+    display: block;
+}
+
+/* Link-toggle: BS4 nie ma utility na hover-underline dla span, więc
+   dostajemy to przez własną regułę. Kursor + user-select ustawione
+   w HTML-u (klasa .send-backdate-toggle w PHP, nie w tym CSS). */
+#send-confirm-po-modal [data-toggle-confirm-backdate] {
+    cursor: pointer;
+    user-select: none;
+    color: #6c757d;
+    font-size: .85rem;
+}
+#send-confirm-po-modal [data-toggle-confirm-backdate]:hover {
+    text-decoration: underline;
+    color: #495057;
+}
+#send-confirm-po-modal [data-toggle-confirm-backdate].is-open {
+    display: none;
+}
+
+/* Inline error — BS4 .text-danger + .small + .d-none (via style) już
+   wystarczą, ale dodajemy padding pionowy żeby komunikat nie kleił
+   się do sąsiednich elementów. */
+#send-confirm-error {
+    margin-top: .5rem;
+}
+
+/* Submit button: ikona zostaje, spinner przejmuje miejsce. Nie ma
+   potrzeby specjalnego CSS — BS4 .btn[disabled] sam ściemnia. */

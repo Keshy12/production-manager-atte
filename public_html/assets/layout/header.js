@@ -31,6 +31,22 @@ $(document).ready(function(){
     });
 });
 
+// Global setAlert — Bootstrap-styled alert host writer. Pages that show
+// feedback (success/info/warning/danger) include a `<div id="alertContainer">`
+// host; this helper writes a dismissible BS4 alert into it. When called
+// with an empty message, the host is cleared instead.
+window.setAlert = function (message, kind) {
+    const $box = $('#alertContainer');
+    if ($box.length === 0) { console.warn('setAlert: #alertContainer not found'); return; }
+    if (!message) { $box.empty(); return; }
+    $box.html(
+        '<div class="alert alert-' + (kind || 'info') + ' alert-dismissible fade show" role="alert">' +
+        message +
+        '<button type="button" class="close" data-dismiss="alert"><span aria-hidden="true">&times;</span></button>' +
+        '</div>'
+    );
+};
+
 $("#logout").click(function(e){
     e.preventDefault();
     $('#logoutModal').modal('show');

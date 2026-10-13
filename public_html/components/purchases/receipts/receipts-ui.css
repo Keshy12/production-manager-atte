@@ -1,0 +1,1363 @@
+/* Przyjęcia — lista (/purchase/receipts) i szczegóły (/purchase/receipts/view).
+   Formularz przyjęcia (/purchase/receipts/receive) ma własne style
+   w receipts.css — ten plik go nie dotyczy.
+
+   Ten plik jest też bazą wyglądu /purchase/documents (documents-view.php
+   wczytuje go przed własnym documents-ui.css) — zmiany komponentów
+   wspólnych (.rx-toolbar, .rx-stat, .rx-badge, .rx-empty, .rx-pager…)
+   sprawdzaj na obu stronach.
+
+   Wszystko pod .rx-page, żeby nic nie wyciekło na resztę aplikacji.
+   Kolory to paleta Bootstrapa 4 (ta sama niebieska #007bff co przyciski
+   i formularz przyjęcia), tylko w miękkich odcieniach na tła plakietek. */
+
+.rx-page {
+    --rx-ink: #1d2733;
+    --rx-ink-2: #3c4a5a;
+    --rx-muted: #6b7785;
+    --rx-faint: #9aa5b1;
+    --rx-line: #e3e8ee;
+    --rx-line-soft: #eef1f5;
+    --rx-canvas: #f6f8fb;
+    --rx-hover: #f7f9fd;
+    --rx-accent: #007bff;
+    --rx-accent-ink: #0056b3;
+    --rx-accent-soft: #edf4ff;
+    --rx-ring: 0 0 0 .2rem rgba(0, 123, 255, .22);
+    --rx-radius: .6rem;
+    --rx-ctl-h: calc(1.5em + .5rem + 2px); /* = .form-control-sm */
+
+    max-width: 1480px;
+    margin: 0 auto;
+    padding: 0 1rem 3rem;
+    color: var(--rx-ink);
+}
+@media (min-width: 576px)  { .rx-page { padding-left: 1.5rem; padding-right: 1.5rem; } }
+
+.rx-page .text-faint { color: var(--rx-faint) !important; }
+
+/* :not(.btn) — inaczej ta reguła przebija kolor tekstu przycisków-
+   linków Bootstrapa (.btn-primary itd.) i daje niebieski tekst na
+   niebieskim tle. :where() trzyma specyficzność na 0,1,1 (jak dawne
+   `.rx-page a`), żeby .rx-crumbs a, .dx-number itp. nadal wygrywały. */
+:where(.rx-page) a:not(.btn) { color: var(--rx-accent-ink); }
+
+.rx-sub {
+    font-size: .78rem;
+    color: var(--rx-muted);
+    margin-top: .1rem;
+    line-height: 1.35;
+}
+
+
+/* ---- Nagłówek strony ---------------------------------------------- */
+
+.rx-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1rem 2rem;
+    margin-bottom: 1.25rem;
+}
+.rx-eyebrow {
+    font-size: .7rem;
+    font-weight: 700;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--rx-muted);
+}
+.rx-title {
+    font-size: 1.85rem;
+    font-weight: 700;
+    letter-spacing: -.025em;
+    line-height: 1.15;
+    margin: .2rem 0 .3rem;
+    color: var(--rx-ink);
+}
+.rx-lead {
+    margin: 0;
+    max-width: 44rem;
+    font-size: .92rem;
+    color: var(--rx-muted);
+}
+
+/* Kafelki z licznikami — jednocześnie skróty do filtrów kolejki. */
+.rx-stats { display: flex; flex-wrap: wrap; gap: .5rem; }
+.rx-stat {
+    --rx-tone: var(--rx-accent);
+    --rx-tone-soft: var(--rx-accent-soft);
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    min-width: 9.5rem;
+    padding: .65rem .95rem .55rem;
+    background: #fff;
+    border: 1px solid var(--rx-line);
+    border-radius: var(--rx-radius);
+    text-align: left;
+    cursor: pointer;
+    overflow: hidden;
+    transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease, background-color .15s ease;
+}
+.rx-stat::before {
+    content: "";
+    position: absolute;
+    left: 0; right: 0; top: 0;
+    height: 3px;
+    background: var(--rx-tone);
+    opacity: .9;
+}
+.rx-stat:hover {
+    border-color: #cfd8e3;
+    box-shadow: 0 .35rem .9rem rgba(16, 24, 40, .07);
+    transform: translateY(-1px);
+}
+.rx-stat:focus { outline: none; box-shadow: var(--rx-ring); }
+.rx-stat.is-active {
+    background: var(--rx-tone-soft);
+    border-color: var(--rx-tone);
+    box-shadow: inset 0 0 0 1px var(--rx-tone);
+}
+.rx-stat-value {
+    font-size: 1.6rem;
+    font-weight: 700;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+    color: var(--rx-ink);
+}
+.rx-stat-label { font-size: .75rem; font-weight: 600; color: var(--rx-muted); }
+.rx-stat--overdue { --rx-tone: #dc3545; --rx-tone-soft: #fff4f5; }
+.rx-stat--overdue.has-value .rx-stat-value { color: #c82333; }
+.rx-stat--pending { --rx-tone: #6f42c1; --rx-tone-soft: #f7f3fd; }
+
+@media (max-width: 575.98px) {
+    .rx-stats { width: 100%; }
+    .rx-stat { flex: 1 1 0; min-width: 0; }
+    .rx-stat-label { font-size: .68rem; }
+}
+
+
+/* ---- Komunikaty ---------------------------------------------------- */
+
+.rx-alerts .alert {
+    border-radius: var(--rx-radius);
+    border-width: 1px;
+    font-size: .9rem;
+    margin-bottom: 1rem;
+}
+.rx-alerts .alert-success { background: #ecf8f0; border-color: #bfe5cb; color: #155724; }
+.rx-alerts .alert .bi-check-circle-fill { color: #28a745; margin-right: .2rem; }
+.rx-alert-actions { display: inline-flex; flex-wrap: wrap; gap: .9rem; margin-left: .75rem; }
+
+
+/* ---- Zakładki ------------------------------------------------------ */
+
+.rx-tabs {
+    border-bottom: 1px solid var(--rx-line);
+    margin-bottom: 1rem;
+    gap: .25rem;
+}
+.rx-tabs .nav-link {
+    display: flex;
+    align-items: center;
+    gap: .45rem;
+    padding: .65rem .95rem;
+    margin-bottom: -1px;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    background: transparent;
+    color: var(--rx-muted);
+    font-weight: 600;
+    transition: color .15s ease, border-color .15s ease;
+}
+.rx-tabs .nav-link:hover { color: var(--rx-ink); border-bottom-color: #cfd8e3; }
+.rx-tabs .nav-link.active { color: var(--rx-accent-ink); border-bottom-color: var(--rx-accent); }
+.rx-tabs .nav-link:focus { outline: none; box-shadow: inset var(--rx-ring); }
+
+.rx-count {
+    display: inline-block;
+    min-width: 1.6rem;
+    padding: .12rem .5rem;
+    border-radius: 999px;
+    background: var(--rx-line-soft);
+    color: var(--rx-ink-2);
+    font-size: .72rem;
+    font-weight: 700;
+    line-height: 1.3;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+.rx-tabs .nav-link.active .rx-count { background: var(--rx-accent); color: #fff; }
+
+
+/* ---- Pasek filtrów ------------------------------------------------- */
+
+.rx-toolbar {
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .5rem;
+    padding: .5rem;
+    background: var(--rx-canvas);
+    border: 1px solid var(--rx-line);
+    border-radius: var(--rx-radius);
+}
+.rx-toolbar-end { margin-left: auto; display: flex; align-items: center; gap: .5rem; }
+
+.rx-search { position: relative; flex: 1 1 16rem; min-width: 0; }
+.rx-search > .bi {
+    position: absolute;
+    left: .7rem;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: .8rem;
+    color: var(--rx-faint);
+    pointer-events: none;
+}
+.rx-search .form-control {
+    padding-left: 2rem;
+    border-color: var(--rx-line);
+    background: #fff;
+}
+.rx-search .form-control:focus { border-color: #80bdff; box-shadow: var(--rx-ring); }
+
+/* Komórka pickera. min-width: 0 — AGENTS.md: bez tego flex-item rośnie
+   do szerokości najdłuższej opcji i łamie data-width="100%". */
+.rx-tool { position: relative; flex: 0 1 13.5rem; min-width: 0; }
+.rx-tool .bootstrap-select { min-width: 0; }
+.rx-picker-btn {
+    height: var(--rx-ctl-h);
+    padding: .25rem .65rem;
+    font-size: .875rem;
+    line-height: 1.5;
+    background: #fff;
+    border: 1px solid var(--rx-line);
+    color: var(--rx-ink);
+}
+.rx-picker-btn:hover { background: #fff; border-color: #cfd8e3; }
+.rx-picker-btn:focus,
+.bootstrap-select .rx-picker-btn:focus { outline: none !important; box-shadow: var(--rx-ring); }
+.rx-tool.is-active .rx-picker-btn {
+    background: var(--rx-accent-soft);
+    border-color: var(--rx-accent);
+    color: var(--rx-accent-ink);
+    font-weight: 600;
+}
+
+/* Przełącznik „Tylko po terminie" — prawdziwy checkbox (id zostaje
+   #queueOverdueOnly), wizualnie chip. */
+.rx-chip-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.rx-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    height: var(--rx-ctl-h);
+    margin: 0;
+    padding: 0 .8rem;
+    border: 1px solid var(--rx-line);
+    border-radius: 999px;
+    background: #fff;
+    color: var(--rx-ink-2);
+    font-size: .85rem;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+    transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+}
+.rx-chip:hover { border-color: #cfd8e3; }
+.rx-chip-input:focus + .rx-chip { box-shadow: var(--rx-ring); }
+.rx-chip-input:checked + .rx-chip--danger { background: #fdecee; border-color: #f1aeb5; color: #a71d2a; }
+.rx-chip .rx-chip-on { display: none; }
+.rx-chip-input:checked + .rx-chip .rx-chip-on  { display: inline-block; }
+.rx-chip-input:checked + .rx-chip .rx-chip-off { display: none; }
+
+/* Zakres dat jako jedna kontrolka. */
+.rx-daterange {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    height: var(--rx-ctl-h);
+    padding: 0 .6rem;
+    background: #fff;
+    border: 1px solid var(--rx-line);
+    border-radius: .2rem;
+    color: var(--rx-faint);
+    font-size: .8rem;
+}
+.rx-daterange:focus-within { box-shadow: var(--rx-ring); border-color: #80bdff; }
+.rx-daterange.is-active { border-color: var(--rx-accent); background: var(--rx-accent-soft); }
+.rx-daterange input {
+    width: 8.4rem;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--rx-ink);
+    font-size: .85rem;
+    outline: none;
+}
+.rx-daterange-sep { color: var(--rx-faint); }
+
+/* Szybkie zakresy dat (segmenty). */
+.rx-seg {
+    display: inline-flex;
+    gap: 2px;
+    height: var(--rx-ctl-h);
+    padding: 2px;
+    background: #fff;
+    border: 1px solid var(--rx-line);
+    border-radius: .25rem;
+}
+.rx-seg button {
+    padding: 0 .6rem;
+    border: 0;
+    border-radius: .18rem;
+    background: transparent;
+    color: var(--rx-ink-2);
+    font-size: .8rem;
+    font-weight: 600;
+    white-space: nowrap;
+    transition: background-color .12s ease, color .12s ease;
+}
+.rx-seg button:hover { background: var(--rx-line-soft); }
+.rx-seg button:focus { outline: none; box-shadow: var(--rx-ring); }
+.rx-seg button.is-active { background: var(--rx-accent); color: #fff; }
+
+@media (max-width: 575.98px) {
+    .rx-tool, .rx-daterange, .rx-seg { flex: 1 1 100%; }
+    .rx-daterange input { flex: 1 1 0; width: auto; min-width: 0; }
+    .rx-seg button { flex: 1 1 0; }
+    .rx-toolbar-end { margin-left: 0; }
+}
+
+/* Linijka pod paskiem: licznik wyników + „Wyczyść filtry". */
+.rx-filterbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+    min-height: 2.1rem;
+    padding: .45rem .25rem .5rem;
+    font-size: .82rem;
+    color: var(--rx-muted);
+}
+.rx-filterbar strong { color: var(--rx-ink); }
+.rx-link-btn {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--rx-accent-ink);
+    font-size: .82rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.rx-link-btn:hover { text-decoration: underline; }
+.rx-link-btn:focus { outline: none; box-shadow: var(--rx-ring); border-radius: .2rem; }
+
+/* Spokojny przycisk drugiego planu (Odśwież, paginacja, Szczegóły). */
+.rx-btn-quiet {
+    background: #fff;
+    border: 1px solid var(--rx-line);
+    color: var(--rx-ink-2);
+    font-weight: 600;
+}
+.rx-btn-quiet:hover { background: var(--rx-hover); border-color: #cfd8e3; color: var(--rx-ink); }
+.rx-btn-quiet:focus { box-shadow: var(--rx-ring); }
+.rx-btn-quiet:disabled { opacity: .45; }
+
+.rx-spin-icon { display: inline-block; }
+.is-spinning .rx-spin-icon { animation: rxSpin .8s linear infinite; }
+@keyframes rxSpin { to { transform: rotate(360deg); } }
+
+
+/* ---- Panel (biała karta na listę / tabelę) ------------------------- */
+
+.rx-panel {
+    background: #fff;
+    border: 1px solid var(--rx-line);
+    border-radius: var(--rx-radius);
+    box-shadow: 0 1px 2px rgba(16, 24, 40, .04);
+    overflow: hidden;
+}
+/* Menu „Edytuj ▾" (kolejka przyjęć, lista dokumentów) siedzi w panelu.
+   overflow: hidden ucinało je przy dolnych wierszach — menu znikało pod
+   krawędzią panelu. Gdy menu jest otwarte, panel puszcza zawartość na
+   zewnątrz; poza tym zostaje hidden, żeby zaokrąglone rogi były czyste. */
+.rx-panel:has(.dropdown-menu.show) {
+    overflow: visible;
+}
+/* Szary nagłówek tabeli ma własne zaokrąglenie, żeby przy overflow:
+   visible jego kwadratowe rogi nie wystawały poza panel. */
+.rx-qhead,
+.dx-page .dx-head {
+    border-top-left-radius: calc(var(--rx-radius) - 1px);
+    border-top-right-radius: calc(var(--rx-radius) - 1px);
+}
+.rx-panel-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem 1rem;
+    padding: .85rem 1.25rem;
+    border-bottom: 1px solid var(--rx-line);
+}
+.rx-panel-title {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    margin: 0;
+    font-size: .98rem;
+    font-weight: 700;
+    color: var(--rx-ink);
+}
+
+
+/* ---- Kolejka: wiersze-karty ----------------------------------------
+   Siatka z sześcioma kolumnami na szerokim ekranie; poniżej lg każdy
+   wiersz składa się w kartę (patrz media query niżej). */
+
+.rx-qhead,
+.rx-qrow {
+    display: grid;
+    grid-template-columns:
+        minmax(9rem, 1.15fr)
+        minmax(8rem, 1.35fr)
+        minmax(8rem, 1fr)
+        minmax(10rem, 1.3fr)
+        minmax(8.5rem, 1fr)
+        minmax(10.5rem, auto);
+    column-gap: 1.25rem;
+    align-items: center;
+    padding: .85rem 1.15rem .85rem 1.4rem;
+}
+.rx-qhead {
+    padding-top: .55rem;
+    padding-bottom: .55rem;
+    background: var(--rx-canvas);
+    border-bottom: 1px solid var(--rx-line);
+    font-size: .68rem;
+    font-weight: 700;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: var(--rx-muted);
+}
+
+.rx-qrow {
+    --rx-tone: transparent;
+    position: relative;
+    border-top: 1px solid var(--rx-line-soft);
+    transition: background-color .12s ease;
+}
+/* Pasek pilności przy lewej krawędzi. */
+.rx-qrow::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 4px;
+    background: var(--rx-tone);
+}
+.rx-page .is-overdue { --rx-tone: #dc3545; }
+.rx-page .is-today   { --rx-tone: #f0ad00; }
+.rx-page .is-week    { --rx-tone: #007bff; }
+.rx-page .is-later,
+.rx-page .is-nodate  { --rx-tone: #d3dae3; }
+
+/* Wiersz kolejki NIE jest klikalny — brak `cursor: pointer` i brak
+   tła pod hoverem. Jedynym klikalnym fragmentem jest numer PO (link do
+   ekranu zamówienia); podświetlenie wiersza sugerowałoby akcję, której
+   nie ma, a operator myślałby, że kliknie gdziekolwiek i trafi tam, gdzie
+   chciał. Hover zostaje wyłącznie na samym linku, niżej. */
+
+/* `sent` — czeka na potwierdzenie dostawcy. Delikatne kreskowanie
+   zamiast przygaszenia — tekst zostaje czytelny, a różnica widoczna na
+   pierwszy rzut oka. */
+.queue-row-pending {
+    background-image: repeating-linear-gradient(-45deg, transparent 0 9px, rgba(111, 66, 193, .035) 9px 18px);
+}
+
+.rx-qcell { min-width: 0; }
+.rx-qcell--action { text-align: right; }
+.rx-qcell--action .btn { white-space: nowrap; font-weight: 600; }
+
+.rx-po-number {
+    font-weight: 700;
+    font-size: .95rem;
+    letter-spacing: -.005em;
+    color: var(--rx-ink);
+    overflow-wrap: anywhere;
+    transition: color .12s ease;
+}
+/* Numer PO jako link do ekranu zamówienia — jedyny klikalny fragment
+   wiersza kolejki. Podkreślenie tylko na hover/focus, żeby kolumna nie
+   wyglądała jak lista linków, ale pod myszą było widać, że to cel. */
+.rx-po-number--link {
+    display: inline-block;
+    text-decoration: none;
+}
+.rx-po-number--link:hover,
+.rx-po-number--link:focus {
+    color: var(--rx-accent-ink);
+    text-decoration: underline;
+}
+.rx-po-number--link:focus-visible {
+    outline: 2px solid var(--rx-accent-ink);
+    outline-offset: 2px;
+}
+.rx-vendor { font-weight: 500; overflow-wrap: anywhere; }
+.rx-date-main { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.rx-when {
+    display: inline-flex;
+    align-items: center;
+    gap: .25rem;
+    margin-top: .25rem;
+    padding: .1rem .5rem;
+    border-radius: 999px;
+    background: var(--rx-line-soft);
+    color: var(--rx-ink-2);
+    font-size: .72rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.rx-when--late  { background: #fdecee; color: #b21f2d; }
+.rx-when--today { background: #fff3cd; color: #7a5600; }
+.rx-when--soon  { background: var(--rx-accent-soft); color: var(--rx-accent-ink); }
+
+/* Etykiety komórek — tylko w układzie kart (wąski ekran). */
+.rx-cell-label {
+    display: none;
+    margin-bottom: .15rem;
+    font-size: .66rem;
+    font-weight: 700;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: var(--rx-faint);
+}
+
+/* Nagłówek grupy (Po terminie / Dostawa dzisiaj / …). */
+.rx-qgroup {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .5rem 1.4rem;
+    background: #fbfcfd;
+    border-top: 1px solid var(--rx-line);
+    font-size: .7rem;
+    font-weight: 700;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: var(--rx-ink-2);
+}
+.rx-qlist > .rx-qgroup:first-child { border-top: 0; }
+.rx-qgroup-count { color: var(--rx-faint); }
+.rx-dot {
+    display: inline-block;
+    width: .5rem;
+    height: .5rem;
+    border-radius: 50%;
+    background: var(--rx-tone, var(--rx-faint));
+    flex-shrink: 0;
+}
+
+/* Postęp realizacji. */
+.rx-progress-top {
+    display: flex;
+    justify-content: space-between;
+    gap: .5rem;
+    font-size: .8rem;
+    color: var(--rx-ink-2);
+}
+.rx-progress-top strong { color: var(--rx-ink); }
+.rx-pct { font-weight: 700; color: var(--rx-muted); font-variant-numeric: tabular-nums; }
+
+.rx-bar {
+    display: flex;
+    height: 6px;
+    margin: .3rem 0 .15rem;
+    border-radius: 999px;
+    background: var(--rx-line-soft);
+    overflow: hidden;
+}
+.rx-bar > span {
+    display: block;
+    height: 100%;
+    background: var(--rx-accent);
+    transition: width .45s ease;
+}
+.rx-bar > span.is-done { background: #28a745; }
+
+/* Plakietki stanu — miękkie tło, kropka w kolorze stanu. */
+.rx-badge {
+    --rx-b-bg: #eef1f5; --rx-b-ink: #4a5562; --rx-b-dot: #9aa5b1;
+    display: inline-flex;
+    align-items: center;
+    gap: .38rem;
+    padding: .3rem .62rem;
+    border-radius: 999px;
+    background: var(--rx-b-bg);
+    color: var(--rx-b-ink);
+    font-size: .74rem;
+    font-weight: 700;
+    line-height: 1;
+    white-space: nowrap;
+}
+.rx-badge::before {
+    content: "";
+    width: .42rem;
+    height: .42rem;
+    border-radius: 50%;
+    background: var(--rx-b-dot);
+}
+.rx-badge--violet { --rx-b-bg: #f1ecfb; --rx-b-ink: #4b2a8a; --rx-b-dot: #6f42c1; }
+.rx-badge--blue   { --rx-b-bg: #e8f1ff; --rx-b-ink: #0050a6; --rx-b-dot: #007bff; }
+.rx-badge--cyan   { --rx-b-bg: #e2f5f8; --rx-b-ink: #0d5f6c; --rx-b-dot: #17a2b8; }
+.rx-badge--amber  { --rx-b-bg: #fff3d4; --rx-b-ink: #775300; --rx-b-dot: #f0ad00; }
+.rx-badge--green  { --rx-b-bg: #e6f5eb; --rx-b-ink: #1b6e30; --rx-b-dot: #28a745; }
+.rx-badge--red    { --rx-b-bg: #fdecee; --rx-b-ink: #a71d2a; --rx-b-dot: #dc3545; }
+
+/* Wąskie ekrany: każdy wiersz kolejki to karta. */
+@media (max-width: 991.98px) {
+    .rx-qhead { display: none; }
+    .rx-qrow {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        grid-template-areas:
+            "po       status"
+            "vendor   vendor"
+            "delivery progress"
+            "action   action";
+        row-gap: .7rem;
+        padding: 1rem 1rem 1rem 1.3rem;
+    }
+    .rx-qcell--po       { grid-area: po; }
+    .rx-qcell--status   { grid-area: status; justify-self: end; text-align: right; }
+    .rx-qcell--vendor   { grid-area: vendor; }
+    .rx-qcell--delivery { grid-area: delivery; }
+    .rx-qcell--progress { grid-area: progress; }
+    .rx-qcell--action   { grid-area: action; text-align: left; }
+    .rx-qcell--action .btn { width: 100%; }
+    /* Powyższa reguła wymusiłaby na „Edytuj" i caret split-buttona
+       po 100% szerokości — caret zająłby pół komórki. Pozwalamy im
+       zachować naturalną szerokość, żeby split-button wyglądał tak
+       samo jak na desktopie (kosz zostaje pod swoim `width: 2rem`
+       wyżej — tamta reguła wygrywa specyficznością). */
+    .rx-qcell--action .btn-group { width: auto; }
+    .rx-qcell--action .btn-group > .btn { width: auto; }
+    .rx-cell-label { display: block; }
+    .rx-qgroup { padding-left: 1.3rem; }
+}
+@media (max-width: 575.98px) {
+    .rx-qrow {
+        grid-template-areas:
+            "po       status"
+            "vendor   vendor"
+            "delivery delivery"
+            "progress progress"
+            "action   action";
+    }
+}
+
+
+/* ---- Stany: ładowanie / pusto / błąd ------------------------------- */
+
+.rx-skel-row { cursor: default; }
+.rx-skel {
+    display: block;
+    height: .7rem;
+    border-radius: 4px;
+    background: linear-gradient(90deg, #eef1f5 25%, #f8fafc 37%, #eef1f5 63%);
+    background-size: 400% 100%;
+    animation: rxShimmer 1.3s ease infinite;
+}
+.rx-skel + .rx-skel { margin-top: .45rem; }
+.rx-skel--sm   { height: .55rem; }
+.rx-skel--bar  { height: 6px; border-radius: 999px; }
+.rx-skel--pill { width: 6.5rem; height: 1.35rem; border-radius: 999px; }
+.rx-skel--btn  { width: 8.5rem; height: 1.9rem; margin-left: auto; border-radius: .2rem; }
+@keyframes rxShimmer {
+    0%   { background-position: 100% 50%; }
+    100% { background-position: 0 50%; }
+}
+@media (max-width: 991.98px) {
+    .rx-skel-row > div:nth-child(n+3) { display: none; }
+}
+
+.rx-empty { padding: 3rem 1.5rem; text-align: center; }
+.rx-empty--page { padding: 4rem 1.5rem; }
+.rx-empty-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 3.6rem;
+    height: 3.6rem;
+    margin-bottom: .9rem;
+    border-radius: 50%;
+    background: var(--rx-line-soft);
+    color: var(--rx-muted);
+    font-size: 1.55rem;
+}
+.rx-empty-icon--ok     { background: #e6f5eb; color: #28a745; }
+.rx-empty-icon--danger { background: #fdecee; color: #dc3545; }
+.rx-empty-title { font-size: 1.05rem; font-weight: 700; color: var(--rx-ink); }
+.rx-empty-text {
+    max-width: 32rem;
+    margin: .3rem auto 0;
+    font-size: .9rem;
+    color: var(--rx-muted);
+}
+.rx-empty .btn { margin-top: 1.1rem; }
+
+
+/* ---- Tabele (historia + pozycje na stronie szczegółów) ------------- */
+
+.rx-table { font-size: .9rem; color: var(--rx-ink); }
+.rx-table thead th {
+    padding: .6rem .9rem;
+    background: var(--rx-canvas);
+    border-top: 0;
+    border-bottom: 1px solid var(--rx-line);
+    font-size: .68rem;
+    font-weight: 700;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: var(--rx-muted);
+    white-space: nowrap;
+    vertical-align: middle;
+}
+.rx-table td {
+    padding: .75rem .9rem;
+    border-top: 1px solid var(--rx-line-soft);
+    vertical-align: middle;
+}
+.rx-table tbody tr:first-child td { border-top: 0; }
+
+.rx-table tbody tr.receipt-row { cursor: pointer; transition: background-color .12s ease; }
+.rx-table tbody tr.receipt-row:hover { background: var(--rx-hover); }
+.rx-table tbody tr.receipt-row:hover .rx-doc { color: var(--rx-accent-ink); }
+.rx-table tbody tr.receipt-row:hover .rx-go { transform: translateX(2px); color: var(--rx-accent); }
+
+.rx-doc {
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    font-size: .86rem;
+    font-weight: 700;
+    color: var(--rx-ink);
+    white-space: nowrap;
+    transition: color .12s ease;
+}
+.rx-doc--none {
+    font-family: inherit;
+    font-size: .82rem;
+    font-weight: 600;
+    font-style: italic;
+    color: var(--rx-muted);
+}
+.rx-po-link { font-weight: 600; }
+.rx-num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.rx-pill {
+    display: inline-block;
+    min-width: 1.8rem;
+    padding: .14rem .5rem;
+    border-radius: 999px;
+    background: var(--rx-line-soft);
+    font-size: .78rem;
+    font-weight: 700;
+    text-align: center;
+}
+.rx-pill--empty {
+    background: transparent;
+    border: 1px dashed #cdd5df;
+    color: var(--rx-muted);
+    font-weight: 600;
+}
+
+.rx-person { display: inline-flex; align-items: center; gap: .5rem; white-space: nowrap; }
+.rx-avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 50%;
+    background: var(--rx-accent-soft);
+    color: var(--rx-accent-ink);
+    font-size: .66rem;
+    font-weight: 800;
+    letter-spacing: .02em;
+}
+.rx-go { display: inline-block; font-size: .75rem; transition: transform .12s ease, color .12s ease; }
+
+/* Świeżo zapisane przyjęcie (powrót z formularza z ?saved=…):
+   zielony błysk + znacznik przy krawędzi wiersza. */
+@keyframes receiptRowFlash {
+    0%, 35% { background-color: rgba(40, 167, 69, .2); }
+    100%    { background-color: transparent; }
+}
+.receipt-row-new > td { animation: receiptRowFlash 2.4s ease-out 1; }
+.receipt-row-new > td:first-child { box-shadow: inset 3px 0 0 #28a745; }
+
+/* Paginacja historii. */
+.rx-pager {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+    padding: .9rem .25rem 0;
+    font-size: .85rem;
+    color: var(--rx-muted);
+}
+.rx-pager strong { color: var(--rx-ink); }
+.rx-pager-current { min-width: 8.5rem; }
+.rx-pager-menu { max-height: 300px; overflow-y: auto; font-size: .85rem; }
+.rx-pager-menu .dropdown-item.active { background: var(--rx-accent); }
+
+
+/* =====================================================================
+   Strona szczegółów przyjęcia
+   ===================================================================== */
+
+.rx-crumbs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .4rem;
+    margin: 0 0 .9rem;
+    padding: 0;
+    list-style: none;
+    font-size: .82rem;
+    color: var(--rx-muted);
+}
+.rx-crumbs a { color: var(--rx-muted); }
+.rx-crumbs a:hover { color: var(--rx-accent-ink); text-decoration: none; }
+.rx-crumbs .bi-chevron-right { font-size: .6rem; opacity: .7; }
+.rx-crumbs [aria-current] { color: var(--rx-ink); font-weight: 600; }
+
+/* Arkusz dokumentu — cienki pasek koloru u góry, jak nagłówek druku. */
+.rx-sheet { position: relative; }
+.rx-sheet::before {
+    content: "";
+    position: absolute;
+    left: 0; right: 0; top: 0;
+    height: 4px;
+    background: linear-gradient(90deg, #007bff 0%, #17a2b8 100%);
+}
+
+.rx-dochead {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem 2rem;
+    padding: 1.5rem 1.4rem 1.1rem;
+    border-bottom: 1px solid var(--rx-line);
+}
+.rx-docnum {
+    margin: .25rem 0 .35rem;
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    font-size: 1.85rem;
+    font-weight: 700;
+    letter-spacing: -.02em;
+    line-height: 1.1;
+    color: var(--rx-ink);
+    overflow-wrap: anywhere;
+}
+.rx-docnum--none {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .6rem;
+    font-family: inherit;
+    color: var(--rx-ink-2);
+}
+.rx-docnum--none .rx-badge { font-size: .74rem; letter-spacing: 0; }
+.rx-dochead-meta { font-size: .92rem; color: var(--rx-ink-2); }
+.rx-dochead-meta a { font-weight: 600; }
+.rx-meta-sep { margin: 0 .35rem; color: var(--rx-faint); }
+
+.rx-dochead-side {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: .9rem;
+}
+.rx-dochead-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .4rem; }
+
+/* Pieczątka z wynikiem dostawy — nawiązanie do papierowego GRN. */
+.rx-stamp {
+    --rx-s: #6b7785;
+    display: inline-block;
+    padding: .3rem .8rem;
+    border: 2px solid var(--rx-s);
+    border-radius: .3rem;
+    color: var(--rx-s);
+    font-size: .74rem;
+    font-weight: 800;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    transform: rotate(-3deg);
+    opacity: .9;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .6);
+    white-space: nowrap;
+}
+.rx-stamp--green { --rx-s: #1e8a3a; }
+.rx-stamp--amber { --rx-s: #c58a00; }
+
+@media (max-width: 767.98px) {
+    .rx-dochead-side { align-items: flex-start; width: 100%; }
+    .rx-dochead-actions { justify-content: flex-start; }
+    .rx-docnum { font-size: 1.45rem; }
+}
+
+/* Najważniejsze dane: etykieta nad wartością, siatka sama się łamie. */
+.rx-facts {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(11.5rem, 1fr));
+    gap: 1rem 1.5rem;
+    margin: 0;
+    padding: 1.1rem 1.4rem 1.2rem;
+}
+.rx-fact dt {
+    margin-bottom: .2rem;
+    font-size: .66rem;
+    font-weight: 700;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: var(--rx-faint);
+}
+.rx-fact dd {
+    margin: 0;
+    font-size: .95rem;
+    font-weight: 600;
+    color: var(--rx-ink);
+    overflow-wrap: anywhere;
+}
+.rx-fact-sub { margin-top: .35rem; }
+.rx-fact-time { margin-left: .35rem; font-weight: 500; color: var(--rx-muted); }
+.rx-num-left { font-variant-numeric: tabular-nums; }
+
+.rx-note {
+    margin: 0 1.4rem 1.2rem;
+    padding: .7rem .9rem;
+    background: #fff8e1;
+    border-left: 3px solid #ffc107;
+    border-radius: .25rem;
+    font-size: .9rem;
+}
+/* `pre-wrap` TYLKO na ciele komentarza, nie na .rx-note. Kontener .rx-note
+   zawiera w źródle PHP wcięcia i złamania wierszy między elementami —
+   pod white-space: pre-wrap każda z nich renderowała się dosłownie, więc
+   nad etykietą i przed treścią pojawiały się puste linie i długie
+   wcięcia. .rx-note-body zawiera już sam tekst, więc zachowujemy tylko
+   jego wewnętrzne złamania wiersza. */
+.rx-note-body {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+.rx-note-label {
+    margin-bottom: .2rem;
+    font-size: .7rem;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: #8a6100;
+    white-space: normal;
+}
+
+.rx-outcome {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .5rem 1.4rem;
+    padding: .75rem 1.4rem;
+    background: var(--rx-canvas);
+    border-top: 1px solid var(--rx-line);
+    font-size: .86rem;
+    color: var(--rx-ink-2);
+}
+.rx-outcome-title { font-weight: 700; color: var(--rx-ink); }
+.rx-outcome-item { display: inline-flex; align-items: center; gap: .4rem; }
+.rx-outcome-item.is-closed  { --rx-tone: #28a745; }
+.rx-outcome-item.is-partial { --rx-tone: #f0ad00; }
+.rx-outcome-item.is-extra   { --rx-tone: #6f42c1; }
+
+/* Układ: tabela pozycji + kolumna z przyjęciami do zamówienia. */
+.rx-detail-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 19rem;
+    gap: 1rem;
+    align-items: start;
+}
+@media (max-width: 1199.98px) {
+    .rx-detail-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+.rx-legend { display: flex; flex-wrap: wrap; gap: 1rem; font-size: .75rem; color: var(--rx-muted); }
+.rx-legend i {
+    display: inline-block;
+    width: .9rem;
+    height: .4rem;
+    margin-right: .35rem;
+    border-radius: 999px;
+    vertical-align: middle;
+}
+.rx-legend-prev { background: #b9c6d6; }
+.rx-legend-this { background: #28a745; }
+
+.rx-items td { vertical-align: top; }
+.rx-items .rx-idx {
+    width: 2.75rem;
+    color: var(--rx-faint);
+    font-variant-numeric: tabular-nums;
+}
+.rx-partno {
+    display: inline-block;
+    padding: .05rem .4rem;
+    border-radius: .2rem;
+    background: var(--rx-line-soft);
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    font-size: .78rem;
+    color: var(--rx-ink-2);
+}
+.rx-partname { margin-top: .25rem; font-weight: 600; }
+.rx-line-note {
+    margin-top: .3rem;
+    font-size: .8rem;
+    font-style: italic;
+    color: var(--rx-ink-2);
+}
+.rx-line-note .bi { font-style: normal; color: var(--rx-faint); }
+.rx-qty-big { font-size: 1rem; font-weight: 700; }
+.rx-unit { margin-left: .2rem; font-size: .78rem; color: var(--rx-muted); }
+
+.rx-state-col { min-width: 14rem; width: 26%; }
+.rx-state-top { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.rx-state-qty { font-size: .8rem; font-weight: 600; color: var(--rx-ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rx-bar--stacked { margin-top: .45rem; }
+.rx-bar--stacked > .is-prev { background: #b9c6d6; }
+.rx-bar--stacked > .is-this { background: #28a745; }
+.rx-bar--stacked > .is-this.is-partial { background: #f0ad00; }
+.rx-bar--stacked > .is-this.is-extra   { background: #6f42c1; }
+.rx-later { color: var(--rx-faint); white-space: nowrap; }
+
+/* Znacznik wyniku przy lewej krawędzi wiersza pozycji. */
+.rx-items tbody tr.is-closed  > td:first-child { box-shadow: inset 3px 0 0 #28a745; }
+.rx-items tbody tr.is-partial > td:first-child { box-shadow: inset 3px 0 0 #f0ad00; }
+.rx-items tbody tr.is-extra   > td:first-child { box-shadow: inset 3px 0 0 #6f42c1; }
+
+.rx-items tfoot td {
+    padding: .7rem .9rem;
+    background: var(--rx-canvas);
+    border-top: 1px solid var(--rx-line);
+}
+.rx-tfoot-label {
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--rx-muted);
+    vertical-align: middle !important;
+}
+
+/* Przyjęcia do tego samego zamówienia — oś czasu. */
+.rx-related-empty { margin: 0; padding: .85rem 1.25rem 0; font-size: .85rem; color: var(--rx-muted); }
+.rx-timeline { list-style: none; margin: 0; padding: .6rem 0 .8rem; }
+.rx-timeline li { position: relative; padding: .55rem 1.25rem .55rem 2.75rem; }
+.rx-timeline li::before {
+    content: "";
+    position: absolute;
+    left: 1.55rem; top: 0; bottom: 0;
+    width: 2px;
+    background: var(--rx-line);
+}
+.rx-timeline li:first-child::before { top: 1.1rem; }
+.rx-timeline li:last-child::before { bottom: calc(100% - 1.1rem); }
+.rx-timeline li:only-child::before { display: none; }
+.rx-timeline li::after {
+    content: "";
+    position: absolute;
+    left: calc(1.55rem - 4px);
+    top: .85rem;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #fff;
+    border: 2px solid #b9c6d6;
+}
+.rx-timeline li.is-current { background: var(--rx-accent-soft); }
+.rx-timeline li.is-current::after { background: var(--rx-accent); border-color: var(--rx-accent); }
+.rx-timeline-doc {
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    font-size: .84rem;
+    font-weight: 700;
+    color: var(--rx-ink);
+}
+a.rx-timeline-doc { color: var(--rx-accent-ink); }
+.rx-current-tag {
+    display: inline-block;
+    margin-left: .3rem;
+    padding: 0 .4rem;
+    border-radius: 999px;
+    background: var(--rx-accent);
+    color: #fff;
+    font-size: .66rem;
+    font-weight: 700;
+}
+
+
+/* ---- Druk strony szczegółów --------------------------------------- */
+
+@media print {
+    .navbar,
+    .rx-no-print,
+    .rx-crumbs,
+    body > div[style*="position: absolute"] { display: none !important; }
+    .rx-page { max-width: none; padding: 0; }
+    .rx-panel { box-shadow: none; border-color: #bbb; }
+    .rx-detail-grid { display: block; }
+    .rx-related { margin-top: 1rem; }
+    .rx-bar, .rx-bar > span, .rx-sheet::before, .rx-badge, .rx-badge::before {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+}
+
+
+/* ---- Współdzielone okna „Zamknij zamówienie" / „Anuluj zamówienie" ----
+ *
+ * Reguły te były pierwotnie w receipts.css (plik tylko dla formularza
+ * przyjęcia). Kolejka „Do przyjęcia" na /purchase/receipts potrzebuje
+ * tych samych modali (kosz przy każdym wierszu), a ten stylesheet
+ * ładuje zarówno formularz, jak i kolejkę. Wyjątek —
+ * .receipt-actionbar.receipt-step-locked #receiveClosePoBtn
+ * re-enable dla przycisku w pasku akcji — zostaje w receipts.css,
+ * bo dotyczy tylko formularza.
+ *
+ * Konwencja nazw: prefiks .receipt-close-* dla modala „Zamknij",
+ * .receipt-cancel-* dla modala „Anuluj". Stary selektor :has()
+ * zastąpiony klasą .is-selected (togglowaną przez close-po.js) —
+ * starsze przeglądarki (Chrome <105, Safari <15.4, Firefox <121)
+ * w ogóle nie obsługują :has(). */
+
+/* Mirror .receipt-short-saved — operator musi wiedzieć, na jakim
+   PO właśnie decyduje. Numer PO ma być pierwszą rzeczą, którą
+   widzi po otwarciu okna. */
+.receipt-close-summary {
+    color: #1e7e34;
+    font-weight: 600;
+}
+.receipt-close-summary .bi { margin-right: .25rem; }
+
+/* Ten sam język co .receipt-short-heading — etykieta sekcji drobnym
+   drukiem, wartości (lista pozycji) niżej. */
+.receipt-close-heading {
+    font-size: .75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: #6b7785;
+    margin-bottom: .35rem;
+}
+
+/* Lista pozycji jeszcze nie w pełni odebranych — ten sam układ
+   trójkolumnowy co .receipt-short-row (nr dostawcy / nazwa /
+   „przyjęto A z B"). Osobna klasa z prefiksem receipt-close-, żeby
+   nie walczyła z .receipt-short-row, gdy oba okna kiedyś współistnieją
+   w kodzie lub w cache przeglądarki. */
+.receipt-close-list {
+    max-height: 40vh;
+    overflow-y: auto;
+    border: 1px solid #e9ecef;
+    border-radius: .25rem;
+}
+.receipt-close-row {
+    display: grid;
+    grid-template-columns: minmax(6rem, 9rem) minmax(0, 1fr) auto;
+    align-items: baseline;
+    gap: .75rem;
+    padding: .5rem .75rem;
+    font-size: .875rem;
+}
+.receipt-close-row + .receipt-close-row { border-top: 1px solid #f1f3f5; }
+.receipt-close-no   { font-family: SFMono-Regular, Menlo, Consolas, monospace; font-weight: 700; overflow-wrap: anywhere; }
+.receipt-close-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.receipt-close-qty  { text-align: right; white-space: nowrap; color: #495057; }
+/* Dopisek „+ N więcej pozycji" pod listą przyciętą do 5 wierszy —
+   ten sam ton co .rx-progress-sub (szary, drobny druk). */
+.receipt-close-more {
+    font-size: .75rem;
+    color: #6b7785;
+    padding: .35rem .75rem .25rem;
+}
+
+/* Radio „Odebrane / Anulowane" — duże, klikalne pole, opis pomocniczy
+   pod etykietą. Ten sam układ pionowy co .receipt-short-choice, ale
+   bez flex-direction: column — radio po lewej, etykieta + opis po
+   prawej w jednym rzędzie, łamanie na wąskim ekranie. */
+.receipt-close-option {
+    display: flex;
+    align-items: flex-start;
+    gap: .5rem;
+    padding: .5rem .75rem;
+    border: 1px solid #e3e6ea;
+    border-radius: .25rem;
+    cursor: pointer;
+    transition: background-color .12s ease, border-color .12s ease;
+}
+.receipt-close-option + .receipt-close-option { margin-top: .25rem; }
+.receipt-close-option:hover { background-color: #f8f9fa; }
+.receipt-close-option input[type="radio"] {
+    margin-top: .2rem;
+    flex-shrink: 0;
+}
+.receipt-close-option-body {
+    display: flex;
+    flex-direction: column;
+    gap: .15rem;
+    min-width: 0;
+}
+.receipt-close-option-label { font-weight: 600; }
+.receipt-close-option input[type="radio"]:checked ~ .receipt-close-option-body {
+    /* Delikatne wyróżnienie wybranej opcji — bez niej operator nie
+       wie, czy radio faktycznie zaznaczył, bo w Bootstrap 4 natywny
+       wygląd jest dość dyskretny. */
+    color: #212529;
+}
+/* Podświetlenie wybranej opcji — klasa .is-selected togglowana
+   przez close-po.js (zamiast :has()). */
+.receipt-close-option.is-selected {
+    border-color: #ffc107;
+    background-color: #fff8e1;
+}
+/* Wariant niszczycielski dla opcji „Anulowane". Wybór anulowania
+   unieważnia zamówienie, więc karta dostaje paletę danger (#dc3545 /
+   #f8d7da) zamiast bursztynowej. Selektor ma atrybut data-close-target,
+   więc bije .receipt-close-option.is-selected (0,3,0 vs 0,2,0) oraz
+   :checked ~ .receipt-close-option-body (0,2,1). */
+.receipt-close-option[data-close-target="cancelled"].is-selected {
+    border-color: #dc3545;
+    background-color: #f8d7da;
+}
+.receipt-close-option[data-close-target="cancelled"].is-selected .receipt-close-option-label {
+    color: #721c24;
+}
+.receipt-close-option[data-close-target="cancelled"].is-selected .receipt-close-option-body small {
+    color: #8a5157;
+}
+
+/* Modal „Anuluj zamówienie" (prosty wariant, dla wierszy `sent`). */
+.receipt-cancel-summary { font-size: .95rem; }
+
+@media (max-width: 575.98px) {
+    .receipt-close-row { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
+    .receipt-close-qty { text-align: left; white-space: normal; }
+}
+
+
+/* ---- Kolejka: przycisk-kosz w kolumnie Akcja ----------------------
+ *
+ * Kompaktowy kwadratowy hit-area (ikona + minimalny padding), wyrównany
+ * w pionie do sąsiedniego .btn-sm. Kosz stoi PRZED przyciskiem głównym —
+ * jest wyjątkiem od codziennego toku, więc nie może być jego wizualnym
+ * „następstwem" (kliknięcie tu ma być mniej kuszące niż „Przyjmij towar").
+ *
+ * Odstęp między nimi daje wyłącznie `gap` na .rx-action-cell — przycisk
+ * nie ma własnego marginesu, bo podwoiłby gap.
+ *
+ * Wysokość: dziedziczona z `.btn-sm` (BS4 ~31px). Dwie wcześniejsze
+ * próby były złe: `height: calc(2rem + 2px)` (~34px) była o 3px za
+ * wysoka, a `padding: 0` zerowała padding PIONOWY i zostawiała ~23px,
+ * czyli przycisk był niższy niż Edytuj / Przyjmij towar obok niego.
+ *
+ * Teraz: `width` stałe (kwadratowy obrys) +zerowanie TYLKO paddingu
+ * poziomego. Padding pionowy zostaje z `.btn-sm`, więc wysokość jest
+ * identyczna z sąsiednimi przyciskami bez magicznych liczb. */
+.rx-close-po-btn {
+    width: 2rem;
+    padding-left: 0;
+    padding-right: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.rx-action-cell {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: .3rem;
+    white-space: nowrap;
+}
+
+/* Pozycje menu split-buttona Edytuj — współdzielone między
+   /purchase/documents (actionMenuItemsHtml w documents-view.js)
+   i /purchase/receipts (queueActionMenuHtml w receipts-view.js).
+   Obie listy nadają te same klasy dla akcji o tym samym odcieniu,
+   więc odcień nie może się rozjechać między stronami.
+
+   Kolory tekstu odpowiadają odpowiednim przyciskom na stronie
+   edycji dokumentu /admin/purchase/documents/edit:
+     - .rx-action-primary → btn-primary (#007bff)
+     - .rx-action-success → btn-success (#28a745)
+   Wiersz dropdown-item pozostaje zwykły (BS4 padding, font-weight
+   dziedziczony z .dropdown-menu) — koloruje się tylko tekst
+   i ikona, żeby dropdown czytał się jako lista opcji, a nie
+   zestaw przycisków.
+
+   Scope: celujemy w samą klasę, nie w .rx-qcell--action /
+   .dx-cell--action. Modal #receiveClosePoModal, #receiveCancelPoModal
+   i #send-confirm-po-modal nie nadają tych klas swoim
+   .dropdown-item (renderują zwykłe itemy); pager .rx-pager-menu
+   też nie. Dlatego reguła może być globalna — jedyne nadawane
+   klasy są w tych dwóch builderach, a tam, gdzie klasy nie ma,
+   pozostaje BS4 default.
+
+   Hover: tint tego samego odcienia (8% alpha), nie wypełnienie.
+   Tekst ciemnieje, żeby zachować kontrast i nadal być czytelny.
+   Focus: inset ring 1px w kolorze akcji. BS4 .dropdown-item
+   nie daje własnego wskaźnika fokusu — dajemy go sami dla
+   klawiatury. */
+.rx-action-primary { color: #007bff; }
+.rx-action-primary:hover,
+.rx-action-primary:focus {
+    /* Hover/focus: ciemniejszy tekst (ten sam odcień co tło .btn-primary
+       w stanie :hover, żeby kolor tekstu zgadzał się z kolorem tła
+       odpowiadającego mu przycisku) + subtelny tint tła dla odróżnienia
+       od zwykłego dropdown-item. */
+    color: #0069d9;
+    background-color: rgba(0, 123, 255, .08);
+    text-decoration: none;
+}
+.rx-action-primary:focus {
+    outline: 0;
+    box-shadow: inset 0 0 0 1px #007bff;
+}
+
+.rx-action-success { color: #28a745; }
+.rx-action-success:hover,
+.rx-action-success:focus {
+    /* Jak wyżej — tekst w stanie hover zgadza się z tłem .btn-success
+       w stanie :hover (BS4 darken($success, 10%) = #218838). */
+    color: #218838;
+    background-color: rgba(40, 167, 69, .08);
+    text-decoration: none;
+}
+.rx-action-success:focus {
+    outline: 0;
+    box-shadow: inset 0 0 0 1px #28a745;
+}
+
+/* Na wąskich ekranach układamy przyciski jeden pod drugim, żeby
+   dłuższa etykieta „Dokończ przyjęcie" nie wyciskała kosza poza
+   komórkę. */
+@media (max-width: 575.98px) {
+    .rx-action-cell {
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    }
+}

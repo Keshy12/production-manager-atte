@@ -1,0 +1,50 @@
+<?php
+namespace Atte\Utils\Purchase\Order;
+
+use Atte\DB\MsaDB;
+
+class PurchaseOrder {
+        public int $id;
+    public int $vendorId;
+    public string $state;
+    public ?string $poNumber;
+    public ?string $vendorPoNumber;
+    public ?int $convertedFromRfqId;
+    public ?string $expectedDeliveryDate;
+    public ?string $sentAt;
+    public ?string $confirmedAt;
+    public int $createdBy;
+    public ?string $createdByName;
+    public ?string $comment;
+    public ?string $createdAt;
+    public ?string $updatedAt;
+    public ?string $vendorName;
+    public ?string $rfqNumber;
+    public ?string $convertedFromRfqNumber;
+    // Numer oferty u dostawcy z powiązanego zapytania RFQ (alias
+    // `rfq.vendor_reference` w PurchaseOrderRepository::buildSelectJoin()).
+    // Równa $rfqNumber, z której korzysta reszta kodu; żyje osobno,
+    // bo w szablonach wiadomości to niezależna zmienna obok numeru
+    // zapytania.
+    public ?string $convertedFromRfqVendorReference;
+
+    public function __construct(array $row){        $this->id = (int)$row['id'];
+        $this->vendorId = (int)$row['vendorId'];
+        $this->state = (string)$row['state'];
+        $this->poNumber = $row['poNumber'] ?? null;
+        $this->vendorPoNumber = $row['vendorPoNumber'] ?? null;
+        $this->convertedFromRfqId = isset($row['convertedFromRfqId']) && $row['convertedFromRfqId'] !== null ? (int)$row['convertedFromRfqId'] : null;
+        $this->expectedDeliveryDate = $row['expectedDeliveryDate'] ?? null;
+        $this->sentAt = $row['sentAt'] ?? null;
+        $this->confirmedAt = $row['confirmedAt'] ?? null;
+        $this->createdBy = (int)$row['createdBy'];
+        $this->createdByName = isset($row['createdByName']) && $row['createdByName'] !== '' ? $row['createdByName'] : null;
+        $this->comment = $row['comment'] ?? null;
+        $this->createdAt = $row['createdAt'] ?? null;
+        $this->updatedAt = $row['updatedAt'] ?? null;
+        $this->vendorName = $row['vendorName'] ?? null;
+        $this->rfqNumber = $row['convertedFromRfqNumber'] ?? null;
+        $this->convertedFromRfqNumber = $row['convertedFromRfqNumber'] ?? null;
+        $this->convertedFromRfqVendorReference = $row['convertedFromRfqVendorReference'] ?? null;
+    }
+}

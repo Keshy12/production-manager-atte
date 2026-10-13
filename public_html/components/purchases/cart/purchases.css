@@ -1,0 +1,162 @@
+/* Koszyk (procurement) — picker widget polish
+   Extracted from cart-view.php inline <style> block on 2026-08-25
+   during the B19 audit cleanup. Lives in the shared layout dir so
+   the cache-busted asset() URL works the same as header.css. */
+
+/* Active-documents strip — clickable header with rotating chevron */
+#selectionDocsHeader { cursor: pointer; user-select: none; }
+#selectionDocsHeader:hover { background-color: rgba(0,0,0,.04); }
+/* <i> is inline by default — transform needs inline-block to apply */
+#selectionDocsHeader .bi-chevron-right {
+    display: inline-block;
+    transition: transform .15s ease;
+}
+#selectionDocsHeader[aria-expanded="true"] .bi-chevron-right,
+#selectionDocsHeader.is-open .bi-chevron-right { transform: rotate(90deg); }
+
+/* Plain icon links sitting next to picker labels (the "x" / magnifier
+   / "add to cart" secondary actions). */
+.clear-picker-link {
+    font-size: 1.3rem;
+    line-height: 38px;
+    text-decoration: none;
+}
+.clear-picker-link:hover { color: #dc3545 !important; text-decoration: none; }
+
+/* Inline "select this vendor" icon next to the cart group name */
+.select-vendor-link { font-size: 1.1rem; text-decoration: none; }
+.select-vendor-link:hover { color: #007bff !important; text-decoration: none; }
+
+/* Brief green pulse confirming auto-selection of the vendor picker
+   (triggered when the per-group "select vendor" link is clicked). */
+@keyframes flashSelected {
+    0%   { box-shadow: 0 0 0 .3rem rgba(25,135,84,.45); border-color: #198754; }
+    100% { box-shadow: 0 0 0 rgba(25,135,84,0); }
+}
+.flash-selected { animation: flashSelected 1s ease-out 1; }
+
+/* Non-blocking warning: qty doesn't match whole packages */
+.packages-uneven {
+    border-color: #ffc107;
+    background-color: #fff8e1;
+}
+.packages-uneven:focus {
+    border-color: #ffb300;
+    box-shadow: 0 0 0 .2rem rgba(255,193,7,.25);
+}
+
+/* Flex children default to min-width: auto (= content size), which
+   lets the .flex-grow-1 wrapper around vendorPartNoSelect expand to
+   the longest option's intrinsic width — pushing past the column
+   and breaking data-width="100%" (the picker's CSS width has nothing
+   to clip against when the parent keeps stretching). Set min-width:0
+   on both the flex wrapper and the .bootstrap-select wrapper so they
+   can actually shrink below content size and the picker's built-in
+   text-overflow: ellipsis can do its job. Without this rule, the
+   picker override reported in 506e213 / d2b2bc6 returns. */
+.flex-grow-1, .bootstrap-select { min-width: 0; }
+
+/* Add-mode hint: when the picker card is in "add new variant" mode,
+   a left border + soft tint signals the form is creating rather than
+   picking. Removed (set back to default) by setPickerMode('pick'). */
+.picker-add-mode {
+    border-left: .25rem solid #17a2b8;
+    background-color: rgba(23,162,184,.03);
+    padding-left: .75rem;
+}
+
+
+/* Active-docs table: BS4 utilities (mb-0, thead-light, small,
+   text-uppercase, text-muted, align-middle, text-nowrap, p-1,
+   text-monospace, text-reset, text-decoration-none) are applied on
+   rendered cells in cart-view.js. The badge-link hover/focus rule
+   below has no BS4 equivalent (filter:brightness + box-shadow ring). */
+.cart-active-doc-badges .badge-link { transition: filter .12s ease, box-shadow .12s ease; }
+.cart-active-doc-badges .badge-link:hover,
+.cart-active-doc-badges .badge-link:focus {
+    text-decoration: none; filter: brightness(0.92);
+    box-shadow: 0 0 0 .15rem rgba(0,0,0,.08); outline: none;
+}
+
+/* =====================================================================
+   RFQ "Oznacz odpowiedź" — mirrors receive-form.php / receipts.css
+   visual structure (two-row thead with colgroup band, blue input zone,
+   inline .line-msg slot, sticky actionbar).
+   ===================================================================== */
+
+.rfq-respond-table th { vertical-align: middle; }
+.rfq-respond-table td { vertical-align: top; }
+
+.rfq-respond-col-num   { width: 8rem; }
+/* Producer name + producer part no under the vendor number. Kept muted and
+   compact: the vendor number stays the row's identifying value, the producer
+   data is context only. font-size 0.8125rem keeps the block from competing
+   with the part name in the adjacent column. */
+.rfq-respond-num-meta  { margin-top: .25rem; line-height: 1.25; }
+.rfq-respond-num-meta small { font-size: .8125rem; }
+/* 13rem fits the qty cell's second row on ONE line: unit label + 4.5em
+   packs input + "opak." + pack-size badge + 3 gaps ≈ 11.5rem. At 9rem the
+   flex row wrapped every item onto its own line. */
+.rfq-respond-col-qty   { width: 13rem; }
+.rfq-respond-col-price { width: 11rem; }
+.rfq-respond-col-note  { width: 12rem; }
+
+/* The qty cell's sub-row must never wrap — the table-responsive wrapper
+   handles overflow instead. */
+.rfq-respond-table .rfq-respond-qty-sub { flex-wrap: nowrap !important; white-space: nowrap; }
+.rfq-respond-table .rfq-respond-qty-sub > small { white-space: nowrap; }
+.rfq-respond-table .rfq-respond-qty-sub > .badge { white-space: nowrap; }
+
+.rfq-respond-table thead th { border-bottom-width: 1px; }
+.rfq-respond-table .rfq-respond-group-row th {
+    background-color: #e9ecef;
+    border-bottom: 1px solid #dee2e6;
+    font-size: .75rem;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    padding: .35rem .5rem;
+}
+.rfq-respond-group-input { color: #0056b3; }
+
+/* Vertical separator between the "Zapytano" reference column and the
+   "Co oferuje dostawca" input zone, mirroring the receive table's left
+   border on the first input column. */
+.rfq-respond-table thead tr:not(.rfq-respond-group-row) th:nth-child(4),
+.rfq-respond-table tbody tr.rfq-respond-row > td:nth-child(4) {
+    border-left: 2px solid #0056b3;
+}
+.rfq-respond-table tbody tr.rfq-respond-row:not(.is-unpriced):hover > td:nth-child(4),
+.rfq-respond-table tbody tr.rfq-respond-row:not(.is-unpriced):hover > td:nth-child(5) {
+    background-color: rgba(0, 86, 179, .04);
+}
+
+/* Inline message slot — reserved height so layout doesn't shift on
+   validation/error appearance. Mirrors .line-msg from receipts.css. */
+.rfq-respond-table .line-msg { min-height: 1.25rem; }
+.rfq-respond-table .line-msg:empty { visibility: hidden; }
+
+/* Pozycja bez ceny = "niewyceniona" — recedes without looking broken.
+   Mirrors .receipt-line-done left-edge shadow with an amber tint. */
+.rfq-respond-row.is-unpriced > td:first-child { box-shadow: inset .2rem 0 0 #ffc107; }
+.rfq-respond-row.is-unpriced > td { opacity: .75; }
+
+/* Sticky actionbar — mirrors .receipt-actionbar */
+.rfq-respond-actionbar {
+    position: sticky;
+    bottom: 0;
+    z-index: 10;
+    margin-top: 1rem;
+}
+.rfq-respond-actionbar-icon { font-size: 1.5rem; }
+.rfq-respond-actionbar-hint { min-height: 1rem; }
+
+/* Mobile: collapse the "Zapytano" reference column below md to save width.
+   The qty column stays at 13rem — its sub-row (unit + packs + "opak." +
+   badge) has a hard minimum and must not wrap; the .table-responsive
+   wrapper scrolls horizontally instead of stacking the sub-row. */
+@media (max-width: 767.98px) {
+    .rfq-respond-table .rfq-respond-asked-cell { display: none; }
+    .rfq-respond-col-num   { width: 6rem; }
+    .rfq-respond-col-qty   { width: 13rem; }
+    .rfq-respond-col-price { width: 9rem; }
+}

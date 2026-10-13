@@ -1,7 +1,5 @@
-<?php 
-namespace Atte\Api; 
-
-require_once ROOT_DIRECTORY."/config/config-google-sheets.php";
+<?php
+namespace Atte\Api;
 
 class GoogleSheets
 {

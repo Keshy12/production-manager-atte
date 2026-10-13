@@ -17,6 +17,18 @@ function requireAdmin() {
     }
 }
 
+// Serve Admin AJAX endpoints (URL pattern: /admin/<module>/<feature>/.../file.php)
+// directly from their actual filesystem location. The .htaccess catch-all rewrite
+// would otherwise send these to index.php, where the switch has no matching case.
+// The switch below still handles extensionless URLs like /admin/purchase/vendors.
+if (preg_match('#^admin/(.+\.php)$#', $request, $m)) {
+    $componentFile = ROOT_DIRECTORY . '/public_html/components/Admin/' . str_replace('/', DIRECTORY_SEPARATOR, $m[1]);
+    if (is_file($componentFile)) {
+        require $componentFile;
+        exit;
+    }
+}
+
 switch ($request) {
     case '':
     case '/':
@@ -111,6 +123,147 @@ switch ($request) {
         requireAdmin();
         includeWithVariables($headerDir, array('title' => 'Edycja Magazynów'));
         require $componentsDir . '/admin/magazines/edit/edit-magazines-view.php';
+        break;
+    case 'admin/purchase/vendors':
+        requireAdmin();
+        includeWithVariables($headerDir, array('title' => 'Dostawcy'));
+        require $componentsDir . '/Admin/Purchase/Vendors/vendors-view.php';
+        break;
+    case 'admin/purchase/vendors/edit':
+        // Dedicated edit/create page for a single vendor. The id is
+        // passed via ?id=N (mirrors the producer-edit / vendor-parts/edit
+        // convention). Absent or zero id → CREATE mode (empty form);
+        // positive id → EDIT mode (pre-populated fields + inline
+        // supplier CRUD + read-only vendor-parts list). The form posts
+        // to a separate endpoint file (edit/vendor-edit-save.php)
+        // because the .htaccess POST rule blocks POSTs to router-only
+        // URLs; only real files under components/ are served directly.
+        // See AGENTS.md "AJAX endpoints (component-side)".
+        requireAdmin();
+        includeWithVariables($headerDir, array('title' => 'Edytuj dostawcę'));
+        require $componentsDir . '/Admin/Purchase/Vendors/edit/vendor-edit-view.php';
+        break;
+    case 'admin/purchase/email-drafts':
+        // Katalog globalnych szablonów wiadomości e-mail. Lista jest
+        // renderowana po stronie serwera (katalog jest mały), więc nie
+        // ma tu osobnego endpointu AJAX ani paginacji.
+        requireAdmin();
+        includeWithVariables($headerDir, array('title' => 'Szablony wiadomości'));
+        require $componentsDir . '/Admin/Purchase/EmailDrafts/email-drafts-view.php';
+        break;
+    case 'admin/purchase/email-drafts/edit':
+        // Strona edycji/tworzenia pojedynczego szablonu. Id przez ?id=N
+        // (mirror vendors/edit i producers/edit). Brak lub zero → tryb
+        // tworzenia; dodatnie → tryb edycji. Formularz POST-uje do
+        // osobnego pliku (edit/email-draft-edit-save.php), bo reguła
+        // POST w .htaccess blokuje POST-y na adresy obsługiwane tylko
+        // przez router — serwowane są wyłącznie realne pliki pod
+        // components/. Patrz AGENTS.md „AJAX endpoints (component-side)".
+        requireAdmin();
+        includeWithVariables($headerDir, array('title' => 'Edytuj szablon wiadomości'));
+        require $componentsDir . '/Admin/Purchase/EmailDrafts/edit/email-draft-edit-view.php';
+        break;
+    case 'admin/purchase/producers':
+        requireAdmin();
+        includeWithVariables($headerDir, array('title' => 'Producenci'));
+        require $componentsDir . '/Admin/Purchase/Producers/producers-view.php';
+        break;
+    case 'admin/purchase/producers/edit':
+        // Dedicated edit/create page for a single producer. The id is
+        // passed via ?id=N (mirrors the vendor-parts/edit convention).
+        // Absent or zero id → CREATE mode (empty form); positive id →
+        // EDIT mode (pre-populated fields). The form posts to a separate
+        // endpoint file (edit/producer-edit-save.php) because the
+        // .htaccess POST rule blocks POSTs to router-only URLs; only
+        // real files under components/ are served directly. See
+        // AGENTS.md "AJAX endpoints (component-side)".
+        requireAdmin();
+        includeWithVariables($headerDir, array('title' => 'Edytuj producenta'));
+        require $componentsDir . '/Admin/Purchase/Producers/edit/producer-edit-view.php';
+        break;
+    case 'admin/purchase/vendor-parts':
+        requireAdmin();
+        includeWithVariables($headerDir, array('title' => 'Artykuły u dostawców'));
+        require $componentsDir . '/Admin/Purchase/VendorParts/vendor-parts-view.php';
+        break;
+    case 'admin/purchase/vendor-parts/edit':
+        // Dedicated edit/create page for a single vendor-part. The id is
+        // passed via ?id=N (mirrors orders-edit.php, rfqs-edit.php, and
+        // the producers/edit dual-mode convention — no wildcard /
+        // numeric-segment in the switch). Absent or zero id → CREATE
+        // mode (empty form); positive id → EDIT mode (pre-populated
+        // fields). The form posts to a separate endpoint file
+        // (vendor-part-edit-save.php) because the .htaccess POST rule
+        // (lines 7-9) blocks POSTs to router-only URLs; only real files
+        // under components/ are served directly. See AGENTS.md "AJAX
+        // endpoints (component-side)".
+        requireAdmin();
+        includeWithVariables($headerDir, array('title' => 'Artykuł u dostawcy'));
+        require $componentsDir . '/Admin/Purchase/VendorParts/edit/vendor-part-edit-view.php';
+        break;
+    case 'admin/purchase/documents/edit':
+        requireAdmin();
+        includeWithVariables($headerDir, array('title' => 'Edycja dokumentu'));
+        require $componentsDir . '/Admin/Purchase/Documents/documents-edit.php';
+        break;
+    case 'admin/purchase/documents/send':
+        // Wizard "Wyślij dokument" (wielokrokowy). Designer lane owns
+        // the view (send-view.php + send-view.js + send.css); backend
+        // contract is frozen (see document-send-ajax.php +
+        // document-rfq-respond-ajax.php + document-cancel-ajax.php
+        // in public_html/components/purchases/documents/). The exact
+        // include path below is a placeholder until the designer lane
+        // publishes it; matching convention is
+        //   Admin/Purchase/Documents/documents-send.php
+        // (mirrors documents-edit.php above).
+        requireAdmin();
+        includeWithVariables($headerDir, array('title' => 'Wyślij dokument'));
+        require $componentsDir . '/Admin/Purchase/Documents/documents-send.php';
+        break;
+    case 'admin/purchase/documents/respond':
+        // Dedykowana jednoetapowa strona "Oznacz odpowiedź" dla RFQ
+        // w stanie `sent` — operator wpisuje wynegocjowane ceny/waluty/uwagi
+        // i klika Zapisz. Następca "kroku odpowiedź" wyodrębniony z
+        // wizzarda documents-send.php, który jest wieloetapowy i zbyt
+        // ciężki dla tego flow. Wymaga admina (jak reszta admin/purchase/*).
+        requireAdmin();
+        includeWithVariables($headerDir, array('title' => 'Oznacz odpowiedź'));
+        require $componentsDir . '/Admin/Purchase/Documents/documents-respond.php';
+        break;
+    case 'purchase/cart':
+        requireAdmin();
+        includeWithVariables($headerDir, array('title' => 'Koszyk zakupowy'));
+        require $componentsDir . '/purchases/cart/cart-view.php';
+        break;
+    case 'purchase/receipts':
+        requireAdmin();
+        includeWithVariables($headerDir, array('title' => 'Przyjęcia'));
+        require $componentsDir . '/purchases/receipts/receipts-view.php';
+        break;
+    case 'purchase/receipts/receive':
+        // Standalone "Przyjęcie towaru" — wyodrębnione z receipts-view
+        // (osobna trasa zamiast panelu przełączanego d-none). Spina się
+        // z kolejką przez `?po_id=N` i wraca do /purchase/receipts po
+        // zapisie (z query stringiem niosącym info o sukcesie —
+        // receipts-view.js czyta je i wyświetla alert + podświetla nowy
+        // wiersz w historii). Konwencja mirroruje
+        // admin/purchase/documents/edit (id+type w URL).
+        requireAdmin();
+        includeWithVariables($headerDir, array('title' => 'Przyjęcie towaru'));
+        require $componentsDir . '/purchases/receipts/receive-page.php';
+        break;
+    case 'purchase/receipts/view':
+        // Szczegóły przyjęcia (GRN) — osobna strona zamiast dawnego
+        // modala #receiptInfoModal. URL: /purchase/receipts/view?id=N.
+        // Link „Szczegóły" w historii na /purchase/receipts prowadzi tutaj.
+        requireAdmin();
+        includeWithVariables($headerDir, array('title' => 'Szczegóły przyjęcia'));
+        require $componentsDir . '/purchases/receipts/receipt-view.php';
+        break;
+    case 'purchase/documents':
+        requireAdmin();
+        includeWithVariables($headerDir, array('title' => 'Zapytania i zamówienia'));
+        require $componentsDir . '/purchases/documents/documents-view.php';
         break;
 
     case 'admin/synchronization/flowpin':

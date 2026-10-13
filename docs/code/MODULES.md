@@ -166,6 +166,217 @@
 - Sheets sync exports: warehouse data, BOM_FLAT, BOM_FLAT_SKU, warehouse comparison
 - Import orders from Sheets creates commissions and transfers
 
+#### Admin/Purchase/ — Procurement Module — Master Data (P1) (33 files)
+
+**Purpose:** Manage vendors (dostawcy), their contact persons, producers (producenci), and the per-(vendor × producer × part) catalog row. This is Phase 1 of the procurement module — RFQ/PO/receipt flows come in later phases (see `docs/procurement/PLAN.md`).
+
+**Key files (Vendors):**
+- `Vendors/vendors-view.php` — Vendor list, add form, and detail modal (showing linked suppliers + VendorParts)
+- `Vendors/modals.php` — edit/delete/detail modals
+- `Vendors/vendor-{add,update,toggle-active,get,detail}.php` — AJAX endpoints
+- `Vendors/supplier-{add,update,toggle-active}.php` — AJAX for inline supplier management in the detail modal
+- `Vendors/vendor-part-{add,toggle-active}.php` — AJAX for inline VendorPart management in the detail modal
+- `Vendors/table-row-template.php`, `Vendors/vendors-view.js`
+
+**Key files (Producers):**
+- `Producers/producers-view.php`, `Producers/modals.php`
+- `Producers/producer-{add,update,toggle-active,get}.php`
+- `Producers/table-row-template.php`, `Producers/producers-view.js`
+
+**Key files (VendorParts):**
+- `VendorParts/vendor-parts-view.php` — list with 4 searchable FK dropdowns (vendor/producer/part/unit); renders rows from `vendor-parts-view.js`
+- `VendorParts/edit/vendor-part-edit-view.php` — dual-mode dedicated edit/create page (rendered on `GET /admin/purchase/vendor-parts/edit`; `?id=N` for EDIT, absent/zero for CREATE); pre-populates every VP field including multi-pack sizes and `isActive` in EDIT mode, renders an empty form in CREATE mode
+- `VendorParts/edit/vendor-part-edit-save.php` — `POST` endpoint that backs the edit page; updates the VP header + replaces the pack set atomically via `VendorPartRepository::update()`
+- `VendorParts/edit/vendor-part-edit-view.js` — multi-pack add/remove row UX
+- `VendorParts/vp-{add,list,filter-options}.php`
+- `VendorParts/vp-search-{producers,parts,units}.php` — AJAX search endpoints consumed by the Vendors page's add-VP modal (the Vendors page still uses the original modal flow). `vp-search-vendors.php` was removed when the VendorParts edit flow moved to a dedicated page (the edit page pre-renders the full vendor list server-side).
+- `VendorParts/table-row-template.php`, `VendorParts/vendor-parts-view.js`
+
+**Key Utils classes (foundation, `Atte\Utils\Purchase\Master`):**
+- `Vendor` + `VendorRepository` — CRUD + `countVendorParts`, `countSuppliers`
+- `VendorSupplier` + `VendorSupplierRepository` — contact persons per vendor
+- `Producer` + `ProducerRepository` — manufacturer catalogue
+- `VendorPart` + `VendorPartRepository` — joined queries against `list__vendor`, `list__producer`, `list__parts`, `part__unit`; `existsForVendorAndPartNo()` for uniqueness
+
+**Database tables:**
+- `list__vendor` — vendors (name, address, lead time, is_active)
+- `list__vendor_supplier` — vendor contact persons (1-to-many → vendor, cascading)
+- `list__producer` — manufacturers
+- `list__vendor_part` — catalog row for (vendor × producer × part) triple; unique on `(vendor_id, vendor_part_no)`
+
+**One-time import helper:**
+- `src/cron/seed-component-procurement-from-gsheet.php` — CLI seeder that pulls vendor / contact / VendorPart data from the Google Sheets spreadsheet shared with `update-part-prices.php`. Idempotent, supports `--dry-run` and `--step=variants`. Sheet reads go through `Atte\Api\GoogleSheets::readSheet()`; the Api class is CLI-safe (no Hybridauth / `session_start()` load). CLI bootstrap pattern (`require_once config.php`) documented in the script header.
+
+**Schema migration helper:**
+- `src/cron/migrate-to-procurement-schema.php` — one-shot CLI that applies the 12 procurement tables (`list__vendor*`, `list__producer`, `purchase__*`) to a fresh DB. Idempotent via `information_schema.TABLES` per-table check; FK-order safe. Replaces the phase-by-phase `apply-p[2-7]-schema.php` scripts.
+
+**Notable behaviors:**
+- Soft-delete via `is_active` flag — never hard-delete referenced rows
+- Vendor detail modal pre-computes supplier + VendorPart counts to avoid N+1
+- `vendor_part_no` uniqueness check excludes the row being edited (so editing doesn't false-positive against itself)
+- VendorJM is auto-created in `part__unit` on first sight (auto-create flow lives in the import script, not the UI yet — that's P2)
+- `Admin/` directory is capitalized; case-sensitive on Linux
+
+#### Admin/Purchase/Rfqs/ — Procurement Module — RFQ Lifecycle (P2) (17 files)
+
+**Purpose:** Create, edit, and send Requests For Quote (zapytania ofertowe) to vendors. State machine: `draft → sent → responded | cancelled | converted`. Conversion to PO ships in P3.
+
+**Key files (List page):**
+- `rfqs-view.php` — list of RFQs with state-coloured badges, "Nowe zapytanie" form (vendor selectpicker + date + comment), client-side row filter
+- `modals.php` — send/cancel confirm modals
+- `rfq-{add,get,send,cancel}.php` — AJAX endpoints; `rfq-add` calls `PurchaseActionHandler::createDocument('rfq', …)` which allocates a `RFQ/{vendor_id:05d}/{seq:05d}` number (e.g. `RFQ/00021/00001`) via `SELECT … FOR UPDATE` keyed on `(type, vendor_id)`
+- `table-row-template.php`, `rfqs-view.js`
+
+**Key files (Edit page, `Edit/`):**
+- `edit-rfq-view.php` — header card with vendor + number + state + expected_reply_date + sent_at, "Dodaj pozycję" form (hidden when not draft), line-items table with inline edit/delete
+- `modals.php` — edit/delete-item modals + reused cancel/send modals
+- `rfq-item-{add,update,delete,get}.php` — AJAX endpoints; `quantity_unit_id` is auto-derived from the chosen VendorPart's `vendor_jm_id`
+- `search-vendor-parts.php` — LIKE-search over `list__vendor_part` filtered to the current RFQ's vendor
+- `edit-rfq-view.js`
+
+**Key Utils classes (foundation, `Atte\Utils\Purchase\Order`):**
+- `RFQ` + `RFQRepository` — header CRUD; `getById` / `getAll` join `list__vendor.name`; `setState`, `setSentAt`, `setRfqNumber`, `delete`
+- `RFQItem` + `RFQItemRepository` — line items; joined queries pull vendor / producer / part / unit names for the edit-page table
+- `PurchaseActionHandler` — orchestrator with `createDocument()`, `allocateDocumentNumber()` (`SELECT … FOR UPDATE` against `purchase__number_counter`, keyed on `(type, vendor_id)`; see §5 / §9), `computeLastKnownPrice()`, `sendRfq()` (state guard + zero-items guard), `cancelRfq()`, `createPoFromRfq()` (RFQ → PO converter; was a stub returning "Implemented in P3" before that phase shipped).
+
+**Database tables:**
+- `purchase__number_counter` — per-vendor, per-type auto-number generator (PK `(type, vendor_id)`, ENUM 'rfq'/'po'/'grn'). `vendor_id = 0` holds the single global GRN sequence.
+- `purchase__rfq` — RFQ header with state machine
+- `purchase__rfq_item` — line items; cascades on RFQ delete
+
+**Notable behaviors:**
+- Document-number allocation uses `INSERT … ON DUPLICATE KEY UPDATE … + SELECT … FOR UPDATE` to avoid race conditions between two admins creating RFQs at the same time
+- `allocateDocumentNumber` is a "best-effort" transaction participant — joins an outer transaction if one is already open, otherwise opens its own
+- `computeLastKnownPrice()` returns null when `purchase__order_item` has no history for the given part; gracefully swallowed via try/catch
+- Send-guard refuses to send a draft RFQ with zero line items
+- Cancel-guard refuses to cancel an RFQ in `converted` state (terminal)
+
+#### Admin/Purchase/Orders/ — Procurement Module — PO Lifecycle (P3) (18 files)
+
+**Purpose:** Create, edit, and manage Purchase Orders (zamówienia). Two creation paths: **direct** ("Nowe zamówienie" form on the orders list page) or **via RFQ** ("Konwertuj na zamówienie" button on the RFQ edit page). State machine: `draft → sent → confirmed → partially_received → received`, plus terminal `cancelled`.
+
+**Key files (List page):**
+- `orders-view.php` — list of POs with state-coloured badges, "Nowe zamówienie" form (vendor selectpicker + date + comment), table columns: ID / Numer / Vendor / #Pozycji / Wartość (sum from `PurchaseOrderItemRepository::sumByPo`) / Stan / Data utworzenia / Akcje
+- `modals.php` — send / confirm / cancel modals; confirm modal has a `vendor_po_number` input
+- `order-{add,get,update,send,confirm,cancel}.php` — AJAX endpoints
+- `table-row-template.php`, `orders-view.js`
+
+**Key files (Edit page, `Edit/`):**
+- `edit-order-view.php` — header card (vendor, PO number, state badge, vendor PO number, expected_delivery_date, sent_at, confirmed_at, comment) + breadcrumb "← Powiązane zapytanie: {rfq_number}" linking back to the RFQ when `converted_from_rfq_id` is set; Send / Confirm / Cancel buttons per state; line-items table with vendor_part_no, part, producer, JM, qty, unit_price, **Wartość** (qty × unit_price), currency
+- `modals.php` — edit/delete-item modals + reused send/confirm/cancel
+- `order-item-{add,update,delete,get}.php` — AJAX; item operations only allowed in `draft` state
+- `search-vendor-parts.php` — LIKE-search over `list__vendor_part` filtered to the current PO's vendor (mirrors the RFQ edit version)
+- `edit-order-view.js`
+
+**Key Utils classes (added in P3, `Atte\Utils\Purchase\Order`):**
+- `PurchaseOrder` + `PurchaseOrderRepository` — header CRUD with joined `list__vendor.name` and `purchase__rfq.rfq_number`; `getByRfq()` for the reverse-of-conversion lookup; date normalisation helper
+- `PurchaseOrderItem` + `PurchaseOrderItemRepository` — line items with 5-table join; `sumByPo()` (COALESCE for the list page's Wartość column) and `sumQuantityReceivedByPo()` (P4-ready)
+- `PurchaseActionHandler` activations:
+  - `createDocument('po', $vendorId, $userId)` — allocates `PO/{vendor_id:05d}/{seq:05d}` (e.g. `PO/00021/00001`), creates an empty PO draft, commits
+  - `createPoFromRfq($rfqId, $userId)` — loads RFQ, copies items to PO items (carrying `unit_price`), transitions RFQ to `'converted'`, returns the new PO id
+  - `computeLastKnownPrice($vendorPartId, ?$currency)` — now queries `purchase__order_item` history (filtering out zero prices); PDOException wrapper remains for resilience
+
+**Database tables (added in P3):**
+- `purchase__order` — PO header with state machine and `converted_from_rfq_id` FK
+- `purchase__order_item` — PO line items; `quantity_received` stays 0 in P3, written by P4
+
+**Notable behaviors:**
+- `createDocument('po')` and `order-add.php` follow the same strict-signature / follow-up-update pattern as P2's RFQ path — date/comment are applied via a separate `update(...)` call rather than atomic inside `createDocument`
+- `order-send.php` enforces a non-empty PO before transitioning to `'sent'` (mirrors `sendRfq`)
+
+> **Note (v1.6, 2026-08-22):** the `Admin/Purchase/Rfqs/`, `Admin/Purchase/Orders/`, `Admin/Purchase/Orders/Edit/`, and `Admin/Purchase/Orders/Receive/` subdirectories were **removed** in the file-system restructure. The RFQ/PO creation still happens — but the entry point is now the **Koszyk** (`purchases/cart/`) which groups queued items per vendor and calls `PurchaseActionHandler::createDocument('rfq')` or `createDocument('po')` directly on submit. The per-document edit pages (RFQ edit, PO edit, Receive form) are currently unreachable from the navbar but their data layer (`purchase__rfq*`, `purchase__order*`, `PurchaseActionHandler`) is intact and used by the cart flow. The combined RFQ+PO list with filtration is the future placeholder at `purchases/documents/`. Receive still works via the "Przyjmij towar" button reachable from a PO's edit page; the standalone `/admin/purchase/receipts` page exists for browsing receipts only.
+> The file/URL table below documents what **currently exists** in the repo as of v1.6.
+
+#### `purchases/` — Procurement User-Facing UX Surfaces (v1.6) (12 files)
+
+The new lowercase-plural top-level folder under `public_html/components/` holds the pages an admin actually clicks through. Pairs with the master-data CRUD under `Admin/Purchase/`. Endpoints here are called by **real component path** via `COMPONENTS_PATH` (e.g. `COMPONENTS_PATH + '/purchases/cart/cart-action.php'`) — same convention as `Warehouse/`, `Production/`, `Commissions/`. The `index.php` pre-switch translator handles only the legacy single-location admin AJAX fallback for `Admin/`.
+
+**Key files (`purchases/cart/`, 7 files):**
+- `cart-view.php` — the Koszyk. Three cascading pickers: Dostawca → Część → Numer u dostawcy (scoped by current pick). "Opak." + "Ilość" + "Cena/Szt." + "Waluta" + "Dodaj" row, per-vendor cart group with per-vendor "Wybierz dostawcę" link (green confirmation pulse) and per-vendor "Usuń" clear button, inline private-comment editor (pen icon → immediate save to `list__vendor_part.comment`), 7-day localStorage persistence.
+- `cart-view.js` — picker cascade, scoped variant dropdown grouped by producer, two-way Opak.↔Ilość sync with yellow uneven-pack warning, per-vendor clear/vendor-select buttons, vendor comment save, AJAX submit to `cart-action.php`.
+- `cart-action.php` — handles RFQ vs PO submit: validates cart, calls `PurchaseActionHandler::createDocument('rfq' | 'po', $vendorId, $userId)`, then `$itemRepo->create(...)` for each cart line (per-item quantity + unit_price + currency).
+- `cart-active-docs.php` — per-VendorPart active-documents lookup (RFQ/PO with `state IN ('draft','sent','responded' | 'confirmed','partially_received')`), drives the yellow warning strip in the cart row.
+- `vendor-part-search.php` — LIKE-search over `list__vendor_part` joined with vendor + part + unit; backs the search modal.
+- `vendor-part-comment.php` — immediate save of the private comment (`list__vendor_part.comment`).
+
+**Key files (`purchases/receipts/`, 5 files):**
+- `receipts-view.php` — list of receipts (one row per delivery note), state badges, "Nowe przyjęcie" form.
+- `receipts-view.js` — table filter / sort.
+- `receipt-get.php` — per-receipt detail (AJAX; populates the "Szczegóły przyjęcia" modal).
+- `modals.php` — receive-goods form modal, lines, sub-magazine picker, document-number (GRN/WZ) field.
+- `table-row-template.php` — jQuery row template for the AJAX list.
+
+**Key files (`purchases/documents/`, 1 file):**
+- `documents-view.php` — **placeholder** for the future combined RFQ+PO list with filtration (filters: typ dokumentu / dostawca / status / numer / data). The "Shipped v1.6" plan documents the combined table as the next deliverable; until then it just renders an admin-gated "w przygotowaniu" notice with a link back to the Koszyk flow.
+
+**Per-row trash button (`documents-view.js → rowHtml()`)** — PO rows in the action cell get a small trash-icon button (`btn-sm btn-outline-danger rx-close-po-btn`) immediately to the LEFT of the main "Potwierdź odbiór" / "Przyjmij towar" button, wrapped together with it in `.rx-action-cell` (flex row, tight gap). `sent` rows carry `data-action="cancel-po"` (route through `documents/document-cancel-ajax.php` → `cancelPo()`); `confirmed` / `in_progress` / `partially_received` rows carry `data-action="close-po"` (route through `receipts/receipt-close-po.php` → `closePoFromReceive()`). Both use the shared `close-po-modal.php` partial and `close-po.js` controller — the documents page passes `data-back-url="/purchase/documents"` so the post-success redirect lands here, not on the receipts queue. RFQ rows, plus `draft` / `received` / `cancelled` PO rows, get NO trash button.
+
+**Notable behaviors (purchases/ in general):**
+- 7-day localStorage cart persistence so a refresh doesn't lose queued items (intentionally short-lived; not a shared cart).
+- AJAX endpoints use `COMPONETS_PATH + '/purchases/...'` (real paths), NOT the virtual `/admin/purchase/*.php` URLs — matches the pattern in `Warehouse/`, `Commissions/`, `Production/`.
+- `assets/layout/purchases.css` — extracted from the cart's original inline `<style>` (B19 audit cleanup) for the picker-specific rules (chevron rotation, clear-picker-link, select-vendor-link, flashSelected animation, packages-uneven warning).
+- `order-confirm.php` requires `vendor_po_number` (non-empty, trimmed) as part of the confirm step
+- RFQ→PO conversion requires `window.confirm()` in JS (not a styled modal — keeps the destructive irreversible action explicit)
+- `computeLastKnownPrice` filters out zero prices so "free" items don't pollute the price hint
+
+**Cross-cutting change in P3:** the existing RFQ edit page header (`Rfqs/Edit/edit-rfq-view.php`) gained a "Konwertuj na zamówienie" button visible when `state ∈ {draft, sent, responded}`. When the RFQ is already converted, a breadcrumb link to the linked PO edit page appears in the header instead. Wired up by `Rfqs/Edit/edit-rfq-view.js` via the new `Rfqs/rfq-convert-to-po.php` endpoint.
+
+---
+
+#### Admin/Purchase/Receipts/ — Procurement Module — Receiving (P4) (5 files)
+
+**Purpose:** Goods-receiving log. Lists every receipt ever recorded (GRN / WZ documents against POs), with a click-through detail modal showing the per-receipt line items (vendor_part_no, part, producer, JM, ilość). This is the audit trail of what physically arrived against what was ordered.
+
+**Key files:**
+- `receipts-view.php` — list of receipts (ID / Numer dokumentu / linked PO number / Dostawca / Pozycje count / Ilość łącznie / Przyjął / Data / Akcje). Loads via `OrderReceiptRepository::getAll(true)` which filters out receipts for cancelled POs.
+- `receipts-view.js` — row click / "Zobacz" button opens the info modal.
+- `modals.php` — info modal (read-only) showing per-receipt line items.
+- `receipt-get.php` — GET `id`. Returns `{success, receipt, items}` JSON for the modal.
+- `table-row-template.php` — static `<script type="text/template">` row template.
+
+#### Admin/Purchase/Orders/Receive/ — Procurement Module — Per-PO Receive (P4) (4 files)
+
+**Purpose:** Per-PO receiving form. Triggered by the "Przyjmij towar" button on the PO edit page header. Admin picks a sub-magazine and document number (GRN/WZ), enters `quantity_received` per line (with live "remaining / max 110%" hints), and submits. The handler runs the inventory ledger writes in one transaction.
+
+**Key files:**
+- `receive-view.php` — form page with state guard (only `confirmed`/`partially_received` POs are receivable), sub-magazine picker (server-rendered from `MagazineRepository::getAllMagazines(true)`), per-PO-item input table.
+- `receive-action.php` — POST endpoint. Mirrors the handler's lenient 110% over-delivery check for clean field-level errors, then calls `PurchaseActionHandler::createReceipt(...)`. Catches `InvalidArgumentException`, `LogicException`, `RuntimeException` separately for granular error reporting.
+- `modals.php` — placeholder (no extra modal needed; the form submits directly).
+- `receive-view.js` — live client-side validation (adds `is-invalid` class when an input exceeds 110% of remaining). Form submit → AJAX POST → on success, navigate to the receipts list page.
+
+**Cross-cutting change in P4:** the existing PO edit page header (`Orders/Edit/edit-order-view.php`) gained a "Przyjmij towar" button visible when `state ∈ {confirmed, partially_received}`. When the PO is `received` or `cancelled`, the button is replaced by a disabled "Towar już przyjęty" / "Zamówienie anulowane" label.
+
+**PurchaseActionHandler::createReceipt() activation** — the previously-stubbed method is now the most logic-dense in the handler. In one transaction it:
+- Validates PO state and per-line ownership + quantity + magazine + lenient 110% over-delivery cap.
+- Resolves `input_type_id` from `inventory__input_type` (LIKE 'purchase%' OR fallback to id=1).
+- Opens a `TransferGroupManager::createTransferGroup(..., 'purchase_receipt', ['po_id' => ...])`.
+- Inserts the receipt header + per-line items.
+- Bumps `purchase__order_item.quantity_received` per line.
+- Inserts positive `inventory__parts` rows (`commission_id=null`, `is_cancelled=0`, `isVerified=0`).
+- Transitions the PO to `partially_received` or `received` based on the running total vs ordered.
+
+**Closing the PO from the receive form** — the standalone receive page (`/purchase/receipts/receive?po_id=N`) gained a "Zamknij zamówienie" button in the bottom action bar (`#receiveClosePoBtn` in `receive-form.php`). It is reachable in **every** wizard step — including before the operator has accepted the receipt header — so the operator can close a `confirmed` PO that has zero receipts (e.g. payment was rolled back, or the delivery won't happen at all). Clicking it opens `#receiveClosePoModal`, which lists the not-fully-received lines and asks the operator to pick the resulting state via a radio: `received` (closed-as-received; same wording as the post-save modal) or `cancelled` (delivery will not happen). The backend goes through `PurchaseActionHandler::closePoFromReceive()`, which accepts PO states `{confirmed, in_progress, partially_received}` and deliberately omits the "at least one receipt row" guard that `closePoAsReceived()` enforces — that is the whole point of this path. After a successful close, `receipts-view.js` shows a short alert ("Zamówienie `<po>` zamknięto — ma teraz status „<label>""") from the new `?closed=` query param (distinct from `?saved=`, which announces a freshly-saved GRN row), without row-highlight or "Pokaż w historii" actions (no receipt was created). **Both target states are terminal**: `received` makes `OrderReceiptRepository::delete()` refuse any further receipt-deletion for this PO, and `cancelled` takes the PO out of the queue and active-document lists. The post-save modal that fires after a real `Zapisz przyjęcie` still targets `received` only — its caller `receive-page.js` does not send `target_state`, so the endpoint falls back to the historical default. The modal markup and JS live in `close-po-modal.php` + `close-po.js` (loaded by both `receive-page.php` and `receipts-view.php`) so the queue can reuse the same window via `window.ReceiptClosePo.open()`.
+
+**Closing / cancelling from the queue** — the queue tab on `/purchase/receipts` (`receipts-view.js → queueRowHtml()`) gained a small trash button (`btn-sm btn-outline-danger rx-close-po-btn`) in the action cell, next to the primary "Przyjmij towar" / "Potwierdź odbiór" button. Two variants: rows where `canReceive !== false` (states `confirmed` / `in_progress` / `partially_received`) carry `data-action="close-po"` and open the same `#receiveClosePoModal` as the receive form (only-aggregates summary, no per-line list because the queue doesn't fetch PO items). Rows where `canReceive === false` (state `sent`) carry `data-action="cancel-po"` and open a simpler modal `#receiveCancelPoModal` rendered by the same `close-po-modal.php` partial with `$withCancel=true` — it confirms the cancel only, because `closePoFromReceive()` rejects `sent`. That cancel goes through `documents/document-cancel-ajax.php` (`type:'po'`) → `PurchaseActionHandler::cancelPo()`. Both paths funnel back through the same `?closed=<state>&po=<po>` redirect, so `receipts-view.js` already picks them up via its existing `closed`-branch alert. Delegated `$(document).on('click', '[data-action="close-po"|"cancel-po"]', …)` survives `loadQueue()` re-renders.
+
+#### Admin/Purchase/Cart/ — Procurement UX — Koszyk (4 files, v1.4)
+
+**Purpose:** Single entry point for creating new RFQ or PO documents. Replaces the inline "Nowe zapytanie" / "Nowe zamówienie" forms on the RFQ and PO list pages. User picks a vendor, adds items (with quantity + optional unit price + currency), then chooses "Utwórz zapytanie" or "Utwórz zamówienie".
+
+**Key files:**
+- `cart-view.php` — main page: vendor selectpicker + document type selector + date + comment + "Dodaj artykuł" form + items table + final action buttons
+- `cart-action.php` — POST handler that wraps document + item creation in a single transaction. Validates input, calls `PurchaseActionHandler::createDocument('rfq'|'po', vendorId, userId)`, creates the matching line items, redirects to the new document's edit page
+- `search-vendor-parts.php` — AJAX LIKE-search over `list__vendor_part` filtered to the selected vendor (mirrors the P2/P3 versions in RFQ/PO edit directories)
+- `cart-view.js` — client-side cart state (in-memory; lost on refresh per current spec — DB-backed cart is deferred)
+
+**Notable behaviors:**
+- The vendor-part picker is loaded via AJAX once the vendor is selected, then refilled on each keystroke (length ≥ 2)
+- Changing the vendor clears the cart (items reference a specific vendor)
+- Document-type toggle updates the date field label between "Oczekiwana data odpowiedzi" (RFQ) and "Oczekiwana data dostawy" (PO)
+- Currency defaults to PLN; EUR / USD selectable
+- The cart is **session-scoped, in-memory only** — refresh discards it. DB-backed persistence is planned for a future phase.
+- After successful create, the user is redirected straight to the new document's edit page (`/admin/purchase/rfqs/edit?id=…` or `/admin/purchase/orders/edit?id=…`)
+
 ---
 
 ## 2. Archive/ — Historical Transfer Records (9 files)
