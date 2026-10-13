@@ -29,16 +29,10 @@
 
     max-width: 1480px;
     margin: 0 auto;
-    /* Przycisk „Synchronizacja" z header.php wisi absolutnie pod
-       paskiem nawigacji (top: 70px, left: 10px). Dopóki obok strony
-       nie ma wolnego marginesu na niego, schodzimy treścią niżej. */
-    padding: 4.25rem 1rem 3rem;
+    padding: 0 1rem 3rem;
     color: var(--rx-ink);
 }
 @media (min-width: 576px)  { .rx-page { padding-left: 1.5rem; padding-right: 1.5rem; } }
-/* 1480 px treści + ~11 rem marginesu z każdej strony — od tej szerokości
-   przycisk synchronizacji mieści się obok, więc górny odstęp normalny. */
-@media (min-width: 1840px) { .rx-page { padding-top: 1.75rem; } }
 
 .rx-page .text-faint { color: var(--rx-faint) !important; }
 
@@ -388,6 +382,20 @@
     border-radius: var(--rx-radius);
     box-shadow: 0 1px 2px rgba(16, 24, 40, .04);
     overflow: hidden;
+}
+/* Menu „Edytuj ▾" (kolejka przyjęć, lista dokumentów) siedzi w panelu.
+   overflow: hidden ucinało je przy dolnych wierszach — menu znikało pod
+   krawędzią panelu. Gdy menu jest otwarte, panel puszcza zawartość na
+   zewnątrz; poza tym zostaje hidden, żeby zaokrąglone rogi były czyste. */
+.rx-panel:has(.dropdown-menu.show) {
+    overflow: visible;
+}
+/* Szary nagłówek tabeli ma własne zaokrąglenie, żeby przy overflow:
+   visible jego kwadratowe rogi nie wystawały poza panel. */
+.rx-qhead,
+.dx-page .dx-head {
+    border-top-left-radius: calc(var(--rx-radius) - 1px);
+    border-top-right-radius: calc(var(--rx-radius) - 1px);
 }
 .rx-panel-head {
     display: flex;
