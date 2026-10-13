@@ -301,11 +301,36 @@ $(document).ready(function () {
     // Safari <15.4, Firefox <121). Klasa .is-selected togglowana
     // przez JS działa wszędzie.
     function syncSelectedOption() {
+        // Etykiety i klasy przycisku trzymamy w stałej, a nie odczytujemy
+        // z DOM — handler submitujący podmienia html przycisku na spinner
+        // i potem przywraca oryginał, więc odczyt w tym miejscu
+        // zwróciłby spinner zamiast właściwej etykiety.
+        const CONFIRM_STATES = {
+            received: {
+                cls: 'btn btn-warning',
+                html: '<i class="bi bi-check2-square"></i> Zamknij zamówienie'
+            },
+            cancelled: {
+                cls: 'btn btn-danger',
+                html: '<i class="bi bi-x-circle-fill"></i> Anuluj zamówienie'
+            }
+        };
+
         $('.receipt-close-option').each(function () {
             const $opt = $(this);
             const $radio = $opt.find('input[type="radio"]');
             $opt.toggleClass('is-selected', $radio.is(':checked'));
         });
+
+        // Wybór anulowania zmienia nie tylko kolor karty, ale też
+        // charakter akcji — przycisk potwierdzenia robi się czerwony
+        // i mówi wprost, co się stanie.
+        const state = $('input[name="receiveCloseTarget"]:checked').val() || 'received';
+        const conf = CONFIRM_STATES[state] || CONFIRM_STATES.received;
+        $('#receiveClosePoConfirmBtn')
+            .removeClass('btn-warning btn-danger')
+            .addClass(conf.cls)
+            .html(conf.html);
     }
 
     $(document).on('change', 'input[name="receiveCloseTarget"]', syncSelectedOption);
