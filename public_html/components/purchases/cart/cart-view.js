@@ -1832,6 +1832,15 @@ $cartQty.val('');
 
     // Picking a variant from a partially-scoped list completes the combo.
     $vendorPartNoSelect.on('change', function () {
+        // syncAmountsInputs() is the single source of truth for the
+        // Ilość/Cena disabled state and the pack-size picker visibility.
+        // Without this call the fields keep whatever state the previous
+        // rebuild left them in — a manual variant pick on a multi-variant
+        // combo left Ilość disabled and the pack picker hidden, because
+        // refreshVendorPartRow() only pre-selects when the list narrows
+        // to a single option. The "Szukaj numeru u dostawcy" flow works
+        // because pickVp() always goes through refreshVendorPartRow(id).
+        syncAmountsInputs();
         completeComboFromSelection();
         updateSelectionDocsBadge();
         loadSelectionDocs();
