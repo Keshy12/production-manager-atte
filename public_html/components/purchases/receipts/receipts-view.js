@@ -695,23 +695,28 @@ $(document).ready(function () {
 
     // =====================================================================
     // ZAKŁADKA 2 — historia przyjęć
+    //
+    // Wiersze NIE renderują się już po stronie PHP — receipts-history.php
+    // (AJAX POST) zwraca 25 rekordów na stronę, a pager kieruje klienta
+    // z powrotem do endpointu z innym `page`. Filtry (search + zakres
+    // dat) wysyłamy do endpointu, żeby SQL filtrował po wszystkich
+    // rekordach, nie tylko po tych aktualnie wyrenderowanych w DOM
+    // (poprzednio filtr był lokalny i przy 25 wierszach w DOM nie
+    // miałoby to sensu).
     // =====================================================================
 
-    const $historyRows   = $('#receiptsTable tbody tr.receipt-row');
+    const $historyBody   = $('#historyBody');
     const $historySearch = $('#historySearch');
     const $dateFrom      = $('#historyDateFrom');
     const $dateTo        = $('#historyDateTo');
+    const $historyPane   = $('#historyPane');
+    const $historyPager  = $('#historyPagination');
 
-    // Tekst do wyszukiwania liczony raz: treść wiersza + pełna data ISO
-    // (w komórce data jest w formacie d.m.Y).
-    $historyRows.each(function () {
-        const $row = $(this);
-        $row.data('hay', ($row.text() + ' ' + ($row.attr('data-received-full') || ''))
-            .replace(/\s+/g, ' ').toLowerCase());
-    });
-
-    let historyPage = 1;
-    let historyPages = 1;
+    let historyPage     = 1;
+    let historyPages    = 1;
+    let historyTotal    = 0;
+    let historyLoaded   = false;  // czy któraś strona została już pobrana
+    let historyLoading  = false;  // czy request jest w toku (blokada double-fetch)
 
     function historyFiltersActive() {
         return String($historySearch.val() || '').trim() !== ''
@@ -719,78 +724,258 @@ $(document).ready(function () {
             || String($dateTo.val() || '') !== '';
     }
 
-    // Jedno przejście: filtr → paginacja na odfiltrowanym zbiorze → widget.
-    function applyHistoryView() {
-        const search = String($historySearch.val() || '').toLowerCase().trim();
-        const from   = String($dateFrom.val() || '');
-        const to     = String($dateTo.val() || '');
+    function historyFiltersParams() {
+        return {
+            search:    String($historySearch.val() || '').trim(),
+            date_from: String($dateFrom.val() || ''),
+            date_to:   String($dateTo.val() || '')
+        };
+    }
 
-        const matched = [];
-        $historyRows.each(function () {
-            const $row = $(this);
-            let hit = true;
-
-            if (search !== '' && String($row.data('hay') || '').indexOf(search) === -1) hit = false;
-            if (hit && (from !== '' || to !== '')) {
-                const d = String($row.attr('data-received-at') || '');
-                if (d === '') hit = false;
-                else {
-                    if (from !== '' && d < from) hit = false;
-                    if (to !== ''   && d > to)   hit = false;
-                }
-            }
-            if (hit) matched.push($row);
-            else $row.addClass('d-none');
-        });
-
-        const total = matched.length;
-        historyPages = Math.max(1, Math.ceil(total / HISTORY_PER_PAGE));
-        if (historyPage > historyPages) historyPage = historyPages;
-        if (historyPage < 1) historyPage = 1;
-
-        const firstIdx = (historyPage - 1) * HISTORY_PER_PAGE;
-        const lastIdx  = firstIdx + HISTORY_PER_PAGE;
-        matched.forEach(function ($row, i) {
-            $row.toggleClass('d-none', !(i >= firstIdx && i < lastIdx));
-        });
-
-        $('#historyCountBadge').text($historyRows.length);
-        renderHistoryPagination(total);
-        syncHistoryFilterUi(from, to);
-        updateHistorySummary(total);
-
-        // Pusta historia i pusty wynik filtrowania to dwie różne sytuacje.
-        const $empty = $('#receiptsEmptyAlert');
-        if ($historyRows.length === 0) {
-            $empty.removeClass('d-none');
-            $('#receiptsTableWrap').addClass('d-none');
-        } else if (total === 0) {
-            $empty.removeClass('d-none').html(emptyStateHtml(
-                'bi-funnel', '',
-                'Brak przyjęć dla wybranych filtrów',
-                'Zmień wyszukiwaną frazę lub zakres dat.',
-                '<button type="button" class="btn btn-sm rx-btn-quiet js-clear-history-filters">'
-              + '<i class="bi bi-x-circle"></i> Wyczyść filtry</button>'
-            ));
-            $('#receiptsTableWrap').addClass('d-none');
-        } else {
-            $empty.addClass('d-none');
-            $('#receiptsTableWrap').removeClass('d-none');
+    // Serwerowe mirroring helperów rx_fmt_date / rx_fmt_time /
+    // rx_relative_day / rx_initials / rx_fmt_qty (PHP → JS). Formatowanie
+    // widocznych w komórkach, żeby warstwa widoku nie musiała odpytywać
+    // PHP o szczegóły. Zasady formatowania pokrywają się 1:1 ze swoimi
+    // odpowiednikami w receipts-helpers.php — patrz też kolejka (tamten
+    // fragment ma swój własny zestaw formatterów, ale współdzieli konwencję).
+    function hxFmtTime(iso) {
+        if (iso == null || String(iso).length < 16) return '';
+        const hm = String(iso).substring(11, 16);
+        return hm === '00:00' ? '' : hm;
+    }
+    function hxRelativeDay(iso) {
+        if (iso == null || String(iso) === '') return '';
+        const day = String(iso).substring(0, 10);
+        const today = new Date();
+        const todayIso = today.getFullYear() + '-' + pad2(today.getMonth() + 1) + '-' + pad2(today.getDate());
+        if (day === todayIso) return 'dzisiaj';
+        const yest = new Date(today.getTime() - 86400000);
+        const yIso = yest.getFullYear() + '-' + pad2(yest.getMonth() + 1) + '-' + pad2(yest.getDate());
+        if (day === yIso) return 'wczoraj';
+        return '';
+    }
+    function hxInitials(name) {
+        name = String(name == null ? '' : name).trim();
+        if (name === '' || name[0] === '#') return '?';
+        const parts = name.split(/\s+/);
+        let out = '';
+        for (let i = 0; i < Math.min(parts.length, 2); i++) {
+            out += parts[i].substring(0, 1);
         }
-        return matched;
+        return out.toUpperCase();
+    }
+    function hxFmtQty(n) {
+        const v = parseFloat(n);
+        if (isNaN(v)) return '—';
+        // toLocaleString PL: ',' dziesiętny + spacje niełamliwe od 10 000,
+        // max 4 miejsca. Rx_fmt_qty tnie zera końcowe i zamienia ',-0'/'-.'
+        // na '0'; tu robimy odpowiednik regexem, żeby wynik pasował 1:1.
+        const s = v.toLocaleString('pl-PL', { maximumFractionDigits: 4 });
+        const trimmed = s
+            .replace(/,0+$/, '')           // 1,2300 → 1,23
+            .replace(/(\.\d*?)0+$/, '$1'); // 1.2300 → 1.23 (styl pl-PL nie używa kropki,
+                                            // ale zostawiamy na wszelki wypadek)
+        return trimmed === '' || trimmed === '-0' ? '0' : trimmed;
+    }
+    function historyEditOrderUrl(poId) {
+        return window.location.origin + ROOT_DIR
+            + '/admin/purchase/documents/edit?id=' + encodeURIComponent(poId) + '&type=po';
+    }
+    function historyViewUrl(id) {
+        return window.location.origin + ROOT_DIR
+            + '/purchase/receipts/view?id=' + encodeURIComponent(id);
+    }
+
+    // Buduje jeden wiersz historii. Klasy, atrybuty data-* i struktura
+    // komórek są 1:1 z wcześniejszym renderem PHP (receipts-view.php,
+    // szablon $r wiersza) — klik-nawigacja (history-row click →
+    // followRowLink → detailUrl), highlight .receipt-row-new (saved),
+    // oraz podgląd „Zobacz" (.view-receipt-btn) zależą od tych
+    // identyfikatorów.
+    function historyRowHtml(r) {
+        const receivedFull = r.receivedAt || '';
+        const receivedDate = receivedFull.substring(0, 10);
+        const relDay = hxRelativeDay(receivedFull);
+        const time   = hxFmtTime(receivedFull);
+        const receiver = r.receivedByName || ('#' + r.receivedBy);
+
+        let docCell = '';
+        if (r.documentNumber) {
+            docCell = '<div class="rx-doc">' + esc(r.documentNumber) + '</div>';
+        } else {
+            docCell = '<div class="rx-doc rx-doc--none"'
+                    + ' title="Zapisany sam nagłówek — numer GRN nadawany jest przy zapisie ilości">'
+                    + 'bez numeru GRN</div>';
+        }
+        docCell += '<div class="rx-sub">ID ' + parseInt(r.id, 10) + '</div>';
+
+        let rawSub = relDay + (relDay && time ? ', ' : '') + time;
+        rawSub = rawSub.trim();
+        const subLabel = rawSub !== '' ? esc(rawSub) : '&nbsp;';
+
+        let poCell;
+        if (r.poNumber) {
+            poCell = '<a class="rx-po-link" href="'
+                   + escAttr(historyEditOrderUrl(r.poId))
+                   + '" title="Otwórz zamówienie">' + esc(r.poNumber) + '</a>';
+        } else {
+            poCell = '<span class="text-muted">#' + parseInt(r.poId, 10) + '</span>';
+        }
+
+        const itemCell = r.itemCount > 0
+            ? '<span class="rx-pill">' + r.itemCount + '</span>'
+            : '<span class="rx-pill rx-pill--empty"'
+              + ' title="Zapisany sam nagłówek dokumentu">bez pozycji</span>';
+
+        return '<tr class="receipt-row" data-id="' + parseInt(r.id, 10) + '"'
+             + ' data-doc="' + escAttr(r.documentNumber || '') + '"'
+             + ' data-received-at="' + escAttr(receivedDate) + '"'
+             + ' data-received-full="' + escAttr(receivedFull) + '">'
+             +   '<td>' + docCell + '</td>'
+             +   '<td class="text-nowrap">'
+             +     '<div class="rx-date-main">' + esc(fmtDate(receivedFull)) + '</div>'
+             +     '<div class="rx-sub">' + subLabel + '</div>'
+             +   '</td>'
+             +   '<td class="text-nowrap">' + poCell + '</td>'
+             +   '<td class="rx-vendor">' + esc(r.vendorName || '—') + '</td>'
+             +   '<td class="rx-num">' + itemCell + '</td>'
+             +   '<td class="rx-num d-none d-md-table-cell">'
+             +       esc(hxFmtQty(r.totalQty))
+             +   '</td>'
+             +   '<td class="d-none d-lg-table-cell">'
+             +     '<span class="rx-person">'
+             +       '<span class="rx-avatar" aria-hidden="true">'
+             +           esc(hxInitials(r.receivedByName))
+             +       '</span>'
+             +       esc(receiver)
+             +     '</span>'
+             +   '</td>'
+             +   '<td class="text-right text-nowrap">'
+             +     '<a class="btn btn-sm rx-btn-quiet view-receipt-btn" href="'
+             +         escAttr(historyViewUrl(r.id))
+             +     '">Zobacz <i class="bi bi-chevron-right rx-go"></i></a>'
+             +   '</td>'
+             + '</tr>';
+    }
+
+    function historyPlaceholderHtml(message) {
+        return '<tr class="rx-history-placeholder" aria-hidden="true">'
+             +   '<td colspan="8" class="text-center text-muted py-4">'
+             +     '<span class="spinner-border spinner-border-sm align-middle" role="status"></span>'
+             +     '<span class="ml-2 align-middle">' + esc(message) + '</span>'
+             +   '</td>'
+             + '</tr>';
+    }
+
+    // Ładowanie strony. Zwraca jqXHR (przydatne dla revealHistoryRow,
+    // gdzie chcemy podświetlić wiersz po zakończeniu requestu). Druga
+    // próba wywołania w trakcie requestu jest ignorowana — podwójne
+    // kliknięcia w pager nie powinny generować zduplikowanych requestów.
+    function loadHistoryPage(page) {
+        if (historyLoading) return $.Deferred().resolve().promise();
+        historyLoading = true;
+
+        const params = Object.assign({
+            page: page,
+            per_page: HISTORY_PER_PAGE
+        }, historyFiltersParams());
+
+        $historyBody.html(historyPlaceholderHtml('Ładowanie…'));
+        $historyPager.empty();
+
+        const req = getAjax('receipts-history.php', params);
+        req.done(function (r) {
+            if (!r || !r.success) {
+                historyFailed((r && r.error) || 'Nie udało się pobrać historii.');
+                return;
+            }
+            renderHistoryPage(r);
+        });
+        req.fail(function (xhr, status) {
+            historyFailed((xhr && xhr.responseJSON && xhr.responseJSON.error)
+                       || 'Błąd komunikacji z serwerem (' + status + ').');
+        });
+        req.always(function () {
+            historyLoading = false;
+        });
+        return req;
+    }
+
+    function historyFailed(message) {
+        $historyBody.empty();
+        $('#receiptsTableWrap').addClass('d-none');
+        $('#receiptsEmptyAlert').removeClass('d-none').html(emptyStateHtml(
+            'bi-exclamation-octagon', 'danger',
+            'Nie udało się wczytać historii',
+            message,
+            '<button type="button" class="btn btn-sm btn-primary js-history-retry">'
+                + '<i class="bi bi-arrow-clockwise"></i> Spróbuj ponownie</button>'
+        ));
+        $historyPager.empty();
+        $('#historyCountBadge').text(0);
+        $('#historyFilterSummary').text('');
+    }
+
+    function renderHistoryPage(r) {
+        const receipts = r.receipts || [];
+        historyTotal  = r.total || 0;
+        historyPages  = r.pages || 1;
+        historyPage   = r.page || 1;
+        historyLoaded = true;
+
+        if (historyTotal === 0) {
+            $historyBody.empty();
+            $('#receiptsTableWrap').addClass('d-none');
+            const $empty = $('#receiptsEmptyAlert');
+            if (historyFiltersActive()) {
+                $empty.removeClass('d-none').html(emptyStateHtml(
+                    'bi-funnel', '',
+                    'Brak przyjęć dla wybranych filtrów',
+                    'Zmień wyszukiwaną frazę lub zakres dat.',
+                    '<button type="button" class="btn btn-sm rx-btn-quiet js-clear-history-filters">'
+                        + '<i class="bi bi-x-circle"></i> Wyczyść filtry</button>'
+                ));
+            } else {
+                $empty.removeClass('d-none').html(emptyStateHtml(
+                    'bi-archive', '',
+                    'Brak zarejestrowanych przyjęć',
+                    'Przyjęcia pojawią się tutaj po zapisaniu pierwszej dostawy '
+                        + 'z zakładki „Do przyjęcia".'
+                ));
+            }
+            $historyPager.empty();
+            $('#historyCountBadge').text(0);
+            $('#historyFilterSummary').text('');
+            syncHistoryFilterUi(String($dateFrom.val() || ''), String($dateTo.val() || ''));
+            maybeHighlightSavedReceipt();
+            return;
+        }
+
+        let html = '';
+        receipts.forEach(function (rcpt) { html += historyRowHtml(rcpt); });
+        $historyBody.html(html);
+        $('#receiptsTableWrap').removeClass('d-none');
+        $('#receiptsEmptyAlert').addClass('d-none');
+
+        $('#historyCountBadge').text(historyTotal);
+        renderHistoryPagination(historyTotal);
+        updateHistorySummary(historyTotal);
+        syncHistoryFilterUi(String($dateFrom.val() || ''), String($dateTo.val() || ''));
+
+        maybeHighlightSavedReceipt();
     }
 
     function updateHistorySummary(total) {
         const $el = $('#historyFilterSummary');
-        const all = $historyRows.length;
-        if (all === 0) { $el.text(''); return; }
+        if (historyTotal === 0) { $el.text(''); return; }
         if (!historyFiltersActive()) {
-            $el.html('<strong>' + all + '</strong> ' + plural(all, 'przyjęcie', 'przyjęcia', 'przyjęć')
+            $el.html('<strong>' + historyTotal + '</strong> '
+                + plural(historyTotal, 'przyjęcie', 'przyjęcia', 'przyjęć')
                 + ' · od najnowszych');
             return;
         }
         $el.html('<i class="bi bi-funnel-fill"></i> Znaleziono <strong>' + total + '</strong> z <strong>'
-            + all + '</strong> ' + plural(all, 'przyjęcia', 'przyjęć', 'przyjęć'));
+            + historyTotal + '</strong> ' + plural(historyTotal, 'przyjęcia', 'przyjęć', 'przyjęć'));
     }
 
     // Aktywny preset = „od" ustawione dokładnie na dziś minus N dni,
@@ -812,8 +997,7 @@ $(document).ready(function () {
     }
 
     function renderHistoryPagination(total) {
-        const $box = $('#historyPagination');
-        $box.empty();
+        $historyPager.empty();
         if (total === 0) return;
 
         const first = (historyPage - 1) * HISTORY_PER_PAGE + 1;
@@ -848,14 +1032,13 @@ $(document).ready(function () {
                   + '</div>';
         }
         html += '</div>';
-        $box.html(html);
+        $historyPager.html(html);
     }
 
     function goToHistoryPage(page) {
-        historyPage = page;
-        applyHistoryView();
+        loadHistoryPage(page);
         // Pager stoi pod tabelą — po zmianie strony wracamy na górę listy.
-        const top = $('#historyPane').offset().top - 16;
+        const top = $historyPane.offset().top - 16;
         if ($(window).scrollTop() > top) {
             $('html, body').animate({ scrollTop: top }, 200);
         }
@@ -879,12 +1062,13 @@ $(document).ready(function () {
         $dateFrom.val('');
         $dateTo.val('');
         historyPage = 1;
-        applyHistoryView();
+        loadHistoryPage(1);
     }
 
-    $historySearch.on('input', function () { historyPage = 1; applyHistoryView(); });
-    $dateFrom.add($dateTo).on('change', function () { historyPage = 1; applyHistoryView(); });
+    $historySearch.on('input', function () { historyPage = 1; loadHistoryPage(1); });
+    $dateFrom.add($dateTo).on('change', function () { historyPage = 1; loadHistoryPage(1); });
     $(document).on('click', '.js-clear-history-filters', clearHistoryFilters);
+    $(document).on('click', '.js-history-retry', function () { loadHistoryPage(historyPage); });
 
     $('.rx-seg [data-preset]').on('click', function () {
         const days = parseInt($(this).attr('data-preset'), 10);
@@ -895,10 +1079,12 @@ $(document).ready(function () {
         }
         $dateTo.val('');
         historyPage = 1;
-        applyHistoryView();
+        loadHistoryPage(1);
     });
 
     // Klik w wiersz historii (poza linkami) → strona szczegółów przyjęcia.
+    // Delegowane na #receiptsTable tbody tr.receipt-row — działa też dla
+    // wierszy wstawionych przez AJAX (których nie było przy inicjalizacji).
     $(document).on('click', '#receiptsTable tbody tr.receipt-row', function (e) {
         if ($(e.target).closest('a, button').length) return;
         followRowLink(e, detailUrl(parseInt($(this).attr('data-id'), 10)));
@@ -913,63 +1099,112 @@ $(document).ready(function () {
         if (window.history && window.history.replaceState) {
             window.history.replaceState(null, '', window.location.pathname + window.location.search + hash);
         }
+        // Lazy load historii przy pierwszej aktywacji zakładki: wiersze
+        // nie lecą w HTML przy pierwszym renderze strony (patrz
+        // receipts-view.php — tbody ma tylko placeholder „Ładowanie…").
+        // Dzięki temu wejście na /purchase/receipts nie ciągnie 9 MB
+        // od razu, a tylko wtedy, gdy operator faktycznie zerka w historię.
+        if (e.target.id === 'historyTabLink' && !historyLoaded && !historyLoading) {
+            loadHistoryPage(historyPage);
+        }
     });
 
     // =====================================================================
     // Start
     // =====================================================================
 
+    // Hoistowane „saved" — podświetlenie wiersza leci dopiero po
+    // doczytaniu historii (komunikatu nie chcemy stracić, on leci
+    // od razu w init niżej).
+    let savedDoc        = null;
+    let savedN          = 0;
+    let savedPo         = null;
+    let savedState      = null;
+    let savedAlertShown = false;  // czy alert „zapisano" już wyświetlono
+    let savedHighlighted = false; // czy .receipt-row-new już nałożono
+
+    const successParams = new URLSearchParams(window.location.search);
+    savedDoc   = successParams.get('saved');
+    savedN     = parseInt(successParams.get('n'), 10);
+    savedPo    = successParams.get('po');
+    savedState = successParams.get('po_state');
+    if (isNaN(savedN)) savedN = 0;
+
     if (window.location.hash === HISTORY_HASH) {
         $('#historyTabLink').tab('show');
     }
 
     loadQueue();
-    applyHistoryView();
+    // Historia celowo NIE ładuje się tu — patrz hook `shown.bs.tab`
+    // powyżej. Jeśli użytkownik wskoczył na stronę z #historia, hook
+    // odpali się po przełączeniu zakładki. Jeśli nie — pierwsze
+    // wejście nie ciągnie nic z bazy dla zakładki historii.
 
     // ---- powrót z formularza przyjęcia (?saved=…) ----------------------
+    //
+    // Komunikat sukcesu leci zawsze (niezależnie od tego, czy
+    // użytkownik zajrzy do historii). Link „Pokaż w historii"
+    // natomiast kieruje do zakładki i czyści filtry (revealHistoryRow) —
+    // jego obsługa wymaga już doczytanej strony, więc musi poczekać
+    // na pierwszy loadHistoryPage (patrz maybeHighlightSavedReceipt
+    // w renderHistoryPage). Podświetlenie wiersza klasą
+    // .receipt-row-new nakładane jest identycznie jak poprzednio —
+    // po znalezieniu wiersza w DOM (po data-doc).
 
-    const successParams = new URLSearchParams(window.location.search);
-    const savedDoc   = successParams.get('saved');
-    const savedN     = parseInt(successParams.get('n'), 10);
-    const savedPo    = successParams.get('po');
-    const savedState = successParams.get('po_state');
-
-    if (savedDoc !== null) {
-        const n = isNaN(savedN) ? 0 : savedN;
-        const $newRow = $historyRows.filter(function () {
-            return savedDoc !== '' && $(this).attr('data-doc') === savedDoc;
-        }).first();
-
-        let msg = '<i class="bi bi-check-circle-fill"></i> '
-                + 'Zapisano przyjęcie <strong>' + esc(savedDoc || '—') + '</strong> — przyjęto '
-                + n + ' ' + plural(n, 'pozycję', 'pozycje', 'pozycji') + '.';
-        if (savedPo) {
-            msg += ' Zamówienie <strong>' + esc(savedPo) + '</strong>'
-                 + (savedState ? ' ma teraz status „' + esc(stateMeta(savedState).label) + '".' : '.');
-        }
-
-        if ($newRow.length) {
-            // Klasa zostaje na wierszu: animacja (receipts-ui.css) odpali
-            // się przy pierwszym pokazaniu zakładki historii, a zielony
-            // znacznik przy krawędzi zostaje do przeładowania strony.
-            $newRow.addClass('receipt-row-new');
-            msg += '<span class="rx-alert-actions">'
-                 + '<a class="alert-link" href="' + escAttr(detailUrl($newRow.attr('data-id'))) + '">Zobacz przyjęcie</a>'
-                 + '<a class="alert-link js-reveal-new-receipt" href="' + HISTORY_HASH + '">Pokaż w historii</a>'
-                 + '</span>';
-        }
+    if (savedDoc !== null && !savedAlertShown) {
+        // Pusty `?saved=` też pokazuje alert (z placeholder-em „—” w numerze
+        // GRN) — zachowanie identyczne z wersją sprzed refaktora.
+        const displayDoc = (savedDoc && savedDoc !== '') ? savedDoc : '—';
+        const msg = '<i class="bi bi-check-circle-fill"></i> '
+                  + 'Zapisano przyjęcie <strong>' + esc(displayDoc) + '</strong> — przyjęto '
+                  + savedN + ' ' + plural(savedN, 'pozycję', 'pozycje', 'pozycji') + '.'
+                  + (savedPo
+                      ? ' Zamówienie <strong>' + esc(savedPo) + '</strong>'
+                        + (savedState ? ' ma teraz status „' + esc(stateMeta(savedState).label) + '".' : '.')
+                      : '')
+                  + '<span class="rx-alert-actions">'
+                  +   '<a class="alert-link js-reveal-new-receipt" href="' + HISTORY_HASH + '">Pokaż w historii</a>'
+                  + '</span>';
         showAlert(msg, 'success');
-
-        $(document).on('click', '.js-reveal-new-receipt', function (e) {
-            e.preventDefault();
-            revealHistoryRow($newRow);
-        });
+        savedAlertShown = true;
 
         // Bez query stringu w pasku adresu F5 nie pokaże komunikatu ponownie.
         if (window.history && window.history.replaceState) {
             window.history.replaceState({}, '', window.location.pathname + window.location.hash);
         }
     }
+
+    // Po wyrenderowaniu strony przez AJAX szukamy wiersza po data-doc
+    // i nakładamy klasę .receipt-row-new. Wywoływane z renderHistoryPage.
+    // Link „Zobacz przyjęcie" (z URL do strony szczegółów) dodajemy
+    // dopiero gdy wiersz faktycznie siedzi w DOM, bo dopiero wtedy
+    // znamy jego id.
+    function maybeHighlightSavedReceipt() {
+        if (savedDoc === null || savedDoc === '' || savedHighlighted) return;
+        if (historyTotal === 0) return;
+        const $newRow = $('#receiptsTable tbody tr.receipt-row').filter(function () {
+            return $(this).attr('data-doc') === savedDoc;
+        }).first();
+        if (!$newRow.length) return;
+        $newRow.addClass('receipt-row-new');
+        savedHighlighted = true;
+
+        // Doklejamy „Zobacz przyjęcie" obok „Pokaż w historii" w alercie
+        // — tu już mamy id z data-id wiersza, więc URL budujemy śmiało.
+        const $actions = $('#alertContainer .rx-alert-actions').first();
+        if ($actions.length && $actions.find('.js-view-new-receipt').length === 0) {
+            $actions.prepend(
+                '<a class="alert-link js-view-new-receipt" href="'
+                + escAttr(detailUrl($newRow.attr('data-id')))
+                + '">Zobacz przyjęcie</a>'
+            );
+        }
+    }
+
+    $(document).on('click', '.js-reveal-new-receipt', function (e) {
+        e.preventDefault();
+        revealHistoryRow();
+    });
 
     // ---- powrót po zamknięciu PO z formularza przyjęcia (?closed=…) -----
     //
@@ -996,27 +1231,40 @@ $(document).ready(function () {
         }
     }
 
-    // Przejście do konkretnego wiersza historii: czyści filtry, ustawia
-    // właściwą stronę, przełącza zakładkę, przewija i odpala podświetlenie.
-    function revealHistoryRow($row) {
-        if (!$row || !$row.length) return;
+    // Przejście do konkretnego wiersza historii: czyści filtry, przeładowuje
+    // stronę 1 i po doczytaniu szuka wiersza po data-doc, scrolluje do niego
+    // i nakłada .receipt-row-new. Najnowsze przyjęcie zawsze ląduje na
+    // stronie 1 po wyczyszczeniu filtrów — patrz receipts-history.php
+    // (ORDER BY received_at DESC, id DESC), więc „Pokaż w historii"
+    // z powrotu z formularza zawsze znajdzie wiersz po jednym fetchu.
+    function revealHistoryRow() {
+        if (savedDoc === null || savedDoc === '') return;
         $historySearch.val('');
         $dateFrom.val('');
         $dateTo.val('');
-        historyPage = Math.floor($historyRows.index($row) / HISTORY_PER_PAGE) + 1;
-        applyHistoryView();
+        historyPage = 1;
+        savedHighlighted = false;  // resetujemy, bo clear filtrów to świeży render
 
         const scrollToRow = function () {
-            $row.removeClass('receipt-row-new');
-            void $row[0].offsetWidth; // restart animacji
-            $row.addClass('receipt-row-new');
-            $('html, body').animate({ scrollTop: $row.offset().top - 120 }, 300);
+            const $fresh = $('#receiptsTable tbody tr.receipt-row').filter(function () {
+                return $(this).attr('data-doc') === savedDoc;
+            }).first();
+            if (!$fresh.length) return;
+            $fresh.removeClass('receipt-row-new');
+            void $fresh[0].offsetWidth; // restart animacji
+            $fresh.addClass('receipt-row-new');
+            $('html, body').animate({ scrollTop: $fresh.offset().top - 120 }, 300);
         };
 
-        if ($('#historyPane').hasClass('active')) {
-            scrollToRow();
+        const fetchAndShow = function () {
+            loadHistoryPage(1).done(scrollToRow);
+        };
+
+        if ($historyPane.hasClass('active')) {
+            fetchAndShow();
         } else {
-            $('#historyTabLink').one('shown.bs.tab', scrollToRow).tab('show');
+            $historyPane.one('shown.bs.tab', fetchAndShow);
+            $('#historyTabLink').tab('show');
         }
     }
 });
