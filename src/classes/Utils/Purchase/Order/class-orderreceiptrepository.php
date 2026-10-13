@@ -10,7 +10,14 @@ class OrderReceiptRepository {
         $this->MsaDB = $MsaDB;
     }
 
-    private function buildSelectJoin(): string {
+    /**
+     * Bazowy SELECT + JOINy dla tabeli przyjęć. Współdzielony przez
+     * wszystkie metody odczytujące oraz przez endpoint AJAX historii
+     * (components/purchases/receipts/receipts-history.php), który musi
+     * złożyć dodatkowe WHERE dla filtra wyszukiwarki / zakresu dat —
+     * stąd publiczne, a nie private.
+     */
+    public function buildSelectJoin(): string {
         return "SELECT r.id,
                        r.po_id AS poId,
                        r.document_number AS documentNumber,
@@ -33,6 +40,51 @@ class OrderReceiptRepository {
         $stmt->execute([$id]);
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
         return $row === false ? null : new OrderReceipt($row);
+    }
+
+    /**
+     * Strona wierszy przyjęć (0-indexed wewnętrznie — $page min 1
+     * z zewnątrz, offset liczony jako ($page-1)*$perPage). Kolejność
+     * i WHERE identyczne jak w getAll(), żeby strony nie „przeskakiwały"
+     * między wywołaniami. $perPage cap na 100 — endpoint paginacji
+     * dostaje validate przed przekazaniem, ale dla pewności pilnuje też
+     * tutaj, na wypadek użycia przez inne wywołania.
+     */
+    public function getPage(bool $onlyActive, int $page, int $perPage): array {
+        $MsaDB = $this->MsaDB;
+        $page    = max(1, $page);
+        $perPage = max(1, min(100, $perPage));
+        $offset  = ($page - 1) * $perPage;
+        $where   = $onlyActive ? "WHERE po.state != 'cancelled'" : "";
+        $sql = $this->buildSelectJoin()
+            . " {$where}"
+            . " ORDER BY r.received_at DESC, r.id DESC"
+            . " LIMIT {$perPage} OFFSET {$offset}";
+        $stmt = $MsaDB->db->prepare($sql);
+        $stmt->execute();
+        $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        $result = [];
+        foreach ($rows as $row) {
+            $result[] = new OrderReceipt($row);
+        }
+        return $result;
+    }
+
+    /**
+     * Całkowita liczba wierszy dla danego zestawu (ten sam WHERE co
+     * getAll/getPage). Endpoint paginacji paruje to z getPage(), żeby
+     * wiedzieć ile jest stron. Zwraca int — fetchColumn na COUNT(*).
+     */
+    public function countAll(bool $onlyActive = false): int {
+        $MsaDB = $this->MsaDB;
+        $where = $onlyActive ? "WHERE po.state != 'cancelled'" : "";
+        $sql = "SELECT COUNT(*)
+                FROM `purchase__order_receipt` r
+                LEFT JOIN `purchase__order` po ON r.po_id = po.id
+                {$where}";
+        $stmt = $MsaDB->db->prepare($sql);
+        $stmt->execute();
+        return (int)$stmt->fetchColumn();
     }
 
     public function getAll(bool $onlyActive = false): array {
