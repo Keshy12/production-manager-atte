@@ -1233,6 +1233,21 @@ a.rx-timeline-doc { color: var(--rx-accent-ink); }
     border-color: #ffc107;
     background-color: #fff8e1;
 }
+/* Wariant niszczycielski dla opcji „Anulowane". Wybór anulowania
+   unieważnia zamówienie, więc karta dostaje paletę danger (#dc3545 /
+   #f8d7da) zamiast bursztynowej. Selektor ma atrybut data-close-target,
+   więc bije .receipt-close-option.is-selected (0,3,0 vs 0,2,0) oraz
+   :checked ~ .receipt-close-option-body (0,2,1). */
+.receipt-close-option[data-close-target="cancelled"].is-selected {
+    border-color: #dc3545;
+    background-color: #f8d7da;
+}
+.receipt-close-option[data-close-target="cancelled"].is-selected .receipt-close-option-label {
+    color: #721c24;
+}
+.receipt-close-option[data-close-target="cancelled"].is-selected .receipt-close-option-body small {
+    color: #8a5157;
+}
 
 /* Modal „Anuluj zamówienie" (prosty wariant, dla wierszy `sent`). */
 .receipt-cancel-summary { font-size: .95rem; }
