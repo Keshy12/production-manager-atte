@@ -342,6 +342,31 @@ if (!empty($poIds)) {
     }
 }
 
+// ---- per-PO ordered / received quantities -----------------------------
+// Modal „Zamknij zamówienie" pokazuje w podsumowaniu „przyjęto X z Y",
+// a close-po.js czyta te liczby z atrybutów data-ordered-qty /
+// data-received-qty przycisku w wierszu (patrz documents-view.js →
+// closePoBtnHtml). Bez tego agregatu modal pokazywał „przyjęto 0 z 0".
+//
+// Osobne zapytanie, a nie rozszerzenie powyższego: tam pod agregacją jest
+// GROUP BY po_id, currency, więc SUM(quantity) po nim zwróciłby sumę po
+// kursach — przy zamówieniu w kilku walutach liczby byłyby zawyżone.
+$qtyByPo = [];
+if (!empty($poIds)) {
+    $sql = "SELECT po_id,
+                   SUM(quantity) AS ordered_qty,
+                   SUM(quantity_received) AS received_qty
+              FROM `purchase__order_item`
+             WHERE po_id IN (" . implode(',', $poIds) . ")
+             GROUP BY po_id";
+    foreach ($MsaDB->query($sql, \PDO::FETCH_ASSOC) as $r) {
+        $qtyByPo[(int)$r['po_id']] = [
+            'orderedQty'  => (float)$r['ordered_qty'],
+            'receivedQty' => (float)$r['received_qty'],
+        ];
+    }
+}
+
 // Stitch items into docs and re-order to match the cross-type page slice.
 $docsByKey = [];
 foreach ($docs as $d) {
@@ -349,6 +374,12 @@ foreach ($docs as $d) {
     $agg = $itemsByDoc[$key] ?? ['count' => 0, 'values' => []];
     $d['item_count']      = $agg['count'];
     $d['value_breakdown'] = $agg['values'];
+    // Klucze zawsze obecne w JSON-ie — closePoBtnHtml() czyta je bez
+    // sprawdzania istnienia. RFQ nie zamyka się „przez przyjęcie", więc
+    // dostaje zera.
+    $qty = $qtyByPo[$d['id']] ?? ['orderedQty' => 0.0, 'receivedQty' => 0.0];
+    $d['orderedQty']     = $d['type'] === 'po' ? $qty['orderedQty']  : 0.0;
+    $d['receivedQty']    = $d['type'] === 'po' ? $qty['receivedQty'] : 0.0;
     $docsByKey[$key] = $d;
 }
 
