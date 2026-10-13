@@ -650,8 +650,19 @@ $(document).ready(function () {
                     + '</button>';
             }
             if (d.state === 'confirmed' || d.state === 'partially_received' || d.state === 'in_progress') {
+                // close-po.js buduje podsumowanie modala („przyjęto X z Y")
+                // z data-ordered-qty / data-received-qty — bez tych
+                // atrybutów pokazywało „przyjęto 0 z 0". Agregaty przychodzą
+                // z documents-table.php; /purchase/receipts ma swoje, stąd
+                // duplikacja atrybutów w obu listach.
+                const orderedQty  = Number(d.orderedQty)  || 0;
+                const receivedQty = Number(d.receivedQty) || 0;
+                const lineCount   = parseInt(d.item_count, 10) || 0;
                 return '<button type="button" class="btn btn-sm btn-outline-danger rx-close-po-btn"'
                     + ' data-action="close-po"'
+                    + ' data-ordered-qty="' + esc(orderedQty) + '"'
+                    + ' data-received-qty="' + esc(receivedQty) + '"'
+                    + ' data-line-count="' + esc(lineCount) + '"'
                     + commonAttrs
                     + ' title="Zamknij zamówienie (odebrane / anulowane)"'
                     + ' aria-label="Zamknij zamówienie">'
