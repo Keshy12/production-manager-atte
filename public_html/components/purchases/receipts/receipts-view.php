@@ -5,8 +5,15 @@
  * Lista w dwóch zakładkach:
  *   „Do przyjęcia"     — kolejka zamówień czekających na towar
  *                        (dane z receipts-queue.php, render w JS),
- *   „Historia przyjęć" — zapisane dokumenty GRN (render w PHP poniżej,
- *                        filtrowanie i paginacja po stronie klienta).
+ *   „Historia przyjęć" — zapisane dokumenty GRN. Wiersze NIE są już
+ *                        renderowane po stronie PHP — receipts-history.php
+ *                        (AJAX) zwraca jedną stronę (25 wierszy), JS
+ *                        dokłada kolejne po kliknięciu w pager. Przed
+ *                        refaktorem ta zakładka emitowała 3 700+
+ *                        wierszy inline (~9.5 MB) przy każdym wejściu
+ *                        na stronę — teraz wiersze lecą 25 na raz,
+ *                        a pierwsza strona doczytuje się dopiero po
+ *                        aktywacji zakładki.
  *
  * Nawigacja:
  *   - przyjęcie towaru: /purchase/receipts/receive?po_id=N
@@ -25,9 +32,6 @@
  * zostaje dla formularza przyjęcia.
  */
 
-use Atte\DB\MsaDB;
-use Atte\Utils\Purchase\Order\OrderReceiptRepository;
-
 if(!isset($_SESSION['isAdmin']) || $_SESSION['isAdmin'] !== true) {
     header("Location: http://".BASEURL."/");
     exit();
@@ -35,31 +39,9 @@ if(!isset($_SESSION['isAdmin']) || $_SESSION['isAdmin'] !== true) {
 
 require_once __DIR__ . '/receipts-helpers.php';
 
-$MsaDB = MsaDB::getInstance();
-$receiptRepo = new OrderReceiptRepository($MsaDB);
-$receipts = $receiptRepo->getAll(true);
-
-// Liczba pozycji i suma ilości per przyjęcie — jedno zapytanie
-// grupujące. Nie da się tego wpiąć w buildSelectJoin() repozytorium
-// (GROUP BY gryzie się z SELECT-em per przyjęcie), więc osobny odczyt.
-$countsByReceipt = [];
-if (!empty($receipts)) {
-    $stmt = $MsaDB->db->prepare(
-        "SELECT receipt_id,
-                COUNT(*)              AS item_count,
-                COALESCE(SUM(quantity_received), 0) AS total_qty
-         FROM `purchase__order_receipt_item`
-         WHERE receipt_id IN (" . implode(',', array_map('intval', array_map(fn($r) => $r->id, $receipts))) . ")
-         GROUP BY receipt_id"
-    );
-    $stmt->execute();
-    foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $row) {
-        $countsByReceipt[(int)$row['receipt_id']] = [
-            'itemCount' => (int)$row['item_count'],
-            'totalQty'  => (float)$row['total_qty'],
-        ];
-    }
-}
+// Widok NIE odpytuje bazy dla zakładki historii — wiersze latają przez
+// POST receipts-history.php, paginacja/filtrowanie są po stronie JS.
+// (Klasy OrderReceipt / OrderReceiptRepository ładuje sam endpoint AJAX.)
 
 // Współdzielony modal „Potwierdź odbiór" — otwierany z kolejki przyciskiem
 // data-action="confirm-po" (zamówienia w stanie `sent`). __DIR__ zamiast
@@ -77,7 +59,8 @@ include __DIR__ . '/../documents/confirm-po-modal.php';
 $withCancel = true;
 include __DIR__ . '/close-po-modal.php';
 
-$historyCount = count($receipts);
+// $receipts już nie istnieje — licznik w badge'u zakładki historii
+// wypełnia JS po pierwszym doczytaniu strony.
 ?>
 
 <link rel="stylesheet" href="<?= asset('public_html/components/purchases/cart/purchases.css') ?>">
@@ -133,7 +116,7 @@ $historyCount = count($receipts);
             <a class="nav-link" id="historyTabLink" data-toggle="tab"
                href="#historyPane" role="tab" aria-controls="historyPane" aria-selected="false">
                 <i class="bi bi-clock-history"></i> Historia przyjęć
-                <span class="rx-count" id="historyCountBadge"><?= $historyCount ?></span>
+                <span class="rx-count" id="historyCountBadge">…</span>
             </a>
         </li>
     </ul>
@@ -259,7 +242,7 @@ $historyCount = count($receipts);
             </div>
 
             <div class="rx-panel">
-                <div id="receiptsEmptyAlert" class="<?= empty($receipts) ? '' : 'd-none' ?>">
+                <div id="receiptsEmptyAlert" class="d-none">
                     <div class="rx-empty">
                         <div class="rx-empty-icon"><i class="bi bi-archive"></i></div>
                         <div class="rx-empty-title">Brak zarejestrowanych przyjęć</div>
@@ -270,7 +253,7 @@ $historyCount = count($receipts);
                     </div>
                 </div>
 
-                <div class="table-responsive <?= empty($receipts) ? 'd-none' : '' ?>" id="receiptsTableWrap">
+                <div class="table-responsive d-none" id="receiptsTableWrap">
                     <table class="table rx-table mb-0" id="receiptsTable">
                         <thead>
                         <tr>
@@ -284,70 +267,13 @@ $historyCount = count($receipts);
                             <th scope="col" class="text-right"><span class="sr-only">Akcje</span></th>
                         </tr>
                         </thead>
-                        <tbody>
-                        <?php foreach ($receipts as $r):
-                            $c = $countsByReceipt[$r->id] ?? ['itemCount' => 0, 'totalQty' => 0.0];
-                            // data-received-at (Y-m-d) zasila filtr zakresu dat;
-                            // data-received-full dokłada pełny ISO do wyszukiwarki,
-                            // bo w komórce data jest pokazana jako d.m.Y.
-                            $receivedFull = (string)($r->receivedAt ?? '');
-                            $receivedDate = substr($receivedFull, 0, 10);
-                            $relDay       = rx_relative_day($r->receivedAt);
-                            $time         = rx_fmt_time($r->receivedAt);
-                            $receiver     = $r->receivedByName ?: ('#' . $r->receivedBy);
-                            $viewUrl      = 'http://' . BASEURL . '/purchase/receipts/view?id=' . (int)$r->id;
-                        ?>
-                            <tr class="receipt-row" data-id="<?= (int)$r->id ?>"
-                                data-doc="<?= rx_e($r->documentNumber ?? '') ?>"
-                                data-received-at="<?= rx_e($receivedDate) ?>"
-                                data-received-full="<?= rx_e($receivedFull) ?>">
-                                <td>
-                                    <?php if ($r->documentNumber): ?>
-                                        <div class="rx-doc"><?= rx_e($r->documentNumber) ?></div>
-                                    <?php else: ?>
-                                        <div class="rx-doc rx-doc--none" title="Zapisany sam nagłówek — numer GRN nadawany jest przy zapisie ilości">bez numeru GRN</div>
-                                    <?php endif; ?>
-                                    <div class="rx-sub">ID <?= (int)$r->id ?></div>
-                                </td>
-                                <td class="text-nowrap">
-                                    <div class="rx-date-main"><?= rx_e(rx_fmt_date($r->receivedAt)) ?></div>
-                                    <div class="rx-sub">
-                                        <?= rx_e(trim(($relDay ?? '') . ($relDay && $time ? ', ' : '') . $time)) ?: '&nbsp;' ?>
-                                    </div>
-                                </td>
-                                <td class="text-nowrap">
-                                    <?php if ($r->poNumber): ?>
-                                        <a class="rx-po-link"
-                                           href="http://<?= BASEURL ?>/admin/purchase/documents/edit?id=<?= (int)$r->poId ?>&amp;type=po"
-                                           title="Otwórz zamówienie">
-                                            <?= rx_e($r->poNumber) ?>
-                                        </a>
-                                    <?php else: ?>
-                                        <span class="text-muted">#<?= (int)$r->poId ?></span>
-                                    <?php endif; ?>
-                                </td>
-                                <td class="rx-vendor"><?= rx_e($r->vendorName ?? '—') ?></td>
-                                <td class="rx-num">
-                                    <?php if ($c['itemCount'] > 0): ?>
-                                        <span class="rx-pill"><?= $c['itemCount'] ?></span>
-                                    <?php else: ?>
-                                        <span class="rx-pill rx-pill--empty" title="Zapisany sam nagłówek dokumentu">bez pozycji</span>
-                                    <?php endif; ?>
-                                </td>
-                                <td class="rx-num d-none d-md-table-cell"><?= rx_e(rx_fmt_qty($c['totalQty'])) ?></td>
-                                <td class="d-none d-lg-table-cell">
-                                    <span class="rx-person">
-                                        <span class="rx-avatar" aria-hidden="true"><?= rx_e(rx_initials($r->receivedByName)) ?></span>
-                                        <?= rx_e($receiver) ?>
-                                    </span>
-                                </td>
-                                <td class="text-right text-nowrap">
-                                    <a class="btn btn-sm rx-btn-quiet view-receipt-btn" href="<?= rx_e($viewUrl) ?>">
-                                        Zobacz <i class="bi bi-chevron-right rx-go"></i>
-                                    </a>
-                                </td>
-                            </tr>
-                        <?php endforeach; ?>
+                        <tbody id="historyBody">
+                        <tr class="receipt-row-receipts-placeholder" aria-hidden="true">
+                            <td colspan="8" class="text-center text-muted py-4">
+                                <span class="spinner-border spinner-border-sm align-middle" role="status"></span>
+                                <span class="ml-2 align-middle">Ładowanie…</span>
+                            </td>
+                        </tr>
                         </tbody>
                     </table>
                 </div>
