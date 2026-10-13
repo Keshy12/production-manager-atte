@@ -1838,9 +1838,13 @@ $cartQty.val('');
         // rebuild left them in — a manual variant pick on a multi-variant
         // combo left Ilość disabled and the pack picker hidden, because
         // refreshVendorPartRow() only pre-selects when the list narrows
-        // to a single option. The "Szukaj numeru u dostawcy" flow works
-        // because pickVp() always goes through refreshVendorPartRow(id).
+        // to a single option. The search-modal flow worked because
+        // pickVp() always goes through refreshVendorPartRow(id).
         syncAmountsInputs();
+        // Same story for the Dodaj button: updateAddBtnState() only ran
+        // from refreshVendorPartRow(), so a manual variant pick left the
+        // button in the disabled state the previous rebuild had set.
+        updateAddBtnState();
         completeComboFromSelection();
         updateSelectionDocsBadge();
         loadSelectionDocs();
