@@ -8,6 +8,8 @@ class Vendor {
     public string $name;
     public ?string $address;
     public ?string $additionalData;
+    // Vendor shop URL (http/https). Opened from the cart variants table.
+    public ?string $shopUrl = null;
     public ?int $leadTimeDays;
     // FK → list__currency.id. Stored as int. Always > 0 for valid rows
     // (the column is NOT NULL and the FK enforces referential integrity).
@@ -39,6 +41,7 @@ class Vendor {
         $this->name = (string)$row['name'];
         $this->address = $row['address'] ?? null;
         $this->additionalData = $row['additionalData'] ?? null;
+        $this->shopUrl = $row['shopUrl'] ?? null;
         $this->leadTimeDays = isset($row['leadTimeDays']) ? (int)$row['leadTimeDays'] : null;
         $this->defaultCurrency = isset($row['defaultCurrency']) ? (int)$row['defaultCurrency'] : 0;
         $this->defaultCurrencyCode = isset($row['defaultCurrencyCode']) ? (string)$row['defaultCurrencyCode'] : null;

@@ -16,6 +16,7 @@ class VendorRepository {
                        v.name,
                        v.address,
                        v.additional_data AS additionalData,
+                       v.shop_url AS shopUrl,
                        v.lead_time_days AS leadTimeDays,
                        v.default_currency AS defaultCurrency,
                        c.code AS defaultCurrencyCode,
@@ -41,6 +42,7 @@ class VendorRepository {
                        v.name,
                        v.address,
                        v.additional_data AS additionalData,
+                       v.shop_url AS shopUrl,
                        v.lead_time_days AS leadTimeDays,
                        v.default_currency AS defaultCurrency,
                        c.code AS defaultCurrencyCode,
@@ -74,7 +76,7 @@ class VendorRepository {
      * @param int|null            $preferredEmailDraftRfqId  FK → email_draft.id; 0 / null → NULL
      * @param int|null            $preferredEmailDraftPoId   FK → email_draft.id; 0 / null → NULL
      */
-    public function create(string $name, ?string $address = null, ?string $additionalData = null, ?int $leadTimeDays = null, ?string $comment = null, string $defaultCurrencyCode = 'PLN', ?int $preferredEmailDraftRfqId = null, ?int $preferredEmailDraftPoId = null): int {
+    public function create(string $name, ?string $address = null, ?string $additionalData = null, ?int $leadTimeDays = null, ?string $comment = null, string $defaultCurrencyCode = 'PLN', ?int $preferredEmailDraftRfqId = null, ?int $preferredEmailDraftPoId = null, ?string $shopUrl = null): int {
         $MsaDB = $this->MsaDB;
         $name = trim($name);
         if ($name === '') {
@@ -89,8 +91,8 @@ class VendorRepository {
         $preferredEmailDraftPoId  = ($preferredEmailDraftPoId  === null || $preferredEmailDraftPoId  <= 0) ? null : $preferredEmailDraftPoId;
         return $MsaDB->insert(
             'list__vendor',
-            ['name', 'address', 'additional_data', 'lead_time_days', 'default_currency', 'isActive', 'comment', 'preferred_email_draft_rfq_id', 'preferred_email_draft_po_id'],
-            [$name, $address, $additionalData, $leadTimeDays, $defaultCurrencyId, 1, $comment, $preferredEmailDraftRfqId, $preferredEmailDraftPoId]
+            ['name', 'address', 'additional_data', 'shop_url', 'lead_time_days', 'default_currency', 'isActive', 'comment', 'preferred_email_draft_rfq_id', 'preferred_email_draft_po_id'],
+            [$name, $address, $additionalData, $shopUrl, $leadTimeDays, $defaultCurrencyId, 1, $comment, $preferredEmailDraftRfqId, $preferredEmailDraftPoId]
         );
     }
 
@@ -100,7 +102,7 @@ class VendorRepository {
      * @param int $preferredEmailDraftRfqId  0 / null → NULL (clear the preference)
      * @param int $preferredEmailDraftPoId   0 / null → NULL (clear the preference)
      */
-    public function update(int $id, string $name, ?string $address, ?string $additionalData, ?int $leadTimeDays, ?string $comment, string $defaultCurrencyCode = 'PLN', ?int $preferredEmailDraftRfqId = null, ?int $preferredEmailDraftPoId = null): bool {
+    public function update(int $id, string $name, ?string $address, ?string $additionalData, ?int $leadTimeDays, ?string $comment, string $defaultCurrencyCode = 'PLN', ?int $preferredEmailDraftRfqId = null, ?int $preferredEmailDraftPoId = null, ?string $shopUrl = null): bool {
         $MsaDB = $this->MsaDB;
         $name = trim($name);
         if ($name === '') {
@@ -119,6 +121,7 @@ class VendorRepository {
                 'name' => $name,
                 'address' => $address,
                 'additional_data' => $additionalData,
+                'shop_url' => $shopUrl,
                 'lead_time_days' => $leadTimeDays,
                 'default_currency' => $defaultCurrencyId,
                 'comment' => $comment,
@@ -213,6 +216,36 @@ class VendorRepository {
             throw new \InvalidArgumentException("Unknown or inactive currency code: '{$code}'.");
         }
         return $id;
+    }
+
+    /**
+     * Normalise a user-entered shop URL: '' → null, scheme-less input
+     * gets https://, only http/https and max 500 chars are accepted.
+     *
+     * @throws \InvalidArgumentException (Polish message, shown to the user)
+     */
+    public static function normalizeShopUrl(?string $raw): ?string {
+        $url = trim((string)$raw);
+        if ($url === '') {
+            return null;
+        }
+        if (!preg_match('~^[a-z][a-z0-9+.-]*://~i', $url)) {
+            $url = 'https://' . $url;
+        }
+        $scheme = strtolower((string)parse_url($url, PHP_URL_SCHEME));
+        if (mb_strlen($url) > 500
+            || filter_var($url, FILTER_VALIDATE_URL) === false
+            || !in_array($scheme, ['http', 'https'], true)) {
+            throw new \InvalidArgumentException('Nieprawidłowy adres sklepu (URL).');
+        }
+        return $url;
+    }
+
+    /** Update only the shop URL (inline edit from the cart). */
+    public function updateShopUrl(int $id, ?string $shopUrl): bool {
+        $stmt = $this->MsaDB->db->prepare("UPDATE `list__vendor` SET `shop_url` = ? WHERE `id` = ?");
+        $stmt->execute([$shopUrl, $id]);
+        return $stmt->rowCount() > 0;
     }
 
     public function toggleActive(int $id, bool $isActive): bool {
@@ -351,7 +384,7 @@ class VendorRepository {
             // listing JS can read them without a second round-trip.
             $spCount = "(SELECT COUNT(*) FROM `list__vendor_supplier` WHERE vendor_id = v.id) AS supplierCount";
             $vpCount = "(SELECT COUNT(*) FROM `list__vendor_part`    WHERE vendor_id = v.id) AS vendorPartCount";
-            $pageSql = "SELECT v.id, v.name, v.address, v.additional_data AS additionalData,"
+            $pageSql = "SELECT v.id, v.name, v.address, v.additional_data AS additionalData, v.shop_url AS shopUrl,"
                      . " v.lead_time_days AS leadTimeDays, v.default_currency AS defaultCurrency,"
                      . " c.code AS defaultCurrencyCode,"
                      . " v.isActive, v.comment,"

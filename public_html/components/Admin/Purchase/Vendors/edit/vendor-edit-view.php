@@ -50,6 +50,7 @@ $vendor = null;
 $vendorName             = '';
 $vendorAddress          = '';
 $vendorAdditionalData   = '';
+$vendorShopUrl          = '';
 $vendorLeadTimeDays     = '';
 $vendorDefaultCurrency  = 'PLN';
 $vendorComment          = '';
@@ -75,6 +76,7 @@ if ($isEditMode) {
     $vendorName             = $vendor->name;
     $vendorAddress          = $vendor->address          ?? '';
     $vendorAdditionalData   = $vendor->additionalData   ?? '';
+    $vendorShopUrl          = $vendor->shopUrl          ?? '';
     $vendorLeadTimeDays     = $vendor->leadTimeDays     ?? '';
     // Prefer the joined code (string); fall back to 'PLN' if the JOIN
     // somehow missed (e.g. the FK points at an inactive currency row).
@@ -339,6 +341,28 @@ function vr_render_packs(array $packs): string {
                     <input type="text" id="vr_edit_address" name="address"
                            class="form-control"
                            value="<?= htmlspecialchars($vendorAddress, ENT_QUOTES) ?>">
+                </div>
+
+                <div class="form-group">
+                    <label for="vr_edit_shop_url">Adres sklepu (URL):</label>
+                    <div class="input-group">
+                        <input type="url" id="vr_edit_shop_url" name="shop_url"
+                               class="form-control" maxlength="500"
+                               placeholder="https://www.sklep-dostawcy.pl"
+                               value="<?= htmlspecialchars($vendorShopUrl, ENT_QUOTES) ?>">
+                        <?php if ($vendorShopUrl !== ''): ?>
+                            <div class="input-group-append">
+                                <a class="btn btn-outline-secondary" target="_blank" rel="noopener"
+                                   href="<?= htmlspecialchars($vendorShopUrl, ENT_QUOTES) ?>"
+                                   title="Otwórz sklep w nowej karcie">
+                                    <i class="bi bi-box-arrow-up-right"></i> Otwórz
+                                </a>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                    <small class="form-text text-muted">
+                        Link do sklepu dostawcy. W koszyku (wiersz wariantu części) przycisk „Sklep” otwiera go w nowej karcie.
+                    </small>
                 </div>
 
                 <div class="form-group">

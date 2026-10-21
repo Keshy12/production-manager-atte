@@ -65,6 +65,14 @@ foreach (['address' => &$address, 'additional_data' => &$additionalData, 'commen
 }
 unset($v);
 
+// shop_url: optional; scheme-less input gets https://, only http/https allowed.
+try {
+    $shopUrl = VendorRepository::normalizeShopUrl($_POST['shop_url'] ?? null);
+} catch (\InvalidArgumentException $e) {
+    echo json_encode(['success' => false, 'error' => $e->getMessage()]);
+    exit();
+}
+
 // lead_time_days: optional, must be a non-negative integer when present.
 if ($leadTimeDays !== null && $leadTimeDays !== '') {
     if (!is_numeric($leadTimeDays) || (int)$leadTimeDays < 0) {
@@ -133,7 +141,7 @@ try {
         // schema level (per docs/procurement/PLAN.md the schema was
         // never given a UNIQUE index on `name`); we accept duplicates
         // silently. Operators can deduplicate via the listing.
-        $newId = $repo->create($name, $address, $additionalData, $leadTimeDays, $comment, $defaultCurrency, $preferredRfqDraft, $preferredPoDraft);
+        $newId = $repo->create($name, $address, $additionalData, $leadTimeDays, $comment, $defaultCurrency, $preferredRfqDraft, $preferredPoDraft, $shopUrl);
         echo json_encode([
             'success'  => true,
             'message'  => 'Dostawca dodany pomyślnie.',
@@ -147,7 +155,7 @@ try {
     // + comment + default_currency + preferred draft FKs, then flip
     // isActive via toggleActive so we don't need to extend the
     // repo's update() signature for that flag.
-    $ok = $repo->update($id, $name, $address, $additionalData, $leadTimeDays, $comment, $defaultCurrency, $preferredRfqDraft, $preferredPoDraft);
+    $ok = $repo->update($id, $name, $address, $additionalData, $leadTimeDays, $comment, $defaultCurrency, $preferredRfqDraft, $preferredPoDraft, $shopUrl);
     $repo->toggleActive($id, $isActive);
 
     if (!$ok && $repo->getById($id) === null) {
