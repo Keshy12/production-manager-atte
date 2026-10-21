@@ -1,4 +1,4 @@
-﻿// Koszyk — cascading vendor/part pickers plus a search modal that land
+// Koszyk — cascading vendor/part pickers plus a search modal that land
 // items in a shared cart grouped by vendor (client-side state).
 //
 // Flow:
@@ -112,11 +112,6 @@
     let $cartCount           = $('#cartCount');
     let $cartEmpty           = $('#cartEmpty');   // rx-empty shown instead of #cartCard
     let $clearBtn            = $('#clearCartBtn');
-    let $selectionDocsCard   = $('#selectionDocsCard');
-    let $selectionDocsHeader = $('#selectionDocsHeader');
-    let $selectionDocsBody   = $('#selectionDocsBody');
-    let $selectionDocsContent = $('#selectionDocsContent');
-    let $selectionDocsCount  = $('#selectionDocsCount');
     let $vpSearchModal  = $('#vpSearchModal');
     let $vpSearchInput  = $('#vpSearchInput');
     let $vpSearchStatus = $('#vpSearchStatus');
@@ -124,8 +119,12 @@
     let vpSearchRows = [];  // last endpoint response, indexed for row buttons
     let vpSearchTimer = null;
     let lastResolvedVpId = null;   // variant id the amount inputs belong to
-    // Last fetched strip payload: { options: [vp,…], docs: {vpId: [doc,…]} }
-    let selectionDocsCache   = { options: [], docs: {} };
+    // Active docs of ALL variants of the picked part (one request), shared by
+    // the variants table and the step-3 summary. docs === null → loading.
+    //   token : bumped on every (re)fetch/invalidate so stale responses are dropped
+    let variantDocs = { partId: null, docs: null, token: 0 };
+    let docsOpen = {};   // vpId → detail sub-row expanded
+    let cartDocsOpen = {};   // vpId → docs details expanded in the Koszyk table
 
     // ---- cart persistence (localStorage, survives refresh) ----
     let CART_STORAGE_KEY = 'atte_purchase_cart_v1';
@@ -137,6 +136,12 @@
     //         become visible and editable. "Dodaj" creates the new
     //         VendorPart AND adds the line to the cart in one click.
     let pickerMode = 'pick';
+
+    // ---- cart step (pick mode only) ----
+    // 'select'  : steps 1 + 2 — pickers + variants table.
+    // 'details' : step 3 — qty/price for the chosen variant; steps 1 + 2
+    //             are hidden. Only setCartStep() shows/hides these blocks.
+    let cartStep = 'select';
 
     // Add-mode field values may have been entered by the user; track
     // dirtiness so the Anuluj button can warn before discarding.
@@ -155,7 +160,6 @@
             // AFTER save, in pick mode. Cena/Waluta live in their own
             // #cartPriceRow outside pickVariantRow, so we hide it here
             // explicitly — it's not meaningful during catalog creation.
-            $pickVariantRow.hide();
             $cartPriceRow.hide();
             $addVariantRow1.show();
             $addVariantRow2.show();
@@ -181,7 +185,6 @@
             });
             refreshSelectpicker($partSelect);
         } else {
-            $pickVariantRow.show();
             $addVariantRow1.hide();
             $addVariantRow2.hide();
             $addVariantCommentRow.hide();
@@ -203,9 +206,12 @@
             // selected variant. Called here so transitioning add → pick
             // restores the picker / price row to a consistent state
             // without waiting for the next variant change.
-            syncAmountsInputs();
+            // Rebuilds the variant carrier from the current part (add mode
+            // may have changed pickers), re-syncs the amounts section and
+            // re-renders the variants table.
+            refreshVendorPartRow();
         }
-        updateAddBtnState();
+        setCartStep();   // show/hide steps for the new mode (also updates the Dodaj state)
     }
 
     function resetAddModeFields() {
@@ -548,19 +554,6 @@
             : '<span class="cx-type-tag cx-type-tag--po" title="Zamówienie">PO</span>';
     }
 
-    // Kapsułka z aktywnym dokumentem: [RFQ] numer + plakietka stanu.
-    // Z `id` to link do edycji w nowej karcie, bez — zwykły znacznik.
-    function docChipHtml(d) {
-        let title = stateBadgeLabel(d.state) + ' \u00b7 ' + formatQty(d.quantity) + ' \u00b7 ' + formatPrice(d.unit_price);
-        let inner = docTypeTag(d.doc_type) +
-            '<span class="cx-doc-num">' + escapeHtml(d.number) + '</span>' +
-            '<span class="rx-badge rx-badge--' + stateTone(d.state) + '">' + escapeHtml(stateBadgeLabel(d.state)) + '</span>';
-        if (d.id !== undefined && d.id !== null && d.id !== '') {
-            return '<a class="cx-doc badge-link" href="' + docEditUrl(d.doc_type, d.id) + '" target="_blank" rel="noopener" title="' + escapeHtml(title) + '">' + inner + '</a>';
-        }
-        return '<span class="cx-doc" title="' + escapeHtml(title) + '">' + inner + '</span>';
-    }
-
 
     // Build the admin 'documents/edit' URL for an active doc returned
     // by the cart-active-docs endpoint. JS has no PHP-side BASEURL, so
@@ -734,9 +727,11 @@
                 && packOk;
             $addToCartBtn.prop('disabled', !ok);
         } else {
-            // Pick mode — enable when a concrete variant is selected.
+            // Pick mode — enable when a concrete variant is selected AND
+            // the user is in step 3 (qty/price visible).
             let $sel = $vendorPartNoSelect.find('option:selected');
-            let ok = $sel.length > 0
+            let ok = cartStep === 'details'
+                && $sel.length > 0
                 && !$sel.prop('hidden')
                 && (parseInt($sel.attr('data-vp-id'), 10) || 0) > 0;
             $addToCartBtn.prop('disabled', !ok);
@@ -871,6 +866,34 @@
             renderVariantComment();
         }
         syncQtyPlaceholder();
+        setCartStep();   // visibility of the steps follows the resolved state
+    }
+
+    // The ONE place that decides what is visible in pick mode.
+    //   setCartStep('details') → go to step 3 (needs a resolved variant)
+    //   setCartStep('select')  → back to steps 1 + 2
+    //   setCartStep()          → re-apply (state may have changed)
+    // Falls back to 'select' whenever there is no chosen variant or the
+    // picker is in add mode, so callers never have to undo it.
+    function setCartStep(step) {
+        if (step) cartStep = step;
+        let isPick = pickerMode === 'pick';
+        let resolved = (parseInt($vendorPartNoSelect.find('option:selected').attr('data-vp-id'), 10) || 0) > 0;
+        if (!isPick || !resolved) cartStep = 'select';
+        let details = cartStep === 'details';
+        let hasPart = (parseInt($partSelect.val(), 10) || 0) > 0;
+
+        $('#pickersStep').toggle(!details);
+        $('#variantsPanel').toggle(isPick && !details && hasPart);
+        $pickVariantRow.toggle(isPick && details);
+        $('#cxSteps').toggle(isPick);
+        let current = details ? 3 : (hasPart ? 2 : 1);
+        $('#cxSteps li').each(function () {
+            let n = parseInt($(this).attr('data-step'), 10);
+            $(this).toggleClass('is-current', n === current).toggleClass('is-done', n < current);
+        });
+        if (details) renderPickedSummary();
+        updateAddBtnState();
     }
 
     function getScopedVpOptions(vendorId, partId) {
@@ -945,7 +968,183 @@
         return changed;
     }
 
+    // ---- variants table (under the pickers, pick mode + part chosen) ----
+
+    // Only plain http(s) links get an href; anything else counts as empty.
+    function safeShopUrl(u) {
+        let s = $.trim(String(u == null ? '' : u));
+        return /^https?:\/\//i.test(s) ? s : '';
+    }
+
+    // Sklep icon: a real link when the vendor has a shop URL, otherwise a
+    // muted button that opens #shopUrlModal. Used by the table and the
+    // step-3 summary.
+    function shopIconHtml(vp) {
+        let url = safeShopUrl(vp.shop_url);
+        return url
+            ? '<a class="cx-mini-btn cx-var-shop" href="' + escapeHtml(url) + '" target="_blank" rel="noopener" title="' + escapeHtml(url) + '" aria-label="Otwórz sklep dostawcy"><i class="bi bi-box-arrow-up-right"></i></a>'
+            : '<button type="button" class="cx-mini-btn cx-var-shop cx-var-shop--missing" data-vendor-id="' + vp.vendor_id + '" title="Brak adresu sklepu — kliknij, aby dodać" aria-label="Dodaj adres sklepu dostawcy"><i class="bi bi-box-arrow-up-right"></i></button>';
+    }
+
+    // Step 3 header: what exactly is being added.
+    function renderPickedSummary() {
+        let vp = selectedVpEntry();
+        let $box = $('#pickedSummary');
+        if (!vp) { $box.empty(); return; }
+        let cur = vp.currency_code
+            ? ' <span class="rx-badge rx-badge--cyan">' + escapeHtml(vp.currency_code) + '</span>' : '';
+        let prodNo = (vp.producer_part_no && vp.producer_part_no !== vp.vendor_part_no)
+            ? ' <span class="cx-var-sub">/ ' + escapeHtml(vp.producer_part_no) + '</span>' : '';
+        let cell = function (label, valueHtml) {
+            return '<div class="cx-sum-item"><span class="cx-sum-label">' + label + '</span>' +
+                '<span class="cx-sum-value">' + valueHtml + '</span></div>';
+        };
+        $box.html(
+            cell('Część', escapeHtml(vp.part_name || '')) +
+            cell('Dostawca', escapeHtml(vp.vendor_name || '') + cur) +
+            cell('Nr u dostawcy', escapeHtml(vp.vendor_part_no || '') + prodNo) +
+            cell('Producent', vp.producer_name ? escapeHtml(vp.producer_name) : '—') +
+            cell('Sklep', shopIconHtml(vp))
+        );
+        // Active docs of the chosen variant: badges + expandable details.
+        let list = variantDocsList(vp.id);
+        $box.append(
+            '<div class="cx-sum-docs' + (list && list.length > 0 ? ' has-docs' : '') + '">' +
+            '<span class="cx-sum-label">Aktywne dokumenty</span>' +
+            '<div class="cx-sum-docs-body">' + variantDocsBadgesHtml(vp) + '</div>' +
+            variantDocsDetailHtml(vp) +
+            '</div>'
+        );
+    }
+
+    function renderVariantsTable() {
+        let partId = parseInt($partSelect.val(), 10) || null;
+        if (pickerMode === 'add' || !partId) {
+            // (panel visibility is decided by setCartStep())
+            $('#variantsBody').empty();
+            return;
+        }
+        let vendorId = parseInt($vendorSelect.val(), 10) || null;
+        // ALL variants of the part, every vendor. The picked vendor's rows
+        // come first, the rest by vendor name.
+        let vps = getScopedVpOptions(null, partId).slice().sort(function (a, b) {
+            let ma = vendorId && a.vendor_id === vendorId ? 0 : 1;
+            let mb = vendorId && b.vendor_id === vendorId ? 0 : 1;
+            return (ma - mb) ||
+                String(a.vendor_name || '').localeCompare(String(b.vendor_name || ''), 'pl') ||
+                String(a.vendor_part_no || '').localeCompare(String(b.vendor_part_no || ''), 'pl');
+        });
+        $('#variantsLegend').toggle(!!vendorId);
+        // Active docs for every variant of this part: one request, cached.
+        ensureVariantDocs(partId, vps.map(function (vp) { return vp.id; }));
+        let selectedId = parseInt($vendorPartNoSelect.val(), 10) || lastResolvedVpId || null;
+        let html = '';
+        vps.forEach(function (vp) {
+            let cur = vp.currency_code
+                ? ' <span class="rx-badge rx-badge--cyan">' + escapeHtml(vp.currency_code) + '</span>' : '';
+            let prodNo = (vp.producer_part_no && vp.producer_part_no !== vp.vendor_part_no)
+                ? '<div class="cx-var-sub">' + escapeHtml(vp.producer_part_no) + '</div>' : '';
+            let packs = (vp.pack_quantities || []).map(function (q) { return formatQty(q); }).join(' / ');
+            let jm = escapeHtml(vp.unit_name || '') + (packs ? ' · ' + escapeHtml(packs) : '');
+            let cmt = vp.private_comment ? String(vp.private_comment) : '';
+            let cmtCell = cmt !== ''
+                ? '<span class="cx-var-cmt" title="' + escapeHtml(cmt) + '">' + escapeHtml(cmt) + '</span>'
+                : '<span class="cx-var-cmt text-muted">—</span>';
+            let shop = shopIconHtml(vp);
+            let docList = variantDocsList(vp.id);
+            let hasDocs = !!(docList && docList.length > 0);
+            let isSel = selectedId !== null && vp.id === selectedId;
+            let isOther = !!vendorId && vp.vendor_id !== vendorId;
+            // Sole variant, nothing chosen yet: just pre-highlight it.
+            let isSuggested = !isSel && selectedId === null && vps.length === 1;
+            html += '<tr class="cx-var-row' + (isSel ? ' is-selected' : '') + (isSuggested ? ' is-suggested' : '') + (isOther ? ' is-other-vendor' : '') + '" data-vp-id="' + vp.id + '">' +
+                '<td>' + escapeHtml(vp.vendor_name) + cur + '</td>' +
+                '<td><div>' + escapeHtml(vp.vendor_part_no) + '</div>' + prodNo + '</td>' +
+                '<td>' + (vp.producer_name ? escapeHtml(vp.producer_name) : '—') + '</td>' +
+                '<td class="text-nowrap">' + jm + '</td>' +
+                '<td>' + cmtCell + '</td>' +
+                '<td class="cx-var-docs-cell' + (hasDocs ? ' has-docs' : '') + '">' + variantDocsBadgesHtml(vp) + '</td>' +
+                '<td class="cx-var-shop-cell">' + shop + '</td>' +
+                '<td><button type="button" class="btn btn-sm ' + (isSel ? 'btn-success' : 'btn-primary') + ' cx-var-pick" title="Przejdź do ilości i ceny">' +
+                (isSel ? '<i class="bi bi-check-lg"></i> Wybrano' : 'Wybierz') + '</button></td>' +
+                '</tr>';
+            // Expanded details: sub-row under the variant.
+            let detail = variantDocsDetailHtml(vp);
+            if (detail !== '') {
+                html += '<tr class="cx-var-docs-row"><td colspan="8">' + detail + '</td></tr>';
+            }
+        });
+        $('#variantsBody').html(html);
+        $('#variantsCount').text(vps.length);
+    }
+
+    // Missing shop URL → ask once in #shopUrlModal. The shop tab is opened
+    // synchronously from the click/Enter handler (popup blockers), then
+    // pointed at the saved URL; saving updates every row of that vendor.
+    let shopModalVendorId = null;
+
+    function openShopUrlModal(vendorId) {
+        let vp = null;
+        Object.keys(VENDOR_PARTS_INDEX).forEach(function (key) {
+            VENDOR_PARTS_INDEX[key].forEach(function (e) { if (!vp && e.vendor_id === vendorId) vp = e; });
+        });
+        shopModalVendorId = vendorId;
+        $('#shopUrlVendorName').text(vp ? vp.vendor_name : '');
+        $('#shopUrlInput').val('');
+        $('#shopUrlError').hide().text('');
+        $('#shopUrlModal').modal('show');
+    }
+
+    function submitShopUrl() {
+        let vendorId = shopModalVendorId;
+        let val = $.trim($('#shopUrlInput').val());
+        let $err = $('#shopUrlError');
+        if (!vendorId) return;
+        if (val === '') {
+            $err.text('Wpisz adres sklepu.').show();
+            $('#shopUrlInput').trigger('focus');
+            return;
+        }
+        $err.hide().text('');
+        let win = window.open('about:blank', '_blank');   // before the ajax: popup blocker
+        let $save = $('#shopUrlSave').prop('disabled', true);
+        let fail = function (msg) {
+            if (win) { try { win.close(); } catch (e) { /* noop */ } }
+            $err.text(msg).show();
+        };
+        $.ajax({
+            url: COMPONENTS_PATH + '/purchases/cart/vendor-shop-url.php',
+            method: 'POST',
+            data: { vendor_id: vendorId, shop_url: val },
+            dataType: 'json'
+        }).done(function (r) {
+            let saved = (r && r.success && r.shop_url) ? safeShopUrl(r.shop_url) : '';
+            if (!r || !r.success || !saved) {
+                fail((r && r.error) ? r.error : 'Nie udało się zapisać adresu sklepu.');
+                return;
+            }
+            Object.keys(VENDOR_PARTS_INDEX).forEach(function (key) {
+                VENDOR_PARTS_INDEX[key].forEach(function (e) {
+                    if (e.vendor_id === vendorId) e.shop_url = saved;
+                });
+            });
+            if (win) { win.opener = null; win.location.href = saved; }
+            $('#shopUrlModal').modal('hide');
+            renderVariantsTable();
+            if (cartStep === 'details') renderPickedSummary();
+        }).fail(function (xhr, status) {
+            fail((xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Błąd zapisu adresu sklepu (' + status + ').');
+        }).always(function () {
+            $save.prop('disabled', false);
+        });
+    }
+
     function refreshVendorPartRow(preferredVpId) {
+        refreshVendorPartRowCore(preferredVpId);
+        renderVariantsTable();
+    }
+
+    function refreshVendorPartRowCore(preferredVpId) {
         // Programmatic vendor changes (search modal, auto-complete, tabs)
         // don't fire `change` — keep the cart switcher in step here too.
         syncTabToPicker();
@@ -954,102 +1153,61 @@
         if (pickerMode === 'add') return;
         let vendorId = parseInt($vendorSelect.val(), 10) || null;
         let partId = parseInt($partSelect.val(), 10) || null;
-        // Nothing constrained → keep the picker empty.
-        if (!vendorId && !partId) {
-            $vendorPartNoSelect.empty();
-            refreshSelectpicker($vendorPartNoSelect);
-            lastResolvedVpId = null;
-            syncAmountsInputs();
-            $addToCartBtn.prop('disabled', true);
-            return;
-        }
-        let options = getScopedVpOptions(vendorId, partId);
+        // The hidden #vendorPartNoSelect carries the chosen variant. It
+        // lists ALL variants of the picked part (every vendor); no part →
+        // nothing to choose from.
+        let options = partId ? getScopedVpOptions(null, partId) : [];
         if (options.length === 0) {
             $vendorPartNoSelect.empty();
-            refreshSelectpicker($vendorPartNoSelect);
             lastResolvedVpId = null;
             syncAmountsInputs();
             $addToCartBtn.prop('disabled', true);
             return;
         }
-        // Group by producer (bootstrap-select renders optgroup headers),
-        // preserving first-seen order.
-        let groups = {};
-        let groupOrder = [];
-        options.forEach(function (vp) {
-            let g = vp.producer_name || 'Bez producenta';
-            if (!groups[g]) { groups[g] = []; groupOrder.push(g); }
-            groups[g].push(vp);
-        });
-        // Pre-select ONLY on an explicit hand-off (search modal) or when
-        // exactly one option exists — otherwise the user chooses.
-        let preferred = null;
+        // Which variant stays/gets selected:
+        //  - an explicit hand-off (row click, search modal) wins;
+        //  - otherwise keep the current one, but only while it still
+        //    belongs to the picked vendor (switching/clearing the vendor
+        //    drops a variant of another vendor).
+        let targetIdNum = null;
         if (preferredVpId) {
-            options.forEach(function (vp) { if (vp.id === preferredVpId) preferred = vp.id; });
+            options.forEach(function (vp) { if (vp.id === preferredVpId) targetIdNum = vp.id; });
         }
-        let targetId = null;
-        if (preferred !== null) {
-            targetId = String(preferred);
-        } else if (options.length === 1) {
-            targetId = String(options[0].id);
-        }
-        let targetIdNum = targetId !== null ? parseInt(targetId, 10) : null;
-        let html = '';
-        groupOrder.forEach(function (g) {
-            html += '<optgroup label="' + escapeHtml(g) + '">';
-            groups[g].forEach(function (vp) {
-                // Producer part no rides as subtext (searchable) unless
-                // identical to the vendor part no.
-                let subtext = (vp.producer_part_no && vp.producer_part_no !== vp.vendor_part_no)
-                    ? ' data-subtext="' + escapeHtml(vp.producer_part_no) + '"'
-                    : '';
-                // Mark the preferred option with the standard `selected`
-                // HTML attribute — when the browser parses this HTML it
-                // sets the underlying <select>'s value, which bootstrap-
-                // select picks up on refresh. This is the canonical way
-                // to set the initial value; calling selectpicker('val')
-                // after destroy+reinit races with the widget's internal
-                // init and silently loses the selection.
-                let selectedAttr = (targetIdNum !== null && vp.id === targetIdNum) ? ' selected' : '';
-                html += '<option value="' + vp.id + '"' +
-                    selectedAttr +
-                    subtext +
-                    ' data-vp-id="' + vp.id + '"' +
-                    ' data-vendor-id="' + vp.vendor_id + '"' +
-                    ' data-part-id="' + vp.parts_id + '"' +
-                    ' data-vendor-part-no="' + escapeHtml(vp.vendor_part_no) + '"' +
-                    ' data-producer-part-no="' + escapeHtml(vp.producer_part_no || '') + '"' +
-                    ' data-vendor-jm-id="' + vp.vendor_jm_id + '"' +
-                    ' data-unit-name="' + escapeHtml(vp.unit_name) + '"' +
-                    ' data-full-pack-quantity="' + vp.full_pack_quantity + '">' +
-                    escapeHtml(vp.vendor_part_no) +
-                    '</option>';
+        if (targetIdNum === null) {
+            let curId = parseInt($vendorPartNoSelect.val(), 10) || null;
+            options.forEach(function (vp) {
+                if (vp.id === curId && vendorId && vp.vendor_id === vendorId) targetIdNum = vp.id;
             });
-            html += '</optgroup>';
+        }
+        let html = '';
+        options.forEach(function (vp) {
+            html += '<option value="' + vp.id + '"' +
+                (targetIdNum !== null && vp.id === targetIdNum ? ' selected' : '') +
+                ' data-vp-id="' + vp.id + '"' +
+                ' data-vendor-id="' + vp.vendor_id + '"' +
+                ' data-part-id="' + vp.parts_id + '"' +
+                ' data-vendor-part-no="' + escapeHtml(vp.vendor_part_no) + '"' +
+                ' data-producer-part-no="' + escapeHtml(vp.producer_part_no || '') + '"' +
+                ' data-vendor-jm-id="' + vp.vendor_jm_id + '"' +
+                ' data-unit-name="' + escapeHtml(vp.unit_name) + '"' +
+                ' data-full-pack-quantity="' + vp.full_pack_quantity + '">' +
+                escapeHtml(vp.vendor_part_no) +
+                '</option>';
         });
         $vendorPartNoSelect.html(html);
-        // The `selected` HTML attribute on the target option is parsed
-        // by the browser during .html(), but bootstrap-select's widget
-        // caches its own value/display state and refresh() alone doesn't
-        // reliably re-read it (auto-select silently dropped after the
-        // AJAX-rebuild path). The canonical fix is refresh → val →
-        // refresh: re-sync the wrapper, explicitly set the value
-        // through the plugin API, then re-sync again so the button text
-        // and dropdown menu both reflect the new selection.
-        refreshSelectpicker($vendorPartNoSelect);
-        if (targetId !== null && typeof $vendorPartNoSelect.selectpicker === 'function') {
-            try { $vendorPartNoSelect.selectpicker('val', targetId); } catch (e) { /* noop */ }
-            refreshSelectpicker($vendorPartNoSelect);
+        // Plain (non-bootstrap-select) state carrier: with no `selected`
+        // option the browser would pick the first one — force "none".
+        if (targetIdNum === null) {
+            $vendorPartNoSelect.prop('selectedIndex', -1);
         }
         // Amount inputs belong to a concrete device — clear them when it
         // changed, keep them otherwise.
-        let resolvedId = targetId !== null ? parseInt(targetId, 10) : null;
-        if (resolvedId !== lastResolvedVpId) {
+        if (targetIdNum !== lastResolvedVpId) {
             $cartQty.val('');
             $cartPrice.val('');
             $cartLineComment.val('');
             resetPackagesInput();
-            lastResolvedVpId = resolvedId;
+            lastResolvedVpId = targetIdNum;
         } else {
             // Same device — just re-evaluate enable/disable by fpq.
             $cartPackages.prop('disabled', selectedFullPackQty() === null);
@@ -1058,10 +1216,11 @@
         updateAddBtnState();
         // A programmatic pre-selection doesn't fire change — complete the
         // combo (auto-pick vendor/part) manually.
-        if (targetId !== null) {
+        if (targetIdNum !== null) {
             completeComboFromSelection();
         }
     }
+
 
     // ---- modal search flow ----
 
@@ -1119,116 +1278,140 @@
         applyVendorFilter();   // scope parts to this vendor
         applyPartFilter();     // scope vendors to this part
         refreshVendorPartRow(r.id);
-        updateSelectionDocsBadge();
-        loadSelectionDocs();
+        setCartStep('details');   // a hand-off (table "Wybierz" or search modal) lands in step 3
         $vpSearchModal.modal('hide');
     }
 
-    // ---- active-docs / cart rendering ----
 
-    // Active docs for the *currently picked* vendor+part combo — shown
-    // in the strip card above the cart as soon as both pickers hold a
-    // value (no need to add anything to the cart first).
-    function loadSelectionDocs() {
-        let vendorId = parseInt($vendorSelect.val(), 10) || null;
-        let partId = parseInt($partSelect.val(), 10) || null;
-        if (!vendorId || !partId) {
-            $selectionDocsCard.hide();
-            $selectionDocsBody.collapse('hide');
-            $selectionDocsContent.empty();
-            selectionDocsCache = { options: [], docs: {} };
-            return;
+    // ---- active docs of the picked part's variants ----
+
+    // Detail table of one variant's active docs (type + number link, state,
+    // quantity (+ pack), unit price + currency, expected date, edit button).
+    function docsDetailTableHtml(list) {
+        const th = function (label, right) {
+            return '<th scope="col"' + (right ? ' class="text-right"' : '') + '>' + label + '</th>';
+        };
+        let html = '<div class="table-responsive cx-docs-table">' +
+            '<table class="table rx-table mb-0 selection-docs-table">' +
+            '<thead><tr>' +
+                th('Dokument') + th('Status') + th('Ilość', true) + th('Cena jedn.', true) + th('Termin') + th('Akcja') +
+            '</tr></thead><tbody>';
+        list.forEach(function (d) {
+            let editUrl = (d.id !== undefined && d.id !== null && d.id !== '') ? docEditUrl(d.doc_type, d.id) : null;
+            let docCell = docTypeTag(d.doc_type) + ' ' + (editUrl
+                ? '<a href="' + editUrl + '" target="_blank" rel="noopener" class="cx-doc-num">' + escapeHtml(d.number) + '</a>'
+                : '<span class="cx-doc-num">' + escapeHtml(d.number) + '</span>');
+            let stateBadge = '<span class="rx-badge rx-badge--' + stateTone(d.state) + '">' + escapeHtml(stateBadgeLabel(d.state)) + '</span>';
+            let pack = (d.picked_pack_size !== null && d.picked_pack_size !== undefined && parseFloat(d.picked_pack_size) > 0) ? parseFloat(d.picked_pack_size) : null;
+            let qtyHtml = '<div class="cx-qty">' + escapeHtml(formatQty(d.quantity)) + '</div>';
+            if (pack !== null) { qtyHtml += '<div><span class="cx-packchip" title="Wybrana wielkość opakowania">opak. ' + escapeHtml(formatQty(pack)) + '</span></div>'; }
+            let priceHtml = (d.unit_price !== null && d.unit_price !== undefined) ? escapeHtml(formatPrice(d.unit_price)) : '<span class="text-faint">\u2014</span>';
+            // Currency comes from the row payload (cart-active-docs.php
+            // SELECTs pri.currency / poi.currency); missing → muted dash.
+            priceHtml += '<div class="rx-sub">' + escapeHtml(d.currency || '\u2014') + '</div>';
+            let dateCell = (d.expected_date && d.expected_date !== '') ? escapeHtml(d.expected_date) : '<span class="text-faint">\u2014</span>';
+            let actionCell = editUrl
+                ? '<a href="' + editUrl + '" target="_blank" rel="noopener" class="btn btn-sm rx-btn-quiet" title="Otwórz edycję w nowej karcie"><i class="bi bi-box-arrow-up-right"></i> Edytuj</a>'
+                : '<span class="text-faint">\u2014</span>';
+            html += '<tr>' +
+                '<td class="align-middle">' + docCell + '</td>' +
+                '<td class="align-middle">' + stateBadge + '</td>' +
+                '<td class="align-middle text-right">' + qtyHtml + '</td>' +
+                '<td class="align-middle text-right">' + priceHtml + '</td>' +
+                '<td class="align-middle">' + dateCell + '</td>' +
+                '<td class="align-middle">' + actionCell + '</td>' +
+            '</tr>';
+        });
+        return html + '</tbody></table></div>';
+    }
+
+    // Docs of one variant: null while loading, otherwise an array.
+    function variantDocsList(vpId) {
+        if (variantDocs.docs === null) return null;
+        return variantDocs.docs[vpId] || [];
+    }
+
+    // Minimal doc badge for the variants table: "RFQ" / "PO" + a dot in the
+    // state colour (same tones as /purchase/documents). Number, state and
+    // quantity live in the tooltip; the full data is in "szczegóły".
+    // "PO/00045/00051" → "PO/45/51": strip leading zeros of every numeric
+    // segment. Prefix the type when the number format doesn't carry it.
+    function shortDocNumber(d) {
+        let typeLabel = d.doc_type === 'rfq' ? 'RFQ' : 'PO';
+        let num = String(d.number || '').trim().replace(/\b0+(?=\d)/g, '');
+        if (num === '') return typeLabel;
+        return new RegExp('^' + typeLabel + '\\b', 'i').test(num) ? num : typeLabel + ' ' + num;
+    }
+
+    function docMiniChipHtml(d) {
+        let typeLabel = d.doc_type === 'rfq' ? 'RFQ' : 'PO';
+        let label = escapeHtml(shortDocNumber(d));
+        let title = typeLabel + ' ' + (d.number || '') + ' \u00b7 ' + stateBadgeLabel(d.state) +
+            ' \u00b7 ' + formatQty(d.quantity);
+        let cls = 'rx-badge rx-badge--' + stateTone(d.state) + ' cx-doc-mini';
+        if (d.id !== undefined && d.id !== null && d.id !== '') {
+            return '<a class="' + cls + '" href="' + docEditUrl(d.doc_type, d.id) + '" target="_blank" rel="noopener" title="' + escapeHtml(title) + '">' + label + '</a>';
         }
-        let options = VENDOR_PARTS_INDEX[vendorId + ':' + partId] || [];
-        let vpIds = options.map(function (vp) { return vp.id; });
-        if (vpIds.length === 0) {
-            $selectionDocsCard.hide();
-            return;
+        return '<span class="' + cls + '" title="' + escapeHtml(title) + '">' + label + '</span>';
+    }
+
+    // Compact badges (first 4 + "+N") and the "szczegóły" toggle.
+    function variantDocsBadgesHtml(vp) {
+        let list = variantDocsList(vp.id);
+        if (list === null) return '<span class="cx-docs-loading">Ładowanie…</span>';
+        if (list.length === 0) return '<span class="text-muted">\u2014</span>';
+        let open = !!docsOpen[vp.id];
+        let html = '<div class="cx-doc-list">';
+        list.slice(0, 4).forEach(function (d) { html += docMiniChipHtml(d); });
+        html += '</div><div class="cx-docs-actions">';
+        if (list.length > 4) {
+            html += '<button type="button" class="cx-docs-more cx-docs-toggle-btn" data-vp-id="' + vp.id + '" title="Pokaż wszystkie dokumenty">+' + (list.length - 4) + '</button>';
         }
+        html += '<button type="button" class="rx-link-btn cx-docs-toggle-btn" data-vp-id="' + vp.id + '" aria-expanded="' + (open ? 'true' : 'false') + '">' +
+            (open ? 'ukryj szczegóły' : 'szczegóły') + '</button></div>';
+        return html;
+    }
+
+    // Detail table for an expanded variant ('' when closed / no docs).
+    function variantDocsDetailHtml(vp) {
+        let list = variantDocsList(vp.id);
+        return (docsOpen[vp.id] && list && list.length > 0) ? docsDetailTableHtml(list) : '';
+    }
+
+    // One request for all variants of the part; cached per part. A response
+    // is dropped when the part changed (or the cache was invalidated) meanwhile.
+    function ensureVariantDocs(partId, vpIds) {
+        if (variantDocs.partId === partId) return;   // loaded or in flight
+        let token = ++variantDocs.token;
+        variantDocs.partId = partId;
+        variantDocs.docs = null;
+        let finish = function (docs) {
+            if (token !== variantDocs.token) return;   // stale response
+            variantDocs.docs = docs || {};
+            renderVariantsTable();
+            if (cartStep === 'details') renderPickedSummary();
+        };
         $.ajax({
             url: COMPONENTS_PATH + '/purchases/cart//cart-active-docs.php',
             method: 'POST',
             contentType: 'application/json',
             data: JSON.stringify(vpIds),
             dataType: 'json'
-        }).done(function (docs) {
-            renderSelectionDocs(options, docs || {});
-        }).fail(function () {
-            renderSelectionDocs(options, {});
-        });
+        }).done(function (docs) { finish(docs); }).fail(function () { finish({}); });
     }
 
-    function renderSelectionDocs(options, docs) {
-        selectionDocsCache = { options: options, docs: docs };
-        let html = '';
-        let total = 0;
-        const th = function (label, right) {
-            return '<th scope="col"' + (right ? ' class="text-right"' : '') + '>' + label + '</th>';
-        };
-        options.forEach(function (vp) {
-            let list = docs[vp.id] || [];
-            if (list.length === 0) return;
-            total += list.length;
-            html += '<div class="selection-docs-vp">' +
-                '<div class="cx-docs-vp-title">' + escapeHtml(vp.vendor_part_no) +
-                ' <span class="rx-sub">(' + list.length + ')</span>' +
-                '</div>' +
-                '<div class="table-responsive cx-docs-table">' +
-                '<table class="table rx-table mb-0 selection-docs-table">' +
-                '<thead><tr>' +
-                    th('Dokument') + th('Status') + th('Ilość', true) + th('Cena jedn.', true) + th('Termin') + th('Akcja') +
-                '</tr></thead><tbody>';
-            list.forEach(function (d) {
-                let editUrl = (d.id !== undefined && d.id !== null && d.id !== '') ? docEditUrl(d.doc_type, d.id) : null;
-                let docCell = docTypeTag(d.doc_type) + ' ' + (editUrl
-                    ? '<a href="' + editUrl + '" target="_blank" rel="noopener" class="cx-doc-num">' + escapeHtml(d.number) + '</a>'
-                    : '<span class="cx-doc-num">' + escapeHtml(d.number) + '</span>');
-                let stateBadge = '<span class="rx-badge rx-badge--' + stateTone(d.state) + '">' + escapeHtml(stateBadgeLabel(d.state)) + '</span>';
-                let pack = (d.picked_pack_size !== null && d.picked_pack_size !== undefined && parseFloat(d.picked_pack_size) > 0) ? parseFloat(d.picked_pack_size) : null;
-                let qtyHtml = '<div class="cx-qty">' + escapeHtml(formatQty(d.quantity)) + '</div>';
-                if (pack !== null) { qtyHtml += '<div><span class="cx-packchip" title="Wybrana wielkość opakowania">opak. ' + escapeHtml(formatQty(pack)) + '</span></div>'; }
-                let priceHtml = (d.unit_price !== null && d.unit_price !== undefined) ? escapeHtml(formatPrice(d.unit_price)) : '<span class="text-faint">\u2014</span>';
-                // Currency comes from the row payload (cart-active-docs.php
-                // SELECTs pri.currency / poi.currency). The DB default is
-                // 'PLN' so older rows still report a code; missing/null
-                // (e.g. a draft doc with no item-level currency yet) shows
-                // a muted dash rather than silently defaulting.
-                priceHtml += '<div class="rx-sub">' + escapeHtml(d.currency || '\u2014') + '</div>';
-                let dateCell = (d.expected_date && d.expected_date !== '') ? escapeHtml(d.expected_date) : '<span class="text-faint">\u2014</span>';
-                let actionCell = editUrl
-                    ? '<a href="' + editUrl + '" target="_blank" rel="noopener" class="btn btn-sm rx-btn-quiet" title="Otwórz edycję w nowej karcie"><i class="bi bi-box-arrow-up-right"></i> Edytuj</a>'
-                    : '<span class="text-faint">\u2014</span>';
-                html += '<tr>' +
-                    '<td class="align-middle">' + docCell + '</td>' +
-                    '<td class="align-middle">' + stateBadge + '</td>' +
-                    '<td class="align-middle text-right">' + qtyHtml + '</td>' +
-                    '<td class="align-middle text-right">' + priceHtml + '</td>' +
-                    '<td class="align-middle">' + dateCell + '</td>' +
-                    '<td class="align-middle">' + actionCell + '</td>' +
-                '</tr>';
-            });
-            html += '</tbody></table></div></div>';
-        });
-        if (total === 0) { html = '<p class="cx-docs-empty">Brak aktywnych dokumentów dla tej pozycji.</p>'; }
-        $selectionDocsContent.html(html);
-        $selectionDocsCard.show();
-        updateSelectionDocsBadge();
-    }
-
-    // Header badge reflects the *specific* VendorPart currently picked
-    // in "Numer u dostawcy" — not the combo-wide total.
-    function updateSelectionDocsBadge() {
-        let $opt = $vendorPartNoSelect.find('option:selected');
-        let vpId = parseInt($opt.attr('data-vp-id'), 10) || null;
-        let list = (vpId !== null && selectionDocsCache.docs[vpId]) ? selectionDocsCache.docs[vpId] : [];
-        if (list.length > 0) {
-            $selectionDocsCount.text(list.length).show();
-        } else {
-            $selectionDocsCount.hide();
-        }
+    // Docs may have changed (item added, document created) → refetch on the
+    // next render.
+    function invalidateVariantDocs() {
+        variantDocs.token++;
+        variantDocs.partId = null;
+        variantDocs.docs = null;
+        renderVariantsTable();
+        if (cartStep === 'details') renderPickedSummary();
     }
 
     function loadActiveDocs() {
+        invalidateVariantDocs();   // docs may have changed → variants table refetches
         if (cart.items.length === 0) {
             cart.activeDocs = {};
             cart.activeDocsLoaded = true;
@@ -1290,17 +1473,16 @@
     // Picker → tab state (no rendering). Returns true when the state changed.
     //   - vendor with items       → its tab, stale temp tab dropped
     //   - vendor without items    → the (single) temp empty tab
-    //   - picker cleared          → keep the tab, but drop a temp empty one
+    //   - picker cleared          → no active tab (cart body shows a
+    //                               "pick a vendor" hint), temp tab dropped
     function applyPickerToTabs(force) {
         let pv = pickerVendorId();
         if (!force && pv === lastPickerVendor) return false;
         lastPickerVendor = pv;
         let before = activeCartVendor + '|' + (tempVendor ? tempVendor.id : '');
         if (pv === null) {
-            if (tempVendor) {
-                if (activeCartVendor === tempVendor.id) { activeCartVendor = null; }
-                tempVendor = null;
-            }
+            tempVendor = null;
+            activeCartVendor = null;
         } else if (cartVendorHasItems(pv)) {
             tempVendor = null;
             activeCartVendor = pv;
@@ -1339,17 +1521,23 @@
             tabs.push({ key: tempVendor.id, label: tempVendor.name, count: 0, temp: true });
         }
         tabs.sort(compareVendorTabs);   // the temp tab is just another tab
-        $cartTabs.html(tabs.map(function (t) {
+        $cartTabs.html(tabs.map(function (t, i) {
             let on = t.key === activeCartVendor;
+            // No active tab → keep the first one focusable (roving tabindex).
+            let focusable = on || (activeCartVendor === null && i === 0);
             return '<button type="button" role="tab" class="nav-link cx-vtab' + (on ? ' active' : '') + (t.temp ? ' cx-vtab--temp' : '') + '"' +
                 ' id="cartTab-' + escapeHtml(t.key) + '" data-vendor="' + escapeHtml(t.key) + '"' +
-                ' aria-selected="' + (on ? 'true' : 'false') + '" aria-controls="cartBody" tabindex="' + (on ? '0' : '-1') + '"' +
+                ' aria-selected="' + (on ? 'true' : 'false') + '" aria-controls="cartBody" tabindex="' + (focusable ? '0' : '-1') + '"' +
                 ' title="' + (t.temp ? 'Dostawca wybrany w selektorze — jeszcze bez pozycji w koszyku' : 'Pokaż pozycje tego dostawcy i wybierz go w selektorze') + '">' +
                 '<span class="cx-vtab-name">' + escapeHtml(t.label) + '</span> <span class="rx-count">' + t.count + '</span>' +
                 '</button>';
         }).join(''));
-        $cartBody.attr('aria-labelledby', 'cartTab-' + activeCartVendor);
-        if (hadFocus) { $cartTabs.find('.cx-vtab.active').trigger('focus'); }
+        if (activeCartVendor === null) {
+            $cartBody.removeAttr('aria-labelledby');
+        } else {
+            $cartBody.attr('aria-labelledby', 'cartTab-' + activeCartVendor);
+        }
+        if (hadFocus) { $cartTabs.find('.cx-vtab[tabindex="0"]').first().trigger('focus'); }
     }
 
     function renderCart() {
@@ -1382,14 +1570,27 @@
                 activeCartVendor = null;
             }
         }
-        // Nothing active → first real tab, else the temp tab, else no tabs.
+        // Nothing active (no vendor in the picker) → never auto-open a tab.
+        // Empty cart → #cartEmpty; otherwise show the tabs with none active
+        // and a "pick a vendor" hint instead of a vendor group.
         if (activeCartVendor === null) {
-            activeCartVendor = order.length > 0 ? order[0] : (tempVendor ? tempVendor.id : null);
-        }
-
-        if (activeCartVendor === null) {
-            $cartCard.hide();
-            $cartEmpty.show();
+            if (order.length === 0) {
+                $cartCard.hide();
+                $cartEmpty.show();
+                flushPendingTabSync();
+                return;
+            }
+            $cartEmpty.hide();
+            $cartCard.show();
+            renderCartTabs(byVendor, order);
+            $cartBody.html(
+                '<div class="rx-panel cx-empty">' +
+                    '<div class="rx-empty">' +
+                        '<div class="rx-empty-icon"><i class="bi bi-person-check"></i></div>' +
+                        '<div class="rx-empty-title">Wybierz dostawcę</div>' +
+                        '<div class="rx-empty-text">Kliknij zakładkę powyżej albo wybierz dostawcę w selektorze, aby zobaczyć jego pozycje w koszyku.</div>' +
+                    '</div>' +
+                '</div>');
             flushPendingTabSync();
             return;
         }
@@ -1457,7 +1658,13 @@
                 } else if (docs.length === 0) {
                     docBadges = '<span class="text-faint">\u2014</span>';
                 } else {
-                    docBadges = '<div class="cart-active-doc-badges cx-doc-list">' + docs.map(docChipHtml).join('') + '</div>';
+                    let open = !!cartDocsOpen[item.vendor_part_id];
+                    docBadges = '<div class="cart-active-doc-badges cx-doc-list">' + docs.map(docMiniChipHtml).join('') + '</div>' +
+                        '<div class="cx-docs-actions">' +
+                            '<button type="button" class="rx-link-btn cart-docs-toggle" data-vp-id="' + item.vendor_part_id + '" aria-expanded="' + (open ? 'true' : 'false') + '">' +
+                                (open ? 'ukryj szczegóły' : 'szczegóły') +
+                            '</button>' +
+                        '</div>';
                 }
 
                 // Część cell carries prefixed sub-lines: vendor/producer
@@ -1523,6 +1730,14 @@
                         '<button type="button" class="btn btn-sm rx-btn-quiet cx-btn-danger cx-icon-btn remove-item-btn" data-idx="' + x.idx + '" title="Usuń pozycję" aria-label="Usuń pozycję"><i class="bi bi-trash"></i></button>' +
                     '</div>' +
                 '</div>';
+                // Collapsible details of the row's active docs (same table as
+                // in the variants table). Toggled in place — see the
+                // .cart-docs-toggle handler — so an open row edit survives.
+                if (cart.activeDocsLoaded && docs.length > 0) {
+                    html += '<div class="cx-row-docs" data-vp-id="' + item.vendor_part_id + '"' +
+                        (cartDocsOpen[item.vendor_part_id] ? '' : ' style="display:none"') + '>' +
+                        docsDetailTableHtml(docs) + '</div>';
+                }
             });
 
             html += '</div></div>';
@@ -1630,8 +1845,8 @@ $cartQty.val('');
         $partSelect.val('');
         refreshSelectpicker($partSelect);
         applyPartFilter();          // part cleared → restore full vendor list
+        setCartStep('select');      // back to step 1 (part is empty)
         refreshVendorPartRow();     // combo incomplete → empties picker, add disabled
-        loadSelectionDocs();
         renderCart();
         loadActiveDocs();
         saveCart();
@@ -1778,6 +1993,7 @@ $cartQty.val('');
             // canonical refresh -> val -> refresh sequence).
             loadVendorAndPartOptions(function () {
                 refreshVendorPartRow(newId);
+                setCartStep('details');   // new article selected → straight to step 3
                 // Focus qty so the user can type immediately without
                 // reaching for the mouse.
                 $cartQty.trigger('focus');
@@ -1808,14 +2024,12 @@ $cartQty.val('');
     $vendorSelect.on('change', function () {
         applyVendorFilter();
         refreshVendorPartRow();   // also syncs the vendor tab (see its first line)
-        loadSelectionDocs();
         preselectVendorCurrency();
     });
 
     $partSelect.on('change', function () {
         applyPartFilter();
         refreshVendorPartRow();
-        loadSelectionDocs();
         // In add mode, default the JM picker to the Part's own unit
         // (list__parts.JM, surfaced as data-jm on each option). Saves
         // the user from picking it manually when the vendor uses the
@@ -1841,13 +2055,12 @@ $cartQty.val('');
         // to a single option. The search-modal flow worked because
         // pickVp() always goes through refreshVendorPartRow(id).
         syncAmountsInputs();
+        renderVariantsTable();   // move the "selected" mark
         // Same story for the Dodaj button: updateAddBtnState() only ran
         // from refreshVendorPartRow(), so a manual variant pick left the
         // button in the disabled state the previous rebuild had set.
         updateAddBtnState();
         completeComboFromSelection();
-        updateSelectionDocsBadge();
-        loadSelectionDocs();
     });
 
     // Magnifier next to the vp picker opens the global search modal.
@@ -1865,6 +2078,64 @@ $cartQty.val('');
         vpSearchTimer = setTimeout(runVpSearch, 300);
     });
 
+    $('#shopUrlSave').on('click', submitShopUrl);
+    $('#shopUrlInput').on('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); submitShopUrl(); }
+    });
+    $('#shopUrlModal').on('shown.bs.modal', function () {
+        $('#shopUrlInput').trigger('focus');
+    });
+
+    // Sklep icon without a URL (table or step-3 summary) → ask once.
+    $('#variantsBody, #pickedSummary').on('click', '.cx-var-shop--missing', function (e) {
+        e.preventDefault();
+        openShopUrlModal(parseInt($(this).attr('data-vendor-id'), 10));
+    });
+
+    // "szczegóły" in the Koszyk table's Aktywne dok. cell: show/hide the
+    // details block under the row in place (no renderCart → an open row
+    // edit isn't thrown away). The same vpId may sit in several rows.
+    $cartBody.on('click', '.cart-docs-toggle', function (e) {
+        e.preventDefault();
+        let vpId = parseInt($(this).attr('data-vp-id'), 10);
+        if (!vpId) return;
+        let open = !cartDocsOpen[vpId];
+        cartDocsOpen[vpId] = open;
+        $cartBody.find('.cx-row-docs[data-vp-id="' + vpId + '"]').toggle(open);
+        $cartBody.find('.cart-docs-toggle[data-vp-id="' + vpId + '"]')
+            .attr('aria-expanded', open ? 'true' : 'false')
+            .text(open ? 'ukryj szczegóły' : 'szczegóły');
+    });
+
+    // "szczegóły" / "+N" in the Aktywne dokumenty cell (table and step-3
+    // summary): expand/collapse the details; nothing else happens.
+    $('#variantsBody, #pickedSummary').on('click', '.cx-docs-toggle-btn', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        let vpId = parseInt($(this).attr('data-vp-id'), 10);
+        if (!vpId) return;
+        docsOpen[vpId] = !docsOpen[vpId];
+        renderVariantsTable();
+        if (cartStep === 'details') renderPickedSummary();
+    });
+
+    // Only the row's "Wybierz" button selects (a plain row click does
+    // nothing). It reuses the search-modal hand-off (pickVp →
+    // refreshVendorPartRow(id) + step 3), then does what a user vendor
+    // change does (default currency).
+    $('#variantsBody').on('click', '.cx-var-pick', function () {
+        let vp = getVpById(parseInt($(this).closest('.cx-var-row').attr('data-vp-id'), 10));
+        if (!vp) return;
+        pickVp({ id: vp.id, vendor_id: vp.vendor_id, parts_id: vp.parts_id });
+        preselectVendorCurrency();
+    });
+
+    // "← Zmień wariant": back to steps 1 + 2; pickers, table and the
+    // highlighted row stay as they were.
+    $('#changeVariantBtn').on('click', function () {
+        setCartStep('select');
+    });
+
     $vpSearchResults.on('click', '.vp-pick-btn', function () {
         let idx = parseInt($(this).data('idx'), 10);
         let row = vpSearchRows[idx];
@@ -1872,12 +2143,21 @@ $cartQty.val('');
         pickVp(row);
     });
 
-    // Chevron flip driven by real collapse events (CSS aria-expanded
-    // selector kept as backup).
-    $selectionDocsBody.on('show.bs.collapse', function () {
-        $selectionDocsHeader.addClass('is-open');
-    }).on('hide.bs.collapse', function () {
-        $selectionDocsHeader.removeClass('is-open');
+
+    // × next to Dostawca / Część: the way out of the mutual filtering.
+    // Both go through the normal `change` handlers, so currency default,
+    // cart-tab sync, docs strip and the variants table follow along.
+    // Clearing the vendor also drops a chosen variant (it belonged to that
+    // vendor); clearing the part hides the table and the qty/price section.
+    $('#vendorClearBtn').on('click', function () {
+        $vendorSelect.val('');
+        refreshSelectpicker($vendorSelect);
+        $vendorSelect.trigger('change');
+    });
+    $('#partClearBtn').on('click', function () {
+        $partSelect.val('');
+        refreshSelectpicker($partSelect);
+        $partSelect.trigger('change');
     });
 
     // "Wyczysc" (next to Dodaj) clears the whole selection; the variant
@@ -1889,8 +2169,8 @@ $cartQty.val('');
         refreshSelectpicker($partSelect);
         applyVendorFilter();   // vendor cleared → restore full parts list
         applyPartFilter();     // part cleared → restore full vendors list
+        setCartStep('select'); // everything cleared → step 1
         refreshVendorPartRow();
-        loadSelectionDocs();
     });
 
     // Toggle "Artykuł" / "Anuluj" — flips the picker card between
@@ -2568,7 +2848,6 @@ $cartQty.val('');
         $partSelect.val('');
         refreshSelectpicker($partSelect);
         $vendorPartNoSelect.val('');
-        refreshSelectpicker($vendorPartNoSelect);
         state.pickedPackSize = null;
         $vendorSelect.find('option').prop('hidden', false);
         refreshSelectpicker($vendorSelect);
@@ -2576,7 +2855,6 @@ $cartQty.val('');
         refreshSelectpicker($vendorSelect);
         applyVendorFilter();       // scope parts to this vendor
         refreshVendorPartRow();
-        loadSelectionDocs();
         preselectVendorCurrency();
         // Small visual confirmation on the picker button.
         try {

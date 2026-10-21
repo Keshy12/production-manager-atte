@@ -12,6 +12,11 @@
  * szkielet. Wszystkie identyfikatory (#vendorSelect, #cartBody, …) i
  * atrybuty data-* są używane przez JS; zmieniając układ, nie ruszaj ich.
  *
+ * Panel „Dodaj pozycję" (tryb „wybór"): Dostawca + Część (z przyciskami
+ * „wyczyść") → tabela wszystkich wariantów części (#variantsPanel) →
+ * ilość/cena wybranego wariantu (#pickVariantRow). Wybrany wariant żyje
+ * w ukrytym #vendorPartNoSelect — to nośnik stanu dla reszty JS.
+ *
  * Elementy pokazywane/chowane przez JS (.show()/.hide()/.toggle()) mają
  * początkowe inline `style="display:none"` — to celowe: jQuery .show()
  * zdejmuje ten inline i wraca do `display` z CSS (grid / flex / contents).
@@ -78,7 +83,7 @@ $partsWithVendors = $MsaDB->query(
 // VendorParts lookup index — keyed by "vendorId:partId" → list of {id, vendor_part_no,
 // producer_part_no, pack_quantities, full_pack_quantity (MIN for back-compat),
 // vendor_jm_id, unit_name, vendor_name, …}
-// (consumed by cart-view.js loadSelectionDocs()).
+// (consumed by cart-view.js: variants table, step-3 summary, cart rows).
 //
 // Pack sizes live in `list__vendor_part_pack` (1-to-many). We fetch them in
 // a second query and merge by vendor_part_id so the main SELECT doesn't
@@ -88,9 +93,11 @@ $vpRows = $MsaDB->query(
     "SELECT vp.id, vp.vendor_id, vp.parts_id, vp.vendor_part_no,
             vp.producer_part_no, vp.vendor_jm_id,
             v.name AS vendor_name, u.name AS unit_name, p.name AS part_name,
-            pr.name AS producer_name, vp.comment AS private_comment
+            pr.name AS producer_name, vp.comment AS private_comment,
+            v.shop_url AS shop_url, cur.code AS currency_code
        FROM `list__vendor_part` vp
        JOIN `list__vendor` v ON vp.vendor_id = v.id
+       LEFT JOIN `list__currency` cur ON cur.id = v.default_currency
        JOIN `part__unit`    u ON vp.vendor_jm_id = u.id
        JOIN `list__parts`   p ON vp.parts_id = p.id
        LEFT JOIN `list__producer` pr ON pr.id = vp.producer_id
@@ -122,6 +129,8 @@ foreach ($vpRows as $r) {
         'producer_part_no'   => $r['producer_part_no'],
         'producer_name'      => $r['producer_name'],
         'private_comment'    => $r['private_comment'],
+        'shop_url'           => $r['shop_url'],
+        'currency_code'      => $r['currency_code'],
         'vendor_jm_id'       => (int)$r['vendor_jm_id'],
         'unit_name'          => $r['unit_name'],
         'full_pack_quantity' => $pack['minPack'], // back-compat: smallest pack
@@ -189,11 +198,29 @@ $baseUrl = 'http://' . BASEURL;
 
     <div id="alertContainer" class="rx-alerts"></div>
 
-    <!-- ===== Dodaj pozycję (selektory kaskadowe) =====
+    <!-- ===== Dodaj pozycję =====
          .cx-picker dostaje klasę .picker-add-mode z setPickerMode().
-         Wiersze #pickVariantRow, #cartPriceRow, #addVariantRow1/2 i
-         #addVariantCommentRow to display: contents — ich dzieci leżą
-         w jednej wspólnej siatce .cx-fields. -->
+         Tryb „wybór" to proces w trzech krokach (#cxSteps pokazuje aktualny);
+         jedno miejsce decyduje, co widać: setCartStep() w cart-view.js
+         (zmienna cartStep: 'select' | 'details').
+           Widok wyboru (kroki 1 + 2):
+             1. #pickersStep — Dostawca i Część obok siebie, każdy z „×";
+                przy Części także szukajka katalogu (#vpSearchBtn).
+             2. #variantsPanel — tabela wszystkich wariantów części (wszyscy
+                dostawcy; inni niż wybrany są zabarwieni). Wariant wybiera
+                tylko przycisk „Wybierz" w wierszu. Kolumna „Aktywne
+                dokumenty" (jedno zapytanie o wszystkie warianty części,
+                z podwierszem szczegółów) zastąpiła dawną kartę
+                „Aktywne dokumenty dla wybranej pozycji".
+           Widok szczegółów (krok 3), kroki 1 + 2 są wtedy schowane:
+             3. #pickVariantRow — podsumowanie wariantu (#pickedSummary),
+                „← Zmień wariant", aktywne dokumenty wariantu, ilość / opak. /
+                cena / waluta / komentarze.
+         #vendorPartNoSelect to ukryty nośnik stanu (wybrany wariant);
+         JS czyta z niego data-vp-id itd.
+         Tryb „Artykuł" (add) to osobny tryb: pokazuje selektory i własne pola.
+         Wiersze #cartPriceRow, #addVariantRow1/2 i #addVariantCommentRow
+         to display: contents (dzieci leżą we wspólnej siatce). -->
     <section class="rx-panel cx-picker" aria-labelledby="cxPickerTitle">
         <div class="rx-panel-head">
             <h2 class="rx-panel-title" id="cxPickerTitle">
@@ -201,8 +228,8 @@ $baseUrl = 'http://' . BASEURL;
                 <span class="cx-title-add"><i class="bi bi-plus-square" aria-hidden="true"></i> Nowy artykuł w katalogu dostawcy</span>
             </h2>
             <p class="cx-panel-note cx-note-pick">
-                Dostawca i część filtrują się nawzajem. Gdy dostawca ma kilka numerów
-                dla tej samej części, wybierz właściwy w „Numer u dostawcy".
+                Wybierz część, porównaj jej warianty i kliknij „Wybierz".
+                Dopiero potem wpiszesz ilość i cenę.
             </p>
             <p class="cx-panel-note cx-note-add">
                 Najpierw zapisz artykuł w katalogu — ilość, cenę i walutę wpiszesz po zapisie.
@@ -210,9 +237,17 @@ $baseUrl = 'http://' . BASEURL;
         </div>
 
         <div class="cx-picker-body">
+            <!-- Wskaźnik kroków (tryb „wybór"); aktualny krok ustawia setCartStep(). -->
+            <ol class="cx-steps" id="cxSteps" aria-label="Kroki">
+                <li data-step="1"><span class="cx-steps-n">1</span> Wybierz część</li>
+                <li data-step="2"><span class="cx-steps-n">2</span> Porównaj warianty</li>
+                <li data-step="3"><span class="cx-steps-n">3</span> Ilość i cena</li>
+            </ol>
             <div class="cx-fields">
 
-                <div class="cx-field cx-sm-6 cx-xl-4" id="vendorCell">
+                <!-- Krok 1: selektory (chowane w kroku 3 przez setCartStep()). -->
+                <div id="pickersStep" class="cx-contents">
+                <div class="cx-field cx-sm-6" id="vendorCell">
                     <label class="cx-label" for="vendorSelect">Dostawca</label>
                     <!--
                         Per bs-select 1.13.x docs, custom HTML for an option
@@ -224,6 +259,7 @@ $baseUrl = 'http://' . BASEURL;
                         subtext rendering in this version; data-content keeps
                         subtext (data-subtext) intact.
                     -->
+                    <div class="cx-with-btn"><div class="cx-grow flex-grow-1">
                     <select id="vendorSelect" class="selectpicker form-control"
                             data-live-search="true" data-width="100%"
                             data-container="#vendorCell"
@@ -266,10 +302,15 @@ $baseUrl = 'http://' . BASEURL;
                             </optgroup>
                         <?php endforeach; ?>
                     </select>
+                    </div>
+                    <button type="button" id="vendorClearBtn" class="btn rx-btn-quiet cx-icon-btn cx-icon-btn--field"
+                            title="Wyczyść dostawcę" aria-label="Wyczyść dostawcę"><i class="bi bi-x-lg"></i></button>
+                    </div>
                 </div>
 
-                <div class="cx-field cx-sm-6 cx-xl-4" id="partCell">
+                <div class="cx-field cx-sm-6" id="partCell">
                     <label class="cx-label" for="partSelect">Część</label>
+                    <div class="cx-with-btn"><div class="cx-grow flex-grow-1">
                     <select id="partSelect" class="selectpicker form-control" data-live-search="true" data-width="100%" data-container="#partCell" data-style="cx-picker-btn" title="Wybierz część...">
                         <?php foreach ($partsWithVendors as $p): ?>
                             <option value="<?= (int)$p['id'] ?>"
@@ -281,30 +322,72 @@ $baseUrl = 'http://' . BASEURL;
                             </option>
                         <?php endforeach; ?>
                     </select>
+                    </div>
+                    <button type="button" id="partClearBtn" class="btn rx-btn-quiet cx-icon-btn cx-icon-btn--field"
+                            title="Wyczyść część" aria-label="Wyczyść część"><i class="bi bi-x-lg"></i></button>
+                    <button type="button" id="vpSearchBtn" class="btn rx-btn-quiet cx-icon-btn cx-icon-btn--field"
+                            title="Szukaj po numerze dostawcy / producenta / części"
+                            aria-label="Szukaj numeru u dostawcy w całym katalogu">
+                        <i class="bi bi-search"></i>
+                    </button>
+                    </div>
+                </div>
+                </div><!-- /#pickersStep -->
+
+                <!-- Nośnik stanu: ukryty <select> z wariantami wybranej części.
+                     Wybrany wariant (data-vp-id, data-vendor-id, …) czyta cała
+                     reszta JS; użytkownik wybiera wiersz w tabeli poniżej. -->
+                <div id="vendorPartCell" class="d-none" aria-hidden="true">
+                    <select id="vendorPartNoSelect" tabindex="-1" aria-hidden="true"></select>
                 </div>
 
-                <!-- Tryb „wybór": wariant + opak. + ilość. Wiersz chowany
-                     w całości przez setPickerMode('add'). -->
-                <div id="pickVariantRow" class="cx-contents">
-                    <div class="cx-field cx-md-6 cx-xl-4" id="vendorPartCell">
-                        <label class="cx-label" for="vendorPartNoSelect">Numer u dostawcy</label>
-                        <div class="cx-with-btn">
-                            <div class="cx-grow flex-grow-1">
-                                <select id="vendorPartNoSelect" class="selectpicker form-control" data-live-search="true" data-width="100%" data-container="#vendorPartCell" data-style="cx-picker-btn" title="Wybierz numer u dostawcy...">
-                                    <!-- populated by JS once vendor and/or part are picked;
-                                         catalog-wide lookup lives in the search modal -->
-                                </select>
-                            </div>
-                            <button type="button" id="vpSearchBtn" class="btn rx-btn-quiet cx-icon-btn cx-icon-btn--field"
-                                    title="Szukaj po numerze dostawcy / producenta / części"
-                                    aria-label="Szukaj numeru u dostawcy w całym katalogu">
-                                <i class="bi bi-search"></i>
-                            </button>
-                        </div>
-                        <!-- Sits directly underneath the vendor-part picker.
-                             Hidden until a variant is selected; shown by JS
-                             in syncAmountsInputs. -->
-                        <div id="variantInfoRow" class="cx-varinfo" style="display:none">
+                <!-- Krok 2: porównaj warianty wybranej części (wszystkich
+                     dostawców) i wybierz jeden. Pełna szerokość siatki, tuż
+                     pod Dostawcą/Częścią. Tylko tryb „wybór", gdy wybrano
+                     część (renderVariantsTable() w cart-view.js). -->
+                <section id="variantsPanel" class="cx-variants" style="display:none" aria-labelledby="variantsTitle">
+                    <div class="cx-variants-head">
+                        <span class="cx-step">2</span>
+                        <h3 class="cx-variants-title" id="variantsTitle">Wybierz wariant</h3>
+                        <span class="rx-count" id="variantsCount">0</span>
+                        <span class="cx-legend" id="variantsLegend" style="display:none"><i class="cx-legend-dot" aria-hidden="true"></i> inny dostawca</span>
+                        <span class="cx-variants-hint">Otwórz sklepy, porównaj ceny, potem kliknij wiersz.</span>
+                    </div>
+                    <div class="cx-variants-scroll">
+                        <table class="table rx-table mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Dostawca</th>
+                                    <th>Nr u dostawcy / Nr producenta</th>
+                                    <th>Producent</th>
+                                    <th>JM / opakowania</th>
+                                    <th>Uwagi do artykułu</th>
+                                    <th>Aktywne dokumenty</th>
+                                    <th class="cx-col-shop">Sklep</th>
+                                    <th><span class="sr-only">Akcja</span></th>
+                                </tr>
+                            </thead>
+                            <tbody id="variantsBody"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- Krok 3 (tryb „wybór"): ilość, cena i waluta wybranego
+                     wariantu. Sekcja pokazuje się dopiero po wyborze wiersza
+                     (syncAmountsInputs) i chowa w trybie „Artykuł". -->
+                <section id="pickVariantRow" class="cx-details" style="display:none" aria-labelledby="pickedVariantTitle">
+                    <div class="cx-details-head">
+                        <span class="cx-step">3</span>
+                        <h3 class="cx-details-title" id="pickedVariantTitle">Ilość i cena</h3>
+                        <button type="button" id="changeVariantBtn" class="btn btn-sm rx-btn-quiet cx-details-back">
+                            <i class="bi bi-arrow-left"></i> Zmień wariant
+                        </button>
+                    </div>
+                    <!-- Podsumowanie wybranego wariantu — renderPickedSummary(). -->
+                    <div id="pickedSummary" class="cx-sum"></div>
+                    <!-- Uwagi do wybranego wariantu; pokazywane przez JS
+                         w syncAmountsInputs. -->
+                    <div id="variantInfoRow" class="cx-varinfo" style="display:none">
                             <span id="variantCommentDisplay" class="cx-varnote">
                                 <i class="bi bi-journal-text" aria-hidden="true"></i>
                                 <strong>Uwagi do artykułu:</strong>
@@ -320,9 +403,9 @@ $baseUrl = 'http://' . BASEURL;
                                 <button type="button" id="variantCommentSave" class="btn btn-sm btn-success" title="Zapisz" aria-label="Zapisz komentarz"><i class="bi bi-check"></i></button>
                                 <button type="button" id="variantCommentCancel" class="btn btn-sm btn-secondary" title="Anuluj (Esc)" aria-label="Anuluj edycję komentarza"><i class="bi bi-x"></i></button>
                             </span>
-                        </div>
                     </div>
 
+                    <div class="cx-fields cx-fields--inner">
                     <!-- Opak. widoczne dopiero, gdy wybrany wariant ma
                          zdefiniowaną wielkość opakowania. Stepper wielkości
                          siedzi pod polem, blisko liczby, którą mnoży. -->
@@ -366,7 +449,6 @@ $baseUrl = 'http://' . BASEURL;
                             </div>
                         </div>
                     </div>
-                </div>
 
                 <!-- Cena / Waluta / Komentarz pozycji — widoczne dopiero po
                      wyborze konkretnego wariantu (przy niejednoznacznym
@@ -408,6 +490,8 @@ $baseUrl = 'http://' . BASEURL;
                                placeholder="Jednorazowe uwagi — trafią do RFQ / zamówienia">
                     </div>
                 </div>
+                    </div><!-- /.cx-fields--inner -->
+                </section><!-- /#pickVariantRow -->
 
                 <!-- Tryb „Artykuł": nowy wariant dostawcy do katalogu. -->
                 <div id="addVariantRow1" class="cx-contents" style="display:none">
@@ -477,23 +561,6 @@ $baseUrl = 'http://' . BASEURL;
         </div>
     </section>
 
-    <!-- ===== Aktywne dokumenty dla wybranej pozycji =====
-         Chowane/pokazywane przez JS; nagłówek to prawdziwy przycisk
-         (data-toggle="collapse"), a obrót strzałki robi purchases.css. -->
-    <div class="rx-panel cx-docs" id="selectionDocsCard" style="display:none">
-        <button type="button" class="cx-docs-toggle" id="selectionDocsHeader"
-                data-toggle="collapse" data-target="#selectionDocsBody"
-                aria-expanded="false" aria-controls="selectionDocsBody">
-            <i class="bi bi-chevron-right" aria-hidden="true"></i>
-            <span>Aktywne dokumenty dla wybranej pozycji</span>
-            <span class="rx-count cx-count--warn" id="selectionDocsCount" style="display:none">0</span>
-            <span class="cx-docs-hint d-none d-sm-inline">kliknij, aby rozwinąć</span>
-        </button>
-        <div class="collapse" id="selectionDocsBody">
-            <div class="cx-docs-body" id="selectionDocsContent"></div>
-        </div>
-    </div>
-
     <!-- ===== Koszyk (grupowany po dostawcy) ===== -->
     <section id="cartCard" aria-labelledby="cxCartTitle" style="display:none">
         <div class="cx-cart-head">
@@ -543,6 +610,28 @@ $baseUrl = 'http://' . BASEURL;
                             <tbody id="vpSearchResults"></tbody>
                         </table>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== Modal: adres sklepu dostawcy (pytamy tylko raz) ===== -->
+    <div class="modal fade cx-modal" id="shopUrlModal" tabindex="-1" role="dialog" aria-labelledby="shopUrlModalTitle" aria-hidden="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="shopUrlModalTitle"><i class="bi bi-box-arrow-up-right"></i> Adres sklepu — <span id="shopUrlVendorName"></span></h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Zamknij"><span>&times;</span></button>
+                </div>
+                <div class="modal-body">
+                    <p>Adres zapisze się na karcie dostawcy, więc zapytamy o niego tylko raz.</p>
+                    <div id="shopUrlError" class="alert alert-danger py-2 px-3" role="alert" style="display:none"></div>
+                    <input type="text" id="shopUrlInput" class="form-control" maxlength="500"
+                           placeholder="https://www.sklep-dostawcy.pl" aria-label="Adres sklepu dostawcy" autocomplete="off">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn rx-btn-quiet" data-dismiss="modal">Anuluj</button>
+                    <button type="button" class="btn btn-primary" id="shopUrlSave">Zapisz i otwórz</button>
                 </div>
             </div>
         </div>
