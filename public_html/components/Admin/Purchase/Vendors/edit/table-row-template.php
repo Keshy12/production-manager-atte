@@ -4,26 +4,30 @@
         in vendors-view.js via the renderRow() function — this file
         documents the column shape so future changes stay in sync.
 
-        Visual language mirrors the email-drafts list: ID muted + tabular,
-        name semi-bold, grey badge for inactive (never red), single
-        icon-only warning button for edit.
+        Visual language mirrors /purchase/documents (rx-* classes from
+        receipts-ui.css + vendors-ui.css): the table sits inside an
+        .rx-panel; ID muted + tabular, name semi-bold, quiet grey badge
+        for inactive (never red), single icon-only quiet button for edit.
 
         Fields used by renderRow():
           id               int
-          rowClass         'vr-row--inactive table-secondary' for inactive
-                           rows, '' otherwise
+          rowClass         'vr-row--inactive' for inactive rows (muted
+                           background + grey left edge, see vendors-ui.css),
+                           '' otherwise
           name             vendor name (.vr-name) — first line of the
                            "Dostawca" cell
           address          muted second line (.vr-sub), clipped, full text
-                           in title; line omitted when address and comment
-                           are both empty
-          comment          not a column: a bi-journal-text icon after the
-                           address, full text in its title
+                           in title; line omitted when the address is empty
+          comment          not a column: a bi-journal-text icon followed by
+                           the comment text in muted italics (.vr-cmt) on its
+                           own third line, clipped with an ellipsis, full text
+                           in the icon's title; omitted when empty
           leadTimeDays     '<n> dni', or muted em-dash when null
           supplierCount    person icon + number  } one "Powiązania" cell;
           vendorPartCount  box icon + number     } 0 shown dimmed
-          isActive         .badge-success 'Aktywny' / .vr-badge-off 'Nieaktywny'
-          edit button      <a class="btn btn-sm btn-warning"> with bi-pencil,
+          isActive         .rx-badge.rx-badge--green 'Aktywny' /
+                           .rx-badge (neutral grey) 'Nieaktywny'
+          edit button      <a class="btn btn-sm rx-btn-quiet"> with bi-pencil,
                            title and aria-label
 
         Not shown (still returned by vendor-list.php): additionalData,

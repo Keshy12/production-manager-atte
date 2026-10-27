@@ -1,0 +1,220 @@
+/* Dostawcy — /admin/purchase/vendors.
+
+   Baza wyglądu to receipts-ui.css (wczytywany przed tym plikiem, bez
+   zmian): zmienne .rx-page, nagłówek, kafelki .rx-stat, pasek filtrów,
+   segmenty, panel, plakietki, stany puste, szkielety, paginacja.
+   Tutaj tylko to, czego tam nie ma — wszystko pod .vx-page. Układ strony
+   jest ten sam co /purchase/documents (kafelki → pasek filtrów → linijka
+   wyników → panel z listą). */
+
+
+/* ---- Nagłówek ------------------------------------------------------ */
+
+.vx-page .vx-head-links { display: flex; flex-wrap: wrap; gap: .4rem; }
+
+
+/* ---- Liczniki (5 kafelków = skróty do filtrów) ---------------------
+   Kafelek ustawia JEDEN wymiar filtra (status / artykuły / osoby),
+   więc dwa kafelki z różnych wymiarów mogą być zaznaczone naraz
+   (np. „Aktywni" + „Bez osób kontaktowych"). */
+
+.vx-page .vx-stats {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: .5rem;
+    margin-bottom: 1rem;
+}
+.vx-page .vx-stats .rx-stat { min-width: 0; }
+.vx-page .vx-stats .rx-stat-label {
+    overflow: hidden;
+    max-width: 100%;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.vx-page .vx-stats.is-loading .rx-stat-value { opacity: .45; }
+.vx-page .rx-stat.is-zero .rx-stat-value { color: var(--rx-faint); }
+
+.vx-page .vx-stat--all       { --rx-tone: #6b7785; --rx-tone-soft: #f3f5f8; }
+.vx-page .vx-stat--active    { --rx-tone: #28a745; --rx-tone-soft: #eef8f1; }
+.vx-page .vx-stat--inactive  { --rx-tone: #8a96a3; --rx-tone-soft: #f3f5f8; }
+.vx-page .vx-stat--noparts   { --rx-tone: #f0ad00; --rx-tone-soft: #fff8e6; }
+.vx-page .vx-stat--nocontact { --rx-tone: #6f42c1; --rx-tone-soft: #f7f3fd; }
+
+@media (max-width: 991.98px) {
+    .vx-page .vx-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 575.98px) {
+    .vx-page .vx-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    /* Piąty kafelek zajmuje cały rząd, zamiast osieroconej połówki. */
+    .vx-page .vx-stats .rx-stat:last-child { grid-column: 1 / -1; }
+}
+
+
+/* ---- Pasek filtrów -------------------------------------------------- */
+
+/* Segment z małą etykietą z lewej: trzy przełączniki „Wszystkie / …"
+   obok siebie są nieczytelne bez podpisu, czego dotyczą. */
+.vx-page .vx-group {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+}
+.vx-page .vx-group-label {
+    font-size: .66rem;
+    font-weight: 700;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: var(--rx-faint);
+    white-space: nowrap;
+}
+@media (max-width: 575.98px) {
+    .vx-page .vx-group { flex: 1 1 100%; flex-wrap: wrap; }
+    .vx-page .vx-group .rx-seg { flex: 1 1 100%; }
+}
+
+/* Linijka wyników: podsumowanie po lewej, paginacja górna po prawej. */
+.vx-page .vx-filterbar { flex-wrap: wrap; }
+.vx-page .vx-summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .25rem .75rem;
+}
+.vx-page .vx-summary .rx-link-btn { font-size: .8rem; }
+.vx-page .vx-pager-compact .rx-pager-current { min-width: 7.5rem; }
+
+
+/* ---- Panel + ładowanie --------------------------------------------- */
+
+.vx-page .vx-panel { position: relative; }
+.vx-page .vx-table-wrap { transition: opacity .15s ease; }
+.vx-page .vx-panel.is-loading .vx-table-wrap { opacity: .45; pointer-events: none; }
+/* Cienki pasek postępu przy górnej krawędzi panelu (kolejne wczytania;
+   pierwsze pokazuje szkielety). */
+.vx-page .vx-panel.is-loading::after {
+    content: "";
+    position: absolute;
+    left: 0; right: 0; top: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent 0%, var(--rx-accent) 50%, transparent 100%);
+    background-size: 50% 100%;
+    background-repeat: no-repeat;
+    animation: vxLoadBar 1s linear infinite;
+}
+@keyframes vxLoadBar {
+    0%   { background-position: -50% 0; }
+    100% { background-position: 150% 0; }
+}
+
+.vx-page .vx-empty-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: .5rem;
+    margin-top: 1.1rem;
+}
+.vx-page .vx-empty-actions .btn { margin-top: 0; }
+
+
+/* ---- Tabela dostawców ----------------------------------------------- */
+
+.vx-page #vrTable { margin-bottom: 0; }
+.vx-page #vrTable thead th.vr-col-id,
+.vx-page #vrTable tbody td.vr-col-id { width: 3.5rem; text-align: center; }
+.vx-page #vrTable thead th.vr-col-name { min-width: 15rem; }
+.vx-page #vrTable thead th.vr-col-lead { width: 6rem; text-align: center; }
+.vx-page #vrTable thead th.vr-col-links { width: 8.75rem; text-align: center; }
+.vx-page #vrTable thead th.vr-col-status { width: 7.5rem; text-align: center; }
+.vx-page #vrTable thead th.vr-col-actions { width: 4.5rem; text-align: center; }
+
+/* ID to identyfikator techniczny, nie treść — blade, stała szerokość cyfr. */
+.vx-page #vrTable td.vr-col-id {
+    font-variant-numeric: tabular-nums;
+    color: var(--rx-faint);
+}
+.vx-page #vrTable td.vr-col-num {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.vx-page #vrTable tbody tr {
+    transition: background-color .12s ease;
+}
+.vx-page #vrTable tbody tr:hover { background: var(--rx-hover); }
+
+.vx-page .vr-name {
+    font-weight: 600;
+    color: var(--rx-ink);
+}
+/* Adres to długi tekst swobodny, więc ląduje w drugiej, ściszonej
+   linii pod nazwą — wiersz zostaje niski, a nazwa nadal jest
+   pierwszą rzeczą, którą widać. Jedna linia z wielokropkiem; pełna
+   treść w title="". */
+.vx-page .vr-sub {
+    display: block;
+    max-width: 28rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: .78rem;
+    font-weight: 400;
+    color: var(--rx-muted);
+}
+/* Komentarz w osobnej, trzeciej linii: ikona + ściszony tekst.
+   Zawsze widoczny (np. powód automatycznego wyłączenia dostawcy),
+   pełna treść także w title ikony. Flex + min-width: 0 na tekście
+   daje wielokropek bez rozpychania tabeli; nowrap + ellipsis
+   obcina też długie ciągi bez spacji (adresy URL). */
+.vx-page .vr-cmt {
+    display: flex;
+    align-items: baseline;
+    max-width: 28rem;
+    font-size: .78rem;
+    font-weight: 400;
+    font-style: italic;
+    color: var(--rx-muted);
+}
+.vx-page .vr-note {
+    flex: 0 0 auto;
+    color: #adb5bd;
+    margin-right: .35rem;
+    font-style: normal;
+    cursor: help;
+}
+.vx-page .vr-cmt-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Powiązania w jednej komórce: dwie liczby z ikonami czytają się
+   jak „ile osób / ile artykułów", bez dwóch osobnych kolumn. Zero
+   jest przygaszone, żeby dostawcy bez powiązań odstawali. */
+.vx-page .vr-links > span {
+    display: inline-block;
+    margin: 0 .35rem;
+    cursor: help;
+}
+.vx-page .vr-links .bi {
+    color: #adb5bd;
+    margin-right: .15rem;
+}
+.vx-page .vr-links .vr-zero { color: #ced4da; }
+
+/* Nieaktywni dostawcy: cichy, lekko zszarzały wiersz z szarą krawędzią
+   po lewej (ten sam język co zanikające wiersze na liście dokumentów).
+   Nie czerwień — w tej tabeli oznaczałaby „błąd". Komentarz zostaje
+   ciemny, bo to w nim ląduje powód wyłączenia. */
+.vx-page #vrTable tr.vr-row--inactive > td { background: var(--rx-canvas); }
+.vx-page #vrTable tr.vr-row--inactive:hover > td { background: #f0f3f7; }
+.vx-page #vrTable tr.vr-row--inactive > td:first-child { box-shadow: inset 3px 0 0 #cfd8e3; }
+.vx-page #vrTable tr.vr-row--inactive .vr-name {
+    font-weight: 500;
+    color: var(--rx-muted);
+}
+.vx-page #vrTable tr.vr-row--inactive .vr-cmt { color: #495057; }
+.vx-page #vrTable tr.vr-row--inactive .vr-note { color: #868e96; }
+
+/* Szkielety pierwszego wczytania. */
+.vx-page .vx-skel-row td { height: 4.1rem; }
