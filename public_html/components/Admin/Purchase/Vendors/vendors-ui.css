@@ -16,7 +16,7 @@
 /* ---- Liczniki (4 kafelki = skróty do filtrów) ----------------------
    Wszystkie kafelki to niezależne przełączniki (wskaźnik w rogu =
    mały przełącznik wł./wył.). Dwa wymiary filtra, dwie grupy:
-   Status (Aktywni / Nieaktywni) i Braki powiązań (Bez artykułów /
+   Status (Aktywni / Nieaktywni) i Niekompletne dane (Bez artykułów /
    Bez osób kontaktowych). */
 
 .vx-page .vx-stats {

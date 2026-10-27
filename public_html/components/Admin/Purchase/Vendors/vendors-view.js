@@ -36,7 +36,7 @@
  *     "Wszystkie" tile or button — "all" is simply both switches on.
  *     The toolbar's Status segment (Aktywne / Nieaktywne) uses the same
  *     data-status-flag buttons, painted from the same filterState.
- *   - "Braki powiązań": Bez artykułów / Bez osób kontaktowych
+ *   - "Niekompletne dane": Bez artykułów / Bez osób kontaktowych
  *     (data-dim / data-value). Independent on/off; clicking a lit tile
  *     resets only that dimension to its default.
  *
@@ -561,7 +561,7 @@ $(document).ready(function() {
         toggleStatus($(this).attr('data-status-flag'));
     });
 
-    // "Braki powiązań" tiles: set one dimension; a second click on the lit
+    // "Niekompletne dane" tiles: set one dimension; a second click on the lit
     // tile puts just that dimension back to its default.
     $('#vrStats').on('click', '.rx-stat[data-dim]', function() {
         const dim = $(this).attr('data-dim');

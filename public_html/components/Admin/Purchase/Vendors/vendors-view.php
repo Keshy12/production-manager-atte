@@ -71,7 +71,7 @@ $vrAddUrl = 'http://' . BASEURL . '/admin/purchase/vendors/edit';
               co najmniej jeden zostaje włączony (kliknięcie ostatniego
               włączonego nic nie robi). Oba włączone = wszyscy — dlatego
               nie ma osobnego kafelka „Wszyscy".
-           2. Braki powiązań — Bez artykułów / Bez osób kontaktowych:
+           2. Niekompletne dane — Bez artykułów / Bez osób kontaktowych:
               każdy włączany i wyłączany osobno, także razem ze statusem.
          Podpisy grup = te same słowa co etykiety w pasku filtrów. -->
     <div class="vx-stats" id="vrStats">
@@ -99,7 +99,7 @@ $vrAddUrl = 'http://' . BASEURL . '/admin/purchase/vendors/edit';
 
         <div class="vx-stat-group vx-stat-group--toggles" role="group" aria-labelledby="vrStatGroupGaps">
             <div class="vx-stat-group-head">
-                <span class="vx-stat-group-label" id="vrStatGroupGaps">Braki powiązań</span>
+                <span class="vx-stat-group-label" id="vrStatGroupGaps">Niekompletne dane</span>
                 <span class="vx-stat-group-hint">włączaj dowolnie</span>
             </div>
             <div class="vx-stat-toggles">
