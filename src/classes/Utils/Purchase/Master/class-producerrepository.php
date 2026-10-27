@@ -146,6 +146,17 @@ class ProducerRepository {
     }
 
     /**
+     * Count producers matching the filter map (same keys as search()).
+     * Used by producer-list.php to fill the stat tiles above the list.
+     */
+    public function count(array $filters): int {
+        [$whereSql, $params] = $this->buildSearchWhere($filters);
+        $stmt = $this->MsaDB->db->prepare("SELECT COUNT(*) FROM `list__producer` p {$whereSql}");
+        $stmt->execute($params);
+        return (int)$stmt->fetchColumn();
+    }
+
+    /**
      * Filtered + paginated search of producers. Mirrors the vendor-parts
      * pagination contract: returns the rows for the current page plus the
      * total count under the same filters, so the client can render
