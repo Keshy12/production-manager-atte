@@ -417,6 +417,60 @@ A CSV is appended to `public_html/var/logs/procurement-history-skipped-YYYY-MM-D
 
 ---
 
+## Job 8 — `deactivate-empty-vendors.php`
+
+**File:** `src/cron/deactivate-empty-vendors.php` (125 lines)
+
+### Purpose
+One-shot CLI maintenance tool that deactivates vendors left empty in the catalogue — a vendor with **0 contact persons** (`list__vendor_supplier`) and **0 vendor articles** (`list__vendor_part`). Such a vendor cannot be ordered from, so it is switched to `isActive = 0` and — only when it has no comment yet — tagged with a Polish reason, so operators can read *why* a vendor is inactive directly in the `/admin/purchase/vendors` list (the comment is rendered as muted text next to the `bi-journal-text` icon).
+
+### Trigger / Schedule
+Manual — no schedule is defined in the file. Run it from the CLI when the catalogue needs a clean-up pass.
+
+### Inputs
+| Source | Table / Query |
+|---|---|
+| MSA DB | `list__vendor` — candidates selected with `NOT EXISTS` on both child tables |
+| MSA DB | `list__vendor_supplier` — contact persons (`vendor_id`) |
+| MSA DB | `list__vendor_part` — vendor articles (`vendor_id`) |
+
+Child rows are counted **regardless of their own `isActive` flag** — the same semantics as the catalogue filters in `VendorRepository::buildSearchWhere()` (`src/classes/Utils/Purchase/Master/class-vendorrepository.php`), which count rows, not active rows.
+
+### Outputs
+| Target | Details |
+|---|---|
+| MSA DB | `list__vendor.isActive` → `0` for every **active** candidate |
+| MSA DB | `list__vendor.comment` → `Automatycznie wyłączony: brak osób kontaktowych i artykułów` — **only** when the comment is NULL/empty. An existing comment is never appended to and never overwritten; the run reports `comment preserved` instead. |
+| stdout | One line per matched vendor (id, name, action taken) plus a summary: `matched`, `deactivated`, `skipped`, `comments written` |
+
+### CLI flags
+- *(none)* — dry run is the default.
+- `php src/cron/deactivate-empty-vendors.php` — dry run: the transaction is rolled back before exit, nothing changes.
+- `php src/cron/deactivate-empty-vendors.php --execute` — applies the changes and commits.
+
+### Locks
+- **No lock file.** The script does **not** use `Locker`. The selection is re-evaluated on every run and the whole run is a single transaction, so an overlapping run cannot double-apply anything.
+
+### Re-run safety
+Idempotent. Vendors that are already inactive are reported as `skipped (already inactive, untouched)` and are not updated at all, so a second run changes nothing.
+
+### Key Classes / Functions Used
+| Class | Namespace | Role |
+|---|---|---|
+| `MsaDB` | `Atte\DB` | Singleton DB access (`$MsaDB->db` → PDO) |
+
+### Side Effects
+- **DB writes:** `list__vendor.isActive` and, conditionally, `list__vendor.comment` — only in `--execute` mode.
+- **No stock writes:** never touches `inventory__*`.
+- **stdout only:** no log file, no lock file, no new classes (so no `composer dump-autoload` is needed).
+
+### Failure Handling
+- CLI guard: the script refuses to run outside the CLI SAPI (`http_response_code(403)`).
+- One transaction wraps the whole run; on any exception → `rollBack()`, error message, `exit(1)`.
+- In dry-run mode the transaction is always rolled back before exiting.
+
+---
+
 ## Quick Reference Table
 
 | Job | Lock file | DB writes | Google Sheets | Unique behaviour |
@@ -428,6 +482,7 @@ A CSV is appended to `public_html/var/logs/procurement-history-skipped-YYYY-MM-D
 | `bom-flat-tht-gs-upload` | `bom_flat_tht_gs_upload.lock` | — | `ds_php_bom_flat_tht` (spreadsheet 2) | Recursive BOM flatten, single-level source |
 | `bom-flat-sku-gs-upload` | `bom_flat_sku_gs_upload.lock` | — | `ds_php_bom_flat_sku` (spreadsheet 2) | Recursive BOM flatten, 3-level source path |
 | `import-procurement-history-from-gsheet` | `procurement_history_import.lock` | `purchase__*`, `list__vendor.default_currency`, `purchase__number_counter` | — (read-only) | One-shot historical migration; safe re-run |
+| `deactivate-empty-vendors` | *(none)* | `list__vendor.isActive`, `list__vendor.comment` | — | One-shot catalogue clean-up; dry-run by default; never overwrites a comment |
 
 **Spreadsheet IDs:**
 - (1) `1rV1rbLXDdsOxT49sgJNm1Aicldg8ZvBdQo9yaX314QI` — used by `warehouse-data-gs-upload`
