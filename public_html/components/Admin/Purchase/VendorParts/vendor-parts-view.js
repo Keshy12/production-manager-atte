@@ -22,11 +22,23 @@
  *     means "all").
  *   Defaults (isDefault): status = active, everything else off.
  *
- * Tile semantics: a tile sets exactly one dimension (data-dim /
- * data-value). Clicking an already-active tile resets only that dimension
- * to its default. Tile counts come from `stats` in the vp-list.php
- * response: each is the count under the CURRENT filters with only that
- * tile's dimension overridden, i.e. what clicking the tile would return.
+ * Tile groups (vendor-parts-view.php), all switch-style toggles:
+ *   - "Status": Aktywne / Nieaktywne (data-status-flag). Two independent
+ *     switches that map onto the endpoint's single `status` value:
+ *     only Aktywne -> 'active' (default), only Nieaktywne -> 'inactive',
+ *     both -> 'all'. At least one stays on: clicking the only lit one
+ *     does nothing (it is marked aria-disabled + titled). There is no
+ *     "Wszystkie" tile or button — "all" is simply both switches on.
+ *     The toolbar's Status segment (Aktywne / Nieaktywne) uses the same
+ *     data-status-flag buttons, painted from the same filterState.
+ *   - Second group (label set in vendor-parts-view.php): Bez opakowania
+ *     (data-dim=hasPacks, data-value=unused).
+ *     On/off; clicking the lit tile resets that dimension to its default.
+ *
+ * Tile counts come from `stats` in the vp-list.php response: each is the
+ * count under the CURRENT filters with only that tile's dimension
+ * overridden (stats.active / stats.inactive for the status switches,
+ * stats.noPacks for the packs tile; stats.all is not used by the UI).
  */
 
 $(document).ready(function() {
@@ -35,6 +47,7 @@ $(document).ready(function() {
     const addUrl   = window.location.origin + "/atte_ms_new/admin/purchase/vendor-parts/edit";
 
     const DEFAULTS = { status: 'active', hasPacks: 'all' };
+    const STATUS_LOCK_TITLE = 'Co najmniej jeden status musi być zaznaczony';
     const SEARCH_DEBOUNCE_MS = 300;
 
     // ---------- Helpers ----------
@@ -175,18 +188,63 @@ $(document).ready(function() {
         return data;
     }
 
+    // Status as two switches. filterState.status stays 'active' |
+    // 'inactive' | 'all' (the endpoint's wire format); the switches are
+    // derived from it and mapped back.
+    function statusFlags(status) {
+        return {
+            active:   status === 'active'   || status === 'all',
+            inactive: status === 'inactive' || status === 'all',
+        };
+    }
+
+    function statusFromFlags(flags) {
+        return (flags.active && flags.inactive) ? 'all' : (flags.active ? 'active' : 'inactive');
+    }
+
+    // Flips one status switch. The last lit switch cannot be turned off
+    // (both off would always be an empty list) — nothing happens, no request.
+    function toggleStatus(which) {
+        const flags = statusFlags(filterState.status);
+        flags[which] = !flags[which];
+        if (!flags.active && !flags.inactive) { return; }
+        setDimension('status', statusFromFlags(flags));
+    }
+
     // Paint every control that mirrors the filters: toolbar segments,
-    // stat tiles, picker cells, date range highlight and the
-    // "Wyczyść filtry" link.
+    // stat tiles, status switches, picker cells, date range highlight and
+    // the "Wyczyść filtry" link.
     function syncFilterUi(f) {
         $('.vpx-toolbar .rx-seg [data-dim]').each(function() {
             const on = f[$(this).attr('data-dim')] === $(this).attr('data-value');
             $(this).toggleClass('is-active', on).attr('aria-pressed', on ? 'true' : 'false');
         });
-        $('#vpStats .rx-stat').each(function() {
+        $('#vpStats .rx-stat[data-dim]').each(function() {
             const on = f[$(this).attr('data-dim')] === $(this).attr('data-value');
             $(this).toggleClass('is-active', on).attr('aria-pressed', on ? 'true' : 'false');
         });
+
+        // Status switches (tiles + toolbar buttons). The only lit one is
+        // "locked": still focusable, but aria-disabled and explained in
+        // its tooltip so the dead click is understandable.
+        const flags = statusFlags(f.status);
+        $('#vendorPartsView [data-status-flag]').each(function() {
+            const $el = $(this);
+            const which = $el.attr('data-status-flag');
+            const other = which === 'active' ? 'inactive' : 'active';
+            const on = flags[which];
+            const locked = on && !flags[other];
+            if ($el.attr('data-orig-title') === undefined) {
+                $el.attr('data-orig-title', $el.attr('title') || '');
+            }
+            const title = locked ? STATUS_LOCK_TITLE : $el.attr('data-orig-title');
+            if (title) { $el.attr('title', title); } else { $el.removeAttr('title'); }
+            $el.toggleClass('is-active', on)
+               .toggleClass('is-locked', locked)
+               .attr('aria-pressed', on ? 'true' : 'false')
+               .attr('aria-disabled', locked ? 'true' : 'false');
+        });
+
         $(PICKERS.vendors.cell).toggleClass('is-active', f.vendor !== '');
         $(PICKERS.producers.cell).toggleClass('is-active', f.producer !== '');
         $(PICKERS.parts.cell).toggleClass('is-active', f.part !== '');
@@ -601,9 +659,15 @@ $(document).ready(function() {
     // Events
     // ============================================================
 
-    // Tiles: set one dimension; a second click on the active tile puts
-    // just that dimension back to its default.
-    $('#vpStats').on('click', '.rx-stat', function() {
+    // Status switches (tiles and toolbar buttons alike): flip one, keep
+    // at least one lit.
+    $('#vendorPartsView').on('click', '[data-status-flag]', function() {
+        toggleStatus($(this).attr('data-status-flag'));
+    });
+
+    // Second-group tile (Bez opakowania): sets one dimension; a second click on the lit
+    // tile puts just that dimension back to its default.
+    $('#vpStats').on('click', '.rx-stat[data-dim]', function() {
         const dim = $(this).attr('data-dim');
         const value = $(this).attr('data-value');
         setDimension(dim, filterState[dim] === value ? DEFAULTS[dim] : value);

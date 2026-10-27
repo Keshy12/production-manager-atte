@@ -13,14 +13,16 @@
 .vpx-page .vpx-head-links { display: flex; flex-wrap: wrap; gap: .4rem; }
 
 
-/* ---- Liczniki (4 kafelki = skróty do filtrów) ----------------------
-   Kafelek ustawia JEDEN wymiar filtra (status albo opakowanie), więc
-   „Aktywne" i „Bez opakowania" mogą być zaznaczone naraz. */
+/* ---- Liczniki (3 kafelki = skróty do filtrów) ----------------------
+   Wszystkie kafelki to niezależne przełączniki (wskaźnik w rogu =
+   mały przełącznik wł./wył.). Dwa wymiary filtra, dwie grupy:
+   Status (Aktywne / Nieaktywne) i druga grupa (Bez opakowania).
+   Ten sam wzorzec co /admin/purchase/vendors. */
 
 .vpx-page .vpx-stats {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: .5rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .9rem 1.5rem;
     margin-bottom: 1rem;
 }
 .vpx-page .vpx-stats .rx-stat { min-width: 0; }
@@ -33,13 +35,98 @@
 .vpx-page .vpx-stats.is-loading .rx-stat-value { opacity: .45; }
 .vpx-page .rx-stat.is-zero .rx-stat-value { color: var(--rx-faint); }
 
-.vpx-page .vpx-stat--all      { --rx-tone: #6b7785; --rx-tone-soft: #f3f5f8; }
 .vpx-page .vpx-stat--active   { --rx-tone: #28a745; --rx-tone-soft: #eef8f1; }
 .vpx-page .vpx-stat--inactive { --rx-tone: #8a96a3; --rx-tone-soft: #f3f5f8; }
 .vpx-page .vpx-stat--nopack   { --rx-tone: #f0ad00; --rx-tone-soft: #fff8e6; }
 
-@media (max-width: 767.98px) {
-    .vpx-page .vpx-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+/* ---- Dwie grupy kafelków ---------------------------------------------
+   Odróżnia je podpis nad grupą i cienka linia pod podpisem na całą
+   szerokość grupy — czytają się jako dwa osobne klastry, także po
+   zawinięciu. Grupy zawijają się jako całość (flex-wrap, nigdy w
+   środku grupy): przy szerokości zawartości poniżej ~37 rem druga grupa
+   spada pod pierwszą. Proporcja 2 : 1 (dwa kafelki : jeden) daje
+   kafelki o równej szerokości. */
+
+.vpx-page .vpx-stat-group { min-width: 0; }
+.vpx-page .vpx-stat-group--status { flex: 2 1 24rem; }
+.vpx-page .vpx-stat-group--gaps   { flex: 1 1 12rem; }
+
+/* Podpis grupy: te same słowa co etykiety w pasku filtrów („Status"),
+   dzięki czemu kafelki i segmenty czytają się jako ten sam wymiar. */
+.vpx-page .vpx-stat-group-head {
+    display: flex;
+    align-items: baseline;
+    gap: .5rem;
+    margin: 0 0 .55rem;
+    padding: 0 .15rem .35rem;
+    border-bottom: 1px solid var(--rx-line);
+}
+.vpx-page .vpx-stat-group-label {
+    font-size: .68rem;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--rx-muted);
+}
+.vpx-page .vpx-stat-group-hint {
+    font-size: .74rem;
+    color: var(--rx-faint);
+}
+
+.vpx-page .vpx-stat-toggles {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .5rem;
+}
+/* Grupa z jednym przełącznikiem: kafelek na całą szerokość grupy. */
+.vpx-page .vpx-stat-group--gaps .vpx-stat-toggles { grid-template-columns: minmax(0, 1fr); }
+
+/* Pasek koloru na górze kafelka: ściszony, dopiero włączony kafelek
+   dostaje pełny kolor — stan „włączone" widać od razu. */
+.vpx-page .vpx-stats .rx-stat::before { opacity: .35; }
+.vpx-page .vpx-stats .rx-stat.is-active::before { opacity: 1; }
+
+/* Przełącznik wł./wył. w prawym górnym rogu (rysowany w ::after):
+   tor + gałka (radial-gradient przesuwany background-position). */
+.vpx-page .vpx-stats .rx-stat::after {
+    content: "";
+    position: absolute;
+    top: .8rem;
+    right: .7rem;
+    width: 1.7rem;
+    height: .95rem;
+    border-radius: 999px;
+    background-color: #d5dbe3;
+    background-image: radial-gradient(circle, #fff 0 .3rem, transparent .32rem);
+    background-size: .95rem .95rem;
+    background-repeat: no-repeat;
+    background-position: left center;
+    transition: background-color .15s ease, background-position .15s ease;
+}
+.vpx-page .vpx-stats .rx-stat.is-active::after {
+    background-color: var(--rx-tone);
+    background-position: right center;
+}
+
+/* Ostatni włączony status: nie da się go wyłączyć (oba wyłączone =
+   zawsze pusta lista). Zostaje klikalny/fokusowalny, ale bez unoszenia
+   przy najechaniu i z kursorem „niedostępne"; wyjaśnia to jego title. */
+.vpx-page .vpx-stats .rx-stat.is-locked { cursor: not-allowed; }
+.vpx-page .vpx-stats .rx-stat.is-locked:hover {
+    transform: none;
+    box-shadow: inset 0 0 0 1px var(--rx-tone);
+}
+.vpx-page .rx-seg button.is-locked { cursor: not-allowed; }
+
+@media (max-width: 575.98px) {
+    .vpx-page .vpx-stats { gap: .75rem; }
+    .vpx-page .vpx-stats .rx-stat { padding: .6rem .6rem .5rem .7rem; }
+    .vpx-page .vpx-stats .rx-stat-value { font-size: 1.35rem; }
+    /* Wąski kafelek: długa etykieta zawija się zamiast ucinać. */
+    .vpx-page .vpx-stats .rx-stat-label {
+        white-space: normal;
+        line-height: 1.25;
+    }
 }
 
 

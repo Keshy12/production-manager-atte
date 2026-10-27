@@ -13,8 +13,9 @@
  *
  * Liczniki (kafelki) przychodzą w odpowiedzi vp-list.php jako `stats` —
  * każdy to liczba wyników przy bieżących filtrach, z nadpisanym wyłącznie
- * wymiarem tego kafelka. Klik w kafelek ustawia ten wymiar (status albo
- * opakowanie); ponowny klik w aktywny kafelek przywraca jego domyślną.
+ * wymiarem tego kafelka. Wszystkie kafelki to przełączniki: „Aktywne"
+ * i „Nieaktywne" (status; oba włączone = wszystkie, co najmniej jeden
+ * zawsze włączony) oraz „Bez opakowania" (włączany i wyłączany osobno).
  *
  * Pickery Dostawca / Producent / Część są jednokrotnego wyboru (lista
  * opcji renderowana tu, po stronie serwera). Pierwsza opcja z pustą
@@ -58,6 +59,11 @@ foreach ($parts_rows as $pr) {
 
 $vpAddUrl = 'http://' . BASEURL . '/admin/purchase/vendor-parts/edit';
 
+// Podpis i podpowiedź drugiej grupy kafelków (przełącznik „Bez opakowania").
+// Ta sama nazwa grupy co na /admin/purchase/vendors i /producers.
+$vpGapsLabel = 'Niekompletne dane';
+$vpGapsHint  = 'włącz, aby zawęzić';
+
 include('table-row-template.php');
 ?>
 
@@ -85,32 +91,58 @@ include('table-row-template.php');
     <div id="alertContainer" class="rx-alerts"></div>
 
     <!-- ===== Liczniki = skróty do filtrów =====
-         Wartości wypełnia JS (pole `stats` w odpowiedzi vp-list.php). -->
-    <div class="vpx-stats" id="vpStats" role="group" aria-label="Artykuły według statusu i opakowań">
-        <button type="button" class="rx-stat vpx-stat--all" data-stat="all"
-                data-dim="status" data-value="all" aria-pressed="false"
-                title="Wszystkie artykuły u dostawców — aktywne i nieaktywne">
-            <span class="rx-stat-value" data-stat-value>–</span>
-            <span class="rx-stat-label">Wszystkie</span>
-        </button>
-        <button type="button" class="rx-stat vpx-stat--active" data-stat="active"
-                data-dim="status" data-value="active" aria-pressed="false"
-                title="Aktywne artykuły">
-            <span class="rx-stat-value" data-stat-value>–</span>
-            <span class="rx-stat-label">Aktywne</span>
-        </button>
-        <button type="button" class="rx-stat vpx-stat--inactive" data-stat="inactive"
-                data-dim="status" data-value="inactive" aria-pressed="false"
-                title="Nieaktywne artykuły">
-            <span class="rx-stat-value" data-stat-value>–</span>
-            <span class="rx-stat-label">Nieaktywne</span>
-        </button>
-        <button type="button" class="rx-stat vpx-stat--nopack" data-stat="noPacks"
-                data-dim="hasPacks" data-value="unused" aria-pressed="false"
-                title="Artykuły bez zdefiniowanej ilości w pełnym opakowaniu. Warto uzupełnić ją w karcie artykułu, żeby koszyk liczył paczki poprawnie.">
-            <span class="rx-stat-value" data-stat-value>–</span>
-            <span class="rx-stat-label">Bez opakowania</span>
-        </button>
+         Wartości wypełnia JS (pole `stats` w odpowiedzi vp-list.php).
+         Dwie grupy, bo to dwa różne wymiary filtra — w obu kafelki są
+         niezależnymi przełącznikami (wskaźnik w rogu = przełącznik):
+           1. Status — Aktywne / Nieaktywne: domyślnie włączone Aktywne.
+              Można dołączyć Nieaktywne albo wyłączyć Aktywne, ale
+              co najmniej jeden zostaje włączony (kliknięcie ostatniego
+              włączonego nic nie robi). Oba włączone = wszystkie — dlatego
+              nie ma osobnego kafelka „Wszystkie".
+           2. Druga grupa (nazwa w $vpGapsLabel u góry pliku) — Bez
+              opakowania: włączany i wyłączany osobno,
+              także razem ze statusem.
+         Podpisy grup = te same słowa co etykiety w pasku filtrów
+         („Status"); nazwa drugiej grupy jest szersza niż segment
+         „Opakowanie". -->
+    <div class="vpx-stats" id="vpStats">
+
+        <div class="vpx-stat-group vpx-stat-group--status" role="group" aria-labelledby="vpStatGroupStatus">
+            <div class="vpx-stat-group-head">
+                <span class="vpx-stat-group-label" id="vpStatGroupStatus">Status</span>
+                <span class="vpx-stat-group-hint">co najmniej jeden</span>
+            </div>
+            <div class="vpx-stat-toggles">
+                <button type="button" class="rx-stat vpx-stat--active" data-stat="active"
+                        data-status-flag="active" aria-pressed="false" aria-disabled="false"
+                        title="Aktywne artykuły">
+                    <span class="rx-stat-value" data-stat-value>–</span>
+                    <span class="rx-stat-label">Aktywne</span>
+                </button>
+                <button type="button" class="rx-stat vpx-stat--inactive" data-stat="inactive"
+                        data-status-flag="inactive" aria-pressed="false" aria-disabled="false"
+                        title="Nieaktywne artykuły">
+                    <span class="rx-stat-value" data-stat-value>–</span>
+                    <span class="rx-stat-label">Nieaktywne</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="vpx-stat-group vpx-stat-group--gaps" role="group" aria-labelledby="vpStatGroupGaps">
+            <div class="vpx-stat-group-head">
+                <span class="vpx-stat-group-label" id="vpStatGroupGaps"><?= htmlspecialchars($vpGapsLabel, ENT_QUOTES) ?></span>
+                <span class="vpx-stat-group-hint"><?= htmlspecialchars($vpGapsHint, ENT_QUOTES) ?></span>
+            </div>
+            <div class="vpx-stat-toggles">
+                <button type="button" class="rx-stat vpx-stat--nopack" data-stat="noPacks"
+                        data-dim="hasPacks" data-value="unused" aria-pressed="false"
+                        title="Artykuły bez zdefiniowanej ilości w pełnym opakowaniu. Warto uzupełnić ją w karcie artykułu, żeby koszyk liczył paczki poprawnie.">
+                    <span class="rx-stat-value" data-stat-value>–</span>
+                    <span class="rx-stat-label">Bez opakowania</span>
+                </button>
+            </div>
+        </div>
+
     </div>
 
     <!-- ===== Pasek filtrów (dwa rzędy) ===== -->
@@ -178,10 +210,9 @@ include('table-row-template.php');
         <div class="vpx-toolbar-row">
             <div class="vpx-group">
                 <span class="vpx-group-label" aria-hidden="true">Status</span>
-                <div class="rx-seg" role="group" aria-label="Status artykułu" id="vpSegStatus">
-                    <button type="button" data-dim="status" data-value="all" aria-pressed="false">Wszystkie</button>
-                    <button type="button" data-dim="status" data-value="active" class="is-active" aria-pressed="true">Aktywne</button>
-                    <button type="button" data-dim="status" data-value="inactive" aria-pressed="false">Nieaktywne</button>
+                <div class="rx-seg" role="group" aria-label="Status artykułu — co najmniej jeden" id="vpSegStatus">
+                    <button type="button" data-status-flag="active" class="is-active" aria-pressed="true" aria-disabled="false">Aktywne</button>
+                    <button type="button" data-status-flag="inactive" aria-pressed="false" aria-disabled="false">Nieaktywne</button>
                 </div>
             </div>
 
