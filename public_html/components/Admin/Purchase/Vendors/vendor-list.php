@@ -68,12 +68,24 @@ try {
         ];
     }
 
+    // Stat tiles above the list. Each count = the current filters with
+    // exactly one dimension overridden — the one the tile sets when
+    // clicked — so a tile always shows what clicking it would return.
+    $stats = [
+        'all'         => $repo->count(array_merge($filters, ['status' => 'all'])),
+        'active'      => $repo->count(array_merge($filters, ['status' => 'active'])),
+        'inactive'    => $repo->count(array_merge($filters, ['status' => 'inactive'])),
+        'noArticles'  => $repo->count(array_merge($filters, ['hasArticles' => false])),
+        'noSuppliers' => $repo->count(array_merge($filters, ['hasSuppliers' => false])),
+    ];
+
     echo json_encode([
         'success'      => true,
         'rows'         => $rows,
         'total'        => $result['total'],
         'page'         => $result['page'],
         'itemsPerPage' => $result['itemsPerPage'],
+        'stats'        => $stats,
     ], JSON_UNESCAPED_UNICODE);
 } catch (\Throwable $e) {
     echo json_encode(['success' => false, 'error' => 'Wystąpił błąd podczas ładowania listy']);

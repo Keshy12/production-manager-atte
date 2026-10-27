@@ -345,6 +345,17 @@ class VendorRepository {
     }
 
     /**
+     * Count vendors matching the filter map (same keys as search()).
+     * Used by vendor-list.php to fill the stat tiles above the list.
+     */
+    public function count(array $filters): int {
+        [$whereSql, $params] = $this->buildSearchWhere($filters);
+        $stmt = $this->MsaDB->db->prepare("SELECT COUNT(*) FROM `list__vendor` v {$whereSql}");
+        $stmt->execute($params);
+        return (int)$stmt->fetchColumn();
+    }
+
+    /**
      * Filtered + paginated search of vendors. Mirrors the vendor-parts
      * / producers pagination contract: returns the rows for the
      * current page plus the total count under the same filters, so
