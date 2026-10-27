@@ -13,9 +13,10 @@
  *
  * Liczniki (kafelki pod nagłówkiem) przychodzą w odpowiedzi vendor-list.php
  * jako `stats` — każdy to liczba wyników przy bieżących filtrach, z
- * nadpisanym wyłącznie wymiarem tego kafelka. Klik w kafelek ustawia ten
- * wymiar filtra (status / artykuły / osoby kontaktowe); ponowny klik
- * w aktywny kafelek przywraca jego wartość domyślną.
+ * nadpisanym wyłącznie wymiarem tego kafelka. Wszystkie kafelki to
+ * przełączniki: „Aktywni" i „Nieaktywni" (status; oba włączone = wszyscy,
+ * co najmniej jeden zawsze włączony) oraz „Bez artykułów" i „Bez osób
+ * kontaktowych" (każdy włączany i wyłączany osobno).
  *
  * Filtry domyślne: tylko aktywni dostawcy, reszta wyłączona.
  */
@@ -62,38 +63,61 @@ $vrAddUrl = 'http://' . BASEURL . '/admin/purchase/vendors/edit';
     <div id="alertContainer" class="rx-alerts"></div>
 
     <!-- ===== Liczniki = skróty do filtrów =====
-         Wartości wypełnia JS (pole `stats` w odpowiedzi vendor-list.php). -->
-    <div class="vx-stats" id="vrStats" role="group" aria-label="Dostawcy według statusu i powiązań">
-        <button type="button" class="rx-stat vx-stat--all" data-stat="all"
-                data-dim="status" data-value="all" aria-pressed="false"
-                title="Wszyscy dostawcy — aktywni i nieaktywni">
-            <span class="rx-stat-value" data-stat-value>–</span>
-            <span class="rx-stat-label">Wszyscy</span>
-        </button>
-        <button type="button" class="rx-stat vx-stat--active" data-stat="active"
-                data-dim="status" data-value="active" aria-pressed="false"
-                title="Aktywni dostawcy">
-            <span class="rx-stat-value" data-stat-value>–</span>
-            <span class="rx-stat-label">Aktywni</span>
-        </button>
-        <button type="button" class="rx-stat vx-stat--inactive" data-stat="inactive"
-                data-dim="status" data-value="inactive" aria-pressed="false"
-                title="Nieaktywni dostawcy, w tym wyłączeni automatycznie">
-            <span class="rx-stat-value" data-stat-value>–</span>
-            <span class="rx-stat-label">Nieaktywni</span>
-        </button>
-        <button type="button" class="rx-stat vx-stat--noparts" data-stat="noArticles"
-                data-dim="hasArticles" data-value="unused" aria-pressed="false"
-                title="Dostawcy bez przypisanych artykułów — przydatne do porządków w katalogu">
-            <span class="rx-stat-value" data-stat-value>–</span>
-            <span class="rx-stat-label">Bez artykułów</span>
-        </button>
-        <button type="button" class="rx-stat vx-stat--nocontact" data-stat="noSuppliers"
-                data-dim="hasSuppliers" data-value="unused" aria-pressed="false"
-                title="Dostawcy bez żadnej osoby kontaktowej">
-            <span class="rx-stat-value" data-stat-value>–</span>
-            <span class="rx-stat-label">Bez osób kontaktowych</span>
-        </button>
+         Wartości wypełnia JS (pole `stats` w odpowiedzi vendor-list.php).
+         Dwie grupy, bo to dwa różne wymiary filtra — w obu kafelki są
+         niezależnymi przełącznikami (wskaźnik w rogu = przełącznik):
+           1. Status — Aktywni / Nieaktywni: domyślnie włączeni Aktywni.
+              Można dołączyć Nieaktywnych albo wyłączyć Aktywnych, ale
+              co najmniej jeden zostaje włączony (kliknięcie ostatniego
+              włączonego nic nie robi). Oba włączone = wszyscy — dlatego
+              nie ma osobnego kafelka „Wszyscy".
+           2. Braki powiązań — Bez artykułów / Bez osób kontaktowych:
+              każdy włączany i wyłączany osobno, także razem ze statusem.
+         Podpisy grup = te same słowa co etykiety w pasku filtrów. -->
+    <div class="vx-stats" id="vrStats">
+
+        <div class="vx-stat-group vx-stat-group--status" role="group" aria-labelledby="vrStatGroupStatus">
+            <div class="vx-stat-group-head">
+                <span class="vx-stat-group-label" id="vrStatGroupStatus">Status</span>
+                <span class="vx-stat-group-hint">co najmniej jeden</span>
+            </div>
+            <div class="vx-stat-toggles">
+                <button type="button" class="rx-stat vx-stat--active" data-stat="active"
+                        data-status-flag="active" aria-pressed="false" aria-disabled="false"
+                        title="Aktywni dostawcy">
+                    <span class="rx-stat-value" data-stat-value>–</span>
+                    <span class="rx-stat-label">Aktywni</span>
+                </button>
+                <button type="button" class="rx-stat vx-stat--inactive" data-stat="inactive"
+                        data-status-flag="inactive" aria-pressed="false" aria-disabled="false"
+                        title="Nieaktywni dostawcy, w tym wyłączeni automatycznie">
+                    <span class="rx-stat-value" data-stat-value>–</span>
+                    <span class="rx-stat-label">Nieaktywni</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="vx-stat-group vx-stat-group--toggles" role="group" aria-labelledby="vrStatGroupGaps">
+            <div class="vx-stat-group-head">
+                <span class="vx-stat-group-label" id="vrStatGroupGaps">Braki powiązań</span>
+                <span class="vx-stat-group-hint">włączaj dowolnie</span>
+            </div>
+            <div class="vx-stat-toggles">
+                <button type="button" class="rx-stat vx-stat--noparts" data-stat="noArticles"
+                        data-dim="hasArticles" data-value="unused" aria-pressed="false"
+                        title="Dostawcy bez przypisanych artykułów — przydatne do porządków w katalogu">
+                    <span class="rx-stat-value" data-stat-value>–</span>
+                    <span class="rx-stat-label">Bez artykułów</span>
+                </button>
+                <button type="button" class="rx-stat vx-stat--nocontact" data-stat="noSuppliers"
+                        data-dim="hasSuppliers" data-value="unused" aria-pressed="false"
+                        title="Dostawcy bez żadnej osoby kontaktowej">
+                    <span class="rx-stat-value" data-stat-value>–</span>
+                    <span class="rx-stat-label">Bez osób kontaktowych</span>
+                </button>
+            </div>
+        </div>
+
     </div>
 
     <!-- ===== Pasek filtrów ===== -->
@@ -108,10 +132,9 @@ $vrAddUrl = 'http://' . BASEURL . '/admin/purchase/vendors/edit';
 
         <div class="vx-group">
             <span class="vx-group-label" aria-hidden="true">Status</span>
-            <div class="rx-seg" role="group" aria-label="Status dostawcy" id="vrSegStatus">
-                <button type="button" data-dim="status" data-value="all" aria-pressed="false">Wszystkie</button>
-                <button type="button" data-dim="status" data-value="active" class="is-active" aria-pressed="true">Aktywne</button>
-                <button type="button" data-dim="status" data-value="inactive" aria-pressed="false">Nieaktywne</button>
+            <div class="rx-seg" role="group" aria-label="Status dostawcy — co najmniej jeden" id="vrSegStatus">
+                <button type="button" data-status-flag="active" class="is-active" aria-pressed="true" aria-disabled="false">Aktywne</button>
+                <button type="button" data-status-flag="inactive" aria-pressed="false" aria-disabled="false">Nieaktywne</button>
             </div>
         </div>
 
