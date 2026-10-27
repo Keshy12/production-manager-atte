@@ -2,10 +2,14 @@
 //
 // Strona jest renderowana w PHP (receipt-view.php); tu tylko dwa drobiazgi:
 //   1. „Drukuj" → window.print() (receipts-ui.css ma style do druku),
-//   2. „Wróć do historii": jeśli operator przyszedł tu z listy przyjęć,
-//      cofamy się w historii przeglądarki zamiast ładować listę od nowa —
-//      wtedy zostaje jego strona paginacji i wpisane filtry. W każdym
-//      innym przypadku działa zwykły link /purchase/receipts#historia.
+//   2. link „Historia przyjęć" w okruszkach: jeśli operator przyszedł tu
+//      z listy przyjęć, cofamy się w historii przeglądarki zamiast ładować
+//      listę od nowa — wtedy zostaje jego strona paginacji i wpisane
+//      filtry. W każdym innym przypadku działa zwykły link
+//      /purchase/receipts#historia.
+//      (Przycisk „Wróć" w nagłówku ma własny, prostszy mechanizm —
+//      zawsze cofa się po historii przeglądarki, niezależnie skąd
+//      przyszliśmy; patrz onclick w receipt-view.php.)
 
 $(document).ready(function () {
     $('#receiptPrintBtn').on('click', function () {

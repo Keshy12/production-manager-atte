@@ -280,8 +280,19 @@ $canResume = $poState !== null && in_array($poState, ['confirmed', 'in_progress'
             <div class="rx-dochead-side">
                 <span class="rx-stamp rx-stamp--<?= rx_e($stamp['tone']) ?>"><?= rx_e($stamp['label']) ?></span>
                 <div class="rx-dochead-actions rx-no-print">
-                    <a href="<?= rx_e($historyUrl) ?>" class="btn btn-sm rx-btn-quiet js-back-to-history">
-                        <i class="bi bi-arrow-left"></i> Wróć do historii
+                    <!--
+                        „Wróć" — wyjście z widoku przyjęcia do skąd przyszliśmy.
+                        Strona jest osiągalna z kilku miejsc (historia przyjęć,
+                        lista „do przyjęcia", zamówienie → „Otwórz przyjęcia",
+                        link w PO), więc powrót idzie po historii przeglądarki,
+                        a nie na sztywną listę. Gdy nie ma historii do cofnięcia
+                        (otwarcie w nowej karcie / bezpośredni adres), fallback
+                        to lista przyjęć z kotwicą historii.
+                    -->
+                    <a href="<?= rx_e($historyUrl) ?>"
+                       class="btn btn-sm rx-btn-quiet"
+                       onclick="if (history.length > 1) { history.back(); return false; }">
+                        <i class="bi bi-arrow-left"></i> Wróć
                     </a>
                     <a href="<?= rx_e($poEditUrl) ?>" class="btn btn-sm rx-btn-quiet">
                         <i class="bi bi-file-earmark-text"></i> Otwórz zamówienie

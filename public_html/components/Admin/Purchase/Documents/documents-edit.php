@@ -31,6 +31,7 @@ use Atte\Utils\Purchase\Order\RFQRepository;
 use Atte\Utils\Purchase\Order\RFQItemRepository;
 use Atte\Utils\Purchase\Order\PurchaseOrderRepository;
 use Atte\Utils\Purchase\Order\PurchaseOrderItemRepository;
+use Atte\Utils\Purchase\Order\OrderReceiptRepository;
 use Atte\Utils\Purchase\Master\CurrencyRepository;
 
 require_once __DIR__ . '/../../../purchases/receipts/receipts-helpers.php';
@@ -68,6 +69,19 @@ if ($doc === null) {
     return;
 }
 $items = $type === 'po' ? $itemRepo->getByPo($id) : $itemRepo->getByRfq($id);
+
+// Najnowsze przyjęcie tego zamówienia — cel przycisku „Otwórz przyjęcia"
+// w nagłówku (prowadzi do /purchase/receipts/view?id=N). Tylko dla PO:
+// RFQ nie ma przyjęć. Gdy PO nie ma jeszcze żadnego przyjęcia, przycisk
+// się nie renderuje (nie ma czego otwierać).
+$latestReceipt = null;
+if ($type === 'po') {
+    try {
+        $latestReceipt = (new OrderReceiptRepository($MsaDB))->getLatestByPo($id);
+    } catch (\Throwable $e) {
+        $latestReceipt = null;
+    }
+}
 
 // Per-type field aliases. The repos return different field names for
 // the same conceptual fields; normalise here so the view template
@@ -264,11 +278,13 @@ function formatPrice($v) {
                     <?php
                         // Przycisk anulowania — NAJLEWIEJ w grupie akcji,
                         // przed "Wyślij"/"Potwierdź odbiór" i "Przyjmij towar".
-                        // Kolejność jest tu functionalna: "Wróć" zostaje
-                        // skrajnie prawa (wyjście z ekranu), operacja
+                        // Kolejność jest tu functionalna: wyjście z ekranu
+                        // ("Wróć") jest najbliżej prawego końca, operacja
                         // odwracalna w ramach sesji (zapisz/wyślij) jest
                         // obok, a nieodwracalna (anulowanie) najdalej od
                         // przycisków, po które się sięga reflexowo.
+                        // "Otwórz przyjęcia" stoi po prawej stronie "Wróć" —
+                        // oba to skoki nawigacyjne, nie operacje na dokumencie.
                         //
                         // Który modal? closePoFromReceive() przyjmuje
                         // confirmed/in_progress/partially_received i pozwala
@@ -424,6 +440,22 @@ function formatPrice($v) {
                        onclick="if (history.length > 1) { history.back(); return false; }">
                         <i class="bi bi-arrow-left"></i> Wróć
                     </a>
+                    <?php if ($latestReceipt !== null): ?>
+                        <!--
+                            „Otwórz przyjęcia" — skok do najnowszego przyjęcia
+                            (GRN) tego zamówienia: /purchase/receipts/view?id=N.
+                            Renderowany tylko wtedy, gdy PO ma już przynajmniej
+                            jedno przyjęcie — inaczej nie ma czego otwierać.
+                            Wygląd jak „Otwórz zamówienie" na stronie przyjęcia
+                            (btn btn-sm rx-btn-quiet), żeby oba kierunki skoku
+                            wyglądały tak samo.
+                        -->
+                        <a href="http://<?= BASEURL ?>/purchase/receipts/view?id=<?= (int)$latestReceipt->id ?>"
+                           class="btn btn-sm rx-btn-quiet"
+                           title="Otwórz najnowsze przyjęcie<?= $latestReceipt->documentNumber ? ' — ' . htmlspecialchars($latestReceipt->documentNumber, ENT_QUOTES) : '' ?>">
+                            <i class="bi bi-journal-text"></i> Otwórz przyjęcia
+                        </a>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>

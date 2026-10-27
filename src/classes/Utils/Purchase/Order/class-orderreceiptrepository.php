@@ -118,6 +118,25 @@ class OrderReceiptRepository {
         return $result;
     }
 
+    /**
+     * Najnowsze przyjęcie danego zamówienia (albo null, gdy PO nie ma
+     * jeszcze żadnego przyjęcia). Kolejność identyczna jak w getByPo()
+     * (received_at DESC, id DESC) — bierzemy tylko pierwszy wiersz.
+     * Używane przez przycisk „Otwórz przyjęcia" w nagłówku zamówienia
+     * (Admin/Purchase/Documents/documents-edit.php).
+     */
+    public function getLatestByPo(int $poId): ?OrderReceipt {
+        $MsaDB = $this->MsaDB;
+        $sql = $this->buildSelectJoin()
+            . " WHERE r.po_id = ?"
+            . " ORDER BY r.received_at DESC, r.id DESC"
+            . " LIMIT 1";
+        $stmt = $MsaDB->db->prepare($sql);
+        $stmt->execute([$poId]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        return $row === false ? null : new OrderReceipt($row);
+    }
+
     public function getByReceivedBy(int $userId): array {
         $MsaDB = $this->MsaDB;
         $sql = $this->buildSelectJoin()
