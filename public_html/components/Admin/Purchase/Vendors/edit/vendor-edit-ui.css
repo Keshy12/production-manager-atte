@@ -9,6 +9,21 @@
    te same panele z cienką ramką, ta sama skala typów. */
 
 
+/* ---- Kolumna strony --------------------------------------------------
+   Formularz nie rozlewa się na całą szerokość — cała strona (okruszki,
+   nagłówek, formularz, pasek powiązań) stoi w jednej kolumnie o
+   szerokości 75%, wyśrodkowanej. Poniżej 992px kolumna zajmuje całą
+   szerokość, bo 75% telefonu to za mało na pola formularza. */
+
+.vxe-page .vxe-column {
+    width: 75%;
+    margin: 0 auto;
+}
+@media (max-width: 991.98px) {
+    .vxe-page .vxe-column { width: 100%; }
+}
+
+
 /* ---- Nagłówek strony ------------------------------------------------ */
 
 .vxe-page .vxe-head-links {
@@ -41,8 +56,7 @@
 }
 /* Linia rozdzielająca sekcje (pierwsza nie ma linii — nad nią jest
    nagłówek panelu albo wiersz podsumowania). */
-.vxe-page .vxe-section + .vxe-section,
-.vxe-page .vxe-section + .vxe-collapse { border-top: 1px solid var(--rx-line-soft); }
+.vxe-page .vxe-section + .vxe-section { border-top: 1px solid var(--rx-line-soft); }
 .vxe-page .vxe-section-label {
     margin: 0 0 .9rem;
     font-size: .68rem;
@@ -51,6 +65,32 @@
     text-transform: uppercase;
     color: var(--rx-muted);
 }
+/* Nagłówek sekcji z licznikiem po prawej. */
+.vxe-page .vxe-section-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .5rem;
+    margin: 0 0 .9rem;
+}
+.vxe-page .vxe-section-head .vxe-section-label { margin: 0; }
+.vxe-page .vxe-section-info { color: var(--rx-faint); cursor: help; }
+.vxe-page .vxe-section-info:hover { color: var(--rx-accent); }
+
+/* Licznik w nagłówku sekcji (np. „1 z 2" przy szablonach). */
+.vxe-page .vxe-count-chip {
+    display: inline-flex;
+    align-items: center;
+    min-width: 1.5rem;
+    padding: .1rem .55rem;
+    border-radius: 999px;
+    background: var(--rx-line-soft);
+    color: var(--rx-ink-2);
+    font-size: .72rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+.vxe-page .vxe-count-chip.is-on { background: #e6f5eb; color: #1b6e30; }
 
 /* Siatka pól: 12 kolumn, pola rozciągają się wg klasy modyfikatora. */
 .vxe-page .vxe-grid {
@@ -87,7 +127,11 @@
     color: var(--rx-faint);
 }
 
-/* Kontrolki formularza w kolorze i wysokości reszty strony. */
+/* Kontrolki formularza w kolorze i wysokości reszty strony.
+   Uwaga na pułapkę `em`: --rx-ctl-h liczy się względem font-size
+   SAMEGO elementu. .form-control ma tu .875rem, więc wylicza się
+   21 + 8 + 2 = 31 px. Każda kontrolka na stronie musi mieć taki sam
+   font-size, inaczej wysokość by się rozjechała (patrz .vxe-seg). */
 .vxe-page .form-control {
     height: var(--rx-ctl-h);
     padding: .3rem .65rem;
@@ -109,7 +153,9 @@
    Zaokrąglenia wewnętrznej krawędzi zostawia Bootstrap (input-group). */
 
 /* Komórka pickera. min-width: 0 — AGENTS.md: bez tego flex-item rośnie
-   do szerokości najdłuższej opcji i łamie data-width="100%". */
+   do szerokości najdłuższej opcji i łamie data-width="100%".
+   Wysokość: .rx-picker-btn (receipts-ui.css) ma font-size .875rem,
+   więc --rx-ctl-h wylicza mu te same 31 px co .form-control. */
 .vxe-page .vxe-picker { position: relative; min-width: 0; }
 .vxe-page .vxe-picker .bootstrap-select { min-width: 0; width: 100%; }
 
@@ -152,7 +198,22 @@
    dostawcy to jedna wartość (aktywny albo nie), więc jest parą radio.
    Wygląda jak segment (.rx-seg) z zaznaczoną opcją w jej własnym
    odcieniu, a radio pozostaje prawdziwym inputem (name="isActive",
-   wartości 1/0) — kontrakt zapisu bez zmian. */
+   wartości 1/0) — kontrakt zapisu bez zmian.
+
+   font-size: .875rem — bez tego segment dziedziczyłby 16 px z body
+   i --rx-ctl-h policzyłoby mu 34 px zamiast 31 px (patrz .form-control). */
+
+.vxe-page .vxe-seg {
+    display: inline-flex;
+    align-items: stretch;
+    gap: 2px;
+    height: var(--rx-ctl-h);
+    padding: 2px;
+    background: #fff;
+    border: 1px solid var(--rx-line);
+    border-radius: .25rem;
+    font-size: .875rem;
+}
 
 /* Odcienie semantyczne opcji: „Aktywny/Aktywna" to rodzina zielona,
    „Nieaktywny/Wyłączona" — szara, dokładnie jak kafelki statusu na
@@ -170,16 +231,6 @@
     --vxe-tone-ink: #495057;
 }
 
-.vxe-page .vxe-seg {
-    display: inline-flex;
-    align-items: stretch;
-    gap: 2px;
-    height: var(--rx-ctl-h);
-    padding: 2px;
-    background: #fff;
-    border: 1px solid var(--rx-line);
-    border-radius: .25rem;
-}
 .vxe-page .vxe-seg-item {
     position: relative;
     display: inline-flex;
@@ -231,63 +282,6 @@
 .vxe-page .vxe-seg-item input:checked + .vxe-seg-face .vxe-seg-dot { opacity: 1; }
 
 
-/* ---- Zwijane sekcje (szablony / osoby / artykuły) -------------------
-   Nagłówek sekcji to nie Bootstrapowy nagłówek karty, tylko wiersz
-   w stylu .rx-panel-head: tytuł, licznik i chevron po prawej. */
-
-/* Zwijana sekcja w panelu formularza: linia rozdzielająca od sekcji
-   powyżej (patrz reguła .vxe-section + .vxe-collapse wyżej). */
-.vxe-page .vxe-collapse { background: #fff; }
-.vxe-page .vxe-collapse-head {
-    display: flex;
-    align-items: center;
-    gap: .6rem;
-    width: 100%;
-    padding: .85rem 1.25rem;
-    border: 0;
-    background: transparent;
-    color: inherit;
-    text-align: left;
-    cursor: pointer;
-    transition: background-color .12s ease;
-}
-.vxe-page .vxe-collapse-head:hover { background: var(--rx-hover); }
-.vxe-page .vxe-collapse-head:focus-visible {
-    outline: 0;
-    box-shadow: inset var(--rx-ring);
-}
-.vxe-page .vxe-collapse-title {
-    display: inline-flex;
-    align-items: center;
-    gap: .5rem;
-    font-size: .95rem;
-    font-weight: 700;
-    color: var(--rx-ink);
-}
-.vxe-page .vxe-collapse-title .bi { color: var(--rx-muted); }
-.vxe-page .vxe-collapse-info { color: var(--rx-faint); cursor: help; }
-.vxe-page .vxe-collapse-info:hover { color: var(--rx-accent); }
-.vxe-page .vxe-collapse-count {
-    display: inline-flex;
-    align-items: center;
-    min-width: 1.5rem;
-    padding: .1rem .55rem;
-    border-radius: 999px;
-    background: var(--rx-line-soft);
-    color: var(--rx-ink-2);
-    font-size: .72rem;
-    font-weight: 700;
-    font-variant-numeric: tabular-nums;
-}
-.vxe-page .vxe-collapse-count.is-on { background: #e6f5eb; color: #1b6e30; }
-.vxe-page .vxe-chevron {
-    margin-left: auto;
-    color: var(--rx-faint);
-    flex-shrink: 0;
-}
-.vxe-page .vxe-collapse-body { padding: 0 1.25rem 1.25rem; }
-
-
 /* ---- Stopka panelu z akcją zapisu ---------------------------------- */
 
 .vxe-page .vxe-panel-foot {
@@ -325,27 +319,187 @@
 }
 
 
+/* ---- Pasek powiązań (osoby + artykuły) -----------------------------
+   Liczby widać bez otwierania modala — operator od razu widzi, czy
+   dostawca ma kontakty i artykuły. */
+
+.vxe-page .vxe-related-inner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .6rem 1rem;
+    padding: .85rem 1.25rem;
+}
+.vxe-page .vxe-related-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+.vxe-page .vxe-related-title {
+    font-size: .95rem;
+    font-weight: 700;
+    color: var(--rx-ink);
+}
+.vxe-page .vxe-related-desc {
+    font-size: .8rem;
+    color: var(--rx-muted);
+}
+.vxe-page .vxe-related-counts {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: .35rem 1rem;
+    margin-left: auto;
+}
+.vxe-page .vxe-related-count {
+    font-size: .82rem;
+    color: var(--rx-muted);
+    white-space: nowrap;
+}
+.vxe-page .vxe-related-count strong {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--rx-ink);
+    font-variant-numeric: tabular-nums;
+}
+
+
+/* ---- Modal powiązań --------------------------------------------------
+   Szyty w tym samym języku co .dx-modal (documents-edit-ui.css) i
+   .cx-modal (cart-ui.css): biała treść, ramka 1px, promień .6rem,
+   płótnowy nagłówek z linią, miękki cień. Zmienne --rx-* dziedziczone
+   są z .rx-page, bo modal stoi w jego wnętrzu. */
+
+.vxe-modal .modal-dialog {
+    /* Bootstrap daje .modal-dialog margines 1.75rem nad i pod (≥576px)
+       oraz .5rem na telefonie. Wysokość musi uwzględniać te marginesy,
+       inaczej dolna krawędź modala (stopka z przyciskiem Zamknij)
+       wychodzi poza ekran. */
+    height: calc(100vh - 3.5rem);
+    max-height: calc(100vh - 3.5rem);
+}
+@media (max-width: 575.98px) {
+    .vxe-modal .modal-dialog {
+        height: calc(100vh - 1rem);
+        max-height: calc(100vh - 1rem);
+    }
+}
+.vxe-modal .modal-content {
+    max-height: 100%;
+    border: 1px solid var(--rx-line);
+    border-radius: .6rem;
+    box-shadow: 0 1rem 2.5rem rgba(16, 24, 40, .18);
+    overflow: hidden;
+}
+.vxe-modal .modal-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: .9rem 1.25rem;
+    background: var(--rx-canvas);
+    border-bottom: 1px solid var(--rx-line);
+}
+.vxe-modal .modal-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--rx-ink);
+}
+.vxe-modal .modal-title .bi { margin-right: .35rem; color: var(--rx-muted); }
+.vxe-modal .vxe-modal-head-right {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    margin-left: auto;
+}
+.vxe-modal .vxe-modal-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: .1rem .6rem;
+    border: 1px solid var(--rx-line);
+    border-radius: 999px;
+    background: #fff;
+    color: var(--rx-ink-2);
+    font-size: .72rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.vxe-modal .modal-body {
+    padding: 1rem 1.25rem 1.25rem;
+    color: var(--rx-ink-2);
+    overflow-y: auto;
+}
+.vxe-modal .modal-footer {
+    padding: .75rem 1.25rem;
+    background: #fff;
+    border-top: 1px solid var(--rx-line);
+}
+.vxe-modal .modal-footer .btn { font-weight: 600; }
+
+/* Bloki w modalu: osoby kontaktowe i artykuły, jedno pod drugim. */
+.vxe-modal .vxe-modal-block + .vxe-modal-block {
+    margin-top: 1.5rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--rx-line-soft);
+}
+.vxe-modal .vxe-modal-block-head {
+    display: flex;
+    align-items: center;
+    gap: .55rem;
+    margin: 0 0 .85rem;
+}
+.vxe-modal .vxe-modal-block-title {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    margin: 0;
+    font-size: .95rem;
+    font-weight: 700;
+    color: var(--rx-ink);
+}
+.vxe-modal .vxe-modal-block-title .bi { color: var(--rx-muted); }
+
+
 /* ---- Formularz osoby kontaktowej ----------------------------------- */
 
-.vxe-page .vxe-subform {
+.vxe-modal .vxe-subform {
     margin: 0 0 1rem;
     padding: 1rem 1.1rem;
     border: 1px solid var(--rx-line);
     border-radius: var(--rx-radius);
     background: #fff;
 }
-.vxe-page .vxe-subform-title {
+.vxe-modal .vxe-subform-title {
     margin: 0 0 .85rem;
     font-size: .95rem;
     font-weight: 700;
     color: var(--rx-ink);
 }
-.vxe-page .vxe-subform-actions {
+.vxe-modal .vxe-subform-actions {
     display: flex;
     justify-content: flex-end;
     gap: .5rem;
     margin-top: .35rem;
 }
+
+/* Potwierdzenie przełączenia statusu osoby — pasek w modalu, zamiast
+   drugiego modala w modalu (dwie „zasłony" w Bootstrapie 4 wyglądają
+   zepsute). */
+.vxe-modal .vxe-confirm {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .5rem .75rem;
+    margin: 0 0 1rem;
+    padding: .65rem .85rem;
+    border: 1px solid #f0d49a;
+    border-left: 3px solid #f0ad00;
+    border-radius: .3rem;
+    background: #fff8e1;
+    font-size: .85rem;
+    color: #6b4f00;
+}
+.vxe-modal .vxe-confirm-text { flex: 1 1 14rem; }
+.vxe-modal .vxe-confirm .btn { font-weight: 600; }
 
 
 /* ---- Tabele wewnętrzne (osoby / artykuły) --------------------------- */
@@ -416,7 +570,7 @@
 
 
 /* ---- Pusty stan ------------------------------------------------------ */
-/* W zwijanej sekcji pusty stan nie może zajmować half strony. */
+/* W modalu pusty stan nie może zajmować half strony. */
 .vxe-page .rx-empty--compact { padding: 1.6rem 1.25rem; }
 .vxe-page .rx-empty--compact .rx-empty-icon {
     width: 2.6rem;
@@ -440,8 +594,6 @@
     .vxe-page .vxe-field--4,
     .vxe-page .vxe-field--6 { grid-column: span 12; }
     .vxe-page .vxe-section,
-    .vxe-page .vxe-collapse-body,
-    .vxe-page .vxe-collapse-head,
     .vxe-page .vxe-panel-foot { padding-left: .9rem; padding-right: .9rem; }
     .vxe-page .vxe-panel-foot { flex-direction: column; align-items: stretch; }
     .vxe-page .vxe-foot-actions { justify-content: stretch; }
@@ -449,4 +601,8 @@
     .vxe-page .vxe-seg { width: 100%; }
     .vxe-page .vxe-seg-item { flex: 1 1 0; }
     .vxe-page .vxe-seg-face { justify-content: center; width: 100%; }
+    .vxe-page .vxe-related-counts { margin-left: 0; }
+    .vxe-page .vxe-related-inner > .btn { width: 100%; }
+    .vxe-modal .modal-header { flex-wrap: wrap; }
+    .vxe-modal .vxe-modal-head-right { margin-left: 0; }
 }

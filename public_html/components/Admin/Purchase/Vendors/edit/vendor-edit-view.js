@@ -12,36 +12,34 @@
  *        operator lands on the edit page for the new vendor. On
  *        UPDATE we stay on the page and show a success alert.
  *
- *   2. Supplier inline CRUD (edit mode only)
+ *   2. Supplier inline CRUD (edit mode only, inside #vrRelationsModal)
  *      - A single shared form handles both "add new" and "edit
  *        existing". Clicking "Edytuj" on a row populates the form
  *        from the row's data-supplier-json attribute and highlights
- *        the row. "Anuluj edycję" clears the form.
- *      - "Włącz/Wyłącz" on a row opens a small confirm modal that
- *        POSTs to supplier-toggle-active.php. We deliberately keep
- *        the confirm-modal friction for status flips — the producer
- *        page uses a radio in the form, but suppliers are managed
- *        inline and the toggle button matches the legacy UX.
- *      - After add/update/toggle we reload the supplier list via
- *        AJAX so the operator stays on the page.
+ *        the row. "Anuluj" clears the form.
+ *      - "Włącz/Wyłącz" on a row shows an inline confirmation strip
+ *        (NOT a second modal — a modal inside a modal stacks two
+ *        backdrops in Bootstrap 4 and looks broken).
+ *      - After add/update/toggle the page is reloaded, because the
+ *        supplier list is server-rendered HTML. The reload keeps the
+ *        operator's place: ?ok=<code> carries the message and the
+ *        #vrRelations fragment reopens the modal.
  *
  *   3. Inline alert helper
  *      - Used for vendor-save responses, supplier-save responses,
  *        and supplier-toggle responses. Idempotent; success / info
  *        / warning alerts auto-dismiss, error alerts stay.
- *      - Alerts are prepended into #vrFormAlertHost — a stable hook
- *        rendered by the view. The old hook (the first
- *        .container-fluid.w-75 on the page) is gone with the old
- *        narrow container.
+ *      - Alerts land in #vrFormAlertHost (top of the page) or, when
+ *        the relations modal is open, in #vrModalAlertHost inside
+ *        that modal — otherwise the backdrop would hide the message.
  *
  *   4. Preferred e-mail draft pickers (RFQ + PO)
  *      - Two bootstrap-select pickers pointing at the global
  *        `email_draft` catalogue. They live INSIDE #vrEditForm, so
  *        $form.serialize() picks them up — no manual POST patching.
- *      - The section they sit in is collapsed by default, so the
- *        pickers initialise while hidden and compute a zero width;
- *        we refresh them on shown.bs.collapse to re-apply
- *        data-width="100%".
+ *      - The section is no longer collapsed, so the pickers size
+ *        themselves correctly right away; a refresh on window.load
+ *        is a safety net.
  *      - Editing the templates themselves happens in a separate
  *        module: /admin/purchase/email-drafts.
  */
@@ -64,11 +62,16 @@
                 + '</button>'
                 + '</div>'
             );
-            // #vrFormAlertHost is rendered by the view; the page root is
-            // only a fallback for the (impossible) case that it is missing.
-            const $host = $('#vrFormAlertHost').length ? $('#vrFormAlertHost') : $('#vendorEditView');
-            $host.prepend($alert);
         }
+        // Gdzie wstawić alert: wewnątrz modala powiązań (gdy jest
+        // otwarty) albo na górze strony. .prepend() przenosi
+        // istniejący element, więc alert „migruje" między hostami.
+        const $modal = $('#vrRelationsModal');
+        const $host = ($modal.length && $modal.hasClass('show'))
+            ? $('#vrModalAlertHost')
+            : $('#vrFormAlertHost');
+        $host.prepend($alert);
+
         $alert.removeClass('alert-danger alert-success alert-warning alert-info')
               .addClass('alert-' + kind)
               .show();
@@ -92,26 +95,6 @@
         return $('<div>').text(str == null ? '' : String(str)).html();
     }
 
-    /**
-     * Podmienia chevron w nagłówku zwijanej sekcji na zgodny ze
-     * stanem. Bootstrap 4 nie robi tego sam — bez tego nagłówek
-     * pokazuje „w dół" także przy rozwiniętej sekcji i przestaje
-     * cokolwiek znaczyć.
-     */
-    function vrWireChevron(collapseSel, headerSel) {
-        const $collapse = $(collapseSel);
-        const $icon     = $(headerSel).find('.bi-chevron-down, .bi-chevron-up');
-        if ($collapse.length === 0 || $icon.length === 0) return;
-
-        function setIcon(isOpen) {
-            $icon.toggleClass('bi-chevron-up', isOpen)
-                 .toggleClass('bi-chevron-down', !isOpen);
-        }
-        setIcon($collapse.hasClass('show'));
-        $collapse.on('shown.bs.collapse',  function() { setIcon(true);  });
-        $collapse.on('hidden.bs.collapse', function() { setIcon(false); });
-    }
-
     // ============================================================
     // Supplier list re-render (reload after add/update/toggle)
     // ============================================================
@@ -124,8 +107,15 @@
     //     is acceptable.
     //   - A bespoke AJAX endpoint just for the supplier list would
     //     add backend code without much UX win.
-    function reloadSuppliers() {
-        window.location.reload();
+    //
+    // Reload nie może zamykać modala, w którym operator pracuje:
+    //   ?ok=<code>  — kod komunikatu (treść siedzi w PHP),
+    //   #vrRelations — po załadowaniu strony modal otwiera się sam.
+    function reloadSuppliers(code) {
+        const url = new URL(window.location.href);
+        url.searchParams.set('ok', code);
+        url.hash = '#vrRelations';
+        window.location.replace(url.toString());
     }
 
     // ============================================================
@@ -195,8 +185,7 @@
     });
 
     // ============================================================
-    // Supplier inline CRUD (only on edit mode — page has the form
-    // + table only when $isEditMode is true)
+    // Supplier inline CRUD (tylko w trybie edycji)
     // ============================================================
     $(document).ready(function() {
         const $supplierForm = $('#vrSupplierForm');
@@ -224,11 +213,30 @@
         function showSupplierForm() {
             $supplierForm.removeClass('d-none');
             $supplierCancelBtn.removeClass('d-none');
-            $('#vrSupplierCollapse').collapse('show');
+            // Formularz mieszka w modalu powiązań — jeśli modal jest
+            // zamknięty (np. ktoś otworzył stronę z odnośnikiem),
+            // trzeba go otworzyć.
+            const $modal = $('#vrRelationsModal');
+            if ($modal.length && !$modal.hasClass('show')) {
+                $modal.modal('show');
+            }
         }
         function hideSupplierForm() {
             $supplierForm.addClass('d-none');
             $supplierCancelBtn.addClass('d-none');
+        }
+
+        // Przewinięcie formularza osoby kontaktowej na widok. Formularz
+        // siedzi w przewijanym .modal-body, więc przewijamy właśnie
+        // jego, a nie okno strony (które przy otwartym modalu stoi).
+        function scrollSupplierFormIntoView() {
+            const $body = $('#vrRelationsModal .modal-body');
+            if ($body.length === 0) {
+                $('html, body').animate({ scrollTop: $supplierForm.offset().top - 80 }, 200);
+                return;
+            }
+            const top = $supplierForm.offset().top - $body.offset().top + $body.scrollTop() - 12;
+            $body.animate({ scrollTop: top }, 200);
         }
 
         // Dirty-form enable for the supplier form. Independent from
@@ -268,7 +276,7 @@
 
             // Scroll the form into view + focus the name field so
             // the operator can tweak immediately.
-            $('html, body').animate({ scrollTop: $supplierForm.offset().top - 80 }, 200);
+            scrollSupplierFormIntoView();
             $('#vr_supplier_name').trigger('focus');
         });
 
@@ -313,16 +321,14 @@
             })
             .done(function(r) {
                 if (r && r.success) {
-                    vrFlash(r.message || 'Zapisano.', 'success');
-                    // Reload to re-render the supplier table from
-                    // server-rendered HTML (see "Reload strategy"
-                    // comment above for why).
-                    reloadSuppliers();
+                    // Przeładowanie z kodem komunikatu i fragmentem
+                    // #vrRelations — modal wraca otwarty, komunikat
+                    // widać po załadowaniu strony.
+                    reloadSuppliers(id ? 'supplier-updated' : 'supplier-added');
                 } else {
                     const msg = (r && r.error) ? r.error : 'Nieznany błąd.';
                     vrFlash(msg, 'danger');
                     $supplierSubmitBtn.prop('disabled', false);
-                    $(window).scrollTop(0);
                 }
             })
             .fail(function(xhr) {
@@ -333,13 +339,13 @@
                 } catch (e) { /* leave default */ }
                 vrFlash(msg, 'danger');
                 $supplierSubmitBtn.prop('disabled', false);
-                $(window).scrollTop(0);
             });
         });
 
         // ---- Toggle supplier (Włącz / Wyłącz) ----
-        // Opens a confirm modal so the operator doesn't flip status
-        // by accident. Mirrors the legacy inline-toggle UX.
+        // Potwierdzenie to pasek wewnątrz modalu (a drugi modal
+        // w modalu dawałby w Bootstrapie 4 dwie zasłony i wyglądał
+        // zepsuty).
         $(document).on('click', '.vr-supplier-toggle-btn', function() {
             const id       = $(this).data('id');
             const isActive = $(this).data('is-active') == 1;
@@ -351,13 +357,18 @@
                 'Czy na pewno chcesz <b>' + verb + '</b> osobę <b>'
                 + esc(name) + '</b>?'
             );
-            $('#vrToggleSupplierModal').modal('show');
+            $('#vrToggleConfirm').removeClass('d-none');
+            $('#vrConfirmToggleSupplier').trigger('focus');
+        });
+
+        $('#vrCancelToggleSupplier').on('click', function() {
+            $('#vrToggleConfirm').addClass('d-none');
         });
 
         $('#vrConfirmToggleSupplier').on('click', function() {
             const id       = parseInt($('#vrToggleSupplierId').val(), 10);
             const isActive = $('#vrToggleSupplierIsActive').val() === '1';
-            $('#vrToggleSupplierModal').modal('hide');
+            $('#vrToggleConfirm').addClass('d-none');
             $.ajax({
                 url: ajaxBase + 'supplier-toggle-active.php',
                 type: 'POST',
@@ -366,8 +377,7 @@
             })
             .done(function(r) {
                 if (r && r.success) {
-                    vrFlash(r.message || 'Status zmieniony.', 'success');
-                    reloadSuppliers();
+                    reloadSuppliers('supplier-toggled');
                 } else {
                     vrFlash((r && r.error) ? r.error : 'Błąd.', 'danger');
                 }
@@ -379,25 +389,15 @@
     });
 
     // ============================================================
-    // Preferred e-mail draft pickers (RFQ + PO) + zwijane sekcje
+    // Modal powiązań + pickery preferowanych szablonów
     // ============================================================
     $(document).ready(function() {
-        // Chevrony zwijanych sekcji na tej stronie. Wpięte tu, a nie przy
-        // każdej sekcji z osobna, bo wszystkie trzy dzielą ten sam
-        // wzorzec nagłówka (tytuł + licznik + chevron po prawej).
-        vrWireChevron('#vrDraftCollapse',    '#vrDraftCard .vxe-collapse-head');
-        vrWireChevron('#vrSupplierCollapse', '#vrSupplierCard .vxe-collapse-head');
-        vrWireChevron('#vrVpCollapse',       '#vrVpCard .vxe-collapse-head');
-
-        // Nagłówki sekcji to divy z data-toggle="collapse" — Bootstrap
-        // obsługuje tylko kliknięcie, więc dorzucamy klawiaturę
-        // (Enter / spacja), żeby sekcję dało się otworzyć bez myszy.
-        $(document).on('keydown', '.vxe-collapse-head', function(e) {
-            if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
-                e.preventDefault();
-                $(this).trigger('click');
-            }
-        });
+        // Powrót po zmianie osoby kontaktowej: modal ma być znowu
+        // otwarty (przeładowanie zostawia w adresie #vrRelations).
+        if (window.location.hash === '#vrRelations') {
+            const $modal = $('#vrRelationsModal');
+            if ($modal.length) { $modal.modal('show'); }
+        }
 
         const $card = $('#vrDraftCard');
         if ($card.length === 0) return;   // tryb bez karty preferencji
@@ -422,11 +422,10 @@
             noneResultsText: 'Brak szablonu pasującego do {0}',
         });
 
-        // Selecty inicjalizują się wewnątrz zwiniętej sekcji, więc
-        // plugin liczy szerokość przycisku na ukrytym elemencie i
-        // wychodzi mu zero. Po rozwinięciu wymuszamy przeliczenie,
-        // żeby data-width="100%" faktycznie wypełniło kolumnę.
-        $('#vrDraftCollapse').on('shown.bs.collapse', function() {
+        // Sekcja nie jest zwinięta, więc picker powinien policzyć swoją
+        // szerokość od razu — odświeżenie po załadowaniu strony jest
+        // siatką bezpieczeństwa (gdyby styl dociągnął się później).
+        $(window).on('load', function() {
             $pickers.selectpicker('refresh');
         });
 
