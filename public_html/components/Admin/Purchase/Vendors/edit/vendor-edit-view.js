@@ -29,14 +29,19 @@
  *      - Used for vendor-save responses, supplier-save responses,
  *        and supplier-toggle responses. Idempotent; success / info
  *        / warning alerts auto-dismiss, error alerts stay.
+ *      - Alerts are prepended into #vrFormAlertHost — a stable hook
+ *        rendered by the view. The old hook (the first
+ *        .container-fluid.w-75 on the page) is gone with the old
+ *        narrow container.
  *
  *   4. Preferred e-mail draft pickers (RFQ + PO)
  *      - Two bootstrap-select pickers pointing at the global
  *        `email_draft` catalogue. They live INSIDE #vrEditForm, so
  *        $form.serialize() picks them up — no manual POST patching.
- *      - The card they sit in is collapsed by default, so the pickers
- *        initialise while hidden and compute a zero width; we refresh
- *        them on shown.bs.collapse to re-apply data-width="100%".
+ *      - The section they sit in is collapsed by default, so the
+ *        pickers initialise while hidden and compute a zero width;
+ *        we refresh them on shown.bs.collapse to re-apply
+ *        data-width="100%".
  *      - Editing the templates themselves happens in a separate
  *        module: /admin/purchase/email-drafts.
  */
@@ -59,7 +64,10 @@
                 + '</button>'
                 + '</div>'
             );
-            $('.container-fluid.w-75').first().prepend($alert);
+            // #vrFormAlertHost is rendered by the view; the page root is
+            // only a fallback for the (impossible) case that it is missing.
+            const $host = $('#vrFormAlertHost').length ? $('#vrFormAlertHost') : $('#vendorEditView');
+            $host.prepend($alert);
         }
         $alert.removeClass('alert-danger alert-success alert-warning alert-info')
               .addClass('alert-' + kind)
@@ -85,9 +93,9 @@
     }
 
     /**
-     * Podmienia chevron w nagłówku zwijanej karty na zgodny ze
+     * Podmienia chevron w nagłówku zwijanej sekcji na zgodny ze
      * stanem. Bootstrap 4 nie robi tego sam — bez tego nagłówek
-     * pokazuje „w dół" także przy rozwiniętej karcie i przestaje
+     * pokazuje „w dół" także przy rozwiniętej sekcji i przestaje
      * cokolwiek znaczyć.
      */
     function vrWireChevron(collapseSel, headerSel) {
@@ -128,8 +136,10 @@
         function enableVendorSubmit() { $vendorSubmitBtn.prop('disabled', false); }
         $('#vrEditForm').on('input change', 'input, select, textarea', enableVendorSubmit);
 
-        const vendorSaveUrl = window.location.origin
-            + '/atte_ms_new/public_html/components/Admin/Purchase/Vendors/edit/vendor-edit-save.php';
+        // Ścieżka z COMPONENTS_PATH (jak w kodzie osób kontaktowych) —
+        // nie ma już zahardkodowanego prefiksu /atte_ms_new.
+        const vendorSaveUrl = COMPONENTS_PATH
+            + '/Admin/Purchase/Vendors/edit/vendor-edit-save.php';
 
         $('#vrEditForm').on('submit', function(e) {
             e.preventDefault();
@@ -160,8 +170,8 @@
                         return;
                     }
                     vrFlash(r.message || 'Zapisano zmiany.', 'success');
-                    // Odświeża plakietkę „N z 2 / domyślne" w nagłówku
-                    // karty preferowanych szablonów.
+                    // Odświeża licznik „N z 2 / domyślne" w nagłówku
+                    // sekcji preferowanych szablonów.
                     $form.trigger('vr:saved');
                     $(window).scrollTop(0);
                 } else {
@@ -369,20 +379,30 @@
     });
 
     // ============================================================
-    // Preferred e-mail draft pickers (RFQ + PO)
+    // Preferred e-mail draft pickers (RFQ + PO) + zwijane sekcje
     // ============================================================
     $(document).ready(function() {
-        // Chevrony zwijanych kart na tej stronie. Wpięte tu, a nie przy
-        // każdej karcie z osobna, bo wszystkie trzy dzielą ten sam
-        // wzorzec nagłówka (tytuł + plakietka + chevron po prawej).
-        vrWireChevron('#vrDraftCollapse',    '#vrDraftCard .card-header');
-        vrWireChevron('#vrSupplierCollapse', '#vrSupplierCard .card-header');
-        vrWireChevron('#vrVpCollapse',       '#vrVpCard .card-header');
+        // Chevrony zwijanych sekcji na tej stronie. Wpięte tu, a nie przy
+        // każdej sekcji z osobna, bo wszystkie trzy dzielą ten sam
+        // wzorzec nagłówka (tytuł + licznik + chevron po prawej).
+        vrWireChevron('#vrDraftCollapse',    '#vrDraftCard .vxe-collapse-head');
+        vrWireChevron('#vrSupplierCollapse', '#vrSupplierCard .vxe-collapse-head');
+        vrWireChevron('#vrVpCollapse',       '#vrVpCard .vxe-collapse-head');
+
+        // Nagłówki sekcji to divy z data-toggle="collapse" — Bootstrap
+        // obsługuje tylko kliknięcie, więc dorzucamy klawiaturę
+        // (Enter / spacja), żeby sekcję dało się otworzyć bez myszy.
+        $(document).on('keydown', '.vxe-collapse-head', function(e) {
+            if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+                e.preventDefault();
+                $(this).trigger('click');
+            }
+        });
 
         const $card = $('#vrDraftCard');
         if ($card.length === 0) return;   // tryb bez karty preferencji
 
-        // Tooltip przy tytule karty. Popper jest już w headerze, więc
+        // Tooltip przy tytule sekcji. Popper jest już w headerze, więc
         // wystarczy inicjalizacja zakresowa — globalnego initu projekt
         // nie ma (patrz transfer-view.js, ten sam wzorzec).
         $card.find('[data-toggle="tooltip"]').tooltip();
@@ -391,18 +411,18 @@
                          + 'select[name="preferred_email_draft_po_id"]');
         if ($pickers.length === 0) return;
 
-        // data-width="100%" + data-container="#vrDraft*Cell" siedzą już
-        // w HTML-u (patrz AGENTS.md — sekcja o bootstrap-select); tutaj
-        // dokładamy tylko to, czego nie da się wyrazić atrybutem.
+        // data-width="100%" + data-container="#vrDraft*Cell" + styl
+        // rx-picker-btn siedzą już w HTML-u (patrz AGENTS.md — sekcja o
+        // bootstrap-select); tutaj dokładamy tylko to, czego nie da się
+        // wyrazić atrybutem.
         // size: 8 — lista szablonów rośnie, a picker bez limitu potrafi
         // zasłonić resztę formularza zamiast się przewijać.
         $pickers.selectpicker({
-            style: 'btn-light border',
             size: 8,
             noneResultsText: 'Brak szablonu pasującego do {0}',
         });
 
-        // Selecty inicjalizują się wewnątrz zwiniętej karty, więc
+        // Selecty inicjalizują się wewnątrz zwiniętej sekcji, więc
         // plugin liczy szerokość przycisku na ukrytym elemencie i
         // wychodzi mu zero. Po rozwinięciu wymuszamy przeliczenie,
         // żeby data-width="100%" faktycznie wypełniło kolumnę.
@@ -410,16 +430,15 @@
             $pickers.selectpicker('refresh');
         });
 
-        // Po udanym zapisie plakietka w nagłówku karty przestaje kłamać
+        // Po udanym zapisie licznik w nagłówku sekcji przestaje kłamać
         // o tym, ile preferencji dostawca ma ustawionych.
         $('#vrEditForm').on('vr:saved', function() {
             let set = 0;
             $pickers.each(function() {
                 if (parseInt($(this).val(), 10) > 0) { set++; }
             });
-            $card.find('.card-header .badge')
-                .removeClass('badge-success badge-light')
-                .addClass(set > 0 ? 'badge-success' : 'badge-light')
+            $('#vrDraftCount')
+                .toggleClass('is-on', set > 0)
                 .text(set > 0 ? (set + ' z 2') : 'domyślne');
         });
     });

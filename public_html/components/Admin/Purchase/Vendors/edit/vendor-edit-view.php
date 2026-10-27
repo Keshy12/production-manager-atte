@@ -31,7 +31,13 @@
  * lands on the edit page for the freshly-created vendor. On a
  * successful UPDATE the JS stays on the page and shows an inline
  * success alert. On validation errors the save endpoint returns
- * JSON and the JS shows an inline alert at the top of the form.
+ * JSON and the JS shows an inline alert at the top of the page.
+ *
+ * Wygląd: ten sam język co lista dostawców (/admin/purchase/vendors) —
+ * receipts-ui.css jako baza (tylko do odczytu) + vendor-edit-ui.css.
+ * Formularz jest podzielony na nazwane sekcje w jednym panelu .rx-panel
+ * (Dane podstawowe / Uwagi i status), a trzy sekcje wtórne (szablony
+ * wiadomości, osoby kontaktowe, artykuły) są zwijanymi panelami.
  */
 use Atte\DB\MsaDB;
 use Atte\Utils\Purchase\Master\VendorRepository;
@@ -40,13 +46,14 @@ use Atte\Utils\Purchase\Master\VendorPartRepository;
 use Atte\Utils\Purchase\Master\CurrencyRepository;
 
 if (!isset($_SESSION['isAdmin']) || $_SESSION['isAdmin'] !== true) {
-    header("Location: http://" . BASEURL . "/");
+    header("Location: http://".BASEURL."/");
     exit();
 }
 
 $id = (int)($_GET['id'] ?? 0);
 $isEditMode = $id > 0;
 $vendor = null;
+$notFound = false;
 $vendorName             = '';
 $vendorAddress          = '';
 $vendorAdditionalData   = '';
@@ -66,40 +73,38 @@ if ($isEditMode) {
     $repo  = new VendorRepository($MsaDB);
     $vendor = $repo->getById($id);
     if ($vendor === null) {
-        echo '<div class="container-fluid w-75 mt-3">'
-           .     '<div class="alert alert-danger"><i class="bi bi-exclamation-triangle"></i> '
-           .         'Dostawca #' . htmlspecialchars((string)$id) . ' nie istnieje.'
-           .     '</div>'
-           . '</div>';
-        return;
+        // Nie ma takiego dostawcy — strona pokazuje pusty stan zamiast
+        // formularza (który i tak nie miałby czego zapisywać).
+        $notFound = true;
+    } else {
+        $vendorName             = $vendor->name;
+        $vendorAddress          = $vendor->address          ?? '';
+        $vendorAdditionalData   = $vendor->additionalData   ?? '';
+        $vendorShopUrl          = $vendor->shopUrl          ?? '';
+        $vendorLeadTimeDays     = $vendor->leadTimeDays     ?? '';
+        // Prefer the joined code (string); fall back to 'PLN' if the JOIN
+        // somehow missed (e.g. the FK points at an inactive currency row).
+        $vendorDefaultCurrency  = $vendor->defaultCurrencyCode ?: 'PLN';
+        $vendorComment          = $vendor->comment          ?? '';
+        $vendorIsActive         = $vendor->isActive;
+        $vendorPartCount        = $repo->countVendorParts($id);
+
+        // Preferowane szablony wiadomości — same wskaźniki (FK), nie treść.
+        // Treść żyje w globalnym katalogu /admin/purchase/email-drafts.
+        $vendorPreferredRfqId   = (int)($vendor->preferredEmailDraftRfqId ?? 0);
+        $vendorPreferredPoId    = (int)($vendor->preferredEmailDraftPoId  ?? 0);
+
+        // Inline supplier CRUD — fetch all suppliers (active + inactive)
+        // and hydrate them as JS-readable JSON so the edit-page JS can
+        // populate the shared form when "Edytuj" is clicked on a row.
+        $vsRepo    = new VendorSupplierRepository($MsaDB);
+        $suppliers = $vsRepo->getByVendor($id, false);
+
+        // Read-only vendor-parts list (active + inactive). The repo's
+        // LEFT JOINs fill in vendorName, producerName, partName, unitName.
+        $vpRepo     = new VendorPartRepository($MsaDB);
+        $vendorParts = $vpRepo->getByVendor($id, false);
     }
-    $vendorName             = $vendor->name;
-    $vendorAddress          = $vendor->address          ?? '';
-    $vendorAdditionalData   = $vendor->additionalData   ?? '';
-    $vendorShopUrl          = $vendor->shopUrl          ?? '';
-    $vendorLeadTimeDays     = $vendor->leadTimeDays     ?? '';
-    // Prefer the joined code (string); fall back to 'PLN' if the JOIN
-    // somehow missed (e.g. the FK points at an inactive currency row).
-    $vendorDefaultCurrency  = $vendor->defaultCurrencyCode ?: 'PLN';
-    $vendorComment          = $vendor->comment          ?? '';
-    $vendorIsActive         = $vendor->isActive;
-    $vendorPartCount        = $repo->countVendorParts($id);
-
-    // Preferowane szablony wiadomości — same wskaźniki (FK), nie treść.
-    // Treść żyje w globalnym katalogu /admin/purchase/email-drafts.
-    $vendorPreferredRfqId   = (int)($vendor->preferredEmailDraftRfqId ?? 0);
-    $vendorPreferredPoId    = (int)($vendor->preferredEmailDraftPoId  ?? 0);
-
-    // Inline supplier CRUD — fetch all suppliers (active + inactive)
-    // and hydrate them as JS-readable JSON so the edit-page JS can
-    // populate the shared form when "Edytuj" is clicked on a row.
-    $vsRepo    = new VendorSupplierRepository($MsaDB);
-    $suppliers = $vsRepo->getByVendor($id, false);
-
-    // Read-only vendor-parts list (active + inactive). The repo's
-    // LEFT JOINs fill in vendorName, producerName, partName, unitName.
-    $vpRepo     = new VendorPartRepository($MsaDB);
-    $vendorParts = $vpRepo->getByVendor($id, false);
 }
 
 // Currency dropdown — always loaded so CREATE mode also offers the
@@ -110,22 +115,27 @@ if ($isEditMode) {
 if (!isset($MsaDB)) {
     $MsaDB = MsaDB::getInstance();
 }
-$currencies = (new CurrencyRepository($MsaDB))->getActiveEnsuring($vendorDefaultCurrency);
+$currencies = [];
+$emailDrafts = [];
+$vendorPreferredCount = 0;
+if (!$notFound) {
+    $currencies = (new CurrencyRepository($MsaDB))->getActiveEnsuring($vendorDefaultCurrency);
 
-// Preferowane szablony wiadomości — lekka projekcja {id, name} dla
-// pickerów. Ładowana także w trybie tworzenia, bo preferencję da się
-// ustawić od razu przy zakładaniu dostawcy (create() w repozytorium
-// przyjmuje oba FK). Lista zawiera wyłącznie aktywne szablony; jeśli
-// dostawca wskazuje szablon, który ktoś w międzyczasie wyłączył, jego
-// id nie ma w opcjach i picker pokaże „— brak —”. To jest zgodne
-// z zachowaniem kreatora wysyłki, który dla nieaktywnego szablonu i
-// tak wraca do domyślnego systemowego.
-if (!isset($repo)) {
-    $repo = new VendorRepository($MsaDB);
+    // Preferowane szablony wiadomości — lekka projekcja {id, name} dla
+    // pickerów. Ładowana także w trybie tworzenia, bo preferencję da się
+    // ustawić od razu przy zakładaniu dostawcy (create() w repozytorium
+    // przyjmuje oba FK). Lista zawiera wyłącznie aktywne szablony; jeśli
+    // dostawca wskazuje szablon, który ktoś w międzyczasie wyłączył, jego
+    // id nie ma w opcjach i picker pokaże „— brak —". To jest zgodne
+    // z zachowaniem kreatora wysyłki, który dla nieaktywnego szablonu i
+    // tak wraca do domyślnego systemowego.
+    if (!isset($repo)) {
+        $repo = new VendorRepository($MsaDB);
+    }
+    $emailDrafts = $repo->getActiveEmailDrafts();
+    $vendorPreferredCount = ($vendorPreferredRfqId > 0 ? 1 : 0)
+                          + ($vendorPreferredPoId  > 0 ? 1 : 0);
 }
-$emailDrafts = $repo->getActiveEmailDrafts();
-$vendorPreferredCount = ($vendorPreferredRfqId > 0 ? 1 : 0)
-                      + ($vendorPreferredPoId  > 0 ? 1 : 0);
 
 $backUrl = 'http://' . BASEURL . '/admin/purchase/vendors';
 
@@ -151,172 +161,167 @@ function vr_render_packs(array $packs): string {
 }
 
 ?>
-<style>
-    /* Match the rest of the admin cards — alert-primary header +
-       card body for the form panel (same pattern as vp-edit-card /
-       pr-edit-card). */
-    .vr-edit-card .card-header {
-        background-color: #cfe2ff;
-    }
-    /* Downstream-usage hint: shown only on edit mode. */
-    .vr-usage-hint {
-        font-size: 0.875rem;
-        color: #6c757d;
-        margin-top: 0.25rem;
-    }
-    /* Pack badges for the read-only vendor-parts table. */
-    .vr-pack-badge {
-        display: inline-block;
-        font-size: 0.75rem;
-        font-weight: 500;
-        padding: 0.15rem 0.45rem;
-        margin-right: 0.2rem;
-        margin-bottom: 0.15rem;
-        background: #e9ecef;
-        color: #495057;
-        border-radius: 0.25rem;
-        line-height: 1.4;
-    }
-    /* Inactive vendor-part rows: dim the row text. */
-    tr.vr-vp-row--inactive {
-        color: #6c757d;
-    }
-    /* ID column tabular figures so digits line up. */
-    #vrVpTable td.vr-vp-col-id, #vrVpTable th.vr-vp-col-id {
-        font-variant-numeric: tabular-nums;
-    }
-    .vr-vp-comment {
-        font-size: 0.875rem;
-        color: #6c757d;
-    }
-    /* Inactive supplier rows: dim the row text. */
-    tr.vr-supplier-row--inactive {
-        color: #6c757d;
-    }
-    /* Supplier inline form lives in a bordered block; visually
-       distinct from the per-row buttons to avoid accidental clicks. */
-    .vr-supplier-form-card {
-        border: 1px solid #dee2e6;
-        border-radius: 0.25rem;
-        padding: 1rem;
-        background-color: #f8f9fa;
-    }
-    .vr-supplier-form-card legend {
-        font-size: 0.95rem;
-        font-weight: 600;
-        margin-bottom: 0.5rem;
-        padding: 0 0.25rem;
-    }
-    /* Editing mode visually hints which row the form is targeting. */
-    tr.vr-supplier-row--editing {
-        background-color: #fff3cd !important;
-    }
+<link rel="stylesheet" href="<?= asset('public_html/components/purchases/receipts/receipts-ui.css') ?>">
+<link rel="stylesheet" href="<?= asset('public_html/components/Admin/Purchase/Vendors/edit/vendor-edit-ui.css') ?>">
 
-    /* ---- Preferowane szablony wiadomości ------------------------ */
-    /* Zagnieżdżona karta w ciele formularza: nagłówek klikalny jak
-       w karcie osób kontaktowych, ale bez własnego marginesu z boku,
-       żeby nie wyglądała na osobną sekcję strony. */
-    #vrDraftCard .card-header {
-        cursor: pointer;
-    }
-    /* Picker wypełnia kolumnę: kontener ma szerokość kolumny, a
-       min-width:0 zdejmuje intrinsic min-width flexa, przez który
-       najdłuższa nazwa szablonu rozpychałaby kolumnę mimo width:100%.
-       Patrz AGENTS.md — sekcja o bootstrap-select. */
-    .vr-draft-cell,
-    .vr-draft-cell .bootstrap-select {
-        min-width: 0;
-    }
-    /* Dwuliniowa etykieta pickera: linia 1 to stała fraza („dla czego"),
-       linia 2 niesie różnicę między RFQ a PO — para czyta się wtedy
-       jak przełącznik, a nie jak dwa niezależne pola. */
-    .vr-draft-label {
-        display: block;
-        margin-bottom: 0.25rem;
-        line-height: 1.25;
-    }
-    .vr-draft-label-lead {
-        display: block;
-        font-size: 0.72rem;
-        font-weight: 400;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: #adb5bd;
-    }
-    .vr-draft-label-main {
-        display: block;
-        font-size: 0.9rem;
-        font-weight: 600;
-        color: #495057;
-    }
-    .vr-draft-label-main .vr-draft-label-abbr {
-        font-size: 0.78rem;
-        font-weight: 500;
-        color: #6c757d;
-    }
-    /* Podpowiedź przy tytule karty — ikona ma być zaczepem dla
-       tooltipa, nie kolejnym akcentem kolorystycznym. */
-    .vr-draft-info {
-        color: #6c757d;
-        cursor: help;
-    }
-    .vr-draft-info:hover {
-        color: #0d6efd;
-    }
-</style>
+<div class="rx-page vxe-page" id="vendorEditView">
 
-<div class="container-fluid w-75 mt-3">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h4 class="mb-0">
-            <?php if ($isEditMode): ?>
-                <i class="bi bi-pencil-square"></i>
-                Edytuj dostawcę
-                <span class="text-muted">#<?= (int)$vendor->id ?></span>
-            <?php else: ?>
-                <i class="bi bi-plus-circle"></i>
-                Dodaj dostawcę
+    <!-- ===== Ścieżka nawigacji ===== -->
+    <nav aria-label="Ścieżka">
+        <ol class="rx-crumbs">
+            <li><a href="<?= htmlspecialchars($backUrl, ENT_QUOTES) ?>">Dostawcy</a></li>
+            <li aria-hidden="true"><i class="bi bi-chevron-right"></i></li>
+            <li aria-current="page">
+                <?= $isEditMode && !$notFound
+                    ? htmlspecialchars($vendorName, ENT_QUOTES)
+                    : 'Nowy dostawca' ?>
+            </li>
+        </ol>
+    </nav>
+
+    <!-- ===== Nagłówek strony ===== -->
+    <header class="rx-head">
+        <div class="rx-head-main">
+            <div class="rx-eyebrow"><i class="bi bi-truck"></i> Zamówienia komponentów</div>
+            <h1 class="rx-title">
+                <?= $isEditMode && !$notFound ? 'Edytuj dostawcę' : 'Dodaj dostawcę' ?>
+            </h1>
+            <p class="rx-lead">
+                <?php if ($isEditMode && !$notFound): ?>
+                    Dane dostawcy, osoby kontaktowe i&nbsp;powiązane artykuły.
+                    Zmiany zapisujesz przyciskiem na&nbsp;dole formularza.
+                <?php else: ?>
+                    Wpisz dane nowego dostawcy — osoby kontaktowe i&nbsp;artykuły dodasz
+                    później, w&nbsp;kartach tego samego dostawcy.
+                <?php endif; ?>
+            </p>
+        </div>
+        <div class="vxe-head-links">
+            <?php if ($isEditMode && !$notFound): ?>
+                <span class="rx-count vxe-head-id" title="Identyfikator dostawcy">#<?= (int)$vendor->id ?></span>
             <?php endif; ?>
-        </h4>
-        <a href="<?= htmlspecialchars($backUrl, ENT_QUOTES) ?>" class="btn btn-outline-secondary btn-sm">
-            <i class="bi bi-arrow-left"></i> Wróć do listy
-        </a>
-    </div>
+            <a href="<?= htmlspecialchars($backUrl, ENT_QUOTES) ?>" class="btn btn-sm rx-btn-quiet">
+                <i class="bi bi-arrow-left"></i> Wróć do listy
+            </a>
+        </div>
+    </header>
 
-    <?php // AJAX-driven: errors come back as JSON and the JS shows
-          // an inline alert at the top of the form. No flash needed. ?>
+    <!-- Host na komunikaty AJAX (błąd zapisu, potwierdzenie). Pusty,
+         dopiero JS wstawia tu alert — dlatego osobny, stały punkt
+         zaczepienia zamiast dopisywania do kontenera strony. -->
+    <div id="vrFormAlertHost" class="rx-alerts"></div>
 
-    <form method="post"
-          id="vrEditForm"
-          autocomplete="off">
+<?php if ($notFound): ?>
+
+    <!-- ===== Nie ma takiego dostawcy ===== -->
+    <section class="rx-panel vxe-panel">
+        <div class="rx-empty rx-empty--page">
+            <div class="rx-empty-icon rx-empty-icon--danger"><i class="bi bi-exclamation-triangle"></i></div>
+            <div class="rx-empty-title">Dostawca nie istnieje</div>
+            <div class="rx-empty-text">
+                Dostawca #<?= htmlspecialchars((string)$id, ENT_QUOTES) ?> nie został znaleziony
+                albo został usunięty.
+            </div>
+            <a href="<?= htmlspecialchars($backUrl, ENT_QUOTES) ?>" class="btn btn-sm btn-primary">
+                <i class="bi bi-arrow-left"></i> Wróć do listy
+            </a>
+        </div>
+    </section>
+
+<?php else: ?>
+
+    <!-- ================================================================
+         Formularz dostawcy. Wszystkie pola (także pickery preferowanych
+         szablonów) leżą WEWNĄTRZ #vrEditForm, więc $form.serialize()
+         widzi komplet — nic nie trzeba doklejać ręcznie do POST-a.
+         ================================================================ -->
+    <form method="post" id="vrEditForm" autocomplete="off">
         <input type="hidden" name="id" value="<?= $isEditMode ? (int)$vendor->id : 0 ?>">
 
-        <div class="card vr-edit-card">
-            <div class="card-body">
+        <!-- vxe-form-panel: panel z pickerami (waluta, szablony
+             wiadomości) — musi mieć overflow: visible, bo menu
+             bootstrap-select wychodzi poza panel. Patrz vendor-edit-ui.css. -->
+        <section class="rx-panel vxe-panel vxe-form-panel">
+            <div class="rx-panel-head">
+                <h2 class="rx-panel-title"><i class="bi bi-pencil-square"></i> Dane dostawcy</h2>
+                <span class="vxe-panel-hint">
+                    Pola oznaczone <span class="vxe-required">*</span> są wymagane.
+                </span>
+            </div>
 
-                <div class="form-row">
-                    <div class="form-group col-md-8">
-                        <label for="vr_edit_name">Nazwa: <span class="text-danger">*</span></label>
+            <?php if ($isEditMode && !$notFound): ?>
+                <p class="vxe-usage">
+                    <i class="bi bi-info-circle"></i>
+                    Ten dostawca ma przypisane <strong><?= (int)$vendorPartCount ?></strong>
+                    artykuł<?= $vendorPartCount === 1 ? '' : 'ów' ?> u dostawców
+                    i <strong><?= count($suppliers) ?></strong>
+                    osób<?= count($suppliers) === 1 ? 'ę' : '' ?> kontaktow<?= count($suppliers) === 1 ? 'ą' : 'ych' ?>.
+                </p>
+            <?php endif; ?>
+
+            <!-- ===== Dane podstawowe ===== -->
+            <div class="vxe-section">
+                <h3 class="vxe-section-label">Dane podstawowe</h3>
+                <div class="vxe-grid">
+
+                    <div class="vxe-field vxe-field--8">
+                        <label class="vxe-label" for="vr_edit_name">
+                            Nazwa <span class="vxe-required">*</span>
+                        </label>
                         <input type="text" id="vr_edit_name" name="name"
                                class="form-control" required maxlength="255"
                                value="<?= htmlspecialchars($vendorName, ENT_QUOTES) ?>">
                     </div>
-                    <div class="form-group col-md-4">
-                        <label for="vr_edit_lead_time">Lead time (dni):</label>
+
+                    <div class="vxe-field vxe-field--4">
+                        <label class="vxe-label" for="vr_edit_lead_time">Lead time (dni)</label>
                         <input type="number" id="vr_edit_lead_time" name="lead_time_days"
                                class="form-control" min="0" step="1"
                                value="<?= htmlspecialchars((string)$vendorLeadTimeDays, ENT_QUOTES) ?>">
+                        <p class="vxe-help">Przewidywany czas dostawy w dniach roboczych.</p>
                     </div>
-                </div>
 
-                <div class="form-row">
-                    <div class="form-group col-md-4">
-                        <label for="vr_edit_currency">Domyślna waluta:</label>
-                        <div id="vrCurrencyCell">
+                    <div class="vxe-field vxe-field--12">
+                        <label class="vxe-label" for="vr_edit_address">Adres</label>
+                        <input type="text" id="vr_edit_address" name="address"
+                               class="form-control"
+                               value="<?= htmlspecialchars($vendorAddress, ENT_QUOTES) ?>">
+                    </div>
+
+                    <div class="vxe-field vxe-field--8">
+                        <label class="vxe-label" for="vr_edit_shop_url">Adres sklepu (URL)</label>
+                        <div class="input-group">
+                            <input type="url" id="vr_edit_shop_url" name="shop_url"
+                                   class="form-control" maxlength="500"
+                                   placeholder="https://www.sklep-dostawcy.pl"
+                                   value="<?= htmlspecialchars($vendorShopUrl, ENT_QUOTES) ?>">
+                            <?php if ($vendorShopUrl !== ''): ?>
+                                <div class="input-group-append">
+                                    <a class="btn btn-sm rx-btn-quiet" target="_blank" rel="noopener"
+                                       href="<?= htmlspecialchars($vendorShopUrl, ENT_QUOTES) ?>"
+                                       title="Otwórz sklep w nowej karcie">
+                                        <i class="bi bi-box-arrow-up-right"></i> Otwórz
+                                    </a>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                        <p class="vxe-help">
+                            Link do sklepu dostawcy. W&nbsp;koszyku (wiersz wariantu części)
+                            przycisk „Sklep” otwiera go w&nbsp;nowej karcie.
+                        </p>
+                    </div>
+
+                    <div class="vxe-field vxe-field--4">
+                        <label class="vxe-label" for="vr_edit_currency">Domyślna waluta</label>
+                        <!-- AGENTS.md: data-width="100%" + data-container na
+                             komórce + min-width: 0 na komórce. -->
+                        <div class="vxe-picker" id="vrCurrencyCell">
                             <select id="vr_edit_currency" name="default_currency"
-                                    class="selectpicker form-control"
+                                    class="selectpicker"
                                     data-width="100%"
                                     data-container="#vrCurrencyCell"
                                     data-live-search="true"
+                                    data-style="rx-picker-btn"
                                     title="Wybierz walutę…">
                                 <?php foreach ($currencies as $cur):
                                     $code = (string)$cur['code'];
@@ -330,207 +335,181 @@ function vr_render_packs(array $packs): string {
                                 <?php endforeach; ?>
                             </select>
                         </div>
-                        <small class="form-text text-muted">
-                            Domyślna waluta dla nowych zamówień u tego dostawcy.
-                        </small>
+                        <p class="vxe-help">Domyślna waluta dla nowych zamówień u&nbsp;tego dostawcy.</p>
                     </div>
-                </div>
 
-                <div class="form-group">
-                    <label for="vr_edit_address">Adres:</label>
-                    <input type="text" id="vr_edit_address" name="address"
-                           class="form-control"
-                           value="<?= htmlspecialchars($vendorAddress, ENT_QUOTES) ?>">
-                </div>
-
-                <div class="form-group">
-                    <label for="vr_edit_shop_url">Adres sklepu (URL):</label>
-                    <div class="input-group">
-                        <input type="url" id="vr_edit_shop_url" name="shop_url"
-                               class="form-control" maxlength="500"
-                               placeholder="https://www.sklep-dostawcy.pl"
-                               value="<?= htmlspecialchars($vendorShopUrl, ENT_QUOTES) ?>">
-                        <?php if ($vendorShopUrl !== ''): ?>
-                            <div class="input-group-append">
-                                <a class="btn btn-outline-secondary" target="_blank" rel="noopener"
-                                   href="<?= htmlspecialchars($vendorShopUrl, ENT_QUOTES) ?>"
-                                   title="Otwórz sklep w nowej karcie">
-                                    <i class="bi bi-box-arrow-up-right"></i> Otwórz
-                                </a>
-                            </div>
-                        <?php endif; ?>
+                    <div class="vxe-field vxe-field--12">
+                        <label class="vxe-label" for="vr_edit_additional_data">Dodatkowe dane</label>
+                        <input type="text" id="vr_edit_additional_data" name="additional_data"
+                               class="form-control"
+                               value="<?= htmlspecialchars($vendorAdditionalData, ENT_QUOTES) ?>">
                     </div>
-                    <small class="form-text text-muted">
-                        Link do sklepu dostawcy. W koszyku (wiersz wariantu części) przycisk „Sklep” otwiera go w nowej karcie.
-                    </small>
+
                 </div>
-
-                <div class="form-group">
-                    <label for="vr_edit_additional_data">Dodatkowe dane:</label>
-                    <input type="text" id="vr_edit_additional_data" name="additional_data"
-                           class="form-control"
-                           value="<?= htmlspecialchars($vendorAdditionalData, ENT_QUOTES) ?>">
-                </div>
-
-                <div class="form-group">
-                    <label for="vr_edit_comment">Komentarz:</label>
-                    <textarea id="vr_edit_comment" name="comment" class="form-control" rows="3"
-                              placeholder="opcjonalne uwagi wewnętrzne"><?= htmlspecialchars($vendorComment, ENT_QUOTES) ?></textarea>
-                </div>
-
-                <div class="form-group">
-                    <label>Status:</label>
-                    <div>
-                        <label class="mr-3 mb-0">
-                            <input type="radio" name="isActive" value="1" <?= $vendorIsActive ? 'checked' : '' ?>>
-                            Aktywny
-                        </label>
-                        <label class="mb-0">
-                            <input type="radio" name="isActive" value="0" <?= !$vendorIsActive ? 'checked' : '' ?>>
-                            Nieaktywny
-                        </label>
-                    </div>
-                    <small class="form-text text-muted">
-                        Nieaktywni dostawcy nie pojawiają się w domyślnym widoku listy ani w wyszukiwarkach
-                        artykułów u dostawców.
-                    </small>
-                </div>
-
-                <!-- ================================================================
-                     Preferowane szablony wiadomości
-                     Dostawca tylko WSKAZUJE szablon z globalnego katalogu
-                     (/admin/purchase/email-drafts) — treści nie edytuje się
-                     tutaj. Krok 4 kreatora wysyłki rozwiązuje ten FK i
-                     podstawia zmienne; przy braku wskazania albo gdy szablon
-                     jest wyłączony, wraca do szablonu systemowego.
-
-                     Karta jest zagnieżdżona WEWNĄTRZ #vrEditForm, więc
-                     $form.serialize() widzi oba selecty i nie trzeba ich
-                     doklejać ręcznie do POST-a.
-                     ================================================================ -->
-                <div class="card mt-4 mb-0" id="vrDraftCard">
-                    <div class="card-header alert-secondary" data-toggle="collapse" data-target="#vrDraftCollapse" aria-expanded="false">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <h6 class="mb-0">
-                                <i class="bi bi-envelope-paper"></i>
-                                Preferowane szablony wiadomości
-                                <i class="bi bi-info-circle vr-draft-info ml-1"
-                                   data-toggle="tooltip"
-                                   data-placement="top"
-                                   title="Szablon używany w kroku 4 wysyłki zapytania. Pozostaw puste, aby użyć wbudowanego domyślnego."></i>
-                                <?php if ($vendorPreferredCount > 0): ?>
-                                    <span class="badge badge-success ml-1"><?= (int)$vendorPreferredCount ?> z 2</span>
-                                <?php else: ?>
-                                    <span class="badge badge-light ml-1">domyślne</span>
-                                <?php endif; ?>
-                            </h6>
-                            <i class="bi bi-chevron-down"></i>
-                        </div>
-                    </div>
-                    <div id="vrDraftCollapse" class="collapse">
-                        <div class="card-body">
-
-                            <p class="text-muted small">
-                                Wybierz szablon, którego kreator wysyłki ma użyć dla tego dostawcy.
-                                Brak wyboru oznacza szablon systemowy.
-                                Treść szablonów edytuje się w module
-                                <a href="<?= 'http://' . BASEURL . '/admin/purchase/email-drafts' ?>">Szablony wiadomości</a>.
-                            </p>
-
-                            <?php
-                            // Pickery renderują się ZAWSZE — także przy pustym
-                            // katalogu. Pusty katalog sygnalizuje niewybieralna
-                            // opcja w środku, a nie osobny blok alertu: operator
-                            // widzi wtedy, gdzie ta wartość ma trafić, zamiast
-                            // patrzeć na dziurę w formularzu.
-                            $vrDraftPickers = [
-                                [
-                                    'id'    => 'vr_pref_draft_rfq',
-                                    'cell'  => 'vrDraftRfqCell',
-                                    'name'  => 'preferred_email_draft_rfq_id',
-                                    'main'  => 'zapytań ofertowych',
-                                    'abbr'  => 'RFQ',
-                                    'value' => $vendorPreferredRfqId,
-                                    'col'   => 'col-md-6 mb-md-0',
-                                ],
-                                [
-                                    'id'    => 'vr_pref_draft_po',
-                                    'cell'  => 'vrDraftPoCell',
-                                    'name'  => 'preferred_email_draft_po_id',
-                                    'main'  => 'zamówień',
-                                    'abbr'  => 'PO',
-                                    'value' => $vendorPreferredPoId,
-                                    'col'   => 'col-md-6 mb-0',
-                                ],
-                            ];
-                            ?>
-                            <div class="form-row">
-                                <?php foreach ($vrDraftPickers as $p): ?>
-                                    <div class="form-group <?= $p['col'] ?>">
-                                        <label class="vr-draft-label" for="<?= $p['id'] ?>">
-                                            <span class="vr-draft-label-lead">Preferowany szablon dla</span>
-                                            <span class="vr-draft-label-main">
-                                                <?= htmlspecialchars($p['main'], ENT_QUOTES) ?>
-                                                <span class="vr-draft-label-abbr">(<?= $p['abbr'] ?>)</span>
-                                            </span>
-                                        </label>
-                                        <div class="vr-draft-cell" id="<?= $p['cell'] ?>">
-                                            <select id="<?= $p['id'] ?>"
-                                                    name="<?= $p['name'] ?>"
-                                                    class="selectpicker form-control"
-                                                    data-width="100%"
-                                                    data-container="#<?= $p['cell'] ?>"
-                                                    data-live-search="true"
-                                                    title="— brak —">
-                                                <option value="0" <?= $p['value'] === 0 ? 'selected' : '' ?>>— brak —</option>
-                                                <?php if ($emailDrafts === []): ?>
-                                                    <option value="0" disabled>
-                                                        -- brak zdefiniowanych szablonów — utwórz w /admin/purchase/email-drafts --
-                                                    </option>
-                                                <?php else: ?>
-                                                    <?php foreach ($emailDrafts as $d): ?>
-                                                        <option value="<?= (int)$d->id ?>"
-                                                                <?= ((int)$d->id === $p['value']) ? 'selected' : '' ?>>
-                                                            <?= htmlspecialchars($d->name, ENT_QUOTES) ?>
-                                                        </option>
-                                                    <?php endforeach; ?>
-                                                <?php endif; ?>
-                                            </select>
-                                        </div>
-                                    </div>
-                                <?php endforeach; ?>
-                            </div>
-
-                            <?php if ($emailDrafts === []): ?>
-                                <small class="form-text text-muted mt-2">
-                                    <i class="bi bi-info-circle"></i>
-                                    Katalog szablonów jest pusty —
-                                    <a href="<?= 'http://' . BASEURL . '/admin/purchase/email-drafts/edit' ?>">dodaj pierwszy szablon</a>,
-                                    aby móc go tu wskazać.
-                                </small>
-                            <?php endif; ?>
-
-                        </div>
-                    </div>
-                </div>
-
-                <?php if ($isEditMode): ?>
-                    <div class="vr-usage-hint">
-                        <i class="bi bi-info-circle"></i>
-                        Ten dostawca ma przypisane <strong><?= (int)$vendorPartCount ?></strong>
-                        artykuł<?= $vendorPartCount === 1 ? '' : 'ów' ?> u dostawców i <strong><?= count($suppliers) ?></strong>
-                        osób<?= count($suppliers) === 1 ? 'ę' : '' ?> kontaktow<?= count($suppliers) === 1 ? 'ą' : 'ych' ?>.
-                    </div>
-                <?php endif; ?>
-
             </div>
-            <div class="card-footer d-flex justify-content-between align-items-center">
-                <small class="text-muted">Pola oznaczone <span class="text-danger">*</span> są wymagane.</small>
-                <div>
-                    <a href="<?= htmlspecialchars($backUrl, ENT_QUOTES) ?>" class="btn btn-secondary">
-                        <i class="bi bi-arrow-left"></i> Powrót
+
+            <!-- ===== Uwagi i status ===== -->
+            <div class="vxe-section">
+                <h3 class="vxe-section-label">Uwagi i status</h3>
+                <div class="vxe-grid">
+
+                    <div class="vxe-field vxe-field--12">
+                        <label class="vxe-label" for="vr_edit_comment">Komentarz</label>
+                        <textarea id="vr_edit_comment" name="comment" class="form-control" rows="3"
+                                  placeholder="Opcjonalne uwagi wewnętrzne"><?= htmlspecialchars($vendorComment, ENT_QUOTES) ?></textarea>
+                        <p class="vxe-help">
+                            Uwagi wewnętrzne — widoczne też na liście dostawców, pod nazwą.
+                        </p>
+                    </div>
+
+                    <div class="vxe-field vxe-field--12">
+                        <fieldset class="vxe-fieldset">
+                            <legend class="vxe-label">Status</legend>
+                            <div class="vxe-seg">
+                                <label class="vxe-seg-item">
+                                    <input type="radio" name="isActive" value="1" <?= $vendorIsActive ? 'checked' : '' ?>>
+                                    <span class="vxe-seg-face vxe-seg-face--active">
+                                        <span class="vxe-seg-dot"></span>Aktywny
+                                    </span>
+                                </label>
+                                <label class="vxe-seg-item">
+                                    <input type="radio" name="isActive" value="0" <?= !$vendorIsActive ? 'checked' : '' ?>>
+                                    <span class="vxe-seg-face vxe-seg-face--inactive">
+                                        <span class="vxe-seg-dot"></span>Nieaktywny
+                                    </span>
+                                </label>
+                            </div>
+                            <p class="vxe-help">
+                                Nieaktywni dostawcy nie pojawiają się w&nbsp;domyślnym widoku listy
+                                ani w&nbsp;wyszukiwarkach artykułów u&nbsp;dostawców.
+                            </p>
+                        </fieldset>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- ================================================================
+                 Preferowane szablony wiadomości
+                 Dostawca tylko WSKAZUJE szablon z globalnego katalogu
+                 (/admin/purchase/email-drafts) — treści nie edytuje się
+                 tutaj. Krok 4 kreatora wysyłki rozwiązuje ten FK i
+                 podstawia zmienne; przy braku wskazania albo gdy szablon
+                 jest wyłączony, wraca do szablonu systemowego.
+
+                 Sekcja jest ZNIEŻDŻONA wewnątrz #vrEditForm, więc
+                 $form.serialize() widzi oba selecty i nie trzeba ich
+                 doklejać ręcznie do POST-a.
+                 ================================================================ -->
+            <div class="vxe-collapse" id="vrDraftCard">
+                <div class="vxe-collapse-head" data-toggle="collapse" data-target="#vrDraftCollapse"
+                     aria-expanded="false" role="button" tabindex="0">
+                    <span class="vxe-collapse-title">
+                        <i class="bi bi-envelope-paper"></i> Preferowane szablony wiadomości
+                    </span>
+                    <i class="bi bi-info-circle vxe-collapse-info"
+                       data-toggle="tooltip"
+                       data-placement="top"
+                       title="Szablon używany w kroku 4 wysyłki zapytania. Pozostaw puste, aby użyć wbudowanego domyślnego."></i>
+                    <span class="vxe-collapse-count<?= $vendorPreferredCount > 0 ? ' is-on' : '' ?>" id="vrDraftCount">
+                        <?= $vendorPreferredCount > 0 ? (int)$vendorPreferredCount . ' z 2' : 'domyślne' ?>
+                    </span>
+                    <i class="bi bi-chevron-down vxe-chevron"></i>
+                </div>
+                <div id="vrDraftCollapse" class="collapse">
+                    <div class="vxe-collapse-body">
+
+                        <p class="vxe-table-note">
+                            Wybierz szablon, którego kreator wysyłki ma użyć dla tego dostawcy.
+                            Brak wyboru oznacza szablon systemowy. Treść szablonów edytuje się w&nbsp;module
+                            <a href="<?= 'http://' . BASEURL . '/admin/purchase/email-drafts' ?>">Szablony wiadomości</a>.
+                        </p>
+
+                        <?php
+                        // Pickery renderują się ZAWSZE — także przy pustym
+                        // katalogu. Pusty katalog sygnalizuje niewybieralna
+                        // opcja w środku, a nie osobny blok alertu: operator
+                        // widzi wtedy, gdzie ta wartość ma trafić, zamiast
+                        // patrzeć na dziurę w formularzu.
+                        $vrDraftPickers = [
+                            [
+                                'id'    => 'vr_pref_draft_rfq',
+                                'cell'  => 'vrDraftRfqCell',
+                                'name'  => 'preferred_email_draft_rfq_id',
+                                'main'  => 'zapytań ofertowych',
+                                'abbr'  => 'RFQ',
+                                'value' => $vendorPreferredRfqId,
+                            ],
+                            [
+                                'id'    => 'vr_pref_draft_po',
+                                'cell'  => 'vrDraftPoCell',
+                                'name'  => 'preferred_email_draft_po_id',
+                                'main'  => 'zamówień',
+                                'abbr'  => 'PO',
+                                'value' => $vendorPreferredPoId,
+                            ],
+                        ];
+                        ?>
+                        <div class="vxe-grid">
+                            <?php foreach ($vrDraftPickers as $p): ?>
+                                <div class="vxe-field vxe-field--6">
+                                    <label class="vxe-label" for="<?= $p['id'] ?>">
+                                        Preferowany szablon dla <?= htmlspecialchars($p['main'], ENT_QUOTES) ?>
+                                        <span class="vxe-abbr">(<?= $p['abbr'] ?>)</span>
+                                    </label>
+                                    <div class="vxe-picker" id="<?= $p['cell'] ?>">
+                                        <select id="<?= $p['id'] ?>"
+                                                name="<?= $p['name'] ?>"
+                                                class="selectpicker"
+                                                data-width="100%"
+                                                data-container="#<?= $p['cell'] ?>"
+                                                data-live-search="true"
+                                                data-style="rx-picker-btn"
+                                                title="— brak —">
+                                            <option value="0" <?= $p['value'] === 0 ? 'selected' : '' ?>>— brak —</option>
+                                            <?php if ($emailDrafts === []): ?>
+                                                <option value="0" disabled>
+                                                    -- brak zdefiniowanych szablonów — utwórz w /admin/purchase/email-drafts --
+                                                </option>
+                                            <?php else: ?>
+                                                <?php foreach ($emailDrafts as $d): ?>
+                                                    <option value="<?= (int)$d->id ?>"
+                                                            <?= ((int)$d->id === $p['value']) ? 'selected' : '' ?>>
+                                                        <?= htmlspecialchars($d->name, ENT_QUOTES) ?>
+                                                    </option>
+                                                <?php endforeach; ?>
+                                            <?php endif; ?>
+                                        </select>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+
+                        <?php if ($emailDrafts === []): ?>
+                            <p class="vxe-help" style="margin-top:.75rem;">
+                                <i class="bi bi-info-circle"></i>
+                                Katalog szablonów jest pusty —
+                                <a href="<?= 'http://' . BASEURL . '/admin/purchase/email-drafts/edit' ?>">dodaj pierwszy szablon</a>,
+                                aby móc go tu wskazać.
+                            </p>
+                        <?php endif; ?>
+
+                    </div>
+                </div>
+            </div>
+
+            <!-- ===== Stopka: zapis zmian ===== -->
+            <div class="vxe-panel-foot">
+                <span class="vxe-foot-hint">
+                    <?= $isEditMode
+                        ? 'Zmiany zapisujesz przyciskiem po prawej.'
+                        : 'Po zapisaniu otworzy się karta nowego dostawcy.' ?>
+                </span>
+                <div class="vxe-foot-actions">
+                    <a href="<?= htmlspecialchars($backUrl, ENT_QUOTES) ?>" class="btn rx-btn-quiet">
+                        <i class="bi bi-arrow-left"></i> Wróć do listy
                     </a>
-                    <button type="submit" class="btn btn-primary" id="vrSubmitBtn" disabled>
+                    <button type="submit" class="btn btn-primary vxe-save-btn" id="vrSubmitBtn" disabled>
                         <?php if ($isEditMode): ?>
                             <i class="bi bi-check2-circle"></i> Zapisz zmiany
                         <?php else: ?>
@@ -539,170 +518,188 @@ function vr_render_packs(array $packs): string {
                     </button>
                 </div>
             </div>
-        </div>
+        </section>
     </form>
 
     <?php if ($isEditMode): ?>
         <!-- ================================================================
              Inline supplier CRUD
-             A single shared form at the top handles both "add new"
-             and "edit existing". Clicking "Edytuj" on a row populates
-             the form and highlights the row; "Anuluj" clears it. Saves
-             via the existing supplier-add.php / supplier-update.php
-             endpoints — no new backend required.
+             A single shared form handles both "add new" and "edit
+             existing". Clicking "Edytuj" on a row populates the form and
+             highlights the row; "Anuluj" clears it. Saves via the existing
+             supplier-add.php / supplier-update.php endpoints — no new
+             backend required.
+
+             UWAGA: ten formularz jest OSOBNYM formularzem (#vrSupplierForm)
+             i NIE może leżeć wewnątrz #vrEditForm — inaczej serialize()
+             wysłałby pola osoby kontaktowej razem z polami dostawcy.
              ================================================================ -->
-        <div class="card mt-4" id="vrSupplierCard">
-            <div class="card-header alert-secondary vr-supplier-toggle" data-toggle="collapse" data-target="#vrSupplierCollapse" aria-expanded="false" style="cursor: pointer;">
-                <div class="d-flex justify-content-between align-items-center">
-                    <h6 class="mb-0">
-                        <i class="bi bi-person-lines-fill"></i>
-                        Osoby kontaktowe
-                        <span class="badge badge-info ml-1"><?= count($suppliers) ?></span>
-                    </h6>
-                    <i class="bi bi-chevron-down"></i>
-                </div>
+        <section class="rx-panel vxe-panel" id="vrSupplierCard">
+            <div class="vxe-collapse-head" data-toggle="collapse" data-target="#vrSupplierCollapse"
+                 aria-expanded="false" role="button" tabindex="0">
+                <span class="vxe-collapse-title">
+                    <i class="bi bi-person-lines-fill"></i> Osoby kontaktowe
+                </span>
+                <span class="vxe-collapse-count"><?= count($suppliers) ?></span>
+                <i class="bi bi-chevron-down vxe-chevron"></i>
             </div>
             <div id="vrSupplierCollapse" class="collapse">
-                <div class="card-body">
+                <div class="vxe-collapse-body">
 
-                <div class="mb-3">
-                    <button type="button" id="vrSupplierAddBtn" class="btn btn-primary btn-sm">
-                        <i class="bi bi-plus-circle"></i> Dodaj osobę kontaktową
-                    </button>
+                    <div class="vxe-toolbar-row">
+                        <button type="button" id="vrSupplierAddBtn" class="btn btn-sm btn-primary">
+                            <i class="bi bi-plus-circle"></i> Dodaj osobę kontaktową
+                        </button>
+                        <span class="vxe-help" style="margin:0;">
+                            Dane osób kontaktowych są osobnym formularzem — zapis dostawcy ich nie obejmuje.
+                        </span>
+                    </div>
+
+                    <form id="vrSupplierForm" autocomplete="off" class="vxe-subform d-none">
+                        <input type="hidden" name="id"        id="vrSupplierId"        value="">
+                        <input type="hidden" name="vendor_id" id="vrSupplierVendorId" value="<?= (int)$vendor->id ?>">
+                        <div class="vxe-subform-title" id="vrSupplierFormTitle">Dodaj osobę kontaktową</div>
+                        <div class="vxe-grid">
+                            <div class="vxe-field vxe-field--6">
+                                <label class="vxe-label" for="vr_supplier_name">
+                                    Imię i nazwisko <span class="vxe-required">*</span>
+                                </label>
+                                <input type="text" id="vr_supplier_name" name="name"
+                                       class="form-control" required maxlength="255">
+                            </div>
+                            <div class="vxe-field vxe-field--6">
+                                <label class="vxe-label" for="vr_supplier_job_title">Stanowisko</label>
+                                <input type="text" id="vr_supplier_job_title" name="job_title"
+                                       class="form-control" maxlength="255">
+                            </div>
+                            <div class="vxe-field vxe-field--6">
+                                <label class="vxe-label" for="vr_supplier_phone">Telefon</label>
+                                <input type="text" id="vr_supplier_phone" name="phone"
+                                       class="form-control" maxlength="64">
+                            </div>
+                            <div class="vxe-field vxe-field--6">
+                                <label class="vxe-label" for="vr_supplier_email">Email</label>
+                                <input type="email" id="vr_supplier_email" name="email"
+                                       class="form-control" maxlength="255">
+                            </div>
+                            <div class="vxe-field vxe-field--12">
+                                <label class="vxe-label" for="vr_supplier_comment">Komentarz</label>
+                                <textarea id="vr_supplier_comment" name="comment" class="form-control" rows="2"></textarea>
+                            </div>
+                            <div class="vxe-field vxe-field--12">
+                                <fieldset class="vxe-fieldset">
+                                    <legend class="vxe-label">Status</legend>
+                                    <div class="vxe-seg">
+                                        <label class="vxe-seg-item">
+                                            <input type="radio" name="isActive" value="1" checked>
+                                            <span class="vxe-seg-face vxe-seg-face--active">
+                                                <span class="vxe-seg-dot"></span>Aktywna
+                                            </span>
+                                        </label>
+                                        <label class="vxe-seg-item">
+                                            <input type="radio" name="isActive" value="0">
+                                            <span class="vxe-seg-face vxe-seg-face--inactive">
+                                                <span class="vxe-seg-dot"></span>Wyłączona
+                                            </span>
+                                        </label>
+                                    </div>
+                                </fieldset>
+                            </div>
+                        </div>
+                        <div class="vxe-subform-actions">
+                            <button type="button" id="vrSupplierCancelBtn" class="btn btn-sm rx-btn-quiet d-none">
+                                <i class="bi bi-x-circle"></i> Anuluj
+                            </button>
+                            <button type="submit" class="btn btn-sm btn-primary" id="vrSupplierSubmitBtn" disabled>
+                                <i class="bi bi-check2-circle"></i> Zapisz osobę
+                            </button>
+                        </div>
+                    </form>
+
+                    <?php if ($suppliers === []): ?>
+                        <div class="rx-empty rx-empty--compact">
+                            <div class="rx-empty-icon"><i class="bi bi-person-lines-fill"></i></div>
+                            <div class="rx-empty-title">Brak osób kontaktowych</div>
+                            <div class="rx-empty-text">
+                                Ten dostawca nie ma jeszcze przypisanych osób kontaktowych.
+                            </div>
+                        </div>
+                    <?php else: ?>
+                        <div class="table-responsive">
+                            <table class="table rx-table mb-0" id="vrSupplierTable">
+                                <thead>
+                                    <tr>
+                                        <th>Nazwa</th>
+                                        <th>Stanowisko</th>
+                                        <th>Telefon</th>
+                                        <th>Email</th>
+                                        <th style="min-width: 160px;">Komentarz</th>
+                                        <th class="text-center" style="width: 110px;">Status</th>
+                                        <th style="width: 100px;">Akcje</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="vrSupplierTBody">
+                                <?php foreach ($suppliers as $s):
+                                    $isActive = $s->isActive === true || $s->isActive === 1 || $s->isActive === '1';
+                                    $rowClass = $isActive ? 'vr-supplier-row--active' : 'vr-supplier-row--inactive';
+                                    $statusBadge = $isActive
+                                        ? '<span class="rx-badge rx-badge--green">Aktywna</span>'
+                                        : '<span class="rx-badge rx-badge--red">Wyłączona</span>';
+
+                                    // Encode the supplier as JSON for the JS
+                                    // "Edytuj" handler to pick up without a
+                                    // second round-trip.
+                                    $supplierJson = htmlspecialchars(json_encode([
+                                        'id'       => (int)$s->id,
+                                        'name'     => $s->name,
+                                        'jobTitle' => $s->jobTitle ?? '',
+                                        'phone'    => $s->phone ?? '',
+                                        'email'    => $s->email ?? '',
+                                        'comment'  => $s->comment ?? '',
+                                        'isActive' => $isActive,
+                                    ], JSON_UNESCAPED_UNICODE), ENT_QUOTES);
+                                ?>
+                                    <tr class="<?= $rowClass ?>" data-supplier-json="<?= $supplierJson ?>">
+                                        <td><?= htmlspecialchars($s->name, ENT_QUOTES) ?></td>
+                                        <td><?= htmlspecialchars($s->jobTitle ?? '', ENT_QUOTES) ?></td>
+                                        <td><?= htmlspecialchars($s->phone ?? '', ENT_QUOTES) ?></td>
+                                        <td><?= htmlspecialchars($s->email ?? '', ENT_QUOTES) ?></td>
+                                        <td>
+                                            <?php if (($s->comment ?? '') !== ''): ?>
+                                                <small class="vr-vp-comment" title="<?= htmlspecialchars($s->comment, ENT_QUOTES) ?>">
+                                                    <i class="bi bi-journal-text"></i>
+                                                    <?= htmlspecialchars($s->comment, ENT_QUOTES) ?>
+                                                </small>
+                                            <?php else: ?>
+                                                <span class="text-muted">—</span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td class="text-center"><?= $statusBadge ?></td>
+                                        <td>
+                                            <div class="btn-group btn-group-sm" role="group">
+                                                <button type="button" class="btn rx-btn-quiet vr-supplier-edit-btn" title="Edytuj">
+                                                    <i class="bi bi-pencil"></i>
+                                                </button>
+                                                <button type="button" class="btn rx-btn-quiet vr-supplier-toggle-btn"
+                                                        data-id="<?= (int)$s->id ?>"
+                                                        data-is-active="<?= $isActive ? '1' : '0' ?>"
+                                                        data-name="<?= htmlspecialchars($s->name, ENT_QUOTES) ?>"
+                                                        title="<?= $isActive ? 'Wyłącz' : 'Włącz' ?>">
+                                                    <i class="bi bi-<?= $isActive ? 'x-circle' : 'check-circle' ?>"
+                                                       class="<?= $isActive ? 'text-danger' : 'text-success' ?>"></i>
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    <?php endif; ?>
+
                 </div>
-
-                <form id="vrSupplierForm" autocomplete="off" class="vr-supplier-form-card mb-3 d-none">
-                    <input type="hidden" name="id"        id="vrSupplierId"        value="">
-                    <input type="hidden" name="vendor_id" id="vrSupplierVendorId" value="<?= (int)$vendor->id ?>">
-                    <legend id="vrSupplierFormTitle">Dodaj osobę kontaktową</legend>
-                    <div class="form-row">
-                        <div class="form-group col-md-6">
-                            <label for="vr_supplier_name">Imię i nazwisko: <span class="text-danger">*</span></label>
-                            <input type="text" id="vr_supplier_name" name="name"
-                                   class="form-control" required maxlength="255">
-                        </div>
-                        <div class="form-group col-md-6">
-                            <label for="vr_supplier_job_title">Stanowisko:</label>
-                            <input type="text" id="vr_supplier_job_title" name="job_title"
-                                   class="form-control" maxlength="255">
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group col-md-6">
-                            <label for="vr_supplier_phone">Telefon:</label>
-                            <input type="text" id="vr_supplier_phone" name="phone"
-                                   class="form-control" maxlength="64">
-                        </div>
-                        <div class="form-group col-md-6">
-                            <label for="vr_supplier_email">Email:</label>
-                            <input type="email" id="vr_supplier_email" name="email"
-                                   class="form-control" maxlength="255">
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label for="vr_supplier_comment">Komentarz:</label>
-                        <textarea id="vr_supplier_comment" name="comment" class="form-control" rows="2"></textarea>
-                    </div>
-                    <div class="form-group mb-2">
-                        <label>Status:</label>
-                        <div>
-                            <label class="mr-3 mb-0">
-                                <input type="radio" name="isActive" value="1" checked> Aktywna
-                            </label>
-                            <label class="mb-0">
-                                <input type="radio" name="isActive" value="0"> Wyłączona
-                            </label>
-                        </div>
-                    </div>
-                    <div class="d-flex justify-content-end align-items-center">
-                        <button type="button" id="vrSupplierCancelBtn" class="btn btn-outline-secondary btn-sm mr-2 d-none">
-                            <i class="bi bi-x-circle"></i> Anuluj
-                        </button>
-                        <button type="submit" class="btn btn-primary btn-sm" id="vrSupplierSubmitBtn" disabled>
-                            <i class="bi bi-check2-circle"></i> Zapisz osobę
-                        </button>
-                    </div>
-                </form>
-
-                <?php if ($suppliers === []): ?>
-                    <div class="alert alert-info mb-0">
-                        <i class="bi bi-info-circle"></i>
-                        Ten dostawca nie ma jeszcze przypisanych osób kontaktowych.
-                    </div>
-                <?php else: ?>
-                    <div class="table-responsive">
-                        <table class="table table-sm table-hover mb-0" id="vrSupplierTable">
-                            <thead class="thead-light">
-                                <tr>
-                                    <th>Nazwa</th>
-                                    <th>Stanowisko</th>
-                                    <th>Telefon</th>
-                                    <th>Email</th>
-                                    <th style="min-width: 160px;">Komentarz</th>
-                                    <th class="text-center" style="width: 110px;">Status</th>
-                                    <th style="width: 100px;">Akcje</th>
-                                </tr>
-                            </thead>
-                            <tbody id="vrSupplierTBody">
-                            <?php foreach ($suppliers as $s):
-                                $isActive = $s->isActive === true || $s->isActive === 1 || $s->isActive === '1';
-                                $rowClass = $isActive ? '' : 'vr-supplier-row--inactive table-secondary';
-                                $statusBadge = $isActive
-                                    ? '<span class="badge badge-success">Aktywna</span>'
-                                    : '<span class="badge badge-danger">Wyłączona</span>';
-
-                                // Encode the supplier as JSON for the JS
-                                // "Edytuj" handler to pick up without a
-                                // second round-trip.
-                                $supplierJson = htmlspecialchars(json_encode([
-                                    'id'       => (int)$s->id,
-                                    'name'     => $s->name,
-                                    'jobTitle' => $s->jobTitle ?? '',
-                                    'phone'    => $s->phone ?? '',
-                                    'email'    => $s->email ?? '',
-                                    'comment'  => $s->comment ?? '',
-                                    'isActive' => $isActive,
-                                ], JSON_UNESCAPED_UNICODE), ENT_QUOTES);
-                            ?>
-                                <tr class="<?= $rowClass ?>" data-supplier-json="<?= $supplierJson ?>">
-                                    <td><?= htmlspecialchars($s->name, ENT_QUOTES) ?></td>
-                                    <td><?= htmlspecialchars($s->jobTitle ?? '', ENT_QUOTES) ?></td>
-                                    <td><?= htmlspecialchars($s->phone ?? '', ENT_QUOTES) ?></td>
-                                    <td><?= htmlspecialchars($s->email ?? '', ENT_QUOTES) ?></td>
-                                    <td>
-                                        <?php if (($s->comment ?? '') !== ''): ?>
-                                            <small class="text-muted">
-                                                <i class="bi bi-journal-text"></i>
-                                                <?= htmlspecialchars($s->comment, ENT_QUOTES) ?>
-                                            </small>
-                                        <?php else: ?>
-                                            <span class="text-muted">—</span>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td class="text-center"><?= $statusBadge ?></td>
-                                    <td>
-                                        <div class="btn-group btn-group-sm" role="group">
-                                            <button type="button" class="btn btn-warning vr-supplier-edit-btn" title="Edytuj">
-                                                <i class="bi bi-pencil"></i>
-                                            </button>
-                                            <button type="button" class="btn btn-<?= $isActive ? 'danger' : 'success' ?> vr-supplier-toggle-btn"
-                                                    data-id="<?= (int)$s->id ?>"
-                                                    data-is-active="<?= $isActive ? '1' : '0' ?>"
-                                                    data-name="<?= htmlspecialchars($s->name, ENT_QUOTES) ?>"
-                                                    title="<?= $isActive ? 'Wyłącz' : 'Włącz' ?>">
-                                                <i class="bi bi-<?= $isActive ? 'x-circle' : 'check-circle' ?>"></i>
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                <?php endif; ?>
             </div>
-        </div>
-        </div>
+        </section>
 
         <!-- ================================================================
              Read-only list of vendor parts using this vendor. Same shape
@@ -710,32 +707,33 @@ function vr_render_packs(array $packs): string {
              default — operator is here to manage the vendor record, not
              the vendor-part catalog (that's a separate module).
              ================================================================ -->
-        <div class="card mt-4" id="vrVpCard">
-            <div class="card-header alert-secondary vr-vp-toggle" data-toggle="collapse" data-target="#vrVpCollapse" aria-expanded="false" style="cursor: pointer;">
-                <div class="d-flex justify-content-between align-items-center">
-                    <h6 class="mb-0">
-                        <i class="bi bi-box-seam"></i>
-                        Artykuły u dostawców
-                        <span class="badge badge-info ml-1"><?= (int)$vendorPartCount ?></span>
-                    </h6>
-                    <i class="bi bi-chevron-down"></i>
-                </div>
+        <section class="rx-panel vxe-panel" id="vrVpCard">
+            <div class="vxe-collapse-head" data-toggle="collapse" data-target="#vrVpCollapse"
+                 aria-expanded="false" role="button" tabindex="0">
+                <span class="vxe-collapse-title">
+                    <i class="bi bi-box-seam"></i> Artykuły u dostawców
+                </span>
+                <span class="vxe-collapse-count"><?= (int)$vendorPartCount ?></span>
+                <i class="bi bi-chevron-down vxe-chevron"></i>
             </div>
             <div id="vrVpCollapse" class="collapse">
-                <div class="card-body">
-                    <small class="text-muted d-block mb-2">
-                        Tylko podgląd — edycja artykułów odbywa się w module „Artykuły u dostawców".
-                    </small>
+                <div class="vxe-collapse-body">
+                    <p class="vxe-table-note">
+                        Tylko podgląd — edycja artykułów odbywa się w&nbsp;module „Artykuły u&nbsp;dostawców”.
+                    </p>
 
                     <?php if ($vendorParts === []): ?>
-                        <div class="alert alert-info mb-0">
-                            <i class="bi bi-info-circle"></i>
-                            Ten dostawca nie ma jeszcze przypisanych artykułów.
+                        <div class="rx-empty rx-empty--compact">
+                            <div class="rx-empty-icon"><i class="bi bi-box-seam"></i></div>
+                            <div class="rx-empty-title">Brak artykułów</div>
+                            <div class="rx-empty-text">
+                                Ten dostawca nie ma jeszcze przypisanych artykułów.
+                            </div>
                         </div>
                     <?php else: ?>
                         <div class="table-responsive">
-                            <table class="table table-sm table-hover mb-0" id="vrVpTable">
-                                <thead class="thead-light">
+                            <table class="table rx-table mb-0" id="vrVpTable">
+                                <thead>
                                     <tr>
                                         <th class="vr-vp-col-id text-center" style="width: 70px;">ID</th>
                                         <th>Artykuł</th>
@@ -748,22 +746,22 @@ function vr_render_packs(array $packs): string {
                                 <tbody>
                                 <?php foreach ($vendorParts as $vp):
                                     $isActive = $vp->isActive === true || $vp->isActive === 1 || $vp->isActive === '1';
-                                    $rowClass = $isActive ? '' : 'vr-vp-row--inactive table-secondary';
+                                    $rowClass = $isActive ? 'vr-vp-row--active' : 'vr-vp-row--inactive';
 
                                     $artykulCell = htmlspecialchars($vp->partName ?? '', ENT_QUOTES);
                                     $vn = $vp->vendorPartNo ?? '';
                                     $pn = $vp->producerPartNo ?? '';
                                     if ($vn !== '' && $pn !== '' && $vn === $pn) {
-                                        $artykulCell .= '<div><small class="text-muted">Nr dost./prod.: <span class="font-weight-bold">'
-                                                      . htmlspecialchars($vn, ENT_QUOTES) . '</span></small></div>';
+                                        $artykulCell .= '<span class="vr-vp-sub">Nr dost./prod.: <span class="vr-vp-code">'
+                                                      . htmlspecialchars($vn, ENT_QUOTES) . '</span></span>';
                                     } else {
                                         if ($vn !== '') {
-                                            $artykulCell .= '<div><small class="text-muted">Nr dost.: <span class="font-weight-bold">'
-                                                          . htmlspecialchars($vn, ENT_QUOTES) . '</span></small></div>';
+                                            $artykulCell .= '<span class="vr-vp-sub">Nr dost.: <span class="vr-vp-code">'
+                                                          . htmlspecialchars($vn, ENT_QUOTES) . '</span></span>';
                                         }
                                         if ($pn !== '') {
-                                            $artykulCell .= '<div><small class="text-muted">Nr prod.: <span class="font-weight-bold">'
-                                                          . htmlspecialchars($pn, ENT_QUOTES) . '</span></small></div>';
+                                            $artykulCell .= '<span class="vr-vp-sub">Nr prod.: <span class="vr-vp-code">'
+                                                          . htmlspecialchars($pn, ENT_QUOTES) . '</span></span>';
                                         }
                                     }
 
@@ -797,7 +795,7 @@ function vr_render_packs(array $packs): string {
                     <?php endif; ?>
                 </div>
             </div>
-        </div>
+        </section>
 
         <!-- ================================================================
              Toggle supplier confirm modal (rendered once, embedded in the
@@ -826,6 +824,8 @@ function vr_render_packs(array $packs): string {
             </div>
         </div>
     <?php endif; ?>
+    <?php endif; ?>
+
 </div>
 
 <script src="<?= asset('public_html/components/Admin/Purchase/Vendors/edit/vendor-edit-view.js') ?>"></script>

@@ -164,7 +164,8 @@ $edBodyLen = mb_strlen($edBody);
 ?>
 <style>
     /* Karta formularza w tym samym języku wizualnym co vp-edit-card /
-       pr-edit-card / vr-edit-card. */
+       pr-edit-card (strona dostawcy /admin/purchase/vendors/edit używa
+       już wspólnego stylu rx-panel). */
     .ed-edit-card .card-header {
         background-color: #cfe2ff;
     }
