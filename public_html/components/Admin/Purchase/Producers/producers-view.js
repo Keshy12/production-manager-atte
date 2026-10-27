@@ -24,12 +24,23 @@
  *   - search lives in its input.
  *   Defaults (isDefault): status = active, hasArticles = all, no search.
  *
- * Tile semantics: a tile sets exactly one dimension (data-dim /
- * data-value). Clicking an already-active tile resets only that dimension
- * to its default. The tile counts come from `stats` in the
- * producer-list.php response: each is the count under the CURRENT filters
- * with only that tile's dimension overridden, i.e. what clicking the tile
- * would return.
+ * Tile groups (producers-view.php), both made of switch-style toggles:
+ *   - "Status": Aktywni / Nieaktywni (data-status-flag). Two independent
+ *     switches that map onto the endpoint's single `status` value:
+ *     only Aktywni -> 'active' (default), only Nieaktywni -> 'inactive',
+ *     both -> 'all'. At least one stays on: clicking the only lit one
+ *     does nothing (it is marked aria-disabled + titled). There is no
+ *     "Wszyscy" tile or button — "all" is simply both switches on.
+ *     The toolbar's Status segment (Aktywne / Nieaktywne) uses the same
+ *     data-status-flag buttons, painted from the same filterState.
+ *   - Second group (label set in producers-view.php): the single "Bez artykułów" switch
+ *     (data-dim / data-value). Clicking it while lit resets only that
+ *     dimension to its default.
+ *
+ * Tile counts come from `stats` in the producer-list.php response: each is
+ * the count under the CURRENT filters with only that tile's dimension
+ * overridden (stats.active / stats.inactive for the status switches;
+ * stats.all is not used by the UI any more).
  *
  * Pattern mirrors vendors-view.js, adapted for the narrower producer
  * schema (id, name, comment, isActive, vendorPartCount).
@@ -42,6 +53,7 @@ $(document).ready(function() {
     const addUrl   = window.PR_ADD_URL || (window.location.origin + "/atte_ms_new/admin/purchase/producers/edit");
 
     const DEFAULTS = { status: 'active', hasArticles: 'all' };
+    const STATUS_LOCK_TITLE = 'Co najmniej jeden status musi być zaznaczony';
     const SEARCH_DEBOUNCE_MS = 300;
 
     // ---------- Helpers ----------
@@ -132,17 +144,62 @@ $(document).ready(function() {
         return data;
     }
 
+    // Status as two switches. filterState.status stays 'active' |
+    // 'inactive' | 'all' (the endpoint's wire format); the switches are
+    // derived from it and mapped back.
+    function statusFlags(status) {
+        return {
+            active:   status === 'active'   || status === 'all',
+            inactive: status === 'inactive' || status === 'all',
+        };
+    }
+
+    function statusFromFlags(flags) {
+        return (flags.active && flags.inactive) ? 'all' : (flags.active ? 'active' : 'inactive');
+    }
+
+    // Flips one status switch. The last lit switch cannot be turned off
+    // (both off would always be an empty list) — nothing happens, no request.
+    function toggleStatus(which) {
+        const flags = statusFlags(filterState.status);
+        flags[which] = !flags[which];
+        if (!flags.active && !flags.inactive) { return; }
+        setDimension('status', statusFromFlags(flags));
+    }
+
     // Paint every control that mirrors the filters: toolbar segments,
-    // stat tiles and the "Wyczyść filtry" link.
+    // stat tiles, status switches and the "Wyczyść filtry" link.
     function syncFilterUi(f) {
         $('.prx-toolbar .rx-seg [data-dim]').each(function() {
             const on = f[$(this).attr('data-dim')] === $(this).attr('data-value');
             $(this).toggleClass('is-active', on).attr('aria-pressed', on ? 'true' : 'false');
         });
-        $('#prStats .rx-stat').each(function() {
+        $('#prStats .rx-stat[data-dim]').each(function() {
             const on = f[$(this).attr('data-dim')] === $(this).attr('data-value');
             $(this).toggleClass('is-active', on).attr('aria-pressed', on ? 'true' : 'false');
         });
+
+        // Status switches (tiles + toolbar buttons). The only lit one is
+        // "locked": still focusable, but aria-disabled and explained in
+        // its tooltip so the dead click is understandable.
+        const flags = statusFlags(f.status);
+        $('#producersView [data-status-flag]').each(function() {
+            const $el = $(this);
+            const which = $el.attr('data-status-flag');
+            const other = which === 'active' ? 'inactive' : 'active';
+            const on = flags[which];
+            const locked = on && !flags[other];
+            if ($el.attr('data-orig-title') === undefined) {
+                $el.attr('data-orig-title', $el.attr('title') || '');
+            }
+            const title = locked ? STATUS_LOCK_TITLE : $el.attr('data-orig-title');
+            if (title) { $el.attr('title', title); } else { $el.removeAttr('title'); }
+            $el.toggleClass('is-active', on)
+               .toggleClass('is-locked', locked)
+               .attr('aria-pressed', on ? 'true' : 'false')
+               .attr('aria-disabled', locked ? 'true' : 'false');
+        });
+
         $('#prClear').toggleClass('d-none', isDefault(f));
     }
 
@@ -461,9 +518,15 @@ $(document).ready(function() {
     // Events
     // ============================================================
 
-    // Tiles: set one dimension; a second click on the active tile puts
-    // just that dimension back to its default.
-    $('#prStats').on('click', '.rx-stat', function() {
+    // Status switches (tiles and toolbar buttons alike): flip one, keep
+    // at least one lit.
+    $('#producersView').on('click', '[data-status-flag]', function() {
+        toggleStatus($(this).attr('data-status-flag'));
+    });
+
+    // Second-group tile ("Bez artykułów"): set its dimension; a second click on the lit
+    // tile puts just that dimension back to its default.
+    $('#prStats').on('click', '.rx-stat[data-dim]', function() {
         const dim = $(this).attr('data-dim');
         const value = $(this).attr('data-value');
         setDimension(dim, filterState[dim] === value ? DEFAULTS[dim] : value);

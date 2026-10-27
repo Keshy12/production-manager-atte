@@ -13,15 +13,15 @@
 .prx-page .prx-head-links { display: flex; flex-wrap: wrap; gap: .4rem; }
 
 
-/* ---- Liczniki (4 kafelki = skróty do filtrów) ----------------------
-   Kafelek ustawia JEDEN wymiar filtra (status / artykuły), więc dwa
-   kafelki z różnych wymiarów mogą być zaznaczone naraz
-   (np. „Aktywni" + „Bez artykułów"). */
+/* ---- Liczniki (3 kafelki = skróty do filtrów) ----------------------
+   Wszystkie kafelki to niezależne przełączniki (wskaźnik w rogu =
+   mały przełącznik wł./wył.). Dwa wymiary filtra, dwie grupy:
+   Status (Aktywni / Nieaktywni) i druga grupa z jednym kafelkiem (Bez artykułów). */
 
 .prx-page .prx-stats {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: .5rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .9rem 1.5rem;
     margin-bottom: 1rem;
 }
 .prx-page .prx-stats .rx-stat { min-width: 0; }
@@ -34,20 +34,101 @@
 .prx-page .prx-stats.is-loading .rx-stat-value { opacity: .45; }
 .prx-page .rx-stat.is-zero .rx-stat-value { color: var(--rx-faint); }
 
-.prx-page .prx-stat--all      { --rx-tone: #6b7785; --rx-tone-soft: #f3f5f8; }
 .prx-page .prx-stat--active   { --rx-tone: #28a745; --rx-tone-soft: #eef8f1; }
 .prx-page .prx-stat--inactive { --rx-tone: #8a96a3; --rx-tone-soft: #f3f5f8; }
 .prx-page .prx-stat--noparts  { --rx-tone: #f0ad00; --rx-tone-soft: #fff8e6; }
 
-@media (max-width: 767.98px) {
-    .prx-page .prx-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+/* ---- Dwie grupy kafelków ---------------------------------------------
+   Podpis nad grupą i cienka linia pod nim obejmująca całą szerokość
+   grupy — czytają się jako dwa osobne klastry, także po zawinięciu.
+   Grupy zawijają się jako całość (flex-wrap, nigdy w środku grupy):
+   przy wąskiej zawartości druga grupa spada pod pierwszą; przy szerszej
+   obie mają tę samą szerokość, a pojedynczy kafelek „Bez artykułów"
+   ma szerokość kafelka „Aktywni" (ta sama siatka dwóch kolumn). */
+
+.prx-page .prx-stat-group { flex: 1 1 24rem; min-width: 0; }
+
+/* Podpis grupy: te same słowa co etykiety w pasku filtrów („Status"),
+   dzięki czemu kafelki i segmenty czytają się jako ten sam wymiar. */
+.prx-page .prx-stat-group-head {
+    display: flex;
+    align-items: baseline;
+    gap: .5rem;
+    margin: 0 0 .55rem;
+    padding: 0 .15rem .35rem;
+    border-bottom: 1px solid var(--rx-line);
+}
+.prx-page .prx-stat-group-label {
+    font-size: .68rem;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--rx-muted);
+}
+.prx-page .prx-stat-group-hint {
+    font-size: .74rem;
+    color: var(--rx-faint);
+}
+
+.prx-page .prx-stat-toggles {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .5rem;
+}
+
+/* Pasek koloru na górze kafelka: ściszony, dopiero włączony kafelek
+   dostaje pełny kolor — stan „włączone" widać od razu. */
+.prx-page .prx-stats .rx-stat::before { opacity: .35; }
+.prx-page .prx-stats .rx-stat.is-active::before { opacity: 1; }
+
+/* Przełącznik wł./wył. w prawym górnym rogu (rysowany w ::after):
+   tor + gałka (radial-gradient przesuwany background-position). */
+.prx-page .prx-stats .rx-stat::after {
+    content: "";
+    position: absolute;
+    top: .8rem;
+    right: .7rem;
+    width: 1.7rem;
+    height: .95rem;
+    border-radius: 999px;
+    background-color: #d5dbe3;
+    background-image: radial-gradient(circle, #fff 0 .3rem, transparent .32rem);
+    background-size: .95rem .95rem;
+    background-repeat: no-repeat;
+    background-position: left center;
+    transition: background-color .15s ease, background-position .15s ease;
+}
+.prx-page .prx-stats .rx-stat.is-active::after {
+    background-color: var(--rx-tone);
+    background-position: right center;
+}
+
+/* Ostatni włączony status: nie da się go wyłączyć (oba wyłączone =
+   zawsze pusta lista). Zostaje klikalny/fokusowalny, ale bez unoszenia
+   przy najechaniu i z kursorem „niedostępne"; wyjaśnia to jego title. */
+.prx-page .prx-stats .rx-stat.is-locked { cursor: not-allowed; }
+.prx-page .prx-stats .rx-stat.is-locked:hover {
+    transform: none;
+    box-shadow: inset 0 0 0 1px var(--rx-tone);
+}
+.prx-page .rx-seg button.is-locked { cursor: not-allowed; }
+
+@media (max-width: 575.98px) {
+    .prx-page .prx-stats { gap: .75rem; }
+    .prx-page .prx-stats .rx-stat { padding: .6rem .6rem .5rem .7rem; }
+    .prx-page .prx-stats .rx-stat-value { font-size: 1.35rem; }
+    /* Wąski kafelek: długa etykieta zawija się zamiast ucinać. */
+    .prx-page .prx-stats .rx-stat-label {
+        white-space: normal;
+        line-height: 1.25;
+    }
 }
 
 
 /* ---- Pasek filtrów -------------------------------------------------- */
 
-/* Segment z małą etykietą z lewej: dwa przełączniki „Wszystkie / …"
-   obok siebie są nieczytelne bez podpisu, czego dotyczą. */
+/* Segment z małą etykietą z lewej: dwie grupy przycisków obok siebie
+   są nieczytelne bez podpisu, czego dotyczą. */
 .prx-page .prx-group {
     display: inline-flex;
     align-items: center;

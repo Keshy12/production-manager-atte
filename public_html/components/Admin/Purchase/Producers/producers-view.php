@@ -13,9 +13,10 @@
  *
  * Liczniki (kafelki pod nagłówkiem) przychodzą w odpowiedzi
  * producer-list.php jako `stats` — każdy to liczba wyników przy bieżących
- * filtrach, z nadpisanym wyłącznie wymiarem tego kafelka. Klik w kafelek
- * ustawia ten wymiar filtra (status / artykuły); ponowny klik w aktywny
- * kafelek przywraca jego wartość domyślną.
+ * filtrach, z nadpisanym wyłącznie wymiarem tego kafelka. Wszystkie kafelki
+ * to przełączniki: „Aktywni" i „Nieaktywni" (status; oba włączone =
+ * wszyscy, co najmniej jeden zawsze włączony) oraz „Bez artykułów"
+ * (włączany i wyłączany osobno).
  *
  * Filtry domyślne: tylko aktywni producenci, reszta wyłączona.
  */
@@ -34,6 +35,11 @@ $MsaDB = MsaDB::getInstance();
 include('edit/table-row-template.php');
 
 $prAddUrl = 'http://' . BASEURL . '/admin/purchase/producers/edit';
+
+// Podpis i podpowiedź drugiej grupy kafelków (obecnie tylko „Bez artykułów").
+// Ta sama nazwa grupy co na /admin/purchase/vendors i /vendor-parts.
+$prGapsGroupLabel = 'Niekompletne dane';
+$prGapsGroupHint  = 'niewykorzystani producenci';
 ?>
 
 <link rel="stylesheet" href="<?= asset('public_html/components/purchases/receipts/receipts-ui.css') ?>">
@@ -61,32 +67,55 @@ $prAddUrl = 'http://' . BASEURL . '/admin/purchase/producers/edit';
     <div id="alertContainer" class="rx-alerts"></div>
 
     <!-- ===== Liczniki = skróty do filtrów =====
-         Wartości wypełnia JS (pole `stats` w odpowiedzi producer-list.php). -->
-    <div class="prx-stats" id="prStats" role="group" aria-label="Producenci według statusu i artykułów">
-        <button type="button" class="rx-stat prx-stat--all" data-stat="all"
-                data-dim="status" data-value="all" aria-pressed="false"
-                title="Wszyscy producenci — aktywni i nieaktywni">
-            <span class="rx-stat-value" data-stat-value>–</span>
-            <span class="rx-stat-label">Wszyscy</span>
-        </button>
-        <button type="button" class="rx-stat prx-stat--active" data-stat="active"
-                data-dim="status" data-value="active" aria-pressed="false"
-                title="Aktywni producenci">
-            <span class="rx-stat-value" data-stat-value>–</span>
-            <span class="rx-stat-label">Aktywni</span>
-        </button>
-        <button type="button" class="rx-stat prx-stat--inactive" data-stat="inactive"
-                data-dim="status" data-value="inactive" aria-pressed="false"
-                title="Nieaktywni producenci">
-            <span class="rx-stat-value" data-stat-value>–</span>
-            <span class="rx-stat-label">Nieaktywni</span>
-        </button>
-        <button type="button" class="rx-stat prx-stat--noparts" data-stat="noArticles"
-                data-dim="hasArticles" data-value="unused" aria-pressed="false"
-                title="Producenci niewykorzystani w żadnym artykule u dostawcy — przydatne do porządków w katalogu">
-            <span class="rx-stat-value" data-stat-value>–</span>
-            <span class="rx-stat-label">Bez artykułów</span>
-        </button>
+         Wartości wypełnia JS (pole `stats` w odpowiedzi producer-list.php).
+         Dwie grupy, bo to dwa różne wymiary filtra — kafelki są niezależnymi
+         przełącznikami (wskaźnik w rogu = przełącznik):
+           1. Status — Aktywni / Nieaktywni: domyślnie włączeni Aktywni.
+              Można dołączyć Nieaktywnych albo wyłączyć Aktywnych, ale
+              co najmniej jeden zostaje włączony (kliknięcie ostatniego
+              włączonego nic nie robi). Oba włączone = wszyscy — dlatego
+              nie ma osobnego kafelka „Wszyscy".
+           2. Druga grupa (podpis: $prGapsGroupLabel) — „Bez artykułów": jeden przełącznik,
+              włączany i wyłączany osobno, także razem ze statusem.
+         Podpisy grup = te same słowa co etykiety w pasku filtrów. -->
+    <div class="prx-stats" id="prStats">
+
+        <div class="prx-stat-group prx-stat-group--status" role="group" aria-labelledby="prStatGroupStatus">
+            <div class="prx-stat-group-head">
+                <span class="prx-stat-group-label" id="prStatGroupStatus">Status</span>
+                <span class="prx-stat-group-hint">co najmniej jeden</span>
+            </div>
+            <div class="prx-stat-toggles">
+                <button type="button" class="rx-stat prx-stat--active" data-stat="active"
+                        data-status-flag="active" aria-pressed="false" aria-disabled="false"
+                        title="Aktywni producenci">
+                    <span class="rx-stat-value" data-stat-value>–</span>
+                    <span class="rx-stat-label">Aktywni</span>
+                </button>
+                <button type="button" class="rx-stat prx-stat--inactive" data-stat="inactive"
+                        data-status-flag="inactive" aria-pressed="false" aria-disabled="false"
+                        title="Nieaktywni producenci">
+                    <span class="rx-stat-value" data-stat-value>–</span>
+                    <span class="rx-stat-label">Nieaktywni</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="prx-stat-group prx-stat-group--gaps" role="group" aria-labelledby="prStatGroupGaps">
+            <div class="prx-stat-group-head">
+                <span class="prx-stat-group-label" id="prStatGroupGaps"><?= htmlspecialchars($prGapsGroupLabel, ENT_QUOTES) ?></span>
+                <span class="prx-stat-group-hint"><?= htmlspecialchars($prGapsGroupHint, ENT_QUOTES) ?></span>
+            </div>
+            <div class="prx-stat-toggles">
+                <button type="button" class="rx-stat prx-stat--noparts" data-stat="noArticles"
+                        data-dim="hasArticles" data-value="unused" aria-pressed="false"
+                        title="Producenci niewykorzystani w żadnym artykule u dostawcy — przydatne do porządków w katalogu">
+                    <span class="rx-stat-value" data-stat-value>–</span>
+                    <span class="rx-stat-label">Bez artykułów</span>
+                </button>
+            </div>
+        </div>
+
     </div>
 
     <!-- ===== Pasek filtrów ===== -->
@@ -101,10 +130,9 @@ $prAddUrl = 'http://' . BASEURL . '/admin/purchase/producers/edit';
 
         <div class="prx-group">
             <span class="prx-group-label" aria-hidden="true">Status</span>
-            <div class="rx-seg" role="group" aria-label="Status producenta" id="prSegStatus">
-                <button type="button" data-dim="status" data-value="all" aria-pressed="false">Wszystkie</button>
-                <button type="button" data-dim="status" data-value="active" class="is-active" aria-pressed="true">Aktywne</button>
-                <button type="button" data-dim="status" data-value="inactive" aria-pressed="false">Nieaktywne</button>
+            <div class="rx-seg" role="group" aria-label="Status producenta — co najmniej jeden" id="prSegStatus">
+                <button type="button" data-status-flag="active" class="is-active" aria-pressed="true" aria-disabled="false">Aktywne</button>
+                <button type="button" data-status-flag="inactive" aria-pressed="false" aria-disabled="false">Nieaktywne</button>
             </div>
         </div>
 
