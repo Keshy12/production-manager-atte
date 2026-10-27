@@ -169,6 +169,8 @@ class VendorPartRepository {
      *     search       string -> vp.vendor_part_no LIKE (case-insensitive)
      *   dateFrom     YYYY-MM-DD -> vp.created_at >=
      *   dateTo       YYYY-MM-DD -> vp.created_at <=
+     *   hasPacks     bool   -> true: at least one list__vendor_part_pack row,
+     *                         false: none; null / absent: ignored
      *
      * @return array{0: string, 1: array<int,mixed>} [whereSql, params]
      */
@@ -233,8 +235,29 @@ class VendorPartRepository {
             $params[] = $dateTo . ' 23:59:59';
         }
 
+        // hasPacks: whether a full pack quantity is defined for the variant.
+        $hp = $filters['hasPacks'] ?? null;
+        $packExists = "EXISTS (SELECT 1 FROM `list__vendor_part_pack` k WHERE k.vendor_part_id = vp.id)";
+        if ($hp === true)      { $conds[] = $packExists; }
+        elseif ($hp === false) { $conds[] = "NOT {$packExists}"; }
+
         $whereSql = empty($conds) ? '' : 'WHERE ' . implode(' AND ', $conds);
         return [$whereSql, $params];
+    }
+
+    /**
+     * Count vendor parts matching the filter map (same keys as search()).
+     * Joins `list__producer` because the search predicate can use p.name.
+     * Used by vp-list.php to fill the stat tiles above the list.
+     */
+    public function count(array $filters): int {
+        [$whereSql, $params] = $this->buildSearchWhere($filters);
+        $stmt = $this->MsaDB->db->prepare(
+            "SELECT COUNT(*) FROM `list__vendor_part` vp "
+            . "LEFT JOIN `list__producer` p ON vp.producer_id = p.id {$whereSql}"
+        );
+        $stmt->execute($params);
+        return (int)$stmt->fetchColumn();
     }
 
     /**
