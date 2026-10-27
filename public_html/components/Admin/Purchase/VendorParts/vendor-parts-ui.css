@@ -1,0 +1,249 @@
+/* Artykuły u dostawców — /admin/purchase/vendor-parts.
+
+   Baza wyglądu to receipts-ui.css (wczytywany przed tym plikiem, bez
+   zmian): zmienne .rx-page, nagłówek, kafelki .rx-stat, pasek filtrów,
+   segmenty, komórki pickerów (.rx-tool), panel, plakietki, stany puste,
+   szkielety, paginacja. Tutaj tylko to, czego tam nie ma — wszystko pod
+   .vpx-page. Układ jest ten sam co /admin/purchase/vendors
+   (kafelki → pasek filtrów → linijka wyników → panel z listą). */
+
+
+/* ---- Nagłówek ------------------------------------------------------ */
+
+.vpx-page .vpx-head-links { display: flex; flex-wrap: wrap; gap: .4rem; }
+
+
+/* ---- Liczniki (4 kafelki = skróty do filtrów) ----------------------
+   Kafelek ustawia JEDEN wymiar filtra (status albo opakowanie), więc
+   „Aktywne" i „Bez opakowania" mogą być zaznaczone naraz. */
+
+.vpx-page .vpx-stats {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: .5rem;
+    margin-bottom: 1rem;
+}
+.vpx-page .vpx-stats .rx-stat { min-width: 0; }
+.vpx-page .vpx-stats .rx-stat-label {
+    overflow: hidden;
+    max-width: 100%;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.vpx-page .vpx-stats.is-loading .rx-stat-value { opacity: .45; }
+.vpx-page .rx-stat.is-zero .rx-stat-value { color: var(--rx-faint); }
+
+.vpx-page .vpx-stat--all      { --rx-tone: #6b7785; --rx-tone-soft: #f3f5f8; }
+.vpx-page .vpx-stat--active   { --rx-tone: #28a745; --rx-tone-soft: #eef8f1; }
+.vpx-page .vpx-stat--inactive { --rx-tone: #8a96a3; --rx-tone-soft: #f3f5f8; }
+.vpx-page .vpx-stat--nopack   { --rx-tone: #f0ad00; --rx-tone-soft: #fff8e6; }
+
+@media (max-width: 767.98px) {
+    .vpx-page .vpx-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+
+/* ---- Pasek filtrów: dwa rzędy ---------------------------------------
+   Rząd 1 = czym szukamy (tekst + trzy pickery), rząd 2 = jak zawężamy
+   (status, opakowanie, daty) + Odśwież po prawej. Wszystko w jednym
+   rzędzie byłoby za ciasne: trzy pickery z długimi nazwami potrzebują
+   po ~12 rem, a segmenty z podpisami i zakres dat jeszcze ~45 rem. */
+
+.vpx-page .vpx-toolbar { flex-direction: column; align-items: stretch; }
+.vpx-page .vpx-toolbar-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .5rem;
+}
+/* Pickery dzielą rząd z wyszukiwarką; min-width: 0 (AGENTS.md) trzyma
+   je w komórce mimo długich opcji. */
+.vpx-page .vpx-toolbar-row .rx-tool { flex: 1 1 12rem; }
+.vpx-page .vpx-toolbar-row .rx-search { flex: 2 1 16rem; }
+
+/* Segment z małą etykietą z lewej — trzy „Wszystkie / …" bez podpisu
+   nie mówią, czego dotyczą. */
+.vpx-page .vpx-group {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+}
+.vpx-page .vpx-group-label {
+    font-size: .66rem;
+    font-weight: 700;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: var(--rx-faint);
+    white-space: nowrap;
+}
+@media (max-width: 575.98px) {
+    .vpx-page .vpx-group { flex: 1 1 100%; flex-wrap: wrap; }
+    .vpx-page .vpx-group .rx-seg { flex: 1 1 100%; }
+}
+
+/* Linijka wyników: podsumowanie po lewej, paginacja górna po prawej. */
+.vpx-page .vpx-filterbar { flex-wrap: wrap; }
+.vpx-page .vpx-summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .25rem .75rem;
+}
+.vpx-page .vpx-summary .rx-link-btn { font-size: .8rem; }
+.vpx-page .vpx-pager-compact .rx-pager-current { min-width: 7.5rem; }
+
+
+/* ---- Panel + ładowanie --------------------------------------------- */
+
+.vpx-page .vpx-panel { position: relative; }
+.vpx-page .vpx-table-wrap { transition: opacity .15s ease; }
+.vpx-page .vpx-panel.is-loading .vpx-table-wrap { opacity: .45; pointer-events: none; }
+/* Cienki pasek postępu przy górnej krawędzi panelu (kolejne wczytania;
+   pierwsze pokazuje szkielety). */
+.vpx-page .vpx-panel.is-loading::after {
+    content: "";
+    position: absolute;
+    left: 0; right: 0; top: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent 0%, var(--rx-accent) 50%, transparent 100%);
+    background-size: 50% 100%;
+    background-repeat: no-repeat;
+    animation: vpxLoadBar 1s linear infinite;
+}
+@keyframes vpxLoadBar {
+    0%   { background-position: -50% 0; }
+    100% { background-position: 150% 0; }
+}
+
+.vpx-page .vpx-empty-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: .5rem;
+    margin-top: 1.1rem;
+}
+.vpx-page .vpx-empty-actions .btn { margin-top: 0; }
+
+
+/* ---- Tabela artykułów ----------------------------------------------- */
+
+.vpx-page #vpTable { margin-bottom: 0; }
+.vpx-page #vpTable thead th.vp-col-id,
+.vpx-page #vpTable tbody td.vp-col-id { width: 3.5rem; text-align: center; }
+.vpx-page #vpTable thead th.vp-col-item { min-width: 15rem; }
+.vpx-page #vpTable thead th.vp-col-vendor { min-width: 10rem; }
+.vpx-page #vpTable thead th.vp-col-packs { min-width: 8.75rem; }
+.vpx-page #vpTable thead th.vp-col-status { width: 7.5rem; text-align: center; }
+.vpx-page #vpTable thead th.vp-col-actions { width: 4.5rem; text-align: center; }
+
+/* ID to identyfikator techniczny, nie treść — blade, stała szerokość cyfr. */
+.vpx-page #vpTable td.vp-col-id {
+    font-variant-numeric: tabular-nums;
+    color: var(--rx-faint);
+}
+.vpx-page #vpTable tbody tr { transition: background-color .12s ease; }
+.vpx-page #vpTable tbody tr:hover { background: var(--rx-hover); }
+
+/* Numer części u dostawcy to to, po czym admin rozpoznaje wiersz —
+   dlatego jest główną linią, w monospace (kody czyta się jako tokeny),
+   jedna linia z wielokropkiem; pełna wartość w title="". */
+.vpx-page .vp-code {
+    display: block;
+    max-width: 24rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: .85rem;
+    font-weight: 600;
+    color: var(--rx-ink);
+}
+/* Numer producenta tylko gdy różni się od numeru dostawcy — drugi kod,
+   więc ciszej i mniej. */
+.vpx-page .vp-code--sub {
+    font-size: .75rem;
+    font-weight: 400;
+    color: var(--rx-muted);
+}
+/* Nazwa części z katalogu to opis pomocniczy pod kodem. */
+.vpx-page .vp-sub {
+    display: block;
+    max-width: 24rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: .8rem;
+    color: var(--rx-muted);
+}
+.vpx-page .vp-name {
+    font-weight: 600;
+    color: var(--rx-ink);
+}
+
+/* Komentarz w osobnej linii na końcu komórki Artykuł: ikona + ściszony
+   tekst. Zawsze widoczny, pełna treść także w title ikony. Flex +
+   min-width: 0 na tekście daje wielokropek bez rozpychania tabeli;
+   nowrap + ellipsis obcina też długie ciągi bez spacji (adresy URL). */
+.vpx-page .vp-cmt {
+    display: flex;
+    align-items: baseline;
+    max-width: 24rem;
+    margin-top: .1rem;
+    font-size: .78rem;
+    font-weight: 400;
+    font-style: italic;
+    color: var(--rx-muted);
+}
+.vpx-page .vp-note {
+    flex: 0 0 auto;
+    color: #adb5bd;
+    margin-right: .35rem;
+    font-style: normal;
+    cursor: help;
+}
+.vpx-page .vp-cmt-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Opakowania: małe, ciche plakietki z jednostką po nich — ilość bez
+   jednostki nic nie znaczy, więc czytamy je razem. */
+.vpx-page .vp-pack-badge {
+    display: inline-block;
+    padding: .15rem .45rem;
+    margin-right: .2rem;
+    background: var(--rx-line-soft);
+    color: var(--rx-ink-2);
+    border-radius: .25rem;
+    font-size: .75rem;
+    font-weight: 600;
+    line-height: 1.4;
+    font-variant-numeric: tabular-nums;
+}
+.vpx-page .vp-pack-unit { font-size: .8rem; color: var(--rx-muted); }
+.vpx-page .vp-none { color: var(--rx-faint); }
+
+/* Nieaktywne artykuły: cichy, lekko zszarzały wiersz z szarą krawędzią
+   po lewej (ten sam język co na liście dostawców). Nie czerwień — w tej
+   tabeli oznaczałaby „błąd". Komentarz zostaje ciemny, bo bywa powodem
+   wyłączenia. */
+.vpx-page #vpTable tr.vp-row--inactive > td { background: var(--rx-canvas); }
+.vpx-page #vpTable tr.vp-row--inactive:hover > td { background: #f0f3f7; }
+.vpx-page #vpTable tr.vp-row--inactive > td:first-child { box-shadow: inset 3px 0 0 #cfd8e3; }
+.vpx-page #vpTable tr.vp-row--inactive .vp-name {
+    font-weight: 500;
+    color: var(--rx-muted);
+}
+.vpx-page #vpTable tr.vp-row--inactive .vp-code {
+    font-weight: 500;
+    color: var(--rx-ink-2);
+}
+.vpx-page #vpTable tr.vp-row--inactive .vp-cmt { color: #495057; }
+.vpx-page #vpTable tr.vp-row--inactive .vp-note { color: #868e96; }
+.vpx-page #vpTable tr.vp-row--inactive .vp-pack-badge { opacity: .7; }
+
+/* Szkielety pierwszego wczytania. */
+.vpx-page .vpx-skel-row td { height: 4.1rem; }

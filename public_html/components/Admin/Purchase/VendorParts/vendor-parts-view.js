@@ -1,19 +1,41 @@
 /**
  * vendor-parts-view.js
  *
- * Admin view for /admin/purchase/vendor-parts. The page is filter-driven:
- * a collapsible filter card, an AJAX-rendered table (vp-list.php) and
- * pagination. There is no add/edit form on this page.
+ * Admin view for /admin/purchase/vendor-parts. The page is filter-driven
+ * and laid out like /admin/purchase/vendors: a row of stat tiles (filter
+ * shortcuts), a two-row toolbar, a results line with the top pager, and
+ * an AJAX-rendered table (vp-list.php) in a panel with the full pager
+ * below. There is no add/edit form on this page.
  *
  * Adding and editing happen on a dedicated page — see
  * /admin/purchase/vendor-parts/edit (rendered by
  * edit/vendor-part-edit-view.php). Each row's pencil button is a plain
  * anchor that navigates there.
+ *
+ * Filter state:
+ *   - two "dimensions" live in `filterState` (status, hasPacks) and are
+ *     shown by BOTH the stat tiles and the toolbar segmented buttons —
+ *     syncFilterUi() paints both from that one object, so they cannot
+ *     disagree;
+ *   - search, the date range and the Dostawca / Producent / Część pickers
+ *     live in their controls (single-select; the empty-value first option
+ *     means "all").
+ *   Defaults (isDefault): status = active, everything else off.
+ *
+ * Tile semantics: a tile sets exactly one dimension (data-dim /
+ * data-value). Clicking an already-active tile resets only that dimension
+ * to its default. Tile counts come from `stats` in the vp-list.php
+ * response: each is the count under the CURRENT filters with only that
+ * tile's dimension overridden, i.e. what clicking the tile would return.
  */
 
 $(document).ready(function() {
     const ajaxBase = COMPONENTS_PATH + "/Admin/Purchase/VendorParts/";
     const editBase = window.location.origin + "/atte_ms_new/admin/purchase/vendor-parts/edit?id=";
+    const addUrl   = window.location.origin + "/atte_ms_new/admin/purchase/vendor-parts/edit";
+
+    const DEFAULTS = { status: 'active', hasPacks: 'all' };
+    const SEARCH_DEBOUNCE_MS = 300;
 
     // ---------- Helpers ----------
     function esc(str) {
@@ -22,6 +44,11 @@ $(document).ready(function() {
 
     function postAjax(endpoint, data) {
         return $.ajax({ url: ajaxBase + endpoint, type: 'POST', data: data, dataType: 'json' });
+    }
+
+    // "z 1 artykułu" / "z 5 artykułów" (dopełniacz).
+    function itemsGen(n) {
+        return n === 1 ? 'artykułu' : 'artykułów';
     }
 
     // Format a float without trailing zeros (e.g. 10.000 -> "10").
@@ -43,85 +70,232 @@ $(document).ready(function() {
     }
 
     // ============================================================
-    // Filter / pagination / table-render logic
+    // State
     // ============================================================
     // itemsPerPage comes from the server response (vp-list.php) so the
-    // client and backend share one source of truth — see line where
-    // `r.itemsPerPage` is assigned.
+    // client and backend share one source of truth.
     let itemsPerPage = 10;
     let currentPage = 1;
-    let totalCount  = 0;
-    let isLoading   = false;
+    let totalCount  = null;      // null = unknown yet (loading)
+    let listXhr = null;
+    let listSeq = 0;
+    let hasLoadedOnce = false;
+    let searchTimer = null;
+    const filterState = $.extend({}, DEFAULTS);
 
-    function getStatus(name) {
-        return $('input[name="' + name + '"]:checked').val() || 'all';
-    }
+    // Pickers: id of the <select>, id of its .rx-tool cell.
+    const PICKERS = {
+        vendors:   { sel: '#vpFilterVendors',   cell: '#vpVendorCell' },
+        producers: { sel: '#vpFilterProducers', cell: '#vpProducerCell' },
+        parts:     { sel: '#vpFilterParts',     cell: '#vpPartCell' },
+    };
 
-    function setStatus(name, value) {
-        const $radios = $('input[name="' + name + '"]');
-        $radios.filter('[value="' + value + '"]').prop('checked', true);
-        // Sync the segmented button labels (Bootstrap 4's .active class).
-        $('input[name="' + name + '"]').each(function() {
-            $(this).closest('label.btn').toggleClass('active', $(this).val() === value);
-        });
-    }
-
-    // Surface the ?updated=N success flash sent back from the edit
-    // page (vendor-part-edit-save.php redirects to the listing with
-    // that param after a successful save). Show it once, then strip
-    // it from the URL via history.replaceState so a refresh doesn't
-    // re-show the toast.
+    // Surface the ?updated=N / ?created=N success flashes sent back from
+    // the edit page. Show them once, then strip from URL via
+    // history.replaceState so a refresh doesn't re-show the toast.
     const params = new URLSearchParams(window.location.search);
     if (params.has('updated')) {
         const updatedId = params.get('updated');
-        setAlert('Zapisano zmiany (artykuł #' + updatedId + ').', 'success');
+        setAlert('Zapisano zmiany (artykuł #' + esc(updatedId) + ').', 'success');
         params.delete('updated');
+    }
+    if (params.has('created')) {
+        const createdId = params.get('created');
+        setAlert('Artykuł #' + esc(createdId) + ' został dodany.', 'success');
+        params.delete('created');
+    }
+    if (params.toString() !== window.location.search.replace(/^\?/, '')) {
         const newQuery = params.toString();
         const newUrl = window.location.pathname + (newQuery ? '?' + newQuery : '');
         window.history.replaceState({}, '', newUrl);
     }
 
+    // ============================================================
+    // Filters
+    // ============================================================
+
+    // Picker value as a string; '' = "all" (the empty first option, or
+    // nothing selected).
+    function pickerVal(key) {
+        const v = $(PICKERS[key].sel).val();
+        return v ? String(v) : '';
+    }
+
+    // Current filters as the UI sees them ('all' | 'used' | 'unused' for
+    // hasPacks).
     function gatherFilters() {
-        // Vendor, Producer, and Part are all single-select — .val() returns
-        // a string or null. Wrap each to a 1-elt array (or empty) so the
-        // vp-list.php payload and buildSearchWhere()'s IN (?) placeholder
-        // logic stay unchanged.
-        const vendorVal   = $('#vpFilterVendors').val();
-        const producerVal = $('#vpFilterProducers').val();
-        const partVal     = $('#vpFilterParts').val();
         return {
-            vendorIds:   vendorVal   ? [vendorVal]   : [],
-            producerIds: producerVal ? [producerVal] : [],
-            partIds:     partVal     ? [partVal]     : [],
-            status:      getStatus('vpFilterStatus'),
-            search:      $('#vpFilterSearch').val()    || '',
-            dateFrom:    $('#vpFilterDateFrom').val()  || '',
-            dateTo:      $('#vpFilterDateTo').val()    || '',
-            page:        currentPage,
+            status:    filterState.status,
+            hasPacks:  filterState.hasPacks,
+            vendor:    pickerVal('vendors'),
+            producer:  pickerVal('producers'),
+            part:      pickerVal('parts'),
+            search:    ($('#vpFilterSearch').val() || '').trim(),
+            dateFrom:  $('#vpFilterDateFrom').val() || '',
+            dateTo:    $('#vpFilterDateTo').val()   || '',
         };
     }
 
-    // Count filters that differ from the page defaults (status "active",
-    // everything else empty). Shown as a pill in the collapsed card header
-    // so a hidden filter never silently narrows the list.
-    function updateFilterCount() {
-        const f = gatherFilters();
-        let n = 0;
-        if (f.vendorIds.length)   n++;
-        if (f.producerIds.length) n++;
-        if (f.partIds.length)     n++;
-        if (f.status !== 'active') n++;
-        if (f.search.trim() !== '') n++;
-        if (f.dateFrom) n++;
-        if (f.dateTo)   n++;
-        $('#vpFilterCount').text(n).prop('hidden', n === 0);
+    // True when nothing differs from the page defaults.
+    function isDefault(f) {
+        return f.status === DEFAULTS.status
+            && f.hasPacks === DEFAULTS.hasPacks
+            && f.vendor === ''
+            && f.producer === ''
+            && f.part === ''
+            && f.search === ''
+            && f.dateFrom === ''
+            && f.dateTo === '';
     }
+
+    // Wire format for hasPacks: 'used' -> 'true', 'unused' -> 'false',
+    // 'all' -> omitted (the repo treats it as no-op).
+    function triBool(raw) {
+        if (raw === 'used')   return 'true';
+        if (raw === 'unused') return 'false';
+        return null;
+    }
+
+    function payload(f) {
+        // Single-select pickers are wrapped into 1-element arrays so the
+        // endpoint's IN (?) placeholder logic stays unchanged; empty
+        // arrays are dropped by jQuery (= no filter).
+        const data = {
+            vendorIds:   f.vendor   ? [f.vendor]   : [],
+            producerIds: f.producer ? [f.producer] : [],
+            partIds:     f.part     ? [f.part]     : [],
+            status:      f.status,
+            search:      f.search,
+            dateFrom:    f.dateFrom,
+            dateTo:      f.dateTo,
+            page:        currentPage,
+        };
+        const hp = triBool(f.hasPacks);
+        if (hp !== null) { data.hasPacks = hp; }
+        return data;
+    }
+
+    // Paint every control that mirrors the filters: toolbar segments,
+    // stat tiles, picker cells, date range highlight and the
+    // "Wyczyść filtry" link.
+    function syncFilterUi(f) {
+        $('.vpx-toolbar .rx-seg [data-dim]').each(function() {
+            const on = f[$(this).attr('data-dim')] === $(this).attr('data-value');
+            $(this).toggleClass('is-active', on).attr('aria-pressed', on ? 'true' : 'false');
+        });
+        $('#vpStats .rx-stat').each(function() {
+            const on = f[$(this).attr('data-dim')] === $(this).attr('data-value');
+            $(this).toggleClass('is-active', on).attr('aria-pressed', on ? 'true' : 'false');
+        });
+        $(PICKERS.vendors.cell).toggleClass('is-active', f.vendor !== '');
+        $(PICKERS.producers.cell).toggleClass('is-active', f.producer !== '');
+        $(PICKERS.parts.cell).toggleClass('is-active', f.part !== '');
+        $('#vpDateRange').toggleClass('is-active', f.dateFrom !== '' || f.dateTo !== '');
+        $('#vpClear').toggleClass('d-none', isDefault(f));
+    }
+
+    // A filter (not page) changed: back to page 1, count unknown again.
+    function filtersChanged() {
+        clearTimeout(searchTimer);
+        currentPage = 1;
+        totalCount = null;
+        loadList();
+    }
+
+    // Sets one dimension; no request when it is already that value.
+    function setDimension(dim, value) {
+        if (filterState[dim] === value) { return; }
+        filterState[dim] = value;
+        filtersChanged();
+    }
+
+    // ============================================================
+    // Vendor <-> producer cascade
+    // ============================================================
+    // Picking a vendor narrows the producer picker to producers that
+    // vendor sells, and vice versa. Full lists are cached once on page
+    // load so clearing one side restores the other without a request.
+    let fullVendors   = [];
+    let fullProducers = [];
+    const cascadeSeq = { vendors: 0, producers: 0 };
+
+    function snapshotOptions(selector) {
+        return $(selector).find('option').map(function() {
+            return { id: $(this).attr('value'), name: $(this).text() };
+        }).get().filter(function(it) { return it.id !== undefined && it.id !== ''; });
+    }
+
+    // Replace the options of a picker with `items`, keeping the current
+    // pick only if it still exists in `items`. The empty "all" option
+    // always stays first. Does NOT fire `change` (jQuery .val() and
+    // selectpicker('refresh') are both non-firing), so no recursion.
+    function rebuildPicker(key, items) {
+        const $sel = $(PICKERS[key].sel);
+        const prev = pickerVal(key);
+        const keep = items.some(function(it) { return String(it.id) === prev; }) ? prev : '';
+
+        let opts = '<option value="" data-tokens="wszyscy">' + esc($sel.attr('data-all-label') || '') + '</option>';
+        items.forEach(function(it) {
+            opts += '<option value="' + esc(it.id) + '">' + esc(it.name) + '</option>';
+        });
+        $sel.html(opts).val(keep);
+        $sel.selectpicker('refresh');
+    }
+
+    // `ids` = what the user just picked on the source side. Empty source
+    // -> target reverts to its full list (no request). If the target
+    // already has a pick it wins over the cascade and is left alone: the
+    // cascade is only a hint for the OTHER side while it is still empty.
+    function cascadeNarrow(mode, srcKey, targetKey, fullItems) {
+        const seq = ++cascadeSeq[targetKey];
+        const id = pickerVal(srcKey);
+
+        if (id === '') {
+            rebuildPicker(targetKey, fullItems);
+            syncFilterUi(gatherFilters());
+            return;
+        }
+        if (pickerVal(targetKey) !== '') { return; }
+
+        postAjax('vp-filter-options.php', { mode: mode, ids: [id] })
+            .done(function(r) {
+                if (seq !== cascadeSeq[targetKey]) { return; }   // superseded
+                if (r && r.success) {
+                    rebuildPicker(targetKey, r.items || []);
+                    syncFilterUi(gatherFilters());
+                } else {
+                    setAlert(esc((r && r.error) || 'Błąd ładowania opcji filtra'), 'danger');
+                }
+            })
+            .fail(function() { setAlert('Błąd komunikacji z serwerem', 'danger'); });
+    }
+
+    // Back to the page defaults (same state as on first load), including
+    // the pickers and their full option lists.
+    function resetFilters() {
+        $.extend(filterState, DEFAULTS);
+        $(PICKERS.vendors.sel).val('');
+        $(PICKERS.producers.sel).val('');
+        rebuildPicker('vendors',   fullVendors);
+        rebuildPicker('producers', fullProducers);
+        $(PICKERS.parts.sel).val('').selectpicker('refresh');
+        $('#vpFilterSearch').val('');
+        $('#vpFilterDateFrom').val('');
+        $('#vpFilterDateTo').val('');
+        ++cascadeSeq.vendors;
+        ++cascadeSeq.producers;
+        filtersChanged();
+    }
+
+    // ============================================================
+    // Rendering
+    // ============================================================
 
     function renderRow(vp) {
         const isActive = vp.isActive === true || vp.isActive === 1 || vp.isActive === '1';
-        // Inactive rows are conveyed by the table-secondary tint, the dim
-        // text CSS rule and the muted status badge.
-        const rowClass = isActive ? '' : 'vp-row--inactive table-secondary';
+        // Inactive rows: muted background + grey left edge (vendor-parts-ui.css),
+        // the dim text rules and the grey status badge.
+        const rowClass = isActive ? '' : 'vp-row--inactive';
 
         // Artykuł cell — vendor part number is the primary line (that is
         // what the admin recognises a row by), our catalogue part name is
@@ -144,12 +318,16 @@ $(document).ready(function() {
             artykulCell += '<span class="vp-code vp-code--sub" title="' + esc('Nr producenta: ' + pn) + '">prod.: ' + esc(pn) + '</span>';
         }
 
-        // Comment: free text, mostly empty — a small icon next to the name
-        // with the full text in the tooltip instead of its own column.
+        // Comment: free text, mostly empty — shown as the last line of
+        // the Artykuł cell: bi-journal-text icon (full text in title)
+        // followed by the comment text, truncated with an ellipsis by CSS.
         const rawCmt = (vp.comment == null ? '' : String(vp.comment)).trim();
-        const commentIcon = rawCmt
-            ? '<i class="bi bi-journal-text vp-comment-icon" title="' + esc(rawCmt) + '" aria-label="Komentarz: ' + esc(rawCmt) + '"></i>'
-            : '';
+        if (rawCmt) {
+            artykulCell += '<span class="vp-cmt">' +
+                '<i class="bi bi-journal-text vp-note" title="' + esc(rawCmt) + '"></i>' +
+                '<span class="vp-cmt-text" title="' + esc(rawCmt) + '">' + esc(rawCmt) + '</span>' +
+            '</span>';
+        }
 
         // Dostawca cell — vendor name on the main line, producer name as a
         // muted sub-line (omitted when missing).
@@ -159,283 +337,336 @@ $(document).ready(function() {
         }
 
         const statusBadge = isActive
-            ? '<span class="badge badge-success">Aktywny</span>'
-            : '<span class="badge vp-badge-off">Nieaktywny</span>';
+            ? '<span class="rx-badge rx-badge--green">Aktywny</span>'
+            : '<span class="rx-badge">Nieaktywny</span>';
 
-        const editTitle = 'Edytuj artykuł #' + vp.id;
+        const id = esc(vp.id);
+        const editTitle = 'Edytuj artykuł #' + id;
 
-        return '<tr class="' + rowClass + '" data-id="' + vp.id + '">' +
-            '<td class="vp-col-id text-center">' + vp.id + '</td>' +
-            '<td><div class="d-flex align-items-start"><div style="min-width:0;">' + artykulCell + '</div>' + commentIcon + '</div></td>' +
+        return '<tr class="' + rowClass + '" data-id="' + id + '">' +
+            '<td class="vp-col-id">' + id + '</td>' +
+            '<td>' + artykulCell + '</td>' +
             '<td>' + dostawcaCell + '</td>' +
             '<td>' + renderPacksHtml(vp.packQuantities, vp.unitName) + '</td>' +
             '<td class="text-center">' + statusBadge + '</td>' +
             '<td class="text-center">' +
-                '<a class="btn btn-sm btn-warning" href="' + editBase + vp.id + '"' +
-                    ' title="' + esc(editTitle) + '" aria-label="' + esc(editTitle) + '">' +
+                '<a class="btn btn-sm rx-btn-quiet" href="' + editBase + id + '"' +
+                    ' title="' + editTitle + '" aria-label="' + editTitle + '">' +
                     '<i class="bi bi-pencil"></i>' +
                 '</a>' +
             '</td>' +
         '</tr>';
     }
 
-    // Pusty stan zastępuje tabelę; błąd ładowania nie oferuje „Dodaj”.
-    function showEmpty(message, withCta) {
-        $('#vpEmptyText').text(message);
-        $('#vpEmptyCta').prop('hidden', !withCta);
-        $('#vpTableWrap').prop('hidden', true);
-        $('#vpEmpty').prop('hidden', false);
+    // First load: shimmering placeholder rows instead of an empty panel.
+    function skeletonHtml() {
+        let html = '';
+        for (let i = 0; i < 6; i++) {
+            html += '<tr class="vpx-skel-row">' +
+                '<td><span class="rx-skel rx-skel--sm" style="width:1.5rem;margin:0 auto"></span></td>' +
+                '<td><span class="rx-skel" style="width:55%"></span><span class="rx-skel rx-skel--sm" style="width:35%"></span></td>' +
+                '<td><span class="rx-skel" style="width:60%"></span><span class="rx-skel rx-skel--sm" style="width:40%"></span></td>' +
+                '<td><span class="rx-skel rx-skel--sm" style="width:4rem"></span></td>' +
+                '<td><span class="rx-skel rx-skel--pill" style="width:4.5rem;margin:0 auto"></span></td>' +
+                '<td><span class="rx-skel rx-skel--sm" style="width:2rem;margin:0 auto"></span></td>' +
+            '</tr>';
+        }
+        $('#vpTableBody').html(html);
     }
 
-    function hideEmpty() {
-        $('#vpEmpty').prop('hidden', true);
+    function emptyHtml(icon, tone, title, text, actionsHtml) {
+        return '<div class="rx-empty">' +
+            '<div class="rx-empty-icon' + (tone ? ' rx-empty-icon--' + tone : '') + '"><i class="bi ' + icon + '"></i></div>' +
+            '<div class="rx-empty-title">' + esc(title) + '</div>' +
+            '<div class="rx-empty-text">' + esc(text) + '</div>' +
+            (actionsHtml ? '<div class="vpx-empty-actions">' + actionsHtml + '</div>' : '') +
+        '</div>';
+    }
+
+    // The status block (empty / error) replaces the table inside the panel.
+    function showStatus(html) {
+        $('#vpStatus').html(html).prop('hidden', false);
+        $('#vpTableWrap').prop('hidden', true);
+    }
+
+    function hideStatus() {
+        $('#vpStatus').empty().prop('hidden', true);
         $('#vpTableWrap').prop('hidden', false);
     }
 
-    function renderPagination() {
-        const pages = Math.max(1, Math.ceil(totalCount / itemsPerPage));
-        const start = totalCount === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1;
-        const end   = Math.min(currentPage * itemsPerPage, totalCount);
-        const hasPrev = currentPage > 1;
-        const hasNext = currentPage < pages;
-
-        const html =
-            '<div class="d-flex flex-column align-items-center my-2">' +
-                '<div class="text-muted small mb-2">Wyświetlanie <strong>' + start + '–' + end +
-                '</strong> z <strong>' + totalCount + '</strong> elementów</div>' +
-                '<div class="btn-group btn-group-sm" role="group">' +
-                    '<button class="btn btn-outline-primary vp-page-btn" data-action="first" ' +
-                        (hasPrev ? '' : 'disabled') + '>' +
-                        '<i class="bi bi-chevron-double-left"></i></button>' +
-                    '<button class="btn btn-outline-primary vp-page-btn" data-action="prev" ' +
-                        (hasPrev ? '' : 'disabled') + '>' +
-                        '<i class="bi bi-chevron-left"></i></button>' +
-                    '<div class="btn-group">' +
-                        '<button type="button" class="btn btn-primary dropdown-toggle" ' +
-                            'data-toggle="dropdown">' + currentPage + '</button>' +
-                        '<div class="dropdown-menu vp-page-dropdown" ' +
-                            'style="max-height: 300px; overflow-y: auto;"></div>' +
-                    '</div>' +
-                    '<button class="btn btn-outline-primary vp-page-btn" data-action="next" ' +
-                        (hasNext ? '' : 'disabled') + '>' +
-                        '<i class="bi bi-chevron-right"></i></button>' +
-                '</div>' +
-            '</div>';
-
-        $('#vpPaginationTop, #vpPaginationBottom').html(html);
-
-        // Build page dropdown items
-        let pageItems = '';
-        for (let i = 1; i <= pages; i++) {
-            pageItems += '<a class="dropdown-item vp-page-jump' +
-                (i === currentPage ? ' active' : '') +
-                '" href="#" data-page="' + i + '">' + i + '</a>';
+    // Empty state: with filters on it offers a reset (the catalogue may
+    // not be empty); with defaults it offers adding an article.
+    function showEmpty(f) {
+        if (!isDefault(f)) {
+            showStatus(emptyHtml('bi-box-seam', '', 'Brak wyników',
+                'Żaden artykuł nie spełnia wybranych kryteriów. Zmień lub wyczyść filtry.',
+                '<button type="button" class="btn btn-sm btn-primary js-clear-filters">' +
+                    '<i class="bi bi-x-circle"></i> Wyczyść filtry</button>'));
+        } else {
+            showStatus(emptyHtml('bi-box-seam', '', 'Brak aktywnych artykułów',
+                'Dodaj pierwszy artykuł albo zmień status w filtrach.',
+                '<a href="' + addUrl + '" class="btn btn-sm btn-primary">' +
+                    '<i class="bi bi-plus-circle"></i> Dodaj artykuł</a>'));
         }
-        $('.vp-page-dropdown').html(pageItems);
-
-        $('.vp-page-btn').off('click').on('click', function() {
-            const act = $(this).data('action');
-            if (act === 'first')         { currentPage = 1; }
-            else if (act === 'prev' && currentPage > 1)   { currentPage--; }
-            else if (act === 'next' && currentPage < pages) { currentPage++; }
-            else { return; }
-            loadList(true);
-        });
-        $('.vp-page-jump').off('click').on('click', function(e) {
-            e.preventDefault();
-            currentPage = parseInt($(this).data('page'), 10) || 1;
-            loadList(true);
-        });
     }
 
-    function loadList(skipPageReset) {
-        if (isLoading) return;
-        if (!skipPageReset) { currentPage = 1; }
+    function showError(message) {
+        showStatus(emptyHtml('bi-exclamation-octagon', 'danger',
+            'Nie udało się wczytać artykułów', message,
+            '<button type="button" class="btn btn-sm btn-primary js-list-retry">' +
+                '<i class="bi bi-arrow-clockwise"></i> Spróbuj ponownie</button>'));
+    }
 
-        isLoading = true;
-        $('#vpSpinner').prop('hidden', false);
-        setAlert('', null); // clear stale alerts on every reload
+    // Tile counters from the response; '–' when unknown (error).
+    function renderStats(stats) {
+        $('#vpStats .rx-stat').each(function() {
+            const n = stats ? parseInt(stats[$(this).attr('data-stat')], 10) : NaN;
+            const known = !isNaN(n);
+            $(this).find('[data-stat-value]').text(known ? n : '–');
+            $(this).toggleClass('is-zero', known && n === 0);
+        });
+        $('#vpStats').removeClass('is-loading');
+    }
 
-        const filters = gatherFilters();
-        updateFilterCount();
+    // Results line: range + what the status filter currently shows.
+    function renderSummary(f) {
+        const $el = $('#vpSummary');
+        if (totalCount === null) {
+            $el.text('Wczytywanie artykułów…');
+            return;
+        }
+        if (totalCount === 0) {
+            $el.html((isDefault(f) ? '' : '<i class="bi bi-funnel-fill"></i> ') + 'Brak wyników');
+            return;
+        }
+        const start = (currentPage - 1) * itemsPerPage + 1;
+        const end   = Math.min(currentPage * itemsPerPage, totalCount);
+        const scope = f.status === 'active'   ? 'tylko aktywne'
+                    : f.status === 'inactive' ? 'tylko nieaktywne'
+                    : 'aktywne i nieaktywne';
+        $el.html((isDefault(f) ? '' : '<i class="bi bi-funnel-fill"></i> ') +
+            'Wyświetlanie <strong>' + start + '–' + end + '</strong> z <strong>' + totalCount +
+            '</strong> ' + itemsGen(totalCount) +
+            ' <span class="vpx-sep text-faint">·</span> ' + scope);
+    }
 
-        postAjax('vp-list.php', filters)
+    // Pager: compact one in the results line, full one under the panel.
+    function renderPagination() {
+        const $top = $('#vpPaginationTop');
+        const $bottom = $('#vpPaginationBottom');
+        if (totalCount === null || totalCount === 0) {
+            $top.empty();
+            $bottom.empty();
+            return;
+        }
+        const pages = Math.max(1, Math.ceil(totalCount / itemsPerPage));
+        const first = (currentPage - 1) * itemsPerPage + 1;
+        const last  = Math.min(currentPage * itemsPerPage, totalCount);
+        const atStart = currentPage <= 1;
+        const atEnd   = currentPage >= pages;
+
+        function btn(action, icon, title, disabled) {
+            return '<button type="button" class="btn rx-btn-quiet vpx-page-btn" data-action="' + action + '"' +
+                ' title="' + title + '" aria-label="' + title + '"' + (disabled ? ' disabled' : '') + '>' +
+                '<i class="bi ' + icon + '"></i></button>';
+        }
+
+        let items = '';
+        for (let p = 1; p <= pages; p++) {
+            items += '<a class="dropdown-item vpx-page-item' + (p === currentPage ? ' active' : '') +
+                '" href="#" data-page="' + p + '">Strona ' + p + '</a>';
+        }
+
+        function pageMenu(dir) {
+            return '<div class="btn-group btn-group-sm ' + dir + '">' +
+                '<button type="button" class="btn rx-btn-quiet dropdown-toggle rx-pager-current" data-toggle="dropdown">' +
+                'Strona ' + currentPage + ' z ' + pages + '</button>' +
+                '<div class="dropdown-menu dropdown-menu-right rx-pager-menu">' + items + '</div>' +
+                '</div>';
+        }
+
+        if (pages > 1) {
+            $top.html('<div class="btn-group btn-group-sm vpx-pager-compact" role="group" aria-label="Strony (góra)">' +
+                btn('prev', 'bi-chevron-left', 'Poprzednia strona', atStart) +
+                pageMenu('') +
+                btn('next', 'bi-chevron-right', 'Następna strona', atEnd) +
+                '</div>');
+        } else {
+            $top.empty();
+        }
+
+        let html = '<div class="rx-pager">' +
+            '<div class="rx-pager-info">Wyświetlanie <strong>' + first + '–' + last + '</strong> z <strong>' +
+            totalCount + '</strong> ' + itemsGen(totalCount) + '</div>';
+        if (pages > 1) {
+            html += '<div class="btn-group btn-group-sm rx-pager-nav" role="group" aria-label="Strony (dół)">' +
+                btn('first', 'bi-chevron-double-left', 'Pierwsza strona', atStart) +
+                btn('prev', 'bi-chevron-left', 'Poprzednia strona', atStart) +
+                pageMenu('dropup') +
+                btn('next', 'bi-chevron-right', 'Następna strona', atEnd) +
+                btn('last', 'bi-chevron-double-right', 'Ostatnia strona', atEnd) +
+                '</div>';
+        }
+        html += '</div>';
+        $bottom.html(html);
+    }
+
+    function goToPage(page, fromBottom) {
+        const pages = totalCount ? Math.max(1, Math.ceil(totalCount / itemsPerPage)) : 1;
+        const next = Math.min(Math.max(1, page), pages);
+        if (next === currentPage) { return; }
+        currentPage = next;
+        loadList();
+        if (fromBottom) {
+            const top = $('#vendorPartsView .vpx-toolbar').offset().top - 16;
+            if ($(window).scrollTop() > top) { $('html, body').animate({ scrollTop: top }, 200); }
+        }
+    }
+
+    function setBusy(on) {
+        $('#vpRefresh').prop('disabled', on).toggleClass('is-spinning', on);
+        $('#vpPanel').toggleClass('is-loading', on && hasLoadedOnce);
+    }
+
+    // ============================================================
+    // Loading
+    // ============================================================
+    // Every call supersedes the previous one (abort + sequence number),
+    // so fast clicks on tiles / typing never show an older answer.
+    function loadList() {
+        const f = gatherFilters();
+        syncFilterUi(f);
+
+        const seq = ++listSeq;
+        if (listXhr) { listXhr.abort(); }
+
+        setBusy(true);
+        // Not before the first answer: the ?created= / ?updated= flash set
+        // above must survive the initial load.
+        if (hasLoadedOnce) { setAlert('', null); }
+        if (!hasLoadedOnce) { skeletonHtml(); }
+        $('#vpStats').addClass('is-loading');
+        renderSummary(f);
+
+        listXhr = postAjax('vp-list.php', payload(f))
             .done(function(r) {
-                if (!r.success) {
-                    setAlert(r.error || 'Błąd ładowania listy', 'danger');
-                    showEmpty('Nie udało się załadować danych.', false);
-                    totalCount = 0;
-                    $('#vpCountBadge').text('0');
-                    renderPagination();
+                if (seq !== listSeq) { return; }
+                if (!r || !r.success) {
+                    handleError((r && r.error) || 'Błąd ładowania listy');
                     return;
                 }
-                totalCount = r.total || 0;
-                itemsPerPage = r.itemsPerPage || itemsPerPage;
-                $('#vpCountBadge').text(totalCount);
+                totalCount = parseInt(r.total, 10) || 0;
+                itemsPerPage = parseInt(r.itemsPerPage, 10) || itemsPerPage;
 
+                // Page past the end (e.g. rows vanished after a refresh).
+                if ((r.rows || []).length === 0 && totalCount > 0 && currentPage > 1) {
+                    currentPage = 1;
+                    loadList();
+                    return;
+                }
+
+                hasLoadedOnce = true;
+                renderStats(r.stats);
                 if (totalCount === 0) {
-                    showEmpty('Brak artykułów spełniających kryteria — zmień filtry albo kliknij Dodaj artykuł.', true);
+                    $('#vpTableBody').empty();
+                    showEmpty(f);
                 } else {
-                    hideEmpty();
-                    const html = (r.rows || []).map(renderRow).join('');
-                    $('#vpTableBody').html(html);
+                    hideStatus();
+                    $('#vpTableBody').html((r.rows || []).map(renderRow).join(''));
                 }
                 renderPagination();
+                renderSummary(f);
             })
-            .fail(function() {
-                setAlert('Błąd komunikacji z serwerem', 'danger');
-                showEmpty('Nie udało się załadować danych.', false);
+            .fail(function(xhr, status) {
+                if (status === 'abort' || seq !== listSeq) { return; }
+                handleError((xhr && xhr.responseJSON && xhr.responseJSON.error) || 'Błąd komunikacji z serwerem');
             })
             .always(function() {
-                isLoading = false;
-                $('#vpSpinner').prop('hidden', true);
+                if (seq === listSeq) { setBusy(false); }
             });
     }
 
+    function handleError(message) {
+        hasLoadedOnce = true;   // skeleton is gone either way
+        totalCount = null;
+        setAlert(esc(message), 'danger');
+        $('#vpTableBody').empty();
+        showError(message);
+        renderStats(null);
+        $('#vpSummary').text('Lista niedostępna.');
+        $('#vpPaginationTop, #vpPaginationBottom').empty();
+    }
+
     // ============================================================
-    // Filter card / quick controls wiring
+    // Events
     // ============================================================
 
-    // ---------- Cascade filter: Dostawca ↔ Producent ----------
-    // Cache the full vendor / producer lists once on page load so we can
-    // restore them on the "Wyczyść" button without an extra AJAX round-
-    // trip, and so we can short-circuit the cascade when the user clears
-    // one side (per spec: empty selection → revert to full list).
-    let vpFullVendors   = [];
-    let vpFullProducers = [];
-
-    function snapshotFullLists() {
-        vpFullVendors = $('#vpFilterVendors').find('option').map(function() {
-            return { id: $(this).attr('value'), name: $(this).text() };
-        }).get();
-        vpFullProducers = $('#vpFilterProducers').find('option').map(function() {
-            return { id: $(this).attr('value'), name: $(this).text() };
-        }).get();
-    }
-
-    // Replace the options of a selectpicker with `items`, preserving only
-    // the previously-selected values that still exist in `items`.
-    // Does NOT fire a `change` event (jQuery's .val() + selectpicker
-    // refresh are both non-firing), so cascade updates don't recurse.
-    // Works for both single-select (.val() returns a string or null) and
-    // multi-select (.val() returns an array) pickers — normalise to an
-    // array internally so the filter logic is shape-agnostic. jQuery's
-    // .val(array) accepts a 1-element array on a single-select <select>
-    // (it sets the matching option), and an empty array clears it.
-    function rebuildSelectKeepValid(selector, items) {
-        const $sel = $(selector);
-        const rawPrev = $sel.val();
-        const prevList = rawPrev == null
-            ? []
-            : (Array.isArray(rawPrev) ? rawPrev : [rawPrev]);
-        const validIds  = new Set(items.map(function(it) { return String(it.id); }));
-        const preserved = prevList.filter(function(id) { return validIds.has(String(id)); });
-
-        let opts = '';
-        items.forEach(function(it) {
-            opts += '<option value="' + esc(it.id) + '">' + esc(it.name) + '</option>';
-        });
-        $sel.html(opts).val(preserved);
-        $sel.selectpicker('refresh');
-    }
-
-    function cascadeNarrow(mode, ids, targetSelector, fullItems, after) {
-        // Empty source selection → revert the target to the cached full
-        // list, no AJAX. rebuildSelectKeepValid preserves any target
-        // selection that exists in the full list.
-        if (!ids || ids.length === 0) {
-            rebuildSelectKeepValid(targetSelector, fullItems);
-            if (after) after();
-            return;
-        }
-        // If the target picker already has a value, leave it alone. The
-        // existing selection wins over the cascade — narrowing the target
-        // would risk dropping the value via rebuildSelectKeepValid if the
-        // newly-picked source has no overlap with the previously-picked
-        // target. The cascade is only a *picker hint* for the OTHER side
-        // when it's still empty; once both sides have a value, the user is
-        // in control and can clear either side explicitly if they want a
-        // different narrowing.
-        if ($(targetSelector).val()) {
-            if (after) after();
-            return;
-        }
-        postAjax('vp-filter-options.php', { mode: mode, ids: ids })
-            .done(function(r) {
-                if (r.success) {
-                    rebuildSelectKeepValid(targetSelector, r.items || []);
-                    if (after) after();
-                } else {
-                    setAlert(r.error || 'Błąd ładowania opcji filtra', 'danger');
-                }
-            })
-            .fail(function() { setAlert('Błąd komunikacji z serwerem', 'danger'); });
-    }
-
-    // ---------- Filter change wiring ----------
-    // Vendor / Producer cascade each other. Every user change still
-    // reloads the table from page 1.
-    $('#vpFilterVendors').on('change', function() {
-        // Single-select: .val() returns a string or null. Wrap to a 1-elt
-        // array so the endpoint's `ids` param (and the repository's IN(?)
-        // placeholder count) keep working unchanged.
-        const raw = $(this).val();
-        const ids = raw ? [raw] : [];
-        cascadeNarrow('producers_for_vendors', ids, '#vpFilterProducers', vpFullProducers, function() {
-            loadList();
-        });
+    // Tiles: set one dimension; a second click on the active tile puts
+    // just that dimension back to its default.
+    $('#vpStats').on('click', '.rx-stat', function() {
+        const dim = $(this).attr('data-dim');
+        const value = $(this).attr('data-value');
+        setDimension(dim, filterState[dim] === value ? DEFAULTS[dim] : value);
     });
-    $('#vpFilterProducers').on('change', function() {
-        const raw = $(this).val();
-        const ids = raw ? [raw] : [];
-        cascadeNarrow('vendors_for_producers', ids, '#vpFilterVendors', vpFullVendors, function() {
-            loadList();
-        });
+
+    // Toolbar segments: plain set.
+    $('.vpx-toolbar').on('click', '.rx-seg [data-dim]', function() {
+        setDimension($(this).attr('data-dim'), $(this).attr('data-value'));
     });
-    $('#vpFilterParts').on('change', function() {
-        loadList();
+
+    // Pickers. Vendor and producer cascade each other; the list reloads
+    // right away (the cascade only rewrites the OTHER picker's options
+    // and never changes the current filters).
+    $(PICKERS.vendors.sel).on('change', function() {
+        cascadeNarrow('producers_for_vendors', 'vendors', 'producers', fullProducers);
+        filtersChanged();
     });
+    $(PICKERS.producers.sel).on('change', function() {
+        cascadeNarrow('vendors_for_producers', 'producers', 'vendors', fullVendors);
+        filtersChanged();
+    });
+    $(PICKERS.parts.sel).on('change', filtersChanged);
+
+    // Search: short delay so we don't query on every keystroke; Enter
+    // sends immediately.
     $('#vpFilterSearch').on('input', function() {
-        loadList();
-    });
-    $('#vpFilterDateFrom, #vpFilterDateTo').on('change', function() { loadList(); });
-
-    // Status segmented buttons trigger reload.
-    function bindStatusGroup(groupName) {
-        $('input[name="' + groupName + '"]').on('change', function() {
-            loadList();
-        });
-    }
-    bindStatusGroup('vpFilterStatus');
-
-    // Single "Wyczyść filtry" button in the toolbar: resets every filter
-    // and reloads once (separate per-section buttons would race against
-    // the isLoading guard in loadList()).
-    $('#vpClearAll').on('click', function() {
-        // Reset BOTH vendor/producer pickers back to the full list cached
-        // at page load AND drop the current pick. Clearing .val() before
-        // the rebuild keeps rebuildSelectKeepValid from re-pinning a value.
-        $('#vpFilterVendors').val(null);
-        $('#vpFilterProducers').val(null);
-        rebuildSelectKeepValid('#vpFilterVendors',   vpFullVendors);
-        rebuildSelectKeepValid('#vpFilterProducers', vpFullProducers);
-        $('#vpFilterParts').val(null).selectpicker('refresh');
-        setStatus('vpFilterStatus', 'all');
-        $('#vpFilterSearch').val('');
-        $('#vpFilterDateFrom').val('');
-        $('#vpFilterDateTo').val('');
-        loadList();
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(filtersChanged, SEARCH_DEBOUNCE_MS);
+    }).on('keydown', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            filtersChanged();
+        }
     });
 
-    // The pickers are first measured while their card is collapsed
-    // (display:none), so bootstrap-select can't size its menu correctly.
-    // Refresh them once the card is actually visible.
-    $('#vpFilterCollapse').on('shown.bs.collapse', function() {
-        $(this).find('.selectpicker').selectpicker('refresh');
+    $('#vpFilterDateFrom, #vpFilterDateTo').on('change', filtersChanged);
+
+    // Refresh keeps the current page.
+    $('#vpRefresh').on('click', function() { loadList(); });
+
+    // One reset for the link in the results line and the empty state.
+    $('#vpClear').on('click', resetFilters);
+    $('#vpStatus').on('click', '.js-clear-filters', resetFilters);
+    $('#vpStatus').on('click', '.js-list-retry', function() { loadList(); });
+
+    // Pagers (top and bottom share the same handlers).
+    $('#vpPaginationTop, #vpPaginationBottom').on('click', '.vpx-page-btn', function() {
+        const pages = totalCount ? Math.max(1, Math.ceil(totalCount / itemsPerPage)) : 1;
+        const fromBottom = $(this).closest('#vpPaginationBottom').length > 0;
+        const act = $(this).attr('data-action');
+        if (act === 'first')     { goToPage(1, fromBottom); }
+        else if (act === 'prev') { goToPage(currentPage - 1, fromBottom); }
+        else if (act === 'next') { goToPage(currentPage + 1, fromBottom); }
+        else if (act === 'last') { goToPage(pages, fromBottom); }
+    });
+    $('#vpPaginationTop, #vpPaginationBottom').on('click', '.vpx-page-item', function(e) {
+        e.preventDefault();
+        goToPage(parseInt($(this).attr('data-page'), 10) || 1, $(this).closest('#vpPaginationBottom').length > 0);
     });
 
     // First paint — capture the full option lists BEFORE any cascade can
     // mutate the DOM, then load.
-    snapshotFullLists();
+    fullVendors   = snapshotOptions(PICKERS.vendors.sel);
+    fullProducers = snapshotOptions(PICKERS.producers.sel);
     loadList();
 });
