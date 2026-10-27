@@ -1,12 +1,13 @@
 /**
  * producers-view.js
  *
- * Admin view for /admin/purchase/producers. The page is filter-driven:
- * no inline add form, just a collapsible "Filtry" card (collapsed by
- * default, with a pill counting non-default filters), an AJAX-rendered
- * table, and pagination. Adding a new producer is done
- * via a dedicated edit page at /admin/purchase/producers/edit (the
- * "Dodaj producenta" button in the page header navigates there).
+ * Admin view for /admin/purchase/producers. The page is filter-driven and
+ * laid out like /admin/purchase/vendors: a row of stat tiles (filter
+ * shortcuts), a compact toolbar, a results line with the top pager, and
+ * an AJAX-rendered table in a panel with the full pager below. Adding a
+ * new producer is done via a dedicated edit page at
+ * /admin/purchase/producers/edit (the "Dodaj producenta" button in the
+ * page header navigates there).
  *
  * The edit flow is a dedicated page — see /admin/purchase/producers/edit
  * (wired in index.php and rendered by edit/producer-edit-view.php). Each
@@ -15,12 +16,33 @@
  * producer-update.php / producer-toggle-active.php endpoints have all
  * been removed.
  *
- * Pattern mirrors vendor-parts-view.js — same shape, adapted for the
- * narrower producer schema (id, name, comment, isActive, vendorPartCount).
+ * Filter state:
+ *   - two "dimensions" live in `filterState` (status, hasArticles) and are
+ *     shown by BOTH the stat tiles and the toolbar segmented buttons —
+ *     syncFilterUi() paints both from that one object, so they can never
+ *     disagree;
+ *   - search lives in its input.
+ *   Defaults (isDefault): status = active, hasArticles = all, no search.
+ *
+ * Tile semantics: a tile sets exactly one dimension (data-dim /
+ * data-value). Clicking an already-active tile resets only that dimension
+ * to its default. The tile counts come from `stats` in the
+ * producer-list.php response: each is the count under the CURRENT filters
+ * with only that tile's dimension overridden, i.e. what clicking the tile
+ * would return.
+ *
+ * Pattern mirrors vendors-view.js, adapted for the narrower producer
+ * schema (id, name, comment, isActive, vendorPartCount).
  */
 $(document).ready(function() {
     const ajaxBase = COMPONENTS_PATH + "/Admin/Purchase/Producers/";
     const editBase = window.location.origin + "/atte_ms_new/admin/purchase/producers/edit?id=";
+    // Set by an inline script in producers-view.php; fallback keeps the
+    // empty state working if that script is ever removed.
+    const addUrl   = window.PR_ADD_URL || (window.location.origin + "/atte_ms_new/admin/purchase/producers/edit");
+
+    const DEFAULTS = { status: 'active', hasArticles: 'all' };
+    const SEARCH_DEBOUNCE_MS = 300;
 
     // ---------- Helpers ----------
     function esc(str) {
@@ -31,54 +53,37 @@ $(document).ready(function() {
         return $.ajax({ url: ajaxBase + endpoint, type: 'POST', data: data, dataType: 'json' });
     }
 
+    // "z 1 producenta" / "z 5 producentów" (dopełniacz).
+    function producersGen(n) {
+        return n === 1 ? 'producenta' : 'producentów';
+    }
+
     // ============================================================
-    // Filter / pagination / table-render logic
+    // State
     // ============================================================
-    // itemsPerPage comes from the server response (producer-list.php) so the
-    // client and backend share one source of truth — see line where
-    // `r.itemsPerPage` is assigned.
+    // itemsPerPage comes from the server response (producer-list.php) so
+    // the client and backend share one source of truth.
     let itemsPerPage = 10;
     let currentPage = 1;
-    let totalCount  = 0;
-    let isLoading   = false;
-
-    function getStatus(name) {
-        return $('input[name="' + name + '"]:checked').val() || 'all';
-    }
-
-    function setStatus(name, value) {
-        const $radios = $('input[name="' + name + '"]');
-        $radios.filter('[value="' + value + '"]').prop('checked', true);
-        // Sync the segmented button labels (Bootstrap 4's .active class).
-        $('input[name="' + name + '"]').each(function() {
-            $(this).closest('label.btn').toggleClass('active', $(this).val() === value);
-        });
-    }
-
-    // Map hasArticles UI value ('all' | 'used' | 'unused') to the
-    // backend's boolean-ish wire format (null | true | false). 'all' is
-    // null so the repo's buildSearchWhere() treats it as no-op.
-    function getHasArticles() {
-        const raw = $('input[name="prFilterHasArticles"]:checked').val() || 'all';
-        if (raw === 'used')   return true;
-        if (raw === 'unused') return false;
-        return null;
-    }
+    let totalCount  = null;      // null = unknown yet (loading)
+    let listXhr = null;
+    let listSeq = 0;
+    let hasLoadedOnce = false;
+    let searchTimer = null;
+    const filterState = $.extend({}, DEFAULTS);
 
     // Surface the ?updated=N / ?created=1 success flashes sent back
-    // from the edit page (producer-edit-save.php redirects to the
-    // listing with that param after a successful save or create).
-    // Show them once, then strip from URL via history.replaceState so
-    // a refresh doesn't re-show the toast.
+    // from the edit page. Show them once, then strip from URL via
+    // history.replaceState so a refresh doesn't re-show the toast.
     const params = new URLSearchParams(window.location.search);
     if (params.has('updated')) {
         const updatedId = params.get('updated');
-        setAlert('Zapisano zmiany (producent #' + updatedId + ').', 'success');
+        setAlert('Zapisano zmiany (producent #' + esc(updatedId) + ').', 'success');
         params.delete('updated');
     }
     if (params.has('created')) {
         const createdId = params.get('created');
-        setAlert('Producent #' + createdId + ' został dodany.', 'success');
+        setAlert('Producent #' + esc(createdId) + ' został dodany.', 'success');
         params.delete('created');
     }
     if (params.toString() !== window.location.search.replace(/^\?/, '')) {
@@ -87,240 +92,422 @@ $(document).ready(function() {
         window.history.replaceState({}, '', newUrl);
     }
 
+    // ============================================================
+    // Filters
+    // ============================================================
+
+    // Current filters as the UI sees them ('all' | 'used' | 'unused' for
+    // the tri-state hasArticles dimension).
     function gatherFilters() {
         return {
-            status:      getStatus('prFilterStatus'),
-            search:      $('#prFilterSearch').val() || '',
-            hasArticles: getHasArticles(),
-            page:        currentPage,
+            status:      filterState.status,
+            hasArticles: filterState.hasArticles,
+            search:      ($('#prFilterSearch').val() || '').trim(),
         };
+    }
+
+    // True when nothing differs from the page defaults.
+    function isDefault(f) {
+        return f.status === DEFAULTS.status
+            && f.hasArticles === DEFAULTS.hasArticles
+            && f.search === '';
+    }
+
+    // Wire format for the tri-state dimension: 'used' -> 'true',
+    // 'unused' -> 'false', 'all' -> omitted (the repo treats it as no-op).
+    function triBool(raw) {
+        if (raw === 'used')   return 'true';
+        if (raw === 'unused') return 'false';
+        return null;
+    }
+
+    function payload(f) {
+        const data = {
+            status: f.status,
+            search: f.search,
+            page:   currentPage,
+        };
+        const a = triBool(f.hasArticles);
+        if (a !== null) { data.hasArticles = a; }
+        return data;
+    }
+
+    // Paint every control that mirrors the filters: toolbar segments,
+    // stat tiles and the "Wyczyść filtry" link.
+    function syncFilterUi(f) {
+        $('.prx-toolbar .rx-seg [data-dim]').each(function() {
+            const on = f[$(this).attr('data-dim')] === $(this).attr('data-value');
+            $(this).toggleClass('is-active', on).attr('aria-pressed', on ? 'true' : 'false');
+        });
+        $('#prStats .rx-stat').each(function() {
+            const on = f[$(this).attr('data-dim')] === $(this).attr('data-value');
+            $(this).toggleClass('is-active', on).attr('aria-pressed', on ? 'true' : 'false');
+        });
+        $('#prClear').toggleClass('d-none', isDefault(f));
+    }
+
+    // A filter (not page) changed: back to page 1, count unknown again.
+    function filtersChanged() {
+        clearTimeout(searchTimer);
+        currentPage = 1;
+        totalCount = null;
+        loadList();
+    }
+
+    // Sets one dimension; no request when it is already that value.
+    function setDimension(dim, value) {
+        if (filterState[dim] === value) { return; }
+        filterState[dim] = value;
+        filtersChanged();
+    }
+
+    // Back to the page defaults (same state as on first load).
+    function resetFilters() {
+        $.extend(filterState, DEFAULTS);
+        $('#prFilterSearch').val('');
+        filtersChanged();
+    }
+
+    // ============================================================
+    // Rendering
+    // ============================================================
+
+    // Artykuły u dostawców: icon + count. Zero stays visible (dimmed) so
+    // an unused producer is easy to spot.
+    function articleCount(count) {
+        const n = parseInt(count, 10);
+        const val = (isNaN(n) || n < 0) ? 0 : n;
+        return '<span class="pr-count" title="Artykuły u dostawców: ' + val + '">' +
+            '<i class="bi bi-box-seam"></i>' +
+            (val === 0 ? '<span class="pr-zero">0</span>' : String(val)) +
+        '</span>';
     }
 
     function renderRow(p) {
         const isActive = p.isActive === true || p.isActive === 1 || p.isActive === '1';
-        // Inactive rows are conveyed by the table-secondary tint + the
-        // dim text CSS rule. Active rows are plain (white background).
-        const rowClass = isActive ? '' : 'pr-row--inactive table-secondary';
+        const rowClass = isActive ? '' : 'pr-row--inactive';
 
-        const nameRaw = p.name || '—';
-
-        // Komentarz jako dopisek pod nazwą (bez własnej kolumny); gdy go
-        // nie ma, komórka zawiera samą nazwę. Skracanie robi CSS, pełny
-        // tekst w title.
+        // Comment on its own line under the name: icon (full text in
+        // title) followed by the comment text, truncated with an ellipsis
+        // by CSS. Always visible so operators can read it without hovering.
         const rawCmt = (p.comment == null ? '' : String(p.comment)).trim();
-        const noteHtml = rawCmt
-            ? '<span class="pr-note" title="' + esc(rawCmt) + '">' + esc(rawCmt) + '</span>'
+        const cmtHtml = rawCmt
+            ? '<span class="pr-cmt">' +
+                '<i class="bi bi-journal-text pr-note" title="' + esc(rawCmt) + '"></i>' +
+                '<span class="pr-cmt-text" title="' + esc(rawCmt) + '">' + esc(rawCmt) + '</span>' +
+              '</span>'
             : '';
 
-        // Liczba artykułów — 0 pokazujemy jako myślnik, żeby kolumna
-        // nie wyglądała jak ostrzeżenie; dodatnie wartości jako liczba.
-        const vpCount = parseInt(p.vendorPartCount, 10);
-        const vpCell = (isNaN(vpCount) || vpCount <= 0)
-            ? '<span class="text-muted">—</span>'
-            : '<span class="badge badge-info">' + vpCount + '</span>';
-
         const statusBadge = isActive
-            ? '<span class="badge badge-success">Aktywny</span>'
-            : '<span class="badge pr-badge-off">Nieaktywny</span>';
+            ? '<span class="rx-badge rx-badge--green">Aktywny</span>'
+            : '<span class="rx-badge">Nieaktywny</span>';
 
-        return '<tr class="' + rowClass + '" data-id="' + p.id + '">' +
-            '<td class="pr-col-id text-center">' + p.id + '</td>' +
-            '<td><span class="pr-name">' + esc(nameRaw) + '</span>' + noteHtml + '</td>' +
-            '<td class="text-center pr-col-count">' + vpCell + '</td>' +
+        const label = esc(p.name || '');
+        const id = esc(p.id);
+
+        return '<tr class="' + rowClass + '" data-id="' + id + '">' +
+            '<td class="pr-col-id">' + id + '</td>' +
+            '<td><span class="pr-name">' + esc(p.name || '—') + '</span>' + cmtHtml + '</td>' +
+            '<td class="text-center pr-col-count">' + articleCount(p.vendorPartCount) + '</td>' +
             '<td class="text-center">' + statusBadge + '</td>' +
             '<td class="text-center">' +
-                '<a class="btn btn-sm btn-warning" href="' + editBase + p.id + '"' +
-                    ' title="Edytuj producenta „' + esc(nameRaw) + '”"' +
-                    ' aria-label="Edytuj producenta">' +
+                '<a class="btn btn-sm rx-btn-quiet" href="' + editBase + id + '"' +
+                   ' title="Edytuj producenta „' + label + '”" aria-label="Edytuj producenta">' +
                     '<i class="bi bi-pencil"></i>' +
                 '</a>' +
             '</td>' +
         '</tr>';
     }
 
-    function renderEmptyRow(message) {
-        return '<tr><td colspan="5" class="text-center text-muted py-4">' +
-            esc(message) + '</td></tr>';
+    // First load: shimmering placeholder rows instead of an empty panel.
+    function skeletonHtml() {
+        let html = '';
+        for (let i = 0; i < 6; i++) {
+            html += '<tr class="prx-skel-row">' +
+                '<td><span class="rx-skel rx-skel--sm" style="width:1.5rem;margin:0 auto"></span></td>' +
+                '<td><span class="rx-skel" style="width:55%"></span><span class="rx-skel rx-skel--sm" style="width:35%"></span></td>' +
+                '<td><span class="rx-skel rx-skel--sm" style="width:2.5rem;margin:0 auto"></span></td>' +
+                '<td><span class="rx-skel rx-skel--pill" style="width:4.5rem;margin:0 auto"></span></td>' +
+                '<td><span class="rx-skel rx-skel--sm" style="width:2rem;margin:0 auto"></span></td>' +
+            '</tr>';
+        }
+        $('#prTableBody').html(html);
     }
 
-    // Liczba filtrów różnych od stanu domyślnego (status „Aktywne”,
-    // pusta fraza, wszystkie artykuły). Domyślny widok nie liczy się,
-    // bo operator nic w nim nie zmienił.
-    function countNonDefaultFilters() {
-        let n = 0;
-        if (getStatus('prFilterStatus') !== 'active') { n++; }
-        if (($('#prFilterSearch').val() || '').trim() !== '') { n++; }
-        if (getHasArticles() !== null) { n++; }
-        return n;
+    function emptyHtml(icon, tone, title, text, actionsHtml) {
+        return '<div class="rx-empty">' +
+            '<div class="rx-empty-icon' + (tone ? ' rx-empty-icon--' + tone : '') + '"><i class="bi ' + icon + '"></i></div>' +
+            '<div class="rx-empty-title">' + esc(title) + '</div>' +
+            '<div class="rx-empty-text">' + esc(text) + '</div>' +
+            (actionsHtml ? '<div class="prx-empty-actions">' + actionsHtml + '</div>' : '') +
+        '</div>';
     }
 
-    // Karta filtrów jest zwinięta, więc licznik w jej nagłówku jest
-    // jedynym sygnałem, że lista jest zawężona.
-    function updateFilterPill() {
-        const n = countNonDefaultFilters();
-        $('#prFilterPill').text(n).prop('hidden', n === 0);
-    }
-
-    // Pusty stan zastępuje tabelę. Gdy filtry coś zawężają, główną
-    // akcją jest ich wyczyszczenie; w widoku domyślnym — dodanie.
-    function showEmptyState() {
-        const filtered = countNonDefaultFilters() > 0;
-        const html = filtered
-            ? '<i class="bi bi-search"></i>' +
-              '<p class="mb-3 text-muted">Żaden producent nie pasuje do wybranych filtrów.</p>' +
-              '<button type="button" id="prEmptyClear" class="btn btn-outline-secondary btn-sm">' +
-                  '<i class="bi bi-x-circle"></i> Wyczyść filtry</button>'
-            : '<i class="bi bi-building"></i>' +
-              '<p class="mb-3 text-muted">Brak aktywnych producentów — kliknij <strong>Dodaj producenta</strong>, aby dodać pierwszego.</p>' +
-              '<a href="' + esc(window.PR_ADD_URL || '#') + '" class="btn btn-primary btn-sm">' +
-                  '<i class="bi bi-plus-circle"></i> Dodaj producenta</a>';
-        $('#prEmpty').html(html).prop('hidden', false);
+    // The status block (empty / error) replaces the table inside the panel.
+    function showStatus(html) {
+        $('#prStatus').html(html).prop('hidden', false);
         $('#prTableWrap').prop('hidden', true);
-        $('#prEmptyClear').on('click', clearAllFilters);
     }
 
-    function hideEmptyState() {
-        $('#prEmpty').prop('hidden', true).empty();
+    function hideStatus() {
+        $('#prStatus').empty().prop('hidden', true);
         $('#prTableWrap').prop('hidden', false);
     }
 
-    function updateCounts() {
-        $('#prCountBadge').text(totalCount).prop('hidden', false);
-        $('#prSummaryCount').text(totalCount);
-    }
-
-    function clearAllFilters() {
-        // Powrót do widoku domyślnego (Aktywne), tego samego, który
-        // licznik w nagłówku karty uznaje za „brak filtrów”.
-        setStatus('prFilterStatus', 'active');
-        setStatus('prFilterHasArticles', 'all');
-        $('#prFilterSearch').val('');
-        loadList();
-    }
-
-    function renderPagination() {
-        const pages = Math.max(1, Math.ceil(totalCount / itemsPerPage));
-        const start = totalCount === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1;
-        const end   = Math.min(currentPage * itemsPerPage, totalCount);
-        const hasPrev = currentPage > 1;
-        const hasNext = currentPage < pages;
-
-        const html =
-            '<div class="d-flex flex-column align-items-center my-2">' +
-                '<div class="text-muted small mb-2">Wyświetlanie <strong>' + start + '–' + end +
-                '</strong> z <strong>' + totalCount + '</strong> elementów</div>' +
-                '<div class="btn-group btn-group-sm" role="group">' +
-                    '<button class="btn btn-outline-primary pr-page-btn" data-action="first" ' +
-                        (hasPrev ? '' : 'disabled') + '>' +
-                        '<i class="bi bi-chevron-double-left"></i></button>' +
-                    '<button class="btn btn-outline-primary pr-page-btn" data-action="prev" ' +
-                        (hasPrev ? '' : 'disabled') + '>' +
-                        '<i class="bi bi-chevron-left"></i></button>' +
-                    '<div class="btn-group">' +
-                        '<button type="button" class="btn btn-primary dropdown-toggle" ' +
-                            'data-toggle="dropdown">' + currentPage + '</button>' +
-                        '<div class="dropdown-menu pr-page-dropdown" ' +
-                            'style="max-height: 300px; overflow-y: auto;"></div>' +
-                    '</div>' +
-                    '<button class="btn btn-outline-primary pr-page-btn" data-action="next" ' +
-                        (hasNext ? '' : 'disabled') + '>' +
-                        '<i class="bi bi-chevron-right"></i></button>' +
-                '</div>' +
-            '</div>';
-
-        $('#prPaginationTop, #prPaginationBottom').html(html);
-
-        // Build page dropdown items
-        let pageItems = '';
-        for (let i = 1; i <= pages; i++) {
-            pageItems += '<a class="dropdown-item pr-page-jump' +
-                (i === currentPage ? ' active' : '') +
-                '" href="#" data-page="' + i + '">' + i + '</a>';
+    // Empty state: with filters on it offers a reset (the catalogue may
+    // not be empty); with defaults it offers adding a producer.
+    function showEmpty(f) {
+        if (!isDefault(f)) {
+            showStatus(emptyHtml('bi-building', '', 'Brak wyników',
+                'Żaden producent nie spełnia wybranych kryteriów. Zmień lub wyczyść filtry.',
+                '<button type="button" class="btn btn-sm btn-primary js-clear-filters">' +
+                    '<i class="bi bi-x-circle"></i> Wyczyść filtry</button>'));
+        } else {
+            showStatus(emptyHtml('bi-building', '', 'Brak aktywnych producentów',
+                'Dodaj pierwszego producenta albo zmień status w filtrach.',
+                '<a href="' + esc(addUrl) + '" class="btn btn-sm btn-primary">' +
+                    '<i class="bi bi-plus-circle"></i> Dodaj producenta</a>'));
         }
-        $('.pr-page-dropdown').html(pageItems);
-
-        $('.pr-page-btn').off('click').on('click', function() {
-            const act = $(this).data('action');
-            if (act === 'first')         { currentPage = 1; }
-            else if (act === 'prev' && currentPage > 1)   { currentPage--; }
-            else if (act === 'next' && currentPage < pages) { currentPage++; }
-            else { return; }
-            loadList(true);
-        });
-        $('.pr-page-jump').off('click').on('click', function(e) {
-            e.preventDefault();
-            currentPage = parseInt($(this).data('page'), 10) || 1;
-            loadList(true);
-        });
     }
 
-    function loadList(skipPageReset) {
-        updateFilterPill();
-        if (isLoading) return;
-        if (!skipPageReset) { currentPage = 1; }
+    function showError(message) {
+        showStatus(emptyHtml('bi-exclamation-octagon', 'danger',
+            'Nie udało się wczytać producentów', message,
+            '<button type="button" class="btn btn-sm btn-primary js-list-retry">' +
+                '<i class="bi bi-arrow-clockwise"></i> Spróbuj ponownie</button>'));
+    }
 
-        isLoading = true;
-        $('#prSpinner').prop('hidden', false);
-        setAlert('', null); // clear stale alerts on every reload
+    // Tile counters from the response; '–' when unknown (error).
+    function renderStats(stats) {
+        $('#prStats .rx-stat').each(function() {
+            const n = stats ? parseInt(stats[$(this).attr('data-stat')], 10) : NaN;
+            const known = !isNaN(n);
+            $(this).find('[data-stat-value]').text(known ? n : '–');
+            $(this).toggleClass('is-zero', known && n === 0);
+        });
+        $('#prStats').removeClass('is-loading');
+    }
 
-        const filters = gatherFilters();
+    // Results line: range + what the status filter currently shows.
+    function renderSummary(f) {
+        const $el = $('#prSummary');
+        if (totalCount === null) {
+            $el.text('Wczytywanie producentów…');
+            return;
+        }
+        if (totalCount === 0) {
+            $el.html((isDefault(f) ? '' : '<i class="bi bi-funnel-fill"></i> ') + 'Brak wyników');
+            return;
+        }
+        const start = (currentPage - 1) * itemsPerPage + 1;
+        const end   = Math.min(currentPage * itemsPerPage, totalCount);
+        const scope = f.status === 'active'   ? 'tylko aktywni'
+                    : f.status === 'inactive' ? 'tylko nieaktywni'
+                    : 'aktywni i nieaktywni';
+        $el.html((isDefault(f) ? '' : '<i class="bi bi-funnel-fill"></i> ') +
+            'Wyświetlanie <strong>' + start + '–' + end + '</strong> z <strong>' + totalCount +
+            '</strong> ' + producersGen(totalCount) +
+            ' <span class="text-faint">·</span> ' + scope);
+    }
 
-        postAjax('producer-list.php', filters)
+    // Pager: compact one in the results line, full one under the panel.
+    function renderPagination() {
+        const $top = $('#prPaginationTop');
+        const $bottom = $('#prPaginationBottom');
+        if (totalCount === null || totalCount === 0) {
+            $top.empty();
+            $bottom.empty();
+            return;
+        }
+        const pages = Math.max(1, Math.ceil(totalCount / itemsPerPage));
+        const first = (currentPage - 1) * itemsPerPage + 1;
+        const last  = Math.min(currentPage * itemsPerPage, totalCount);
+        const atStart = currentPage <= 1;
+        const atEnd   = currentPage >= pages;
+
+        function btn(action, icon, title, disabled) {
+            return '<button type="button" class="btn rx-btn-quiet prx-page-btn" data-action="' + action + '"' +
+                ' title="' + title + '" aria-label="' + title + '"' + (disabled ? ' disabled' : '') + '>' +
+                '<i class="bi ' + icon + '"></i></button>';
+        }
+
+        let items = '';
+        for (let p = 1; p <= pages; p++) {
+            items += '<a class="dropdown-item prx-page-item' + (p === currentPage ? ' active' : '') +
+                '" href="#" data-page="' + p + '">Strona ' + p + '</a>';
+        }
+
+        function pageMenu(dir) {
+            return '<div class="btn-group btn-group-sm ' + dir + '">' +
+                '<button type="button" class="btn rx-btn-quiet dropdown-toggle rx-pager-current" data-toggle="dropdown">' +
+                'Strona ' + currentPage + ' z ' + pages + '</button>' +
+                '<div class="dropdown-menu dropdown-menu-right rx-pager-menu">' + items + '</div>' +
+                '</div>';
+        }
+
+        if (pages > 1) {
+            $top.html('<div class="btn-group btn-group-sm prx-pager-compact" role="group" aria-label="Strony (góra)">' +
+                btn('prev', 'bi-chevron-left', 'Poprzednia strona', atStart) +
+                pageMenu('') +
+                btn('next', 'bi-chevron-right', 'Następna strona', atEnd) +
+                '</div>');
+        } else {
+            $top.empty();
+        }
+
+        let html = '<div class="rx-pager">' +
+            '<div class="rx-pager-info">Wyświetlanie <strong>' + first + '–' + last + '</strong> z <strong>' +
+            totalCount + '</strong> ' + producersGen(totalCount) + '</div>';
+        if (pages > 1) {
+            html += '<div class="btn-group btn-group-sm rx-pager-nav" role="group" aria-label="Strony (dół)">' +
+                btn('first', 'bi-chevron-double-left', 'Pierwsza strona', atStart) +
+                btn('prev', 'bi-chevron-left', 'Poprzednia strona', atStart) +
+                pageMenu('dropup') +
+                btn('next', 'bi-chevron-right', 'Następna strona', atEnd) +
+                btn('last', 'bi-chevron-double-right', 'Ostatnia strona', atEnd) +
+                '</div>';
+        }
+        html += '</div>';
+        $bottom.html(html);
+    }
+
+    function goToPage(page, fromBottom) {
+        const pages = totalCount ? Math.max(1, Math.ceil(totalCount / itemsPerPage)) : 1;
+        const next = Math.min(Math.max(1, page), pages);
+        if (next === currentPage) { return; }
+        currentPage = next;
+        loadList();
+        if (fromBottom) {
+            const top = $('#producersView .prx-toolbar').offset().top - 16;
+            if ($(window).scrollTop() > top) { $('html, body').animate({ scrollTop: top }, 200); }
+        }
+    }
+
+    function setBusy(on) {
+        $('#prRefresh').prop('disabled', on).toggleClass('is-spinning', on);
+        $('#prPanel').toggleClass('is-loading', on && hasLoadedOnce);
+    }
+
+    // ============================================================
+    // Loading
+    // ============================================================
+    // Every call supersedes the previous one (abort + sequence number),
+    // so fast clicks on tiles / typing never show an older answer.
+    function loadList() {
+        const f = gatherFilters();
+        syncFilterUi(f);
+
+        const seq = ++listSeq;
+        if (listXhr) { listXhr.abort(); }
+
+        setBusy(true);
+        // Not before the first answer: the ?created= / ?updated= flash set
+        // above must survive the initial load.
+        if (hasLoadedOnce) { setAlert('', null); }
+        if (!hasLoadedOnce) { skeletonHtml(); }
+        $('#prStats').addClass('is-loading');
+        renderSummary(f);
+
+        listXhr = postAjax('producer-list.php', payload(f))
             .done(function(r) {
-                if (!r.success) {
-                    setAlert(r.error || 'Błąd ładowania listy', 'danger');
-                    hideEmptyState();
-                    $('#prTableBody').html(renderEmptyRow('Nie udało się załadować danych.'));
-                    totalCount = 0;
-                    updateCounts();
-                    renderPagination();
+                if (seq !== listSeq) { return; }
+                if (!r || !r.success) {
+                    handleError((r && r.error) || 'Błąd ładowania listy');
                     return;
                 }
-                totalCount = r.total || 0;
-                itemsPerPage = r.itemsPerPage || itemsPerPage;
-                updateCounts();
+                totalCount = parseInt(r.total, 10) || 0;
+                itemsPerPage = parseInt(r.itemsPerPage, 10) || itemsPerPage;
 
+                // Page past the end (e.g. producers vanished after a refresh).
+                if ((r.rows || []).length === 0 && totalCount > 0 && currentPage > 1) {
+                    currentPage = 1;
+                    loadList();
+                    return;
+                }
+
+                hasLoadedOnce = true;
+                renderStats(r.stats);
                 if (totalCount === 0) {
                     $('#prTableBody').empty();
-                    showEmptyState();
-                    $('#prPaginationTop, #prPaginationBottom').empty();
+                    showEmpty(f);
                 } else {
-                    hideEmptyState();
-                    const html = (r.rows || []).map(renderRow).join('');
-                    $('#prTableBody').html(html);
-                    renderPagination();
+                    hideStatus();
+                    $('#prTableBody').html((r.rows || []).map(renderRow).join(''));
                 }
+                renderPagination();
+                renderSummary(f);
             })
-            .fail(function() {
-                setAlert('Błąd komunikacji z serwerem', 'danger');
-                $('#prTableBody').html(renderEmptyRow('Nie udało się załadować danych.'));
+            .fail(function(xhr, status) {
+                if (status === 'abort' || seq !== listSeq) { return; }
+                handleError((xhr && xhr.responseJSON && xhr.responseJSON.error) || 'Błąd komunikacji z serwerem');
             })
             .always(function() {
-                isLoading = false;
-                $('#prSpinner').prop('hidden', true);
+                if (seq === listSeq) { setBusy(false); }
             });
     }
 
+    function handleError(message) {
+        hasLoadedOnce = true;   // skeleton is gone either way
+        totalCount = null;
+        setAlert(esc(message), 'danger');
+        $('#prTableBody').empty();
+        showError(message);
+        renderStats(null);
+        $('#prSummary').text('Lista niedostępna.');
+        $('#prPaginationTop, #prPaginationBottom').empty();
+    }
+
     // ============================================================
-    // Filter card / quick controls wiring
+    // Events
     // ============================================================
 
-    // ---------- Filter change wiring ----------
-    $('#prFilterSearch').on('input', function() {
-        loadList();
+    // Tiles: set one dimension; a second click on the active tile puts
+    // just that dimension back to its default.
+    $('#prStats').on('click', '.rx-stat', function() {
+        const dim = $(this).attr('data-dim');
+        const value = $(this).attr('data-value');
+        setDimension(dim, filterState[dim] === value ? DEFAULTS[dim] : value);
     });
 
-    // Status segmented buttons trigger reload.
-    function bindStatusGroup(groupName) {
-        $('input[name="' + groupName + '"]').on('change', function() {
-            loadList();
-        });
-    }
-    bindStatusGroup('prFilterStatus');
-    bindStatusGroup('prFilterHasArticles');
+    // Toolbar segments: plain set.
+    $('.prx-toolbar').on('click', '.rx-seg [data-dim]', function() {
+        setDimension($(this).attr('data-dim'), $(this).attr('data-value'));
+    });
 
-    // Jeden przycisk „Wyczyść filtry” zamiast trzech osobnych.
-    $('#prClearFilters').on('click', clearAllFilters);
+    // Search: short delay so we don't query on every keystroke; Enter
+    // sends immediately.
+    $('#prFilterSearch').on('input', function() {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(filtersChanged, SEARCH_DEBOUNCE_MS);
+    }).on('keydown', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            filtersChanged();
+        }
+    });
+
+    // Refresh keeps the current page.
+    $('#prRefresh').on('click', function() { loadList(); });
+
+    // One reset for the link in the results line and the empty state.
+    $('#prClear').on('click', resetFilters);
+    $('#prStatus').on('click', '.js-clear-filters', resetFilters);
+    $('#prStatus').on('click', '.js-list-retry', function() { loadList(); });
+
+    // Pagers (top and bottom share the same handlers).
+    $('#prPaginationTop, #prPaginationBottom').on('click', '.prx-page-btn', function() {
+        const pages = totalCount ? Math.max(1, Math.ceil(totalCount / itemsPerPage)) : 1;
+        const fromBottom = $(this).closest('#prPaginationBottom').length > 0;
+        const act = $(this).attr('data-action');
+        if (act === 'first')     { goToPage(1, fromBottom); }
+        else if (act === 'prev') { goToPage(currentPage - 1, fromBottom); }
+        else if (act === 'next') { goToPage(currentPage + 1, fromBottom); }
+        else if (act === 'last') { goToPage(pages, fromBottom); }
+    });
+    $('#prPaginationTop, #prPaginationBottom').on('click', '.prx-page-item', function(e) {
+        e.preventDefault();
+        goToPage(parseInt($(this).attr('data-page'), 10) || 1, $(this).closest('#prPaginationBottom').length > 0);
+    });
 
     // First paint.
     loadList();

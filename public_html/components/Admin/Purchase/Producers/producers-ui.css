@@ -1,0 +1,197 @@
+/* Producenci — /admin/purchase/producers.
+
+   Baza wyglądu to receipts-ui.css (wczytywany przed tym plikiem, bez
+   zmian): zmienne .rx-page, nagłówek, kafelki .rx-stat, pasek filtrów,
+   segmenty, panel, plakietki, stany puste, szkielety, paginacja.
+   Tutaj tylko to, czego tam nie ma — wszystko pod .prx-page. Układ jest
+   ten sam co na liście dostawców (kafelki → pasek filtrów → linijka
+   wyników → panel z listą). */
+
+
+/* ---- Nagłówek ------------------------------------------------------ */
+
+.prx-page .prx-head-links { display: flex; flex-wrap: wrap; gap: .4rem; }
+
+
+/* ---- Liczniki (4 kafelki = skróty do filtrów) ----------------------
+   Kafelek ustawia JEDEN wymiar filtra (status / artykuły), więc dwa
+   kafelki z różnych wymiarów mogą być zaznaczone naraz
+   (np. „Aktywni" + „Bez artykułów"). */
+
+.prx-page .prx-stats {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: .5rem;
+    margin-bottom: 1rem;
+}
+.prx-page .prx-stats .rx-stat { min-width: 0; }
+.prx-page .prx-stats .rx-stat-label {
+    overflow: hidden;
+    max-width: 100%;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.prx-page .prx-stats.is-loading .rx-stat-value { opacity: .45; }
+.prx-page .rx-stat.is-zero .rx-stat-value { color: var(--rx-faint); }
+
+.prx-page .prx-stat--all      { --rx-tone: #6b7785; --rx-tone-soft: #f3f5f8; }
+.prx-page .prx-stat--active   { --rx-tone: #28a745; --rx-tone-soft: #eef8f1; }
+.prx-page .prx-stat--inactive { --rx-tone: #8a96a3; --rx-tone-soft: #f3f5f8; }
+.prx-page .prx-stat--noparts  { --rx-tone: #f0ad00; --rx-tone-soft: #fff8e6; }
+
+@media (max-width: 767.98px) {
+    .prx-page .prx-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+
+/* ---- Pasek filtrów -------------------------------------------------- */
+
+/* Segment z małą etykietą z lewej: dwa przełączniki „Wszystkie / …"
+   obok siebie są nieczytelne bez podpisu, czego dotyczą. */
+.prx-page .prx-group {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+}
+.prx-page .prx-group-label {
+    font-size: .66rem;
+    font-weight: 700;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: var(--rx-faint);
+    white-space: nowrap;
+}
+@media (max-width: 575.98px) {
+    .prx-page .prx-group { flex: 1 1 100%; flex-wrap: wrap; }
+    .prx-page .prx-group .rx-seg { flex: 1 1 100%; }
+}
+
+/* Linijka wyników: podsumowanie po lewej, paginacja górna po prawej. */
+.prx-page .prx-filterbar { flex-wrap: wrap; }
+.prx-page .prx-summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .25rem .75rem;
+}
+.prx-page .prx-summary .rx-link-btn { font-size: .8rem; }
+.prx-page .prx-pager-compact .rx-pager-current { min-width: 7.5rem; }
+
+
+/* ---- Panel + ładowanie --------------------------------------------- */
+
+.prx-page .prx-panel { position: relative; }
+.prx-page .prx-table-wrap { transition: opacity .15s ease; }
+.prx-page .prx-panel.is-loading .prx-table-wrap { opacity: .45; pointer-events: none; }
+/* Cienki pasek postępu przy górnej krawędzi panelu (kolejne wczytania;
+   pierwsze pokazuje szkielety). */
+.prx-page .prx-panel.is-loading::after {
+    content: "";
+    position: absolute;
+    left: 0; right: 0; top: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent 0%, var(--rx-accent) 50%, transparent 100%);
+    background-size: 50% 100%;
+    background-repeat: no-repeat;
+    animation: prxLoadBar 1s linear infinite;
+}
+@keyframes prxLoadBar {
+    0%   { background-position: -50% 0; }
+    100% { background-position: 150% 0; }
+}
+
+.prx-page .prx-empty-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: .5rem;
+    margin-top: 1.1rem;
+}
+.prx-page .prx-empty-actions .btn { margin-top: 0; }
+
+
+/* ---- Tabela producentów --------------------------------------------- */
+
+.prx-page #prTable { margin-bottom: 0; }
+.prx-page #prTable thead th.pr-col-id,
+.prx-page #prTable tbody td.pr-col-id { width: 3.5rem; text-align: center; }
+.prx-page #prTable thead th.pr-col-name { min-width: 15rem; }
+.prx-page #prTable thead th.pr-col-count { width: 6.5rem; text-align: center; }
+.prx-page #prTable thead th.pr-col-status { width: 7.5rem; text-align: center; }
+.prx-page #prTable thead th.pr-col-actions { width: 4.5rem; text-align: center; }
+
+/* ID to identyfikator techniczny, nie treść — blade, stała szerokość cyfr. */
+.prx-page #prTable td.pr-col-id {
+    font-variant-numeric: tabular-nums;
+    color: var(--rx-faint);
+}
+.prx-page #prTable td.pr-col-count {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.prx-page #prTable tbody tr {
+    transition: background-color .12s ease;
+}
+.prx-page #prTable tbody tr:hover { background: var(--rx-hover); }
+
+.prx-page .pr-name {
+    display: block;
+    font-weight: 600;
+    color: var(--rx-ink);
+}
+/* Komentarz w osobnej linii pod nazwą: ikona + ściszony tekst. Zawsze
+   widoczny, pełna treść także w title. Flex + min-width: 0 na tekście
+   daje wielokropek bez rozpychania tabeli; nowrap + ellipsis obcina
+   też długie ciągi bez spacji (adresy URL). */
+.prx-page .pr-cmt {
+    display: flex;
+    align-items: baseline;
+    max-width: 28rem;
+    font-size: .78rem;
+    font-weight: 400;
+    font-style: italic;
+    color: var(--rx-muted);
+}
+.prx-page .pr-note {
+    flex: 0 0 auto;
+    color: #adb5bd;
+    margin-right: .35rem;
+    font-style: normal;
+    cursor: help;
+}
+.prx-page .pr-cmt-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Liczba artykułów: ikona + liczba; zero przygaszone, żeby producent
+   bez artykułów odstawał (to kandydat do porządków w katalogu). */
+.prx-page .pr-count {
+    display: inline-block;
+    cursor: help;
+}
+.prx-page .pr-count .bi {
+    color: #adb5bd;
+    margin-right: .25rem;
+}
+.prx-page .pr-count .pr-zero { color: #ced4da; }
+
+/* Nieaktywni producenci: cichy, lekko zszarzały wiersz z szarą krawędzią
+   po lewej (ten sam język co na liście dostawców). Nie czerwień —
+   w tej tabeli oznaczałaby „błąd". Komentarz zostaje ciemny, bo to
+   w nim może być powód wyłączenia. */
+.prx-page #prTable tr.pr-row--inactive > td { background: var(--rx-canvas); }
+.prx-page #prTable tr.pr-row--inactive:hover > td { background: #f0f3f7; }
+.prx-page #prTable tr.pr-row--inactive > td:first-child { box-shadow: inset 3px 0 0 #cfd8e3; }
+.prx-page #prTable tr.pr-row--inactive .pr-name {
+    font-weight: 500;
+    color: var(--rx-muted);
+}
+.prx-page #prTable tr.pr-row--inactive .pr-cmt { color: #495057; }
+.prx-page #prTable tr.pr-row--inactive .pr-note { color: #868e96; }
+
+/* Szkielety pierwszego wczytania. */
+.prx-page .prx-skel-row td { height: 4.1rem; }
