@@ -16,9 +16,10 @@
  *     3-letter ISO code which the repository resolves to the id),
  *     comment, isActive radio,
  *   - preferred_email_draft_rfq_id / preferred_email_draft_po_id
- *     (FK → email_draft.id; 0 = brak preferencji). Sam szablon
- *     edytuje się w osobnym module /admin/purchase/email-drafts —
- *     tutaj wskazuje się tylko, którego użyć.
+ *     (FK → email_draft.id; NULL = dostawca podąża za globalnym
+ *     domyślnym). Sam szablon edytuje się w osobnym module
+ *     /admin/purchase/email-drafts — tutaj wskazuje się tylko,
+ *     którego użyć.
  *
  * In EDIT mode the page also renders:
  *   - Inline supplier CRUD (form + list) — replaces the old
@@ -46,6 +47,7 @@ use Atte\DB\MsaDB;
 use Atte\Utils\Purchase\Master\VendorRepository;
 use Atte\Utils\Purchase\Master\VendorSupplierRepository;
 use Atte\Utils\Purchase\Master\CurrencyRepository;
+use Atte\Utils\Purchase\Master\EmailDraftRepository;
 
 if (!isset($_SESSION['isAdmin']) || $_SESSION['isAdmin'] !== true) {
     header("Location: http://".BASEURL."/");
@@ -119,7 +121,9 @@ if (!isset($MsaDB)) {
 }
 $currencies = [];
 $emailDrafts = [];
-$vendorPreferredCount = 0;
+$defaultDraftIds = ['rfq' => 0, 'po' => 0];
+$vrDraftPickers = [];
+$vrCustomDraftCount = 0;
 if (!$notFound) {
     $currencies = (new CurrencyRepository($MsaDB))->getActiveEnsuring($vendorDefaultCurrency);
 
@@ -135,8 +139,56 @@ if (!$notFound) {
         $repo = new VendorRepository($MsaDB);
     }
     $emailDrafts = $repo->getActiveEmailDrafts();
-    $vendorPreferredCount = ($vendorPreferredRfqId > 0 ? 1 : 0)
-                          + ($vendorPreferredPoId  > 0 ? 1 : 0);
+
+    // Identyfikatory GLOBALNYCH domyślnych (`email_draft_default`,
+    // PK = doc_type → po jednym wskaźniku na typ dokumentu).
+    $defaultDraftIds = (new EmailDraftRepository($MsaDB))->getDefaultDraftIds();
+
+    // Dwa niezależne pickery — po jednym na typ dokumentu. Każdy dostaje
+    // swój katalog (filtrowany po applies_to tak samo jak katalog
+    // kreatora wysyłki) i swoją pozycję: preferencja dostawcy, jeśli
+    // nadal jest w katalogu, w przeciwnym razie globalny domyślny.
+    // Dzięki temu picker NIGDY nie stoi na „— brak —" — pokazuje szablon,
+    // który realnie zostanie użyty przy wysyłce.
+    $vrDraftPickers = [
+        [
+            'id'    => 'vr_pref_draft_rfq',
+            'cell'  => 'vrDraftRfqCell',
+            'name'  => 'preferred_email_draft_rfq_id',
+            'main'  => 'zapytań ofertowych',
+            'abbr'  => 'RFQ',
+            'type'  => 'rfq',
+            'prefId' => $vendorPreferredRfqId,
+        ],
+        [
+            'id'    => 'vr_pref_draft_po',
+            'cell'  => 'vrDraftPoCell',
+            'name'  => 'preferred_email_draft_po_id',
+            'main'  => 'zamówień',
+            'abbr'  => 'PO',
+            'type'  => 'po',
+            'prefId' => $vendorPreferredPoId,
+        ],
+    ];
+    foreach ($vrDraftPickers as &$vrPicker) {
+        $vrState = EmailDraftRepository::resolvePickerState(
+            $vrPicker['type'],
+            (int)$vrPicker['prefId'],
+            $emailDrafts,
+            $defaultDraftIds
+        );
+        $vrPicker['options']    = $vrState['options'];
+        $vrPicker['selectedId'] = $vrState['selectedId'];
+        $vrPicker['defaultId']  = $vrState['defaultId'];
+
+        // „Własny" = wybór dostawcy RÓŻNIĄCY się od domyślnego. Tylko
+        // taki liczy chip w nagłówku sekcji: szablon równy domyślnemu
+        // to wciąż „podążanie za domyślnym", a nie własny wybór.
+        if ($vrPicker['selectedId'] > 0 && $vrPicker['selectedId'] !== $vrPicker['defaultId']) {
+            $vrCustomDraftCount++;
+        }
+    }
+    unset($vrPicker);
 }
 
 $backUrl = 'http://' . BASEURL . '/admin/purchase/vendors';
@@ -401,8 +453,15 @@ function vr_count_label(int $n, string $one, string $few, string $many): string 
                  Dostawca tylko WSKAZUJE szablon z globalnego katalogu
                  (/admin/purchase/email-drafts) — treści nie edytuje się
                  tutaj. Krok 4 kreatora wysyłki rozwiązuje ten FK i
-                 podstawia zmienne; przy braku wskazania albo gdy szablon
-                 jest wyłączony, wraca do szablonu systemowego.
+                 podstawia zmienne.
+
+                 Picker NIE stoi na „— brak —". Pokazuje szablon, który
+                 realnie zostanie użyty: preferencję dostawcy, a gdy
+                 jej nie ma — globalny domyślny dla danego typu
+                 dokumentu. Pozostawienie globalnego domyślnego w
+                 pickerze znaczy „dostawca podąża za domyślnym" (w bazie
+                 zostaje NULL), więc zmiana domyślnego w module
+                 szablonów obejmuje wtedy również tego dostawcę.
 
                  Sekcja jest zwykłą częścią formularza (bez zwijania) —
                  oba selecty leżą WEWNĄTRZ #vrEditForm, więc
@@ -415,15 +474,25 @@ function vr_count_label(int $n, string $one, string $few, string $many): string 
                     <i class="bi bi-info-circle vxe-section-info"
                        data-toggle="tooltip"
                        data-placement="top"
-                       title="Szablon używany w kroku 4 wysyłki zapytania. Pozostaw puste, aby użyć wbudowanego domyślnego."></i>
-                    <span class="vxe-count-chip<?= $vendorPreferredCount > 0 ? ' is-on' : '' ?>" id="vrDraftCount">
-                        <?= $vendorPreferredCount > 0 ? (int)$vendorPreferredCount . ' z 2' : 'domyślne' ?>
+                       title="Szablon używany w kroku 4 wysyłki zapytania. Szablon oznaczony gwiazdką ★ to globalny domyślny — dostawca podąża za nim, dopóki nie wybierzesz innego."></i>
+                    <span class="vxe-count-chip<?= $vrCustomDraftCount > 0 ? ' is-on' : '' ?>"
+                          id="vrDraftCount"
+                          title="Liczba typów dokumentów, dla których dostawca ma własny szablon (różny od globalnego domyślnego).">
+                        <?php if ($vrCustomDraftCount === 0): ?>
+                            domyślne
+                        <?php elseif ($vrCustomDraftCount === 1): ?>
+                            1 własny
+                        <?php else: ?>
+                            <?= (int)$vrCustomDraftCount ?> własne
+                        <?php endif; ?>
                     </span>
                 </div>
 
                 <p class="vxe-table-note">
                     Wybierz szablon, którego kreator wysyłki ma użyć dla tego dostawcy.
-                    Brak wyboru oznacza szablon systemowy. Treść szablonów edytuje się w&nbsp;module
+                    Szablon oznaczony gwiazdką ★ to globalny domyślny — pozostawienie
+                    go oznacza, że dostawca podąża za zmianami domyślnego.
+                    Treść szablonów edytuje się w&nbsp;module
                     <a href="<?= 'http://' . BASEURL . '/admin/purchase/email-drafts' ?>">Szablony wiadomości</a>.
                 </p>
 
@@ -433,27 +502,23 @@ function vr_count_label(int $n, string $one, string $few, string $many): string 
                 // opcja w środku, a nie osobny blok alertu: operator
                 // widzi wtedy, gdzie ta wartość ma trafić, zamiast
                 // patrzeć na dziurę w formularzu.
-                $vrDraftPickers = [
-                    [
-                        'id'    => 'vr_pref_draft_rfq',
-                        'cell'  => 'vrDraftRfqCell',
-                        'name'  => 'preferred_email_draft_rfq_id',
-                        'main'  => 'zapytań ofertowych',
-                        'abbr'  => 'RFQ',
-                        'value' => $vendorPreferredRfqId,
-                    ],
-                    [
-                        'id'    => 'vr_pref_draft_po',
-                        'cell'  => 'vrDraftPoCell',
-                        'name'  => 'preferred_email_draft_po_id',
-                        'main'  => 'zamówień',
-                        'abbr'  => 'PO',
-                        'value' => $vendorPreferredPoId,
-                    ],
-                ];
+                //
+                // $vrDraftPickers (z rozszyrzonym stanem: options /
+                // selectedId / defaultId) jest budowany wyżej, przy
+                // wczytywaniu danych — tam, gdzie znamy już katalog
+                // szablonów i globalne domyślne.
                 ?>
                 <div class="vxe-grid">
-                    <?php foreach ($vrDraftPickers as $p): ?>
+                    <?php foreach ($vrDraftPickers as $p):
+                        $pOptions = $p['options'];
+                        $pDefaultName = '';
+                        foreach ($pOptions as $o) {
+                            if ((int)$o['id'] === (int)$p['defaultId']) {
+                                $pDefaultName = (string)$o['name'];
+                                break;
+                            }
+                        }
+                    ?>
                         <div class="vxe-field vxe-field--6">
                             <label class="vxe-label" for="<?= $p['id'] ?>">
                                 Preferowany szablon dla <?= htmlspecialchars($p['main'], ENT_QUOTES) ?>
@@ -467,34 +532,35 @@ function vr_count_label(int $n, string $one, string $few, string $many): string 
                                         data-container="#<?= $p['cell'] ?>"
                                         data-live-search="true"
                                         data-style="rx-picker-btn"
-                                        title="— brak —">
-                                    <option value="0" <?= $p['value'] === 0 ? 'selected' : '' ?>>— brak —</option>
-                                    <?php if ($emailDrafts === []): ?>
-                                        <option value="0" disabled>
-                                            -- brak zdefiniowanych szablonów — utwórz w /admin/purchase/email-drafts --
+                                        data-default-id="<?= (int)$p['defaultId'] ?>">
+                                    <?php if ($pOptions === []): ?>
+                                        <option value="0" selected disabled>
+                                            — brak aktywnych szablonów dla <?= htmlspecialchars($p['abbr'], ENT_QUOTES) ?> —
                                         </option>
                                     <?php else: ?>
-                                        <?php foreach ($emailDrafts as $d): ?>
-                                            <option value="<?= (int)$d->id ?>"
-                                                    <?= ((int)$d->id === $p['value']) ? 'selected' : '' ?>>
-                                                <?= htmlspecialchars($d->name, ENT_QUOTES) ?>
+                                        <?php foreach ($pOptions as $o): ?>
+                                            <option value="<?= (int)$o['id'] ?>"
+                                                    <?= ((int)$o['id'] === (int)$p['selectedId']) ? 'selected' : '' ?>>
+                                                <?= htmlspecialchars($o['name'], ENT_QUOTES) ?><?= $o['isGlobalDefault'] ? ' ★' : '' ?>
                                             </option>
                                         <?php endforeach; ?>
                                     <?php endif; ?>
                                 </select>
                             </div>
+                            <p class="vxe-help">
+                                <?php if ($pOptions === []): ?>
+                                    Dodaj szablon w&nbsp;module
+                                    <a href="<?= 'http://' . BASEURL . '/admin/purchase/email-drafts/edit' ?>">Szablony wiadomości</a>,
+                                    aby móc go tu wskazać.
+                                <?php elseif ((int)$p['selectedId'] === (int)$p['defaultId']): ?>
+                                    Podąża za globalnym domyślnym.
+                                <?php else: ?>
+                                    Własny wybór dostawcy — globalny domyślny to „<?= htmlspecialchars($pDefaultName, ENT_QUOTES) ?>”.
+                                <?php endif; ?>
+                            </p>
                         </div>
                     <?php endforeach; ?>
                 </div>
-
-                <?php if ($emailDrafts === []): ?>
-                    <p class="vxe-help" style="margin-top:.75rem;">
-                        <i class="bi bi-info-circle"></i>
-                        Katalog szablonów jest pusty —
-                        <a href="<?= 'http://' . BASEURL . '/admin/purchase/email-drafts/edit' ?>">dodaj pierwszy szablon</a>,
-                        aby móc go tu wskazać.
-                    </p>
-                <?php endif; ?>
 
             </div>
 

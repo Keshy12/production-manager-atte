@@ -36,6 +36,99 @@ class EmailDraftRepository {
     }
 
     /**
+     * Effective selection for ONE document-type picker on the vendor
+     * card.
+     *
+     * Mirrors the send wizard's resolution chain
+     * (documents-send.js → initSelectedDraftFromDoc):
+     *   vendor preference → GLOBAL default for this type → first
+     *   template in the catalogue → nothing.
+     *
+     * The catalogue is filtered per document type
+     * (applies_to IN ('rfq','both') / IN ('po','both')) — the same
+     * split the send wizard applies — so the picker only offers
+     * templates the wizard will really use for that document type.
+     * Offering a PO-only template as an RFQ preference would create
+     * a silent mismatch: the wizard filters it out and falls back to
+     * the default, while the vendor card would claim otherwise.
+     *
+     * `defaultId` = what the vendor gets when it has NO own
+     * preference (the global default when usable, otherwise the first
+     * catalogue entry). `selectedId` = what the picker must show (the
+     * vendor's own preference when still usable, otherwise
+     * `defaultId`).
+     *
+     * Static + pure on purpose: the vendor save endpoint reuses it to
+     * tell an OWN preference (store it) from the default in disguise
+     * (store NULL, so the vendor keeps following the global default).
+     *
+     * @param string $docType    'rfq' | 'po'
+     * @param int    $prefId     FK → email_draft.id (0 = no preference)
+     * @param array  $catalogue  Rows from getActiveIdNameList()
+     *                           (objects or arrays with id / name /
+     *                           appliesTo)
+     * @param array  $defaultIds Rows from getDefaultDraftIds()
+     * @return array{
+     *     options: array<int, array{id:int, name:string, isGlobalDefault:bool}>,
+     *     selectedId: int,
+     *     defaultId: int
+     * }
+     */
+    public static function resolvePickerState(
+        string $docType,
+        int $prefId,
+        array $catalogue,
+        array $defaultIds
+    ): array {
+        if (!in_array($docType, ['rfq', 'po'], true)) {
+            throw new \InvalidArgumentException(
+                "resolvePickerState(): docType must be one of: rfq, po "
+                . "(passed: " . var_export($docType, true) . ")"
+            );
+        }
+        $rawDefaultId = (int)($defaultIds[$docType] ?? 0);
+
+        $options = [];
+        foreach ($catalogue as $row) {
+            if (is_array($row)) {
+                $id        = (int)($row['id'] ?? 0);
+                $name      = (string)($row['name'] ?? '');
+                $appliesTo = (string)($row['appliesTo'] ?? ($row['applies_to'] ?? ''));
+            } else {
+                $id        = (int)($row->id ?? 0);
+                $name      = (string)($row->name ?? '');
+                $appliesTo = (string)($row->appliesTo ?? '');
+            }
+            if ($id <= 0) {
+                continue;
+            }
+            if ($appliesTo !== $docType && $appliesTo !== 'both') {
+                continue;
+            }
+            $options[] = [
+                'id'              => $id,
+                'name'            => $name,
+                'isGlobalDefault' => ($id === $rawDefaultId),
+            ];
+        }
+
+        $optionIds = array_column($options, 'id');
+        $defaultId = in_array($rawDefaultId, $optionIds, true)
+            ? $rawDefaultId
+            : (int)($optionIds[0] ?? 0);
+
+        $selectedId = ($prefId > 0 && in_array($prefId, $optionIds, true))
+            ? $prefId
+            : $defaultId;
+
+        return [
+            'options'    => $options,
+            'selectedId' => $selectedId,
+            'defaultId'  => $defaultId,
+        ];
+    }
+
+    /**
      * @return EmailDraft[]
      */
     public function getAll(bool $activeOnly = false): array {
@@ -74,22 +167,79 @@ class EmailDraftRepository {
      * VendorRepository::getActiveEmailDrafts() — kept here as the
      * canonical lightweight reader.
      *
-     * @return array<int, \stdClass> Each: {id:int, name:string}
+     * The projection carries three extra fields because the vendor
+     * card needs them and cannot compute them on its own:
+     *   - appliesTo    — which wizard(s) the draft may be used in.
+     *                   The vendor picker is split per document type
+     *                   exactly like the send wizard's catalogue
+     *                   (applies_to IN ('rfq','both') for RFQ,
+     *                   IN ('po','both') for PO), so a PO-only
+     *                   template is never offered as an RFQ
+     *                   preference — the wizard would ignore it.
+     *   - isDefaultRfq / isDefaultPo — is this draft the GLOBAL
+     *                   default for that document type? Derived from
+     *                   the `email_draft_default` pointer table
+     *                   (PK = doc_type → at most one joined row, so
+     *                   no row multiplication).
+     *
+     * @return array<int, \stdClass> Each:
+     *         {id:int, name:string, appliesTo:string,
+     *          isDefaultRfq:bool, isDefaultPo:bool}
      */
     public function getActiveIdNameList(): array {
         $MsaDB = $this->MsaDB;
-        $sql = "SELECT id, name
-                  FROM `email_draft`
-                 WHERE is_active = 1
-                 ORDER BY name ASC, id ASC";
+        $sql = "SELECT e.id, e.name,
+                       e.applies_to AS applies_to,
+                       IF(dr.draft_id = e.id, 1, 0) AS is_default_rfq,
+                       IF(dp.draft_id = e.id, 1, 0) AS is_default_po
+                  FROM `email_draft` e
+                  LEFT JOIN `email_draft_default` dr ON dr.doc_type = 'rfq'
+                  LEFT JOIN `email_draft_default` dp ON dp.doc_type = 'po'
+                 WHERE e.is_active = 1
+                 ORDER BY e.name ASC, e.id ASC";
         $stmt = $MsaDB->db->prepare($sql);
         $stmt->execute();
         $out = [];
         foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
-            $row        = new \stdClass();
-            $row->id    = (int)$r['id'];
-            $row->name  = (string)$r['name'];
-            $out[]      = $row;
+            $row              = new \stdClass();
+            $row->id          = (int)$r['id'];
+            $row->name        = (string)$r['name'];
+            $row->appliesTo   = (string)$r['applies_to'];
+            $row->isDefaultRfq = (bool)(int)$r['is_default_rfq'];
+            $row->isDefaultPo  = (bool)(int)$r['is_default_po'];
+            $out[]            = $row;
+        }
+        return $out;
+    }
+
+    /**
+     * Ids of the two GLOBAL default drafts — one per document type.
+     *
+     * The pointer table `email_draft_default` has PK = doc_type, so
+     * "one default per type" is a structural invariant: there can be
+     * at most one row for 'rfq' and one for 'po'.
+     *
+     * The returned id is NOT filtered by is_active / applies_to — it
+     * is the raw pointer target. Callers decide what to do with a
+     * pointer that points at an inactive or out-of-scope draft (the
+     * vendor card falls back to the first usable template, exactly
+     * like the send wizard does).
+     *
+     * @return array{rfq:int, po:int} 0 when no pointer row exists for
+     *         that document type.
+     */
+    public function getDefaultDraftIds(): array {
+        $MsaDB = $this->MsaDB;
+        $stmt = $MsaDB->db->prepare(
+            "SELECT `doc_type`, `draft_id` FROM `email_draft_default`"
+        );
+        $stmt->execute();
+        $out = ['rfq' => 0, 'po' => 0];
+        foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
+            $type = (string)$r['doc_type'];
+            if (array_key_exists($type, $out)) {
+                $out[$type] = (int)$r['draft_id'];
+            }
         }
         return $out;
     }

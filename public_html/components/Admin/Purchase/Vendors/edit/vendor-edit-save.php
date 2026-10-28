@@ -25,6 +25,7 @@
  */
 use Atte\DB\MsaDB;
 use Atte\Utils\Purchase\Master\VendorRepository;
+use Atte\Utils\Purchase\Master\EmailDraftRepository;
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -135,6 +136,31 @@ $isActive = ($isActiveRaw === '0' || $isActiveRaw === 0) ? false : true;
 try {
     $MsaDB = MsaDB::getInstance();
     $repo  = new VendorRepository($MsaDB);
+
+    // Wybór w pickerze a preferencja dostawcy to nie to samo.
+    // Globalny domyślny dla danego typu dokumentu NIE jest zapisywany
+    // jako preferencja — pozostawienie go w pickerze oznacza „dostawca
+    // podąża za globalnym domyślnym" (w bazie zostaje NULL). Dzięki
+    // temu zmiana domyślnego w module szablonów obejmuje tego
+    // dostawcę, a licznik „N dostawców" na liście szablonów nie liczy
+    // go jako własnego wyboru. Identyczna reguła żyje w kreatorze
+    // wysyłki (documents-send.js → initSelectedDraftFromDoc).
+    $edRepo        = new EmailDraftRepository($MsaDB);
+    $vrCatalogue   = $edRepo->getActiveIdNameList();
+    $vrDefaultIds  = $edRepo->getDefaultDraftIds();
+
+    if ($preferredRfqDraft !== null) {
+        $vrState = EmailDraftRepository::resolvePickerState('rfq', 0, $vrCatalogue, $vrDefaultIds);
+        if ((int)$preferredRfqDraft === (int)$vrState['defaultId']) {
+            $preferredRfqDraft = null;   // wybór = globalny domyślny → brak preferencji
+        }
+    }
+    if ($preferredPoDraft !== null) {
+        $vrState = EmailDraftRepository::resolvePickerState('po', 0, $vrCatalogue, $vrDefaultIds);
+        if ((int)$preferredPoDraft === (int)$vrState['defaultId']) {
+            $preferredPoDraft = null;    // wybór = globalny domyślny → brak preferencji
+        }
+    }
 
     if ($id <= 0) {
         // CREATE — name uniqueness isn't a hard constraint at the

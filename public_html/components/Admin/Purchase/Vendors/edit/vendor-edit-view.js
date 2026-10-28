@@ -787,16 +787,27 @@
             $pickers.selectpicker('refresh');
         });
 
-        // Po udanym zapisie licznik w nagłówku sekcji przestaje kłamać
-        // o tym, ile preferencji dostawca ma ustawionych.
-        $('#vrEditForm').on('vr:saved', function() {
-            let set = 0;
+        // Chip w nagłówku sekcji: liczy typy dokumentów, dla których
+        // dostawca ma WŁASNY szablon (różny od globalnego domyślnego).
+        // `data-default-id` to id globalnego domyślnego dla danego
+        // typu — wybór równy domyślnemu to wciąż „podążanie za
+        // domyślnym", więc nie liczy się jako własny wybór. Ta sama
+        // reguła po stronie serwera (vendor-edit-save.php) zamienia
+        // taki wybór na NULL w `list__vendor`.
+        function refreshDraftChip() {
+            let custom = 0;
             $pickers.each(function() {
-                if (parseInt($(this).val(), 10) > 0) { set++; }
+                const def = parseInt($(this).attr('data-default-id'), 10) || 0;
+                const val = parseInt($(this).val(), 10) || 0;
+                if (val > 0 && val !== def) { custom++; }
             });
             $('#vrDraftCount')
-                .toggleClass('is-on', set > 0)
-                .text(set > 0 ? (set + ' z 2') : 'domyślne');
-        });
+                .toggleClass('is-on', custom > 0)
+                .text(custom === 0 ? 'domyślne' : (custom === 1 ? '1 własny' : custom + ' własne'));
+        }
+
+        // Po udanym zapisie licznik w nagłówku sekcji przestaje kłamać
+        // o tym, ile własnych szablonów dostawca ma ustawionych.
+        $('#vrEditForm').on('vr:saved', refreshDraftChip);
     });
 })();
