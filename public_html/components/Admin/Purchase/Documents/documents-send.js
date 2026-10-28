@@ -677,11 +677,13 @@ $(function () {
         const vendorId = parseInt(d.vendorId, 10) || 0;
         // Empty state (vendor has no active contacts) — pokaż krótki alert
         // oraz formularz inline OTWARTY domyślnie (operator i tak musi
-        // dodać kogoś, więc nie zmuszajmy do klikania toggle).
+        // dodać kogoś, więc nie zmuszajmy do klikania toggle). Dodanie
+        // kontaktu jest OPCJONALNE — kreator przepuszcza dalej także bez
+        // kontaktów.
         const emptyStateHtml = suppliers.length === 0
             ? '<div class="alert alert-info mb-3">'
                 + 'Ten dostawca nie ma jeszcze przypisanych osób kontaktowych. '
-                + 'Dodaj kontakt przed wysyłką.'
+                + 'Możesz dodać kontakt teraz albo przejść dalej bez niego.'
             + '</div>'
             : '';
 
@@ -755,8 +757,7 @@ $(function () {
         $('#send-step-2-body').html(
             emptyStateHtml
             + '<p class="text-muted small mb-2">'
-                + 'Zaznacz osoby, do których ma zostać wysłany dokument. '
-                + 'Główny kontakt (⭐) jest wyróżniony.'
+                + 'Wybór kontaktów jest opcjonalny — możesz przejść dalej bez niego.'
             + '</p>'
             + filterHtml
             + '<div id="send-supplier-list">' + listOrEmpty + '</div>'
@@ -1016,9 +1017,15 @@ $(function () {
 
     function refreshStep2NextEnabled() {
         const $btn = $('#send-step-2 .send-step-next');
-        $btn.prop('disabled', state.selectedSuppliers.length === 0);
+        // Kontakty są OPCJONALNE — kreator nie blokuje przejścia dalej,
+        // gdy nic nie zaznaczono. Operator może oznaczyć dokument jako
+        // wysłany i skomponować wiadomość poza systemem, więc „Dalej"
+        // jest zawsze aktywny.
+        $btn.prop('disabled', false);
         $('#send-step-2-count').text(
-            state.selectedSuppliers.length + ' zaznaczonych'
+            state.selectedSuppliers.length === 0
+                ? 'bez kontaktów'
+                : state.selectedSuppliers.length + ' zaznaczonych'
         );
         // Krok 4 zależy od zaznaczonych kontaktów — przeładuj jego
         // treść, żeby wybrane kontakty + ich pola pojawiły się w
@@ -1803,7 +1810,9 @@ $(function () {
      */
     function buildStep4ContactsHtml(selectedList) {
         if (selectedList.length === 0) {
-            return '<p class="text-muted mb-0">Nie wybrano kontaktów.</p>';
+            return '<p class="text-muted mb-0">'
+                + 'Nie wybrano kontaktów — to nie blokuje oznaczenia dokumentu jako wysłanego.'
+                + '</p>';
         }
         const copyIcon = function (value, label) {
             return '<button type="button" class="send-copy-btn" data-copy="' + escapeHtml(value) + '" '
@@ -3322,11 +3331,16 @@ $(function () {
         const selectedSet   = new Set(state.selectedSuppliers);
         const selectedList  = (d.suppliers || []).filter(function (s) { return selectedSet.has(s.id); });
 
-        // Brak kontaktów → blokuj commit + alert z CTA do kroku 2.
+        // Brak zaznaczonych kontaktów to ostrzeżenie, nie blokada —
+        // dokument można oznaczyć jako wysłany (system niczego nie
+        // wysyła sam; operator kopiuje treść do swojego klienta
+        // poczty). Skrót do kroku 2 zostaje, żeby dało się jeszcze
+        // wybrać odbiorcę.
         const noSuppliersHtml = (supplierCount === 0)
-            ? '<div class="alert alert-danger">'
-                + 'Brak kontaktów — wróć do kroku 2.'
-                + '<button type="button" class="btn btn-outline-danger btn-sm ml-3" data-go="2">'
+            ? '<div class="alert alert-warning">'
+                + 'Nie zaznaczono żadnego kontaktu. '
+                + 'Dokument możesz mimo to oznaczyć jako wysłany.'
+                + '<button type="button" class="btn btn-outline-secondary btn-sm ml-3" data-go="2">'
                     + '← Wróć do kroku 2'
                 + '</button>'
               + '</div>'
@@ -3850,7 +3864,9 @@ $(function () {
             });
 
         // Włącz / wyłącz commit + reakcja na „wróć do kroku 2".
-        $commitBtn.prop('disabled', supplierCount === 0 || state.committing);
+        // Kontakty NIE są warunkiem commita — brak zaznaczenia nie
+        // blokuje oznaczenia dokumentu jako wysłanego.
+        $commitBtn.prop('disabled', state.committing);
         $body.find('[data-go]').on('click', function () {
             const go = parseInt($(this).attr('data-go'), 10);
             if (go >= 1 && go <= 4) setStep(go);
