@@ -99,7 +99,13 @@ if ($vendorId <= 0) {
 // --- Build filters ------------------------------------------------------
 // Klucze zgodne z buildSearchWhere() w VendorPartRepository — brak
 // klucza 'status' oznacza 'all', brak klucza 'hasPacks' = brak filtra.
-$filters = ['vendorIds' => [$vendorId]];
+$filters = [
+    'vendorIds' => [$vendorId],
+    // W modalu nazwa części jest pierwszą kolumną, więc operator szuka
+    // po niej — a nie tylko po numerach. Strona listy artykułów tego
+    // klucza nie używa i zachowuje dotychczasowe wyszukiwanie.
+    'searchAlsoPartName' => true,
+];
 
 if ($q !== '') {
     $filters['search'] = $q;

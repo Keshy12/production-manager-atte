@@ -167,6 +167,10 @@ class VendorPartRepository {
      *     partIds      int[]  -> vp.parts_id   IN (...)
      *     status       'all' | 'active' | 'inactive'
      *     search       string -> vp.vendor_part_no LIKE (case-insensitive)
+     *     searchAlsoPartName bool -> true: `search` dopasowuje także nazwę
+     *                         części (lp.name). Domyślnie false, żeby
+     *                         zachować dotychczasowe zachowanie strony
+     *                         listy artykułów.
      *   dateFrom     YYYY-MM-DD -> vp.created_at >=
      *   dateTo       YYYY-MM-DD -> vp.created_at <=
      *   hasPacks     bool   -> true: at least one list__vendor_part_pack row,
@@ -218,10 +222,19 @@ class VendorPartRepository {
             // and producer name. Same $like for all three — they search
             // for the same substring. The COUNT query in search() joins
             // `list__producer` so `p.name` is available here.
-            $conds[] = '(vp.vendor_part_no LIKE ? OR vp.producer_part_no LIKE ? OR p.name LIKE ?)';
-            $params[] = $like;
-            $params[] = $like;
-            $params[] = $like;
+            $or = ['vp.vendor_part_no LIKE ?', 'vp.producer_part_no LIKE ?', 'p.name LIKE ?'];
+            // Opcjonalnie także nazwa części (`list__parts.name`).
+            // Włączane kluczem `searchAlsoPartName`, żeby strona listy
+            // artykułów (/admin/purchase/vendor-parts) zachowała dotychczasowe
+            // wyszukiwanie, a modal na stronie dostawcy (gdzie nazwa części
+            // jest pierwszą kolumną) szukał po niej.
+            if (!empty($filters['searchAlsoPartName'])) {
+                $or[] = 'lp.name LIKE ?';
+            }
+            $conds[] = '(' . implode(' OR ', $or) . ')';
+            for ($i = 0, $n = count($or); $i < $n; $i++) {
+                $params[] = $like;
+            }
         }
 
         $dateFrom = trim((string)($filters['dateFrom'] ?? ''));
@@ -246,16 +259,31 @@ class VendorPartRepository {
     }
 
     /**
+     * Count query for a filter map. Joins `list__producer` because the search
+     * predicate can use p.name, and `list__parts` only when the caller asked
+     * for the part name to be searchable (searchAlsoPartName) — the WHERE
+     * clause then references lp.name.
+     *
+     * @return array{0: string, 1: array<int,mixed>} [sql, params]
+     */
+    private function buildCountSql(array $filters): array {
+        [$whereSql, $params] = $this->buildSearchWhere($filters);
+        $sql = "SELECT COUNT(*) AS total FROM `list__vendor_part` vp "
+             . "LEFT JOIN `list__producer` p ON vp.producer_id = p.id";
+        if (!empty($filters['searchAlsoPartName'])) {
+            $sql .= " LEFT JOIN `list__parts` lp ON vp.parts_id = lp.id";
+        }
+        $sql .= " {$whereSql}";
+        return [$sql, $params];
+    }
+
+    /**
      * Count vendor parts matching the filter map (same keys as search()).
-     * Joins `list__producer` because the search predicate can use p.name.
      * Used by vp-list.php to fill the stat tiles above the list.
      */
     public function count(array $filters): int {
-        [$whereSql, $params] = $this->buildSearchWhere($filters);
-        $stmt = $this->MsaDB->db->prepare(
-            "SELECT COUNT(*) FROM `list__vendor_part` vp "
-            . "LEFT JOIN `list__producer` p ON vp.producer_id = p.id {$whereSql}"
-        );
+        [$sql, $params] = $this->buildCountSql($filters);
+        $stmt = $this->MsaDB->db->prepare($sql);
         $stmt->execute($params);
         return (int)$stmt->fetchColumn();
     }
@@ -283,13 +311,12 @@ class VendorPartRepository {
 
         // COUNT(*) under the same filters — separate statement, prepared
         // with the same params so the planner reuses the predicate. The
-        // search predicate can reference `p.name` (producer name), so we
-        // must include the producer join here even though it's not needed
-        // for the other filters.
-        $countSql = "SELECT COUNT(*) AS total FROM `list__vendor_part` vp "
-                  . "LEFT JOIN `list__producer` p ON vp.producer_id = p.id {$whereSql}";
+        // search predicate can reference `p.name` (producer name) and, when
+        // the caller opted in, `lp.name` (part name) — buildCountSql()
+        // adds the joins the WHERE clause needs.
+        [$countSql, $countParams] = $this->buildCountSql($filters);
         $countStmt = $MsaDB->db->prepare($countSql);
-        $countStmt->execute($params);
+        $countStmt->execute($countParams);
         $total = (int)($countStmt->fetch(\PDO::FETCH_ASSOC)['total'] ?? 0);
 
         $rows = [];

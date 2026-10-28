@@ -804,8 +804,8 @@ function vr_count_label(int $n, string $one, string $few, string $many): string 
                             <div class="rx-search">
                                 <i class="bi bi-search" aria-hidden="true"></i>
                                 <input type="search" id="vrVpSearch" class="form-control form-control-sm"
-                                       placeholder="Szukaj: numer artykułu, producent"
-                                       title="Szuka w numerze artykułu u dostawcy, numerze producenta i nazwie producenta"
+                                       placeholder="Szukaj: nazwa, numer artykułu, producent"
+                                       title="Szuka w nazwie części, numerze artykułu u dostawcy, numerze producenta i nazwie producenta"
                                        aria-label="Szukaj artykułu" autocomplete="off">
                             </div>
 
