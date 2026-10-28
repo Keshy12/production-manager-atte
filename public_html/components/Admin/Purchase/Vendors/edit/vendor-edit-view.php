@@ -28,10 +28,21 @@
  *   - Read-only list of vendor parts using this vendor (mirrors
  *     the producer edit page's read-only VPs).
  *   Oba zestawy mieszkają w JEDNYM modalu (#vrRelationsModal)
- *   otwieranym przyciskiem w pasku powiązań. Liczby widać w pasku
- *   bez otwierania modala. Po zmianie u osoby kontaktowej strona
- *   przeładowuje się z powrotem otwartym modem (?ok=… + #vrRelations),
- *   więc operator nie traci miejsca.
+ *   otwieranym przyciskiem „Powiązania" w nagłówku strony. Liczby
+ *   (osoby, artykuły) widać na samym przycisku, bez otwierania
+ *   modala. Po zmianie u osoby kontaktowej strona przeładowuje się
+ *   z powrotem otwartym modalem (?ok=… + #vrRelations), więc
+ *   operator nie traci miejsca.
+ *
+ * Formularz to cztery osobne karty (każda z ikoną, tytułem i jednym
+ * zdaniem opisu): Dane podstawowe, Status, Preferowane szablony
+ * wiadomości oraz „Więcej" (rzadkie pola). WSZYSTKIE startują zwinięte
+ * i pokazują jednolinijkowe podsumowanie bieżących wartości (tylko do
+ * odczytu); kliknięcie nagłówka rozwija edytowalne pola. Podsumowanie
+ * leży POZA przyciskiem nagłówka (nie wchodzi do jego nazwy dla
+ * czytników ekranu), a odświeża je vendor-edit-view.js przy każdej
+ * zmianie pola. Wszystkie karty leżą w jednym #vrEditForm — zwinięcie
+ * karty chowa pola tylko CSS-em, więc serialize() nadal je wysyła.
  *
  * On a successful CREATE the JS redirects to ?id=N so the operator
  * lands on the edit page for the freshly-created vendor. On a
@@ -67,7 +78,7 @@ $vendorDefaultCurrency  = 'PLN';
 $vendorComment          = '';
 $vendorIsActive         = true;   // default: Aktywny (only meaningful in create mode)
 $suppliers              = [];     // supplier rows for inline CRUD
-$vendorPartCount        = 0;      // liczba wszystkich artykułów (pasek powiązań)
+$vendorPartCount        = 0;      // liczba wszystkich artykułów (przycisk „Powiązania")
 $vendorPreferredRfqId   = 0;      // FK → email_draft.id (RFQ); 0 = brak
 $vendorPreferredPoId    = 0;      // FK → email_draft.id (PO);  0 = brak
 
@@ -107,7 +118,7 @@ if ($isEditMode) {
         // mieć ich tysiące. Blok „Artykuły u dostawców" w modalu
         // powiązań renderuje się z AJAX-u (edit/vendor-parts-modal-list.php)
         // razem z filtrowaniem i stronicowaniem. W PHP zostaje tylko
-        // $vendorPartCount na licznik w pasku powiązań i w nagłówku modala.
+        // $vendorPartCount na licznik na przycisku „Powiązania" i w nagłówku modala.
     }
 }
 
@@ -214,6 +225,115 @@ function vr_count_label(int $n, string $one, string $few, string $many): string 
     return $many;
 }
 
+// Przycisk „Powiązania" w nagłówku: liczby osób i artykułów.
+$vrSupplierCount = count($suppliers);
+$vrPartCount     = (int)$vendorPartCount;
+$vrRelFull = $vrSupplierCount . ' '
+    . vr_count_label($vrSupplierCount, 'osoba kontaktowa', 'osoby kontaktowe', 'osób kontaktowych')
+    . ', ' . $vrPartCount . ' '
+    . vr_count_label($vrPartCount, 'artykuł', 'artykuły', 'artykułów');
+
+// Karta „Więcej": rzadko używane pola. Licznik w nagłówku mówi, ile z
+// nich ma wartość; to, które to są, mówi linijka podsumowania.
+$vrMoreValues = [$vendorLeadTimeDays, $vendorShopUrl, $vendorAdditionalData, $vendorComment];
+$vrMoreTotal  = count($vrMoreValues);
+$vrMoreFilled = 0;
+foreach ($vrMoreValues as $vrMoreValue) {
+    if (trim((string)$vrMoreValue) !== '') {
+        $vrMoreFilled++;
+    }
+}
+
+// ---- Linijki podsumowania zwiniętych kart --------------------------
+// Wszystkie karty startują zwinięte, więc podsumowanie musi być gotowe
+// przy pierwszym malowaniu strony (bez czekania na JS). vendor-edit-view.js
+// odświeża te same teksty przy każdej zmianie pola — format musi być
+// identyczny po obu stronach (separator „ · ").
+// Każde podsumowanie to para [html, tekst]: html idzie do strony (z
+// <strong> przy nazwie), tekst do atrybutu title (pełna treść, gdy
+// linijka jest ucięta wielokropkiem).
+$vrEsc = static function ($s): string {
+    return htmlspecialchars((string)$s, ENT_QUOTES);
+};
+
+// Reguła: karta z polami tekstowymi wylicza WSZYSTKIE swoje pola, w
+// kolejności z karty. Pole wypełnione = jego wartość (zwykły tekst);
+// puste = krótka nazwa pola w stylu „brak" (<span class="vxe-sum-missing">,
+// kursywa + wyblakły kolor). Tooltip to jawna lista „pole: wartość",
+// z „—" przy pustym polu. Ten sam format buduje vendor-edit-view.js.
+$vrMissing = static function (string $name) use ($vrEsc): string {
+    return '<span class="vxe-sum-missing">' . $vrEsc($name) . '</span>';
+};
+// Spacje/nowe linie w wartości do jednej linii (tooltip „pole: wartość").
+$vrOneLine = static function ($s): string {
+    return trim((string)preg_replace('/\s+/u', ' ', (string)$s));
+};
+
+// Dane podstawowe: nazwa · waluta · adres.
+$vrName = trim($vendorName);
+$vrCur  = trim($vendorDefaultCurrency);
+$vrAddr = trim($vendorAddress);
+$vrSumBasic = [
+    implode(' · ', [
+        $vrName !== '' ? '<strong>' . $vrEsc($vrName) . '</strong>' : $vrMissing('nazwa'),
+        $vrCur  !== '' ? $vrEsc($vrCur)  : $vrMissing('waluta'),
+        $vrAddr !== '' ? $vrEsc($vrAddr) : $vrMissing('adres'),
+    ]),
+    implode(' · ', [
+        'nazwa: '  . ($vrName !== '' ? $vrOneLine($vrName) : '—'),
+        'waluta: ' . ($vrCur  !== '' ? $vrOneLine($vrCur)  : '—'),
+        'adres: '  . ($vrAddr !== '' ? $vrOneLine($vrAddr) : '—'),
+    ]),
+];
+
+// Status.
+$vrSumStatusLabel = $vendorIsActive ? 'Aktywny' : 'Nieaktywny';
+$vrSumStatus = [
+    '<span class="vxe-sum-dot ' . ($vendorIsActive ? 'is-on' : 'is-off') . '" aria-hidden="true"></span>'
+        . $vrSumStatusLabel,
+    $vrSumStatusLabel,
+];
+
+// Preferowane szablony: „RFQ: Nazwa ★ · PO: Nazwa ★" — nazwa szablonu,
+// który realnie zostanie użyty, ★ przy globalnym domyślnym. Dane z już
+// wczytanego $vrDraftPickers (options / selectedId), bez nowego zapytania.
+$vrSumDraftText = [];
+foreach ($vrDraftPickers as $vrP) {
+    $vrLabel = 'brak szablonu';
+    foreach ($vrP['options'] as $vrO) {
+        if ((int)$vrO['id'] === (int)$vrP['selectedId']) {
+            $vrLabel = (string)$vrO['name'] . ($vrO['isGlobalDefault'] ? ' ★' : '');
+            break;
+        }
+    }
+    $vrSumDraftText[] = $vrP['abbr'] . ': ' . $vrLabel;
+}
+$vrSumDraftPlain = implode(' · ', $vrSumDraftText);
+$vrSumDraft = [$vrEsc($vrSumDraftPlain), $vrSumDraftPlain];
+
+// Więcej: lead time · adres sklepu · dane dodatkowe · komentarz. Trzy
+// długie pola w linijce to tylko nazwa (wartość jest w tooltipie), więc
+// to styl „brak" odróżnia puste od wypełnionego.
+$vrLt   = trim((string)$vendorLeadTimeDays);
+$vrShop = trim($vendorShopUrl);
+$vrAdd  = trim($vendorAdditionalData);
+$vrCom  = trim($vendorComment);
+$vrLtUnit = $vrLt === '1' ? 'dzień' : 'dni';
+$vrSumMore = [
+    implode(' · ', [
+        $vrLt   !== '' ? $vrEsc('Lead time ' . $vrLt . ' ' . $vrLtUnit) : $vrMissing('lead time'),
+        $vrShop !== '' ? 'adres sklepu'   : $vrMissing('adres sklepu'),
+        $vrAdd  !== '' ? 'dane dodatkowe' : $vrMissing('dane dodatkowe'),
+        $vrCom  !== '' ? 'komentarz'      : $vrMissing('komentarz'),
+    ]),
+    implode(' · ', [
+        'lead time: '      . ($vrLt   !== '' ? $vrOneLine($vrLt) . ' ' . $vrLtUnit : '—'),
+        'adres sklepu: '   . ($vrShop !== '' ? $vrOneLine($vrShop) : '—'),
+        'dane dodatkowe: ' . ($vrAdd  !== '' ? $vrOneLine($vrAdd)  : '—'),
+        'komentarz: '      . ($vrCom  !== '' ? $vrOneLine($vrCom)  : '—'),
+    ]),
+];
+
 ?>
 <link rel="stylesheet" href="<?= asset('public_html/components/purchases/receipts/receipts-ui.css') ?>">
 <link rel="stylesheet" href="<?= asset('public_html/components/Admin/Purchase/Vendors/edit/vendor-edit-ui.css') ?>">
@@ -254,14 +374,32 @@ function vr_count_label(int $n, string $one, string $few, string $many): string 
                 <?php endif; ?>
             </p>
         </div>
-        <div class="vxe-head-links">
-            <?php if ($isEditMode && !$notFound): ?>
+        <?php if ($isEditMode && !$notFound): ?>
+            <!-- Id dostawcy + przycisk „Powiązania". Liczby osób i artykułów
+                 są na samym przycisku — widać je bez otwierania modala.
+                 „Wróć do listy" jest w pasku zapisu pod formularzem oraz
+                 w okruszkach, więc w nagłówku go nie dublujemy. -->
+            <div class="vxe-head-links">
                 <span class="rx-count vxe-head-id" title="Identyfikator dostawcy">#<?= (int)$vendor->id ?></span>
-            <?php endif; ?>
-            <a href="<?= htmlspecialchars($backUrl, ENT_QUOTES) ?>" class="btn btn-sm rx-btn-quiet">
-                <i class="bi bi-arrow-left"></i> Wróć do listy
-            </a>
-        </div>
+                <button type="button" class="btn vxe-rel-btn"
+                        data-toggle="modal" data-target="#vrRelationsModal"
+                        aria-haspopup="dialog"
+                        aria-label="Powiązania dostawcy: <?= htmlspecialchars($vrRelFull, ENT_QUOTES) ?>"
+                        title="<?= htmlspecialchars($vrRelFull, ENT_QUOTES) ?> — kliknij, aby zobaczyć i edytować">
+                    <span class="vxe-rel-main"><i class="bi bi-diagram-3"></i> Powiązania</span>
+                    <span class="vxe-rel-counts">
+                        <span class="vxe-rel-chip<?= $vrSupplierCount === 0 ? ' is-zero' : '' ?>">
+                            <strong><?= $vrSupplierCount ?></strong>
+                            <?= vr_count_label($vrSupplierCount, 'osoba', 'osoby', 'osób') ?>
+                        </span>
+                        <span class="vxe-rel-chip<?= $vrPartCount === 0 ? ' is-zero' : '' ?>">
+                            <strong><?= $vrPartCount ?></strong>
+                            <?= vr_count_label($vrPartCount, 'artykuł', 'artykuły', 'artykułów') ?>
+                        </span>
+                    </span>
+                </button>
+            </div>
+        <?php endif; ?>
     </header>
 
     <!-- Host na komunikaty AJAX (błąd zapisu dostawcy). Pusty,
@@ -298,29 +436,43 @@ function vr_count_label(int $n, string $one, string $few, string $many): string 
     <form method="post" id="vrEditForm" autocomplete="off">
         <input type="hidden" name="id" value="<?= $isEditMode ? (int)$vendor->id : 0 ?>">
 
-        <!-- vxe-form-panel: panel z pickerami (waluta, szablony
-             wiadomości) musi puścić menu bootstrap-select poza siebie. -->
-        <section class="rx-panel vxe-panel vxe-form-panel">
-            <div class="rx-panel-head">
-                <h2 class="rx-panel-title"><i class="bi bi-pencil-square"></i> Dane dostawcy</h2>
-                <span class="vxe-panel-hint">
-                    Pola oznaczone <span class="vxe-required">*</span> są wymagane.
-                </span>
-            </div>
+        <!-- Wszystkie cztery karty mają ten sam wzór (zwijanie Bootstrap 4):
+             <h2> NA ZEWNĄTRZ przycisku (przycisk przyjmuje tylko treść
+             frazową), w nim ikona + tytuł + opis + strzałka; pod nagłówkiem
+             linijka podsumowania (też poza przyciskiem — długi tekst nie
+             ma być nazwą przycisku dla czytnika ekranu); potem ciało
+             .collapse. Karty startują ZWINIĘTE (klasa `collapsed` na
+             przycisku, brak `show` na ciele). Podsumowanie widać tylko
+             przy zwiniętej karcie, opis tylko przy rozwiniętej — patrz
+             vendor-edit-ui.css. -->
 
-            <?php if ($isEditMode && !$notFound): ?>
-                <p class="vxe-usage">
-                    <i class="bi bi-info-circle"></i>
-                    Ten dostawca ma przypisane <strong><?= (int)$vendorPartCount ?></strong>
-                    artykuł<?= $vendorPartCount === 1 ? '' : 'ów' ?> u dostawców
-                    i <strong><?= count($suppliers) ?></strong>
-                    osób<?= count($suppliers) === 1 ? 'ę' : '' ?> kontaktow<?= count($suppliers) === 1 ? 'ą' : 'ych' ?>.
-                </p>
-            <?php endif; ?>
+        <!-- Przełącznik wszystkich kart naraz. -->
+        <div class="vxe-form-tools">
+            <button type="button" class="btn rx-link-btn" id="vrToggleAllCards">
+                <i class="bi bi-arrows-expand" aria-hidden="true"></i>
+                <span class="vxe-tools-label">Rozwiń wszystko</span>
+            </button>
+        </div>
 
-            <!-- ===== Dane podstawowe ===== -->
-            <div class="vxe-section">
-                <h3 class="vxe-section-label">Dane podstawowe</h3>
+        <!-- ===== Karta 1: Dane podstawowe ===== -->
+        <section class="rx-panel vxe-panel vxe-card" id="vrBasicCard">
+            <h2 class="vxe-card-toggle-h">
+                <button type="button" class="vxe-card-head vxe-card-head--toggle collapsed"
+                        data-toggle="collapse" data-target="#vrBasicBody"
+                        aria-expanded="false" aria-controls="vrBasicBody">
+                    <span class="vxe-card-icon" aria-hidden="true"><i class="bi bi-building"></i></span>
+                    <span class="vxe-card-text">
+                        <span class="vxe-section-label">Dane podstawowe</span>
+                        <span class="vxe-card-desc">Nazwa, adres i&nbsp;waluta, w&nbsp;której rozliczasz się z&nbsp;dostawcą.</span>
+                    </span>
+                    <span class="vxe-card-aside">
+                        <i class="bi bi-chevron-down vxe-card-chevron" aria-hidden="true"></i>
+                    </span>
+                </button>
+            </h2>
+            <p class="vxe-card-summary" id="vrBasicSummary" title="<?= $vrEsc($vrSumBasic[1]) ?>"><?= $vrSumBasic[0] ?></p>
+            <div class="collapse" id="vrBasicBody">
+              <div class="vxe-card-body">
                 <div class="vxe-grid">
 
                     <div class="vxe-field vxe-field--8">
@@ -330,44 +482,6 @@ function vr_count_label(int $n, string $one, string $few, string $many): string 
                         <input type="text" id="vr_edit_name" name="name"
                                class="form-control" required maxlength="255"
                                value="<?= htmlspecialchars($vendorName, ENT_QUOTES) ?>">
-                    </div>
-
-                    <div class="vxe-field vxe-field--4">
-                        <label class="vxe-label" for="vr_edit_lead_time">Lead time (dni)</label>
-                        <input type="number" id="vr_edit_lead_time" name="lead_time_days"
-                               class="form-control" min="0" step="1"
-                               value="<?= htmlspecialchars((string)$vendorLeadTimeDays, ENT_QUOTES) ?>">
-                        <p class="vxe-help">Przewidywany czas dostawy w dniach roboczych.</p>
-                    </div>
-
-                    <div class="vxe-field vxe-field--12">
-                        <label class="vxe-label" for="vr_edit_address">Adres</label>
-                        <input type="text" id="vr_edit_address" name="address"
-                               class="form-control"
-                               value="<?= htmlspecialchars($vendorAddress, ENT_QUOTES) ?>">
-                    </div>
-
-                    <div class="vxe-field vxe-field--8">
-                        <label class="vxe-label" for="vr_edit_shop_url">Adres sklepu (URL)</label>
-                        <div class="input-group">
-                            <input type="url" id="vr_edit_shop_url" name="shop_url"
-                                   class="form-control" maxlength="500"
-                                   placeholder="https://www.sklep-dostawcy.pl"
-                                   value="<?= htmlspecialchars($vendorShopUrl, ENT_QUOTES) ?>">
-                            <?php if ($vendorShopUrl !== ''): ?>
-                                <div class="input-group-append">
-                                    <a class="btn btn-sm rx-btn-quiet" target="_blank" rel="noopener"
-                                       href="<?= htmlspecialchars($vendorShopUrl, ENT_QUOTES) ?>"
-                                       title="Otwórz sklep w nowej karcie">
-                                        <i class="bi bi-box-arrow-up-right"></i> Otwórz
-                                    </a>
-                                </div>
-                            <?php endif; ?>
-                        </div>
-                        <p class="vxe-help">
-                            Link do sklepu dostawcy. W&nbsp;koszyku (wiersz wariantu części)
-                            przycisk „Sklep” otwiera go w&nbsp;nowej karcie.
-                        </p>
                     </div>
 
                     <div class="vxe-field vxe-field--4">
@@ -398,98 +512,119 @@ function vr_count_label(int $n, string $one, string $few, string $many): string 
                     </div>
 
                     <div class="vxe-field vxe-field--12">
-                        <label class="vxe-label" for="vr_edit_additional_data">Dodatkowe dane</label>
-                        <input type="text" id="vr_edit_additional_data" name="additional_data"
+                        <label class="vxe-label" for="vr_edit_address">Adres</label>
+                        <input type="text" id="vr_edit_address" name="address"
                                class="form-control"
-                               value="<?= htmlspecialchars($vendorAdditionalData, ENT_QUOTES) ?>">
+                               value="<?= htmlspecialchars($vendorAddress, ENT_QUOTES) ?>">
                     </div>
 
                 </div>
+                <p class="vxe-help vxe-required-note">Pola oznaczone <span class="vxe-required">*</span> są wymagane.</p>
+              </div>
             </div>
+        </section>
 
-            <!-- ===== Uwagi i status ===== -->
-            <div class="vxe-section">
-                <h3 class="vxe-section-label">Uwagi i status</h3>
-                <div class="vxe-grid">
-
-                    <div class="vxe-field vxe-field--12">
-                        <label class="vxe-label" for="vr_edit_comment">Komentarz</label>
-                        <textarea id="vr_edit_comment" name="comment" class="form-control" rows="3"
-                                  placeholder="Opcjonalne uwagi wewnętrzne"><?= htmlspecialchars($vendorComment, ENT_QUOTES) ?></textarea>
-                        <p class="vxe-help">
-                            Uwagi wewnętrzne — widoczne też na liście dostawców, pod nazwą.
-                        </p>
-                    </div>
-
-                    <div class="vxe-field vxe-field--12">
-                        <fieldset class="vxe-fieldset">
-                            <legend class="vxe-label">Status</legend>
-                            <div class="vxe-seg">
-                                <label class="vxe-seg-item">
-                                    <input type="radio" name="isActive" value="1" <?= $vendorIsActive ? 'checked' : '' ?>>
-                                    <span class="vxe-seg-face vxe-seg-face--active">
-                                        <span class="vxe-seg-dot"></span>Aktywny
-                                    </span>
-                                </label>
-                                <label class="vxe-seg-item">
-                                    <input type="radio" name="isActive" value="0" <?= !$vendorIsActive ? 'checked' : '' ?>>
-                                    <span class="vxe-seg-face vxe-seg-face--inactive">
-                                        <span class="vxe-seg-dot"></span>Nieaktywny
-                                    </span>
-                                </label>
-                            </div>
-                            <p class="vxe-help">
-                                Nieaktywni dostawcy nie pojawiają się w&nbsp;domyślnym widoku listy
-                                ani w&nbsp;wyszukiwarkach artykułów u&nbsp;dostawców.
-                            </p>
-                        </fieldset>
-                    </div>
-
-                </div>
-            </div>
-
-            <!-- ================================================================
-                 Preferowane szablony wiadomości
-                 Dostawca tylko WSKAZUJE szablon z globalnego katalogu
-                 (/admin/purchase/email-drafts) — treści nie edytuje się
-                 tutaj. Krok 4 kreatora wysyłki rozwiązuje ten FK i
-                 podstawia zmienne.
-
-                 Picker NIE stoi na „— brak —". Pokazuje szablon, który
-                 realnie zostanie użyty: preferencję dostawcy, a gdy
-                 jej nie ma — globalny domyślny dla danego typu
-                 dokumentu. Pozostawienie globalnego domyślnego w
-                 pickerze znaczy „dostawca podąża za domyślnym" (w bazie
-                 zostaje NULL), więc zmiana domyślnego w module
-                 szablonów obejmuje wtedy również tego dostawcę.
-
-                 Sekcja jest zwykłą częścią formularza (bez zwijania) —
-                 oba selecty leżą WEWNĄTRZ #vrEditForm, więc
-                 $form.serialize() widzi je i nie trzeba ich doklejać
-                 ręcznie do POST-a.
-                 ================================================================ -->
-            <div class="vxe-section" id="vrDraftCard">
-                <div class="vxe-section-head">
-                    <h3 class="vxe-section-label">Preferowane szablony wiadomości</h3>
-                    <i class="bi bi-info-circle vxe-section-info"
-                       data-toggle="tooltip"
-                       data-placement="top"
-                       title="Szablon używany w kroku 4 wysyłki zapytania. Szablon oznaczony gwiazdką ★ to globalny domyślny — dostawca podąża za nim, dopóki nie wybierzesz innego."></i>
-                    <span class="vxe-count-chip<?= $vrCustomDraftCount > 0 ? ' is-on' : '' ?>"
-                          id="vrDraftCount"
-                          title="Liczba typów dokumentów, dla których dostawca ma własny szablon (różny od globalnego domyślnego).">
-                        <?php if ($vrCustomDraftCount === 0): ?>
-                            domyślne
-                        <?php elseif ($vrCustomDraftCount === 1): ?>
-                            1 własny
-                        <?php else: ?>
-                            <?= (int)$vrCustomDraftCount ?> własne
-                        <?php endif; ?>
+        <!-- ===== Karta 2: Status ===== -->
+        <section class="rx-panel vxe-panel vxe-card" id="vrStatusCard">
+            <h2 class="vxe-card-toggle-h">
+                <button type="button" class="vxe-card-head vxe-card-head--toggle collapsed"
+                        data-toggle="collapse" data-target="#vrStatusBody"
+                        aria-expanded="false" aria-controls="vrStatusBody">
+                    <span class="vxe-card-icon" aria-hidden="true"><i class="bi bi-toggle-on"></i></span>
+                    <span class="vxe-card-text">
+                        <span class="vxe-section-label">Status</span>
+                        <span class="vxe-card-desc">Czy dostawca jest dostępny w&nbsp;codziennej pracy.</span>
                     </span>
-                </div>
+                    <span class="vxe-card-aside">
+                        <i class="bi bi-chevron-down vxe-card-chevron" aria-hidden="true"></i>
+                    </span>
+                </button>
+            </h2>
+            <p class="vxe-card-summary" id="vrStatusSummary" title="<?= $vrEsc($vrSumStatus[1]) ?>"><?= $vrSumStatus[0] ?></p>
+            <div class="collapse" id="vrStatusBody">
+              <div class="vxe-card-body">
+                <fieldset class="vxe-fieldset vxe-status-row">
+                    <legend class="sr-only">Status dostawcy</legend>
+                    <div class="vxe-seg">
+                        <label class="vxe-seg-item">
+                            <input type="radio" name="isActive" value="1" <?= $vendorIsActive ? 'checked' : '' ?>>
+                            <span class="vxe-seg-face vxe-seg-face--active">
+                                <span class="vxe-seg-dot"></span>Aktywny
+                            </span>
+                        </label>
+                        <label class="vxe-seg-item">
+                            <input type="radio" name="isActive" value="0" <?= !$vendorIsActive ? 'checked' : '' ?>>
+                            <span class="vxe-seg-face vxe-seg-face--inactive">
+                                <span class="vxe-seg-dot"></span>Nieaktywny
+                            </span>
+                        </label>
+                    </div>
+                    <p class="vxe-help">
+                        Nieaktywni dostawcy nie pojawiają się w&nbsp;domyślnym widoku listy
+                        ani w&nbsp;wyszukiwarkach artykułów u&nbsp;dostawców.
+                    </p>
+                </fieldset>
+              </div>
+            </div>
+        </section>
 
+        <!-- ================================================================
+             Karta 3: Preferowane szablony wiadomości
+             Dostawca tylko WSKAZUJE szablon z globalnego katalogu
+             (/admin/purchase/email-drafts) — treści nie edytuje się
+             tutaj. Krok 4 kreatora wysyłki rozwiązuje ten FK i
+             podstawia zmienne.
+
+             Picker NIE stoi na „— brak —". Pokazuje szablon, który
+             realnie zostanie użyty: preferencję dostawcy, a gdy
+             jej nie ma — globalny domyślny dla danego typu
+             dokumentu. Pozostawienie globalnego domyślnego w
+             pickerze znaczy „dostawca podąża za domyślnym" (w bazie
+             zostaje NULL), więc zmiana domyślnego w module
+             szablonów obejmuje wtedy również tego dostawcę.
+
+             Karta jest zwijana jak pozostałe, ale oba selecty leżą
+             WEWNĄTRZ #vrEditForm — zwinięcie to tylko CSS, więc
+             $form.serialize() nadal je widzi. Chip #vrDraftCount siedzi
+             w nagłówku i jest widoczny w obu stanach.
+             ================================================================ -->
+        <section class="rx-panel vxe-panel vxe-card" id="vrDraftCard">
+            <h2 class="vxe-card-toggle-h">
+                <button type="button" class="vxe-card-head vxe-card-head--toggle collapsed"
+                        data-toggle="collapse" data-target="#vrDraftBody"
+                        aria-expanded="false" aria-controls="vrDraftBody">
+                    <span class="vxe-card-icon" aria-hidden="true"><i class="bi bi-envelope-paper"></i></span>
+                    <span class="vxe-card-text">
+                        <span class="vxe-card-titlerow">
+                            <span class="vxe-section-label">Preferowane szablony wiadomości</span>
+                            <i class="bi bi-info-circle vxe-section-info"
+                               data-toggle="tooltip"
+                               data-placement="top"
+                               title="Szablon używany w kroku 4 wysyłki zapytania. Szablon oznaczony gwiazdką ★ to globalny domyślny — dostawca podąża za nim, dopóki nie wybierzesz innego."></i>
+                        </span>
+                        <span class="vxe-card-desc">Jakiego szablonu użyje kreator wysyłki dla tego dostawcy.</span>
+                    </span>
+                    <span class="vxe-card-aside">
+                        <span class="vxe-count-chip<?= $vrCustomDraftCount > 0 ? ' is-on' : '' ?>"
+                              id="vrDraftCount"
+                              title="Liczba typów dokumentów, dla których dostawca ma własny szablon (różny od globalnego domyślnego).">
+                            <?php if ($vrCustomDraftCount === 0): ?>
+                                domyślne
+                            <?php elseif ($vrCustomDraftCount === 1): ?>
+                                1 własny
+                            <?php else: ?>
+                                <?= (int)$vrCustomDraftCount ?> własne
+                            <?php endif; ?>
+                        </span>
+                        <i class="bi bi-chevron-down vxe-card-chevron" aria-hidden="true"></i>
+                    </span>
+                </button>
+            </h2>
+            <p class="vxe-card-summary" id="vrDraftSummary" title="<?= $vrEsc($vrSumDraft[1]) ?>"><?= $vrSumDraft[0] ?></p>
+
+            <div class="collapse" id="vrDraftBody">
+              <div class="vxe-card-body">
                 <p class="vxe-table-note">
-                    Wybierz szablon, którego kreator wysyłki ma użyć dla tego dostawcy.
                     Szablon oznaczony gwiazdką ★ to globalny domyślny — pozostawienie
                     go oznacza, że dostawca podąża za zmianami domyślnego.
                     Treść szablonów edytuje się w&nbsp;module
@@ -503,7 +638,7 @@ function vr_count_label(int $n, string $one, string $few, string $many): string 
                 // widzi wtedy, gdzie ta wartość ma trafić, zamiast
                 // patrzeć na dziurę w formularzu.
                 //
-                // $vrDraftPickers (z rozszyrzonym stanem: options /
+                // $vrDraftPickers (z rozszerzonym stanem: options /
                 // selectedId / defaultId) jest budowany wyżej, przy
                 // wczytywaniu danych — tam, gdzie znamy już katalog
                 // szablonów i globalne domyślne.
@@ -532,7 +667,8 @@ function vr_count_label(int $n, string $one, string $few, string $many): string 
                                         data-container="#<?= $p['cell'] ?>"
                                         data-live-search="true"
                                         data-style="rx-picker-btn"
-                                        data-default-id="<?= (int)$p['defaultId'] ?>">
+                                        data-default-id="<?= (int)$p['defaultId'] ?>"
+                                        data-abbr="<?= $vrEsc($p['abbr']) ?>">
                                     <?php if ($pOptions === []): ?>
                                         <option value="0" selected disabled>
                                             — brak aktywnych szablonów dla <?= htmlspecialchars($p['abbr'], ENT_QUOTES) ?> —
@@ -561,60 +697,119 @@ function vr_count_label(int $n, string $one, string $few, string $many): string 
                         </div>
                     <?php endforeach; ?>
                 </div>
-
+              </div>
             </div>
+        </section>
 
-            <!-- ===== Stopka: zapis zmian ===== -->
-            <div class="vxe-panel-foot">
-                <span class="vxe-foot-hint">
-                    <?= $isEditMode
-                        ? 'Zmiany zapisujesz przyciskiem po prawej.'
-                        : 'Po zapisaniu otworzy się karta nowego dostawcy.' ?>
-                </span>
-                <div class="vxe-foot-actions">
-                    <a href="<?= htmlspecialchars($backUrl, ENT_QUOTES) ?>" class="btn rx-btn-quiet">
-                        <i class="bi bi-arrow-left"></i> Wróć do listy
-                    </a>
-                    <button type="submit" class="btn btn-primary vxe-save-btn" id="vrSubmitBtn" disabled>
-                        <?php if ($isEditMode): ?>
-                            <i class="bi bi-check2-circle"></i> Zapisz zmiany
-                        <?php else: ?>
-                            <i class="bi bi-plus-circle"></i> Dodaj dostawcę
-                        <?php endif; ?>
-                    </button>
+        <!-- ================================================================
+             Karta 4: Więcej
+             Rzadkie pola: lead time, adres sklepu, dane dodatkowe, komentarz.
+             Zwinięcie to tylko CSS (Bootstrap collapse) — pola zostają w
+             DOM i w #vrEditForm, więc serialize() wysyła je także z
+             zamkniętej karty. Karta zawsze startuje zwinięta; to, co jest
+             wypełnione, mówi linijka podsumowania i chip #vrMoreCount.
+             ================================================================ -->
+        <section class="rx-panel vxe-panel vxe-card vxe-card--more" id="vrMoreCard">
+            <h2 class="vxe-card-toggle-h">
+                <button type="button"
+                        class="vxe-card-head vxe-card-head--toggle collapsed"
+                        data-toggle="collapse" data-target="#vrMoreBody"
+                        aria-expanded="false"
+                        aria-controls="vrMoreBody">
+                    <span class="vxe-card-icon" aria-hidden="true"><i class="bi bi-sliders"></i></span>
+                    <span class="vxe-card-text">
+                        <span class="vxe-section-label">Więcej</span>
+                        <span class="vxe-card-desc">Czas dostawy, sklep internetowy, dane dodatkowe i&nbsp;komentarz.</span>
+                    </span>
+                    <span class="vxe-card-aside">
+                        <span class="vxe-count-chip<?= $vrMoreFilled > 0 ? ' is-on' : '' ?>"
+                              id="vrMoreCount"
+                              data-total="<?= (int)$vrMoreTotal ?>"
+                              title="Ile z&nbsp;czterech rzadkich pól ma już wartość.">
+                            <?= $vrMoreFilled > 0 ? $vrMoreFilled . ' z ' . $vrMoreTotal . ' wypełnione' : 'puste' ?>
+                        </span>
+                        <i class="bi bi-chevron-down vxe-card-chevron" aria-hidden="true"></i>
+                    </span>
+                </button>
+            </h2>
+            <p class="vxe-card-summary" id="vrMoreSummary" title="<?= $vrEsc($vrSumMore[1]) ?>"><?= $vrSumMore[0] ?></p>
+            <div class="collapse" id="vrMoreBody">
+                <div class="vxe-card-body">
+                    <div class="vxe-grid">
+
+                        <div class="vxe-field vxe-field--4">
+                            <label class="vxe-label" for="vr_edit_lead_time">Lead time (dni)</label>
+                            <input type="number" id="vr_edit_lead_time" name="lead_time_days"
+                                   class="form-control" min="0" step="1"
+                                   value="<?= htmlspecialchars((string)$vendorLeadTimeDays, ENT_QUOTES) ?>">
+                            <p class="vxe-help">Przewidywany czas dostawy w dniach roboczych.</p>
+                        </div>
+
+                        <div class="vxe-field vxe-field--8">
+                            <label class="vxe-label" for="vr_edit_shop_url">Adres sklepu (URL)</label>
+                            <div class="input-group">
+                                <input type="url" id="vr_edit_shop_url" name="shop_url"
+                                       class="form-control" maxlength="500"
+                                       placeholder="https://www.sklep-dostawcy.pl"
+                                       value="<?= htmlspecialchars($vendorShopUrl, ENT_QUOTES) ?>">
+                                <?php if ($vendorShopUrl !== ''): ?>
+                                    <div class="input-group-append">
+                                        <a class="btn btn-sm rx-btn-quiet" target="_blank" rel="noopener"
+                                           href="<?= htmlspecialchars($vendorShopUrl, ENT_QUOTES) ?>"
+                                           title="Otwórz sklep w nowej karcie">
+                                            <i class="bi bi-box-arrow-up-right"></i> Otwórz
+                                        </a>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
+                            <p class="vxe-help">
+                                Link do sklepu dostawcy. W&nbsp;koszyku (wiersz wariantu części)
+                                przycisk „Sklep” otwiera go w&nbsp;nowej karcie.
+                            </p>
+                        </div>
+
+                        <div class="vxe-field vxe-field--12">
+                            <label class="vxe-label" for="vr_edit_additional_data">Dodatkowe dane</label>
+                            <input type="text" id="vr_edit_additional_data" name="additional_data"
+                                   class="form-control"
+                                   value="<?= htmlspecialchars($vendorAdditionalData, ENT_QUOTES) ?>">
+                        </div>
+
+                        <div class="vxe-field vxe-field--12">
+                            <label class="vxe-label" for="vr_edit_comment">Komentarz</label>
+                            <textarea id="vr_edit_comment" name="comment" class="form-control" rows="3"
+                                      placeholder="Opcjonalne uwagi wewnętrzne"><?= htmlspecialchars($vendorComment, ENT_QUOTES) ?></textarea>
+                            <p class="vxe-help">
+                                Uwagi wewnętrzne — widoczne też na liście dostawców, pod nazwą.
+                            </p>
+                        </div>
+
+                    </div>
                 </div>
             </div>
         </section>
-    </form>
 
-    <?php if ($isEditMode): ?>
-        <!-- ================================================================
-             Pasek powiązań. Liczby widać od razu, bez otwierania modala —
-             operator sprawdza stan kontaktów i artykułów jednym kliknięciem.
-             ================================================================ -->
-        <section class="rx-panel vxe-panel vxe-related">
-            <div class="vxe-related-inner">
-                <div class="vxe-related-text">
-                    <span class="vxe-related-title">Powiązania dostawcy</span>
-                    <span class="vxe-related-desc">Osoby kontaktowe i&nbsp;artykuły u&nbsp;dostawców</span>
-                </div>
-                <div class="vxe-related-counts">
-                    <span class="vxe-related-count">
-                        <strong><?= count($suppliers) ?></strong>
-                        <?= vr_count_label(count($suppliers), 'osoba kontaktowa', 'osoby kontaktowe', 'osób kontaktowych') ?>
-                    </span>
-                    <span class="vxe-related-count">
-                        <strong><?= (int)$vendorPartCount ?></strong>
-                        <?= vr_count_label((int)$vendorPartCount, 'artykuł', 'artykuły', 'artykułów') ?>
-                    </span>
-                </div>
-                <button type="button" class="btn btn-sm rx-btn-quiet"
-                        data-toggle="modal" data-target="#vrRelationsModal">
-                    <i class="bi bi-list-ul"></i> Pokaż osoby i artykuły
+        <!-- ===== Pasek zapisu ===== -->
+        <div class="vxe-panel-foot">
+            <span class="vxe-foot-hint">
+                <?= $isEditMode
+                    ? 'Zmiany zapisujesz przyciskiem po prawej.'
+                    : 'Po zapisaniu otworzy się karta nowego dostawcy.' ?>
+            </span>
+            <div class="vxe-foot-actions">
+                <a href="<?= htmlspecialchars($backUrl, ENT_QUOTES) ?>" class="btn rx-btn-quiet">
+                    <i class="bi bi-arrow-left"></i> Wróć do listy
+                </a>
+                <button type="submit" class="btn btn-primary vxe-save-btn" id="vrSubmitBtn" disabled>
+                    <?php if ($isEditMode): ?>
+                        <i class="bi bi-check2-circle"></i> Zapisz zmiany
+                    <?php else: ?>
+                        <i class="bi bi-plus-circle"></i> Dodaj dostawcę
+                    <?php endif; ?>
                 </button>
             </div>
-        </section>
-    <?php endif; ?>
+        </div>
+    </form>
 
 <?php endif; ?>
 

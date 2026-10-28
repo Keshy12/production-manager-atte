@@ -11,7 +11,7 @@
 
 /* ---- Kolumna strony --------------------------------------------------
    Formularz nie rozlewa się na całą szerokość — cała strona (okruszki,
-   nagłówek, formularz, pasek powiązań) stoi w jednej kolumnie o
+   nagłówek, karty formularza, pasek zapisu) stoi w jednej kolumnie o
    szerokości 75%, wyśrodkowanej. Poniżej 992px kolumna zajmuje całą
    szerokość, bo 75% telefonu to za mało na pola formularza. */
 
@@ -32,31 +32,133 @@
     align-items: center;
     gap: .5rem;
 }
-/* Id dostawcy jako cichy znacznik obok przycisku „Wróć do listy". */
+/* Tekst nagłówka zajmuje wolne miejsce, a krótszy opis pozwala mu
+   zmieścić się obok przycisków — bez tego przyciski spadały pod lead. */
+.vxe-page .rx-head-main { flex: 1 1 22rem; min-width: 0; }
+.vxe-page .rx-head .rx-lead { max-width: 34rem; }
+
+/* Id dostawcy jako cichy znacznik obok przycisku „Powiązania". */
 .vxe-page .vxe-head-id {
     font-variant-numeric: tabular-nums;
 }
 
+/* Przycisk „Powiązania": otwiera modal z osobami kontaktowymi i
+   artykułami. Liczby siedzą na samym przycisku (białe plakietki), więc
+   widać je bez otwierania czegokolwiek. Miękki niebieski — to ważna
+   akcja strony, ale nie ma konkurować z pełnym przyciskiem zapisu.
+   font-size ustawiony wprost, żeby wysokość nie zależała od body. */
+.vxe-page .vxe-rel-btn {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: .35rem .65rem;
+    padding: .35rem .5rem .35rem .8rem;
+    border: 1px solid #b8d4ff;
+    border-radius: .3rem;
+    background: var(--rx-accent-soft);
+    color: var(--rx-accent-ink);
+    font-size: .875rem;
+    font-weight: 700;
+    text-align: left;
+    transition: background-color .12s ease, border-color .12s ease;
+}
+.vxe-page .vxe-rel-btn:hover {
+    background: #dfeaff;
+    border-color: var(--rx-accent);
+    color: var(--rx-accent-ink);
+}
+.vxe-page .vxe-rel-btn:focus { box-shadow: var(--rx-ring); }
+.vxe-page .vxe-rel-main { white-space: nowrap; }
+.vxe-page .vxe-rel-counts {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: .3rem;
+}
+.vxe-page .vxe-rel-chip {
+    display: inline-flex;
+    align-items: baseline;
+    gap: .25rem;
+    padding: .1rem .55rem;
+    border-radius: 999px;
+    background: #fff;
+    color: var(--rx-ink-2);
+    font-size: .74rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.vxe-page .vxe-rel-chip strong {
+    color: var(--rx-ink);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+/* Zero osób / zero artykułów — plakietka cichnie, zamiast krzyczeć „0". */
+.vxe-page .vxe-rel-chip.is-zero,
+.vxe-page .vxe-rel-chip.is-zero strong { color: var(--rx-faint); }
 
-/* ---- Panele i sekcje ------------------------------------------------ */
+
+/* ---- Karty formularza ----------------------------------------------
+   Każda grupa pól to osobna karta: ramka (.rx-panel), nagłówek z ikoną,
+   wersalikowym tytułem i jednym zdaniem opisu, pod spodem pola.
+   overflow: visible — karty z pickerami (waluta, szablony wiadomości)
+   muszą puścić menu bootstrap-select poza siebie; .rx-panel ma
+   domyślnie overflow: hidden. Nagłówek sam pilnuje zaokrąglenia
+   górnych narożników. */
 
 .vxe-page .vxe-panel { margin-bottom: 1rem; }
 .vxe-page .vxe-panel:last-child { margin-bottom: 0; }
+.vxe-page .vxe-card { overflow: visible; }
 
-.vxe-page .vxe-panel-hint {
-    font-size: .78rem;
-    color: var(--rx-faint);
+.vxe-page .vxe-card-head {
+    display: flex;
+    align-items: center;
+    gap: .85rem;
+    padding: .85rem 1.25rem;
+    border-bottom: 1px solid var(--rx-line-soft);
+    border-radius: calc(var(--rx-radius) - 1px) calc(var(--rx-radius) - 1px) 0 0;
 }
+.vxe-page .vxe-card-icon {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.1rem;
+    height: 2.1rem;
+    border-radius: .5rem;
+    background: var(--rx-accent-soft);
+    color: var(--rx-accent-ink);
+    font-size: 1rem;
+}
+.vxe-page .vxe-card-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: .1rem;
+}
+.vxe-page .vxe-card-desc {
+    margin: 0;
+    font-size: .82rem;
+    line-height: 1.35;
+    font-weight: 400;
+    color: var(--rx-muted);
+}
+.vxe-page .vxe-card-aside {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: .6rem;
+    margin-left: auto;
+}
+/* Tytuł i ikonka z podpowiedzią w jednym rzędzie. */
+.vxe-page .vxe-card-titlerow {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+}
+.vxe-page .vxe-card-body { padding: 1.15rem 1.25rem 1.25rem; }
 
-/* Sekcja w panelu: mały wersalikowy nagłówek + siatka pól. Między
-   sekcjami cienka linia, żeby długi formularz dzielił się na czytelne
-   bloki zamiast być jednym płaskim zlewkiem pól. */
-.vxe-page .vxe-section {
-    padding: 1.15rem 1.25rem 1.25rem;
-}
-/* Linia rozdzielająca sekcje (pierwsza nie ma linii — nad nią jest
-   nagłówek panelu albo wiersz podsumowania). */
-.vxe-page .vxe-section + .vxe-section { border-top: 1px solid var(--rx-line-soft); }
+/* Mały wersalikowy tytuł karty. W nagłówku karty jest ciemniejszy i
+   bez dolnego marginesu — tytuł niesie hierarchię, opis jest pod nim. */
 .vxe-page .vxe-section-label {
     margin: 0 0 .9rem;
     font-size: .68rem;
@@ -65,19 +167,152 @@
     text-transform: uppercase;
     color: var(--rx-muted);
 }
-/* Nagłówek sekcji z licznikiem po prawej. */
-.vxe-page .vxe-section-head {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: .5rem;
-    margin: 0 0 .9rem;
+.vxe-page .vxe-card-head .vxe-section-label {
+    display: block;
+    margin: 0;
+    font-size: .74rem;
+    color: var(--rx-ink);
 }
-.vxe-page .vxe-section-head .vxe-section-label { margin: 0; }
 .vxe-page .vxe-section-info { color: var(--rx-faint); cursor: help; }
 .vxe-page .vxe-section-info:hover { color: var(--rx-accent); }
 
-/* Licznik w nagłówku sekcji (np. „1 z 2" przy szablonach). */
+/* Wszystkie cztery karty: nagłówek jest przyciskiem zwijania. Reset
+   przycisku, a linia pod nagłówkiem pojawia się dopiero, gdy karta jest
+   rozwinięta (zwinięta karta to pasek z podsumowaniem, bez wiszącej
+   linii).
+
+   Dwa stany karty, oba sterowane klasą `collapsed`, którą Bootstrap sam
+   przełącza na przycisku:
+     zwinięta   → widać linijkę podsumowania, opis ukryty,
+     rozwinięta → widać opis i pola, podsumowanie ukryte.
+   Opis chowa zwykły selektor potomka (.collapsed .vxe-card-desc).
+   Podsumowanie leży POZA przyciskiem, więc do jego ukrycia trzeba
+   :has() na karcie — przeglądarki bez :has() (@supports) dostają obie
+   linijki naraz, co jest tylko mało eleganckie, nie zepsute. */
+.vxe-page .vxe-card-toggle-h { margin: 0; font-size: inherit; }
+.vxe-page .vxe-card-head--toggle {
+    width: 100%;
+    border-top: 0;
+    border-right: 0;
+    border-left: 0;
+    background: transparent;
+    color: var(--rx-ink);
+    text-align: left;
+    cursor: pointer;
+    transition: background-color .12s ease;
+}
+.vxe-page .vxe-card-head--toggle:hover { background: var(--rx-hover); }
+/* Fokus: bez obwódki po kliknięciu myszą (przycisk zostaje z fokusem
+   i rysował niebieską ramkę tylko wokół nagłówka). Obwódka tylko przy
+   nawigacji klawiaturą (:focus-visible) — i wokół CAŁEJ karty, patrz
+   blok @supports niżej. Ten wpis to zapas dla przeglądarek bez :has(). */
+.vxe-page .vxe-card-head--toggle:focus { outline: none; box-shadow: none; }
+.vxe-page .vxe-card-head--toggle:focus-visible { box-shadow: inset var(--rx-ring); }
+.vxe-page .vxe-card-head--toggle.collapsed {
+    border-bottom-color: transparent;
+    border-radius: calc(var(--rx-radius) - 1px);
+}
+.vxe-page .vxe-card-chevron {
+    color: var(--rx-faint);
+    transition: transform .2s ease;
+}
+.vxe-page .vxe-card-head--toggle:not(.collapsed) .vxe-card-chevron { transform: rotate(180deg); }
+
+/* Zwinięta karta: opis znika (zostaje tytuł + podsumowanie pod spodem). */
+.vxe-page .vxe-card-head--toggle.collapsed .vxe-card-desc { display: none; }
+
+/* Linijka podsumowania zwiniętej karty — tylko do odczytu, wcięta pod
+   tytuł (ikona 2.1rem + odstęp .85rem), jedna linia z wielokropkiem;
+   pełny tekst jest w atrybucie title. Kliknięcie w nią też rozwija kartę
+   (JS) — cała zwinięta karta jest jednym dużym celem. */
+.vxe-page .vxe-card-summary {
+    margin: 0;
+    padding: 0 1.25rem .9rem calc(1.25rem + 2.1rem + .85rem);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: .84rem;
+    line-height: 1.4;
+    color: var(--rx-ink-2);
+    cursor: pointer;
+}
+.vxe-page .vxe-card-summary strong { font-weight: 700; color: var(--rx-ink); }
+/* Pole bez wartości w podsumowaniu zwiniętej karty: sama nazwa pola, w
+   kursywie i wyblakła — nie da się jej pomylić z wartością (wartości są
+   w zwykłym kroju i kolorze tekstu). Jedno miejsce stylu dla wszystkich
+   kart; ten sam znacznik buduje PHP i JS. */
+.vxe-page .vxe-sum-missing {
+    font-style: italic;
+    font-weight: 400;
+    /* O ton ciemniejszy niż --rx-faint (#9aa5b1, ~2,5:1 na bieli), żeby
+       nazwa brakującego pola była czytelna; nadal wyraźnie jaśniejsza od
+       wartości (--rx-ink-2). */
+    color: #7b8794;
+}
+/* Kropka statusu w podsumowaniu (jak kropka w przełączniku Status). */
+.vxe-page .vxe-sum-dot {
+    display: inline-block;
+    width: .5rem;
+    height: .5rem;
+    margin-right: .45rem;
+    border-radius: 50%;
+    background: #8a96a3;
+    vertical-align: .05em;
+}
+.vxe-page .vxe-sum-dot.is-on { background: #28a745; }
+
+@supports selector(:has(a)) {
+    /* Podsumowanie tylko przy zwiniętej karcie. */
+    .vxe-page .vxe-card-summary { display: none; }
+    .vxe-page .vxe-card:has(> .vxe-card-toggle-h > .collapsed) > .vxe-card-summary { display: block; }
+
+    /* Zwinięta karta = nagłówek + podsumowanie. Nagłówek ma wtedy mniej
+       dolnego odstępu (podsumowanie siedzi tuż pod tytułem), a podświetlenie
+       po najechaniu obejmuje całą kartę, nie sam pasek nagłówka. */
+    .vxe-page .vxe-card:has(> .vxe-card-toggle-h > .collapsed) .vxe-card-head--toggle {
+        padding-bottom: .25rem;
+    }
+    .vxe-page .vxe-card:has(> .vxe-card-toggle-h > .collapsed) .vxe-card-head--toggle:hover {
+        background: transparent;
+    }
+    .vxe-page .vxe-card:has(> .vxe-card-toggle-h > .collapsed):hover {
+        background: var(--rx-hover);
+    }
+
+    /* Fokus z klawiatury obrysowuje całą kartę (jak .form-control:focus),
+       a nie sam pasek nagłówka. */
+    .vxe-page .vxe-card-head--toggle:focus-visible { box-shadow: none; }
+    .vxe-page .vxe-card:has(> .vxe-card-toggle-h > .vxe-card-head--toggle:focus-visible) {
+        border-color: #80bdff;
+        box-shadow: var(--rx-ring);
+    }
+}
+
+/* Pasek nad kartami: „Rozwiń wszystko" / „Zwiń wszystko", po prawej. */
+.vxe-page .vxe-form-tools {
+    display: flex;
+    justify-content: flex-end;
+    margin: 0 0 .5rem;
+}
+.vxe-page .vxe-form-tools .rx-link-btn .bi { margin-right: .25rem; }
+
+/* Przypis o polach wymaganych (na dole karty „Dane podstawowe"). */
+.vxe-page .vxe-required-note { margin-top: .9rem; }
+
+/* Karta „Status": przełącznik z lewej, objaśnienie obok (zawija się
+   pod spód na wąskich ekranach). */
+.vxe-page .vxe-status-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .75rem 1.25rem;
+}
+.vxe-page .vxe-status-row .vxe-help {
+    flex: 1 1 16rem;
+    margin: 0;
+}
+
+/* Licznik w nagłówku karty (np. „1 własny" przy szablonach). */
 .vxe-page .vxe-count-chip {
     display: inline-flex;
     align-items: center;
@@ -159,23 +394,10 @@
 .vxe-page .vxe-picker { position: relative; min-width: 0; }
 .vxe-page .vxe-picker .bootstrap-select { min-width: 0; width: 100%; }
 
-/* Panel formularza trzyma pickery (waluta, szablony wiadomości).
-   .rx-panel ma overflow: hidden, a menu bootstrap-select jest doczepiane
-   do komórki pickera (data-container) i wychodzi poza panel — trzeba go
-   puścić. Ten sam trik co .cx-picker w cart-ui.css. */
-.vxe-page .vxe-form-panel { overflow: visible; }
-
-/* Wiersz podsumowania w panelu (dane dostawcy w liczbach). */
-.vxe-page .vxe-usage {
-    margin: 0;
-    padding: .7rem 1.25rem;
-    border-bottom: 1px solid var(--rx-line-soft);
-    background: #fff;
-    font-size: .82rem;
-    color: var(--rx-muted);
-}
-.vxe-page .vxe-usage strong { color: var(--rx-ink); }
-.vxe-page .vxe-usage .bi { color: var(--rx-faint); }
+/* Menu bootstrap-select jest doczepiane do komórki pickera
+   (data-container) i wychodzi poza kartę — dlatego .vxe-card ma
+   overflow: visible (patrz „Karty formularza"). Ten sam trik co
+   .cx-picker w cart-ui.css. */
 
 /* Skrót w etykiecie (RFQ / PO). */
 .vxe-page .vxe-abbr {
@@ -282,7 +504,7 @@
 .vxe-page .vxe-seg-item input:checked + .vxe-seg-face .vxe-seg-dot { opacity: 1; }
 
 
-/* ---- Stopka panelu z akcją zapisu ---------------------------------- */
+/* ---- Pasek zapisu pod kartami --------------------------------------- */
 
 .vxe-page .vxe-panel-foot {
     display: flex;
@@ -291,12 +513,9 @@
     justify-content: space-between;
     gap: .75rem 1rem;
     padding: .85rem 1.25rem;
-    border-top: 1px solid var(--rx-line);
+    border: 1px solid var(--rx-line);
+    border-radius: var(--rx-radius);
     background: var(--rx-canvas);
-    /* Panel formularza ma overflow: visible (menu pickera musi wyjść
-       poza panel), więc stopka sama zachowuje zaokrąglenie dolnych
-       narożników panelu. */
-    border-radius: 0 0 calc(var(--rx-radius) - 1px) calc(var(--rx-radius) - 1px);
 }
 .vxe-page .vxe-foot-hint {
     font-size: .8rem;
@@ -316,51 +535,6 @@
     color: var(--rx-faint);
     box-shadow: none;
     opacity: 1;
-}
-
-
-/* ---- Pasek powiązań (osoby + artykuły) -----------------------------
-   Liczby widać bez otwierania modala — operator od razu widzi, czy
-   dostawca ma kontakty i artykuły. */
-
-.vxe-page .vxe-related-inner {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: .6rem 1rem;
-    padding: .85rem 1.25rem;
-}
-.vxe-page .vxe-related-text {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-}
-.vxe-page .vxe-related-title {
-    font-size: .95rem;
-    font-weight: 700;
-    color: var(--rx-ink);
-}
-.vxe-page .vxe-related-desc {
-    font-size: .8rem;
-    color: var(--rx-muted);
-}
-.vxe-page .vxe-related-counts {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: .35rem 1rem;
-    margin-left: auto;
-}
-.vxe-page .vxe-related-count {
-    font-size: .82rem;
-    color: var(--rx-muted);
-    white-space: nowrap;
-}
-.vxe-page .vxe-related-count strong {
-    font-size: 1rem;
-    font-weight: 700;
-    color: var(--rx-ink);
-    font-variant-numeric: tabular-nums;
 }
 
 
@@ -653,16 +827,32 @@
     .vxe-page .vxe-field--3,
     .vxe-page .vxe-field--4,
     .vxe-page .vxe-field--6 { grid-column: span 12; }
-    .vxe-page .vxe-section,
+    .vxe-page .vxe-card-head,
+    .vxe-page .vxe-card-body,
     .vxe-page .vxe-panel-foot { padding-left: .9rem; padding-right: .9rem; }
+    /* Nagłówek karty to jeden rząd: ikona, tekst (tytuł i opis mogą się
+       zawinąć), a po prawej licznik + strzałka — licznik zostaje widoczny
+       w obu stanach karty. Podsumowanie zawija się do dwóch linii zamiast
+       ucinać wielokropkiem i wcina pod tytuł (ikona 2.1rem + .7rem). */
+    .vxe-page .vxe-card-head { gap: .5rem .7rem; }
+    .vxe-page .vxe-card-head--toggle { flex-wrap: nowrap; }
+    .vxe-page .vxe-card-text { flex: 1 1 0; }
+    .vxe-page .vxe-card-aside { margin-left: auto; gap: .45rem; }
+    .vxe-page .vxe-card-summary {
+        padding-left: calc(.9rem + 2.1rem + .7rem);
+        padding-right: .9rem;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+    .vxe-page .vxe-form-tools { justify-content: flex-start; }
+    .vxe-page .vxe-head-links { width: 100%; }
+    .vxe-page .vxe-rel-btn { flex: 1 1 auto; }
     .vxe-page .vxe-panel-foot { flex-direction: column; align-items: stretch; }
     .vxe-page .vxe-foot-actions { justify-content: stretch; }
     .vxe-page .vxe-foot-actions .btn { flex: 1 1 auto; }
     .vxe-page .vxe-seg { width: 100%; }
     .vxe-page .vxe-seg-item { flex: 1 1 0; }
     .vxe-page .vxe-seg-face { justify-content: center; width: 100%; }
-    .vxe-page .vxe-related-counts { margin-left: 0; }
-    .vxe-page .vxe-related-inner > .btn { width: 100%; }
     .vxe-modal .modal-header { flex-wrap: wrap; }
     .vxe-modal .vxe-modal-head-right { margin-left: 0; }
 }

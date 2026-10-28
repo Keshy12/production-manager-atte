@@ -33,13 +33,19 @@
  *        the relations modal is open, in #vrModalAlertHost inside
  *        that modal — otherwise the backdrop would hide the message.
  *
- *   4. Preferred e-mail draft pickers (RFQ + PO)
+ *   4. Collapsible form cards (all four, collapsed by default)
+ *      - PHP renders them collapsed with a one-line read-only summary;
+ *        JS keeps each summary (and the "Więcej" counter chip) live,
+ *        re-opens the card that holds a field the browser rejects,
+ *        and drives the "Rozwiń/Zwiń wszystko" link.
+ *
+ *   5. Preferred e-mail draft pickers (RFQ + PO)
  *      - Two bootstrap-select pickers pointing at the global
  *        `email_draft` catalogue. They live INSIDE #vrEditForm, so
  *        $form.serialize() picks them up — no manual POST patching.
- *      - The section is no longer collapsed, so the pickers size
- *        themselves correctly right away; a refresh on window.load
- *        is a safety net.
+ *      - Their card starts collapsed; the pickers size from CSS
+ *        (data-width="100%"), and are refreshed on window.load and on
+ *        every expand as a safety net.
  *      - Editing the templates themselves happens in a separate
  *        module: /admin/purchase/email-drafts.
  */
@@ -182,6 +188,198 @@
                 $(window).scrollTop(0);
             });
         });
+    });
+
+    // ============================================================
+    // Zwijane karty formularza (wszystkie cztery)
+    // ============================================================
+    // Karty startują zwinięte (PHP: `collapsed` na przycisku, bez `show`
+    // na ciele) i pokazują jednolinijkowe podsumowanie wartości. Zwinięcie
+    // to tylko CSS (Bootstrap collapse, display:none) — pola zostają w DOM
+    // i w #vrEditForm, więc $form.serialize() wysyła je także ze zwiniętej
+    // karty. Tutaj cztery rzeczy:
+    //   1. podsumowania żyją razem z polami (i po zapisie, `vr:saved`) —
+    //      format musi być identyczny z tym z vendor-edit-view.php,
+    //   2. licznik „N z 4 wypełnione" na karcie „Więcej",
+    //   3. jeśli przeglądarka odrzuca pole w zwiniętej karcie (wymagana
+    //      nazwa, zły adres URL), karta się rozwija i walidacja jest
+    //      pokazana ponownie — bez tego submit po cichu nic nie robi,
+    //      bo przeglądarka nie może ustawić fokusu na ukrytym polu,
+    //   4. „Rozwiń wszystko" / „Zwiń wszystko" + klik w podsumowanie.
+    $(document).ready(function() {
+        const form = document.getElementById('vrEditForm');
+        if (!form) return;   // „Dostawca nie istnieje" — brak formularza
+
+        const $form = $(form);
+        const $bodies = $form.find('.vxe-card > .collapse');
+        const SEP = ' · ';
+
+        // Tekst z pola, bez białych znaków na brzegach.
+        function val(selector) {
+            return String($(selector).val() == null ? '' : $(selector).val()).trim();
+        }
+
+        // Ustawia linijkę podsumowania: html (już zabezpieczony przez
+        // esc()) + title. Bez podanego `title` jest nim sam tekst linijki;
+        // karty z polami tekstowymi podają jawną listę „pole: wartość".
+        function setSummary(id, html, title) {
+            const $el = $('#' + id);
+            $el.html(html);
+            $el.attr('title', title === undefined ? $el.text() : title);
+        }
+
+        // Reguła (taka sama jak w vendor-edit-view.php): karta z polami
+        // tekstowymi wylicza WSZYSTKIE swoje pola, w kolejności z karty.
+        // Wypełnione = wartość, puste = nazwa pola w stylu „brak".
+        function missing(name) {
+            return '<span class="vxe-sum-missing">' + esc(name) + '</span>';
+        }
+        // Wartość do tooltipu: jedna linia, „—" gdy puste.
+        function oneLine(s) {
+            return String(s).replace(/\s+/g, ' ').trim();
+        }
+        function tip(label, value) {
+            return label + ': ' + (value === '' ? '—' : oneLine(value));
+        }
+
+        // ---- Dane podstawowe: nazwa · waluta · adres ----
+        function refreshBasicSummary() {
+            const name = val('#vr_edit_name');
+            const cur = val('#vr_edit_currency');
+            const addr = val('#vr_edit_address');
+            setSummary('vrBasicSummary',
+                [
+                    name !== '' ? '<strong>' + esc(name) + '</strong>' : missing('nazwa'),
+                    cur !== ''  ? esc(cur)  : missing('waluta'),
+                    addr !== '' ? esc(addr) : missing('adres')
+                ].join(SEP),
+                [tip('nazwa', name), tip('waluta', cur), tip('adres', addr)].join(SEP));
+        }
+
+        // ---- Status ----
+        function refreshStatusSummary() {
+            const active = $form.find('input[name="isActive"]:checked').val() === '1';
+            setSummary('vrStatusSummary',
+                '<span class="vxe-sum-dot ' + (active ? 'is-on' : 'is-off') + '" aria-hidden="true"></span>'
+                + (active ? 'Aktywny' : 'Nieaktywny'));
+        }
+
+        // ---- Preferowane szablony: „RFQ: Nazwa ★ · PO: Nazwa ★" ----
+        // Nazwy z wybranych <option> (★ jest już w ich tekście), nic nie
+        // odpytujemy ponownie.
+        function refreshDraftSummary() {
+            const parts = [];
+            $form.find('select[name="preferred_email_draft_rfq_id"], select[name="preferred_email_draft_po_id"]')
+                .each(function() {
+                    const $sel = $(this);
+                    const abbr = $sel.attr('data-abbr') || '';
+                    const id = parseInt($sel.val(), 10) || 0;
+                    const label = id > 0
+                        ? $sel.find('option:selected').text().replace(/\s+/g, ' ').trim()
+                        : 'brak szablonu';
+                    parts.push(esc(abbr + ': ' + label));
+                });
+            setSummary('vrDraftSummary', parts.join(SEP));
+        }
+
+        // ---- Więcej: licznik + które pola są wypełnione ----
+        const $moreChip = $('#vrMoreCount');
+        const moreTotal = parseInt($moreChip.attr('data-total'), 10) || 0;
+
+        function refreshMoreSummary() {
+            const lead = val('#vr_edit_lead_time');
+            const shop = val('#vr_edit_shop_url');
+            const extra = val('#vr_edit_additional_data');
+            const comment = val('#vr_edit_comment');
+            const unit = lead === '1' ? 'dzień' : 'dni';
+            // Trzy długie pola w linijce to tylko nazwa (wartość jest w
+            // tooltipie), więc to styl „brak" odróżnia puste od wypełnionego.
+            setSummary('vrMoreSummary',
+                [
+                    lead !== ''    ? esc('Lead time ' + lead + ' ' + unit) : missing('lead time'),
+                    shop !== ''    ? 'adres sklepu'   : missing('adres sklepu'),
+                    extra !== ''   ? 'dane dodatkowe' : missing('dane dodatkowe'),
+                    comment !== '' ? 'komentarz'      : missing('komentarz')
+                ].join(SEP),
+                [
+                    tip('lead time', lead === '' ? '' : lead + ' ' + unit),
+                    tip('adres sklepu', shop),
+                    tip('dane dodatkowe', extra),
+                    tip('komentarz', comment)
+                ].join(SEP));
+
+            // Licznik w nagłówku: liczba wypełnionych z czterech pól.
+            const filled = [lead, shop, extra, comment].filter(function(v) { return v !== ''; }).length;
+            $moreChip
+                .toggleClass('is-on', filled > 0)
+                .text(filled === 0 ? 'puste' : filled + ' z ' + moreTotal + ' wypełnione');
+        }
+
+        function refreshSummaries() {
+            refreshBasicSummary();
+            refreshStatusSummary();
+            refreshDraftSummary();
+            refreshMoreSummary();
+        }
+        $form.on('input change', 'input, select, textarea', refreshSummaries);
+        // Po udanym zapisie podsumowania odzwierciedlają to, co zapisano.
+        $form.on('vr:saved', refreshSummaries);
+
+        // ---- Walidacja pola w zwiniętej karcie ----
+        // `invalid` nie bąbelkuje — nasłuch w fazie przechwytywania.
+        // Przeglądarka wysyła `invalid` dla KAŻDEGO błędnego pola, więc
+        // licznik czeka, aż otworzą się wszystkie potrzebne karty, i
+        // dopiero wtedy raz wywołuje reportValidity() (dymek ląduje na
+        // pierwszym błędnym, już widocznym polu).
+        let opening = 0;
+        form.addEventListener('invalid', function(e) {
+            const $body = $(e.target).closest('.vxe-card > .collapse');
+            if ($body.length === 0) return;
+            if ($body.hasClass('show') || $body.hasClass('collapsing')) return;
+            opening++;
+            $body.one('shown.bs.collapse', function() {
+                opening--;
+                if (opening === 0) { form.reportValidity(); }
+            });
+            $body.collapse('show');
+        }, true);
+
+        // ---- Picker w świeżo rozwiniętej karcie ----
+        // Szerokość to 100% z CSS-a, ale odświeżenie po rozwinięciu to
+        // tania siatka bezpieczeństwa (picker był inicjalizowany w
+        // ukrytym kontenerze).
+        $bodies.on('shown.bs.collapse', function() {
+            $(this).find('.selectpicker').selectpicker('refresh');
+        });
+
+        // ---- Klik w podsumowanie rozwija kartę ----
+        // Cała zwinięta karta jest jednym celem. Klawiaturą i czytnikiem
+        // ekranu służy przycisk nagłówka (podsumowanie nie jest w
+        // kolejności tabulacji). Zaznaczanie tekstu nie rozwija.
+        $form.on('click', '.vxe-card-summary', function() {
+            const sel = window.getSelection ? String(window.getSelection()) : '';
+            if (sel !== '') return;
+            $(this).closest('.vxe-card').find('> .vxe-card-toggle-h > .vxe-card-head--toggle')[0].click();
+        });
+
+        // ---- Rozwiń wszystko / Zwiń wszystko ----
+        const $toggleAll = $('#vrToggleAllCards');
+
+        function syncToggleAll() {
+            const anyClosed = $bodies.not('.show').length > 0;
+            $toggleAll.find('.vxe-tools-label').text(anyClosed ? 'Rozwiń wszystko' : 'Zwiń wszystko');
+            $toggleAll.find('.bi')
+                .toggleClass('bi-arrows-expand', anyClosed)
+                .toggleClass('bi-arrows-collapse', !anyClosed);
+        }
+        $bodies.on('shown.bs.collapse hidden.bs.collapse', syncToggleAll);
+
+        $toggleAll.on('click', function() {
+            const anyClosed = $bodies.not('.show').length > 0;
+            // Tylko karty, które nie są w trakcie animacji.
+            $bodies.not('.collapsing').collapse(anyClosed ? 'show' : 'hide');
+        });
+        syncToggleAll();
     });
 
     // ============================================================
@@ -780,9 +978,10 @@
             noneResultsText: 'Brak szablonu pasującego do {0}',
         });
 
-        // Sekcja nie jest zwinięta, więc picker powinien policzyć swoją
-        // szerokość od razu — odświeżenie po załadowaniu strony jest
-        // siatką bezpieczeństwa (gdyby styl dociągnął się później).
+        // Karta startuje zwinięta, więc pickery inicjalizują się w ukrytym
+        // kontenerze. Szerokość (100%) liczy CSS, nie JS, więc to działa;
+        // odświeżenie po załadowaniu strony i po każdym rozwinięciu karty
+        // (patrz „Zwijane karty") jest siatką bezpieczeństwa.
         $(window).on('load', function() {
             $pickers.selectpicker('refresh');
         });
