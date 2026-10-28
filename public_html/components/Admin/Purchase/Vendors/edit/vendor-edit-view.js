@@ -389,6 +389,364 @@
     });
 
     // ============================================================
+    // Lista artykułów u dostawcy (blok w modalu powiązań)
+    // ============================================================
+    // Dostawca może mieć tysiące artykułów, więc lista jest rysowana
+    // przez JS z AJAX-u (edit/vendor-parts-modal-list.php): jedna
+    // strona wyników + filtry. PHP zostawia tylko skorupę tabeli.
+    $(document).ready(function() {
+        const $block = $('#vrVpBlock');
+        if ($block.length === 0) return;   // tryb tworzenia — brak bloku
+
+        const vendorId = parseInt($block.attr('data-vendor-id'), 10) || 0;
+        const endpoint = COMPONENTS_PATH + '/Admin/Purchase/Vendors/edit/vendor-parts-modal-list.php';
+        const PER_PAGE = 20;
+        const COMMENT_TRUNCATE_AT = 200;
+
+        const state = { q: '', status: 'all', packs: 'all', page: 1, total: null, pages: 0 };
+        let xhr = null;
+        let seq = 0;
+        let loadedOnce = false;
+        let timer = null;
+
+        // ---------- Formaty ----------
+
+        // Ilość bez zer końcowych (10 zamiast 10.0000; 0.5 zostaje 0.5).
+        function vpFmtQty(n) {
+            const f = parseFloat(n);
+            if (isNaN(f)) { return String(n == null ? '—' : n); }
+            return String(Math.round(f * 10000) / 10000);
+        }
+
+        // Polska liczba mnoga: 1 artykuł / 2 artykuły / 5 artykułów.
+        function vpItemsGen(n) {
+            if (n === 1) { return 'artykuł'; }
+            const mod10  = n % 10;
+            const mod100 = n % 100;
+            if (mod10 >= 2 && mod10 <= 4 && !(mod100 >= 12 && mod100 <= 14)) {
+                return 'artykuły';
+            }
+            return 'artykułów';
+        }
+
+        // Czy filtry są domyślne (nic nie zawężone)?
+        function vpIsDefault() {
+            return state.q === '' && state.status === 'all' && state.packs === 'all';
+        }
+
+        // Zakres w podsumowaniu: „tylko aktywne · bez opakowania".
+        function vpScope() {
+            const parts = [];
+            if (state.status === 'active')   { parts.push('tylko aktywne'); }
+            if (state.status === 'inactive') { parts.push('tylko nieaktywne'); }
+            if (state.packs === 'with')      { parts.push('z opakowaniem'); }
+            if (state.packs === 'without')   { parts.push('bez opakowania'); }
+            return parts.join(' · ');
+        }
+
+        // ---------- Render ----------
+
+        // Wiersz — ten sam markup, co renderował PHP przed AJAX-em
+        // (klasy .vr-vp-* mają już style w vendor-edit-ui.css).
+        function vpRenderRow(vp) {
+            const isActive = vp.isActive === true || vp.isActive === 1 || vp.isActive === '1';
+            const rowClass = isActive ? 'vr-vp-row--active' : 'vr-vp-row--inactive';
+
+            // Artykuł: nazwa z katalogu + numer u dostawcy / producenta.
+            let artykulCell = esc(vp.partName || '');
+            const vn = vp.vendorPartNo || '';
+            const pn = vp.producerPartNo || '';
+            if (vn !== '' && pn !== '' && vn === pn) {
+                artykulCell += '<span class="vr-vp-sub">Nr dost./prod.: <span class="vr-vp-code">'
+                            + esc(vn) + '</span></span>';
+            } else {
+                if (vn !== '') {
+                    artykulCell += '<span class="vr-vp-sub">Nr dost.: <span class="vr-vp-code">'
+                                + esc(vn) + '</span></span>';
+                }
+                if (pn !== '') {
+                    artykulCell += '<span class="vr-vp-sub">Nr prod.: <span class="vr-vp-code">'
+                                + esc(pn) + '</span></span>';
+                }
+            }
+
+            // Opakowania — po jednej plakietce na wielkość paczki.
+            let packsHtml = '<span class="text-muted">—</span>';
+            if (Array.isArray(vp.packQuantities) && vp.packQuantities.length > 0) {
+                packsHtml = vp.packQuantities.map(function(p) {
+                    return '<span class="vr-pack-badge">' + esc(vpFmtQty(p)) + '</span>';
+                }).join('');
+            }
+
+            // Komentarz — ikona + treść ucięta; pełna w title.
+            const rawCmt = (vp.comment == null ? '' : String(vp.comment)).trim();
+            let cmtHtml = '<span class="text-muted">—</span>';
+            if (rawCmt !== '') {
+                const full = esc(rawCmt);
+                const visible = rawCmt.length > COMMENT_TRUNCATE_AT
+                    ? esc(rawCmt.slice(0, COMMENT_TRUNCATE_AT)) + '…'
+                    : full;
+                cmtHtml = '<small class="vr-vp-comment" title="' + full + '">'
+                        + '<i class="bi bi-journal-text"></i> ' + visible + '</small>';
+            }
+
+            return '<tr class="' + rowClass + '">' +
+                '<td class="vr-vp-col-id text-center">' + esc(vp.id) + '</td>' +
+                '<td>' + artykulCell + '</td>' +
+                '<td>' + (vp.producerName ? esc(vp.producerName) : '<span class="text-muted">—</span>') + '</td>' +
+                '<td>' + (vp.unitName ? esc(vp.unitName) : '<span class="text-muted">—</span>') + '</td>' +
+                '<td>' + packsHtml + '</td>' +
+                '<td>' + cmtHtml + '</td>' +
+            '</tr>';
+        }
+
+        // Szkielet pierwszego wczytania (klasy .rx-skel z receipts-ui.css).
+        function vpSkeletonHtml() {
+            let html = '';
+            for (let i = 0; i < 6; i++) {
+                html += '<tr class="rx-skel-row">' +
+                    '<td><span class="rx-skel rx-skel--sm" style="width:1.5rem;margin:0 auto"></span></td>' +
+                    '<td><span class="rx-skel" style="width:60%"></span><span class="rx-skel rx-skel--sm" style="width:40%"></span></td>' +
+                    '<td><span class="rx-skel" style="width:70%"></span></td>' +
+                    '<td><span class="rx-skel rx-skel--sm" style="width:3rem"></span></td>' +
+                    '<td><span class="rx-skel rx-skel--sm" style="width:4rem"></span></td>' +
+                    '<td><span class="rx-skel" style="width:80%"></span></td>' +
+                '</tr>';
+            }
+            return html;
+        }
+
+        // Pusty stan: „nie ma żadnych" vs „filtry nie pasują".
+        function vpEmptyHtml() {
+            if (!vpIsDefault()) {
+                return '<div class="rx-empty rx-empty--compact">' +
+                    '<div class="rx-empty-icon"><i class="bi bi-funnel"></i></div>' +
+                    '<div class="rx-empty-title">Brak wyników</div>' +
+                    '<div class="rx-empty-text">' +
+                        'Żaden artykuł nie pasuje do filtrów. Zmień je albo wyczyść.</div>' +
+                    '</div>';
+            }
+            return '<div class="rx-empty rx-empty--compact">' +
+                '<div class="rx-empty-icon"><i class="bi bi-box-seam"></i></div>' +
+                '<div class="rx-empty-title">Brak artykułów</div>' +
+                '<div class="rx-empty-text">' +
+                    'Ten dostawca nie ma jeszcze przypisanych artykułów.</div>' +
+                '</div>';
+        }
+
+        // Stan kontrolek: segmenty + link „Wyczyść filtry".
+        function vpSyncUi() {
+            $('#vrVpBlock .rx-seg [data-vp-dim]').each(function() {
+                const on = state[$(this).attr('data-vp-dim')] === $(this).attr('data-vp-value');
+                $(this).toggleClass('is-active', on).attr('aria-pressed', on ? 'true' : 'false');
+            });
+            $('#vrVpClear').toggleClass('d-none', vpIsDefault());
+        }
+
+        // Licznik w nagłówku bloku: po filtrach liczba przefiltrowanych,
+        // a w title zawsze liczba wszystkich — żeby chip w nagłówku modala
+        // (serwerowy, bez filtrów) nie wyglądał na sprzeczny.
+        function vpUpdateChip() {
+            if (state.total === null) { return; }
+            const $chip = $('#vrVpCountChip');
+            const all = $chip.attr('data-vp-all') || '0';
+            $chip.text(state.total);
+            $chip.attr('title', vpIsDefault()
+                ? 'Wszystkie artykuły tego dostawcy'
+                : 'Artykuły po zastosowaniu filtrów (wszystkich: ' + all + ')');
+        }
+
+        // Linijka wyników.
+        function vpRenderSummary() {
+            const $el = $('#vrVpSummary');
+            if (state.total === null) {
+                $el.text('Wczytywanie artykułów…');
+                return;
+            }
+            if (state.total === 0) {
+                $el.html((vpIsDefault() ? '' : '<i class="bi bi-funnel-fill"></i> ') + 'Brak wyników');
+                return;
+            }
+            const first = (state.page - 1) * PER_PAGE + 1;
+            const last  = Math.min(state.page * PER_PAGE, state.total);
+            const scope = vpScope();
+            $el.html((vpIsDefault() ? '' : '<i class="bi bi-funnel-fill"></i> ') +
+                'Wyświetlanie <strong>' + first + '–' + last + '</strong> z <strong>' +
+                state.total + '</strong> ' + vpItemsGen(state.total) +
+                (scope ? ' <span class="vxe-vp-sep text-faint">·</span> ' + scope : ''));
+        }
+
+        // Pager — wzorowany na vendor-parts-view.js, z klasami
+        // z prefiksem .vxe-vp-*, żeby nie kolidował z listą artykułów.
+        function vpRenderPager() {
+            const $top = $('#vrVpPagerTop');
+            if (state.total === null || state.total === 0 || state.pages <= 1) {
+                $top.empty();
+                return;
+            }
+            const atStart = state.page <= 1;
+            const atEnd   = state.page >= state.pages;
+
+            function btn(action, icon, title, disabled) {
+                return '<button type="button" class="btn rx-btn-quiet vxe-vp-page-btn" data-action="' + action + '"' +
+                    ' title="' + title + '" aria-label="' + title + '"' + (disabled ? ' disabled' : '') + '>' +
+                    '<i class="bi ' + icon + '"></i></button>';
+            }
+
+            let items = '';
+            for (let p = 1; p <= state.pages; p++) {
+                items += '<a class="dropdown-item vxe-vp-page-item' + (p === state.page ? ' active' : '') +
+                    '" href="#" data-page="' + p + '">Strona ' + p + '</a>';
+            }
+
+            $top.html('<div class="btn-group btn-group-sm vxe-vp-pager-compact" role="group" aria-label="Strony artykułów">' +
+                btn('prev', 'bi-chevron-left', 'Poprzednia strona', atStart) +
+                '<div class="btn-group btn-group-sm">' +
+                    '<button type="button" class="btn rx-btn-quiet dropdown-toggle rx-pager-current" data-toggle="dropdown">' +
+                    'Strona ' + state.page + ' z ' + state.pages + '</button>' +
+                    '<div class="dropdown-menu dropdown-menu-right rx-pager-menu">' + items + '</div>' +
+                '</div>' +
+                btn('next', 'bi-chevron-right', 'Następna strona', atEnd) +
+                '</div>');
+        }
+
+        // ---------- Pobieranie ----------
+
+        function vpLoad(page) {
+            if (vendorId <= 0) { return; }
+            const p = Math.max(1, parseInt(page, 10) || 1);
+            state.page = p;
+            state.q = ($('#vrVpSearch').val() || '').trim();
+            vpSyncUi();
+
+            const mySeq = ++seq;
+            if (xhr) { xhr.abort(); }
+
+            if (!loadedOnce) {
+                // Pierwsze wczytanie — szkielet w miejscu wierszy.
+                $('#vrVpTBody').html(vpSkeletonHtml());
+                $('#vrVpTableWrap').prop('hidden', false);
+                $('#vrVpEmpty').prop('hidden', true).empty();
+            } else {
+                // Kolejne wczytanie — poprzednie wiersze zostają widoczne
+                // (przygaszone), żeby nie migać pustą tabelą.
+                $('#vrVpTableWrap').addClass('is-loading');
+            }
+
+            xhr = $.ajax({
+                url: endpoint,
+                type: 'POST',
+                data: {
+                    vendor_id: vendorId,
+                    page:      p,
+                    per_page:  PER_PAGE,
+                    q:         state.q,
+                    status:    state.status,
+                    packs:     state.packs,
+                },
+                dataType: 'json',
+            })
+            .done(function(r) {
+                if (mySeq !== seq) { return; }
+                $('#vrVpTableWrap').removeClass('is-loading');
+
+                if (!r || !r.success) {
+                    vrFlash((r && r.error) ? r.error : 'Błąd ładowania artykułów.', 'danger');
+                    return;
+                }
+
+                const total = parseInt(r.total, 10) || 0;
+                const pages = parseInt(r.pages, 10) || 0;
+                const rows  = r.rows || [];
+
+                // Strona poza zakresem (np. filtr zmieniony na dalszej
+                // stronie) — wracamy na pierwszą.
+                if (total > 0 && p > pages) {
+                    vpLoad(1);
+                    return;
+                }
+
+                state.total = total;
+                state.pages = pages;
+                loadedOnce  = true;
+
+                if (total === 0) {
+                    $('#vrVpTBody').empty();
+                    $('#vrVpTableWrap').prop('hidden', true);
+                    $('#vrVpEmpty').html(vpEmptyHtml()).prop('hidden', false);
+                } else {
+                    $('#vrVpEmpty').prop('hidden', true).empty();
+                    $('#vrVpTableWrap').prop('hidden', false);
+                    $('#vrVpTBody').html(rows.map(vpRenderRow).join(''));
+                }
+
+                vpUpdateChip();
+                vpRenderSummary();
+                vpRenderPager();
+            })
+            .fail(function(xhr2, status) {
+                if (status === 'abort' || mySeq !== seq) { return; }
+                $('#vrVpTableWrap').removeClass('is-loading');
+                vrFlash('Błąd komunikacji z serwerem.', 'danger');
+            });
+        }
+
+        // Zmiana filtra — zawsze wracamy na stronę 1.
+        function vpFilterChanged() {
+            vpLoad(1);
+        }
+
+        // ---------- Zdarzenia ----------
+
+        // Wyszukiwarka: krótka zwłoka, żeby nie odpytywać po każdym
+        // znaku; Enter od razu.
+        $('#vrVpSearch').on('input', function() {
+            clearTimeout(timer);
+            timer = setTimeout(vpFilterChanged, 300);
+        }).on('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                clearTimeout(timer);
+                vpFilterChanged();
+            }
+        });
+
+        // Przełączniki filtra.
+        $('#vrVpBlock').on('click', '.rx-seg [data-vp-dim]', function() {
+            const dim = $(this).attr('data-vp-dim');
+            const val = $(this).attr('data-vp-value');
+            if (state[dim] === val) { return; }
+            state[dim] = val;
+            vpFilterChanged();
+        });
+
+        // Wyczyść filtry.
+        $('#vrVpClear').on('click', function() {
+            state.q = '';
+            state.status = 'all';
+            state.packs = 'all';
+            $('#vrVpSearch').val('');
+            vpFilterChanged();
+        });
+
+        // Pager.
+        $('#vrVpPagerTop').on('click', '.vxe-vp-page-btn', function() {
+            const act = $(this).attr('data-action');
+            if (act === 'prev')      { vpLoad(state.page - 1); }
+            else if (act === 'next') { vpLoad(state.page + 1); }
+        });
+        $('#vrVpPagerTop').on('click', '.vxe-vp-page-item', function(e) {
+            e.preventDefault();
+            vpLoad(parseInt($(this).attr('data-page'), 10) || 1);
+        });
+
+        // Pierwsza strona wczytuje się przy otwarciu modala.
+        $('#vrRelationsModal').on('shown.bs.modal', function() {
+            vpLoad(1);
+        });
+    });
+
+    // ============================================================
     // Modal powiązań + pickery preferowanych szablonów
     // ============================================================
     $(document).ready(function() {

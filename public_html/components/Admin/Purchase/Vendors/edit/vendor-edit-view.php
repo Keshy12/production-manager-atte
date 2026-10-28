@@ -45,7 +45,6 @@
 use Atte\DB\MsaDB;
 use Atte\Utils\Purchase\Master\VendorRepository;
 use Atte\Utils\Purchase\Master\VendorSupplierRepository;
-use Atte\Utils\Purchase\Master\VendorPartRepository;
 use Atte\Utils\Purchase\Master\CurrencyRepository;
 
 if (!isset($_SESSION['isAdmin']) || $_SESSION['isAdmin'] !== true) {
@@ -66,8 +65,7 @@ $vendorDefaultCurrency  = 'PLN';
 $vendorComment          = '';
 $vendorIsActive         = true;   // default: Aktywny (only meaningful in create mode)
 $suppliers              = [];     // supplier rows for inline CRUD
-$vendorPartCount        = 0;      // for the edit-mode hint
-$vendorParts            = [];     // read-only VP list (active + inactive)
+$vendorPartCount        = 0;      // liczba wszystkich artykułów (pasek powiązań)
 $vendorPreferredRfqId   = 0;      // FK → email_draft.id (RFQ); 0 = brak
 $vendorPreferredPoId    = 0;      // FK → email_draft.id (PO);  0 = brak
 
@@ -103,10 +101,11 @@ if ($isEditMode) {
         $vsRepo    = new VendorSupplierRepository($MsaDB);
         $suppliers = $vsRepo->getByVendor($id, false);
 
-        // Read-only vendor-parts list (active + inactive). The repo's
-        // LEFT JOINs fill in vendorName, producerName, partName, unitName.
-        $vpRepo     = new VendorPartRepository($MsaDB);
-        $vendorParts = $vpRepo->getByVendor($id, false);
+        // Lista artykułów u dostawcy NIE jest tu ładowana — dostawca może
+        // mieć ich tysiące. Blok „Artykuły u dostawców" w modalu
+        // powiązań renderuje się z AJAX-u (edit/vendor-parts-modal-list.php)
+        // razem z filtrowaniem i stronicowaniem. W PHP zostaje tylko
+        // $vendorPartCount na licznik w pasku powiązań i w nagłówku modala.
     }
 }
 
@@ -151,27 +150,6 @@ $vrOkMessages = [
     'supplier-toggled' => 'Zmieniono status osoby kontaktowej.',
 ];
 $vrOkMessage = $vrOkMessages[(string)($_GET['ok'] ?? '')] ?? '';
-
-// Format a float without trailing zeros (e.g. 10.000 -> "10").
-// Mirrors fmtQty() in vendor-parts-view.js / producer-edit-view.php.
-function vr_fmt_qty($n) {
-    $f = is_numeric($n) ? (float)$n : null;
-    if ($f === null) return htmlspecialchars((string)($n ?? '—'), ENT_QUOTES);
-    return (float)number_format($f, 4, '.', '') == (float)(int)$f
-        ? (string)(int)$f
-        : rtrim(rtrim(number_format($f, 4, '.', ''), '0'), '.');
-}
-
-function vr_render_packs(array $packs): string {
-    if ($packs === []) {
-        return '<span class="text-muted">—</span>';
-    }
-    $badges = '';
-    foreach ($packs as $p) {
-        $badges .= '<span class="vr-pack-badge">' . htmlspecialchars(vr_fmt_qty($p), ENT_QUOTES) . '</span>';
-    }
-    return $badges;
-}
 
 // Polska liczba mnoga: 1 osoba / 2 osoby / 5 osób.
 function vr_count_label(int $n, string $one, string $few, string $many): string {
@@ -802,89 +780,83 @@ function vr_count_label(int $n, string $one, string $few, string $many): string 
                         <?php endif; ?>
                     </section>
 
-                    <!-- ===== Artykuły u dostawców ===== -->
-                    <section class="vxe-modal-block">
+                    <!-- ===== Artykuły u dostawców =====
+                         Lista jest rysowana przez JS z AJAX-u
+                         (edit/vendor-parts-modal-list.php) — dostawca może
+                         mieć tysiące artykułów, więc strona ładuje tylko
+                         jedną stronę wyników. PHP zostawia skorupę tabeli
+                         i nagłówek kolumn. -->
+                    <section class="vxe-modal-block" id="vrVpBlock" data-vendor-id="<?= (int)$vendor->id ?>">
                         <div class="vxe-modal-block-head">
                             <h3 class="vxe-modal-block-title">
                                 <i class="bi bi-box-seam"></i> Artykuły u dostawców
                             </h3>
-                            <span class="vxe-count-chip"><?= (int)$vendorPartCount ?></span>
+                            <span class="vxe-count-chip" id="vrVpCountChip"
+                                  data-vp-all="<?= (int)$vendorPartCount ?>"
+                                  title="Wszystkie artykuły tego dostawcy"><?= (int)$vendorPartCount ?></span>
                         </div>
                         <p class="vxe-table-note">
                             Tylko podgląd — edycja artykułów odbywa się w&nbsp;module „Artykuły u&nbsp;dostawców”.
                         </p>
 
-                        <?php if ($vendorParts === []): ?>
-                            <div class="rx-empty rx-empty--compact">
-                                <div class="rx-empty-icon"><i class="bi bi-box-seam"></i></div>
-                                <div class="rx-empty-title">Brak artykułów</div>
-                                <div class="rx-empty-text">
-                                    Ten dostawca nie ma jeszcze przypisanych artykułów.
+                        <!-- Filtry bloku: wyszukiwarka + dwa przełączniki. -->
+                        <div class="rx-toolbar vxe-vp-toolbar" role="search">
+                            <div class="rx-search">
+                                <i class="bi bi-search" aria-hidden="true"></i>
+                                <input type="search" id="vrVpSearch" class="form-control form-control-sm"
+                                       placeholder="Szukaj: numer artykułu, producent"
+                                       title="Szuka w numerze artykułu u dostawcy, numerze producenta i nazwie producenta"
+                                       aria-label="Szukaj artykułu" autocomplete="off">
+                            </div>
+
+                            <div class="vxe-vp-group">
+                                <span class="vxe-vp-group-label" aria-hidden="true">Status</span>
+                                <div class="rx-seg" role="group" aria-label="Status artykułu" id="vrVpSegStatus">
+                                    <button type="button" data-vp-dim="status" data-vp-value="all" class="is-active" aria-pressed="true">Wszystkie</button>
+                                    <button type="button" data-vp-dim="status" data-vp-value="active" aria-pressed="false">Aktywne</button>
+                                    <button type="button" data-vp-dim="status" data-vp-value="inactive" aria-pressed="false">Nieaktywne</button>
                                 </div>
                             </div>
-                        <?php else: ?>
-                            <div class="table-responsive">
-                                <table class="table rx-table mb-0" id="vrVpTable">
-                                    <thead>
-                                        <tr>
-                                            <th class="vr-vp-col-id text-center" style="width: 70px;">ID</th>
-                                            <th>Artykuł</th>
-                                            <th>Producent</th>
-                                            <th>JM</th>
-                                            <th>Opak.</th>
-                                            <th style="min-width: 180px;">Komentarz</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                    <?php foreach ($vendorParts as $vp):
-                                        $isActive = $vp->isActive === true || $vp->isActive === 1 || $vp->isActive === '1';
-                                        $rowClass = $isActive ? 'vr-vp-row--active' : 'vr-vp-row--inactive';
 
-                                        $artykulCell = htmlspecialchars($vp->partName ?? '', ENT_QUOTES);
-                                        $vn = $vp->vendorPartNo ?? '';
-                                        $pn = $vp->producerPartNo ?? '';
-                                        if ($vn !== '' && $pn !== '' && $vn === $pn) {
-                                            $artykulCell .= '<span class="vr-vp-sub">Nr dost./prod.: <span class="vr-vp-code">'
-                                                          . htmlspecialchars($vn, ENT_QUOTES) . '</span></span>';
-                                        } else {
-                                            if ($vn !== '') {
-                                                $artykulCell .= '<span class="vr-vp-sub">Nr dost.: <span class="vr-vp-code">'
-                                                              . htmlspecialchars($vn, ENT_QUOTES) . '</span></span>';
-                                            }
-                                            if ($pn !== '') {
-                                                $artykulCell .= '<span class="vr-vp-sub">Nr prod.: <span class="vr-vp-code">'
-                                                              . htmlspecialchars($pn, ENT_QUOTES) . '</span></span>';
-                                            }
-                                        }
-
-                                        $COMMENT_TRUNCATE_AT = 200;
-                                        $rawCmt = trim((string)($vp->comment ?? ''));
-                                        if ($rawCmt === '') {
-                                            $komentarzCell = '<span class="text-muted">—</span>';
-                                        } elseif (mb_strlen($rawCmt) > $COMMENT_TRUNCATE_AT) {
-                                            $visible = htmlspecialchars(mb_substr($rawCmt, 0, $COMMENT_TRUNCATE_AT), ENT_QUOTES) . '…';
-                                            $komentarzCell = '<small class="vr-vp-comment" title="'
-                                                           . htmlspecialchars($rawCmt, ENT_QUOTES) . '">'
-                                                           . '<i class="bi bi-journal-text"></i> ' . $visible . '</small>';
-                                        } else {
-                                            $komentarzCell = '<small class="vr-vp-comment">'
-                                                           . '<i class="bi bi-journal-text"></i> '
-                                                           . htmlspecialchars($rawCmt, ENT_QUOTES) . '</small>';
-                                        }
-                                    ?>
-                                        <tr class="<?= $rowClass ?>">
-                                            <td class="vr-vp-col-id text-center"><?= (int)$vp->id ?></td>
-                                            <td><?= $artykulCell ?></td>
-                                            <td><?= htmlspecialchars($vp->producerName ?? '—', ENT_QUOTES) ?></td>
-                                            <td><?= htmlspecialchars($vp->unitName ?? '—', ENT_QUOTES) ?></td>
-                                            <td><?= vr_render_packs($vp->packQuantities) ?></td>
-                                            <td><?= $komentarzCell ?></td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                    </tbody>
-                                </table>
+                            <div class="vxe-vp-group">
+                                <span class="vxe-vp-group-label" aria-hidden="true">Opakowanie</span>
+                                <div class="rx-seg" role="group" aria-label="Opakowanie artykułu" id="vrVpSegPacks">
+                                    <button type="button" data-vp-dim="packs" data-vp-value="all" class="is-active" aria-pressed="true">Wszystkie</button>
+                                    <button type="button" data-vp-dim="packs" data-vp-value="with" aria-pressed="false">Z opakowaniem</button>
+                                    <button type="button" data-vp-dim="packs" data-vp-value="without" aria-pressed="false">Bez opakowania</button>
+                                </div>
                             </div>
-                        <?php endif; ?>
+                        </div>
+
+                        <!-- Linijka wyników + pager. -->
+                        <div class="rx-filterbar vxe-vp-filterbar">
+                            <div class="vxe-vp-summary">
+                                <span id="vrVpSummary" aria-live="polite">Wczytywanie artykułów…</span>
+                                <button type="button" class="rx-link-btn d-none" id="vrVpClear"
+                                        title="Wyczyść filtry listy artykułów">
+                                    <i class="bi bi-x-circle"></i> Wyczyść filtry
+                                </button>
+                            </div>
+                            <div id="vrVpPagerTop"></div>
+                        </div>
+
+                        <div id="vrVpEmpty" hidden></div>
+
+                        <div class="table-responsive vxe-vp-table-wrap" id="vrVpTableWrap">
+                            <table class="table rx-table mb-0" id="vrVpTable">
+                                <thead>
+                                    <tr>
+                                        <th class="vr-vp-col-id text-center" style="width: 70px;">ID</th>
+                                        <th>Artykuł</th>
+                                        <th>Producent</th>
+                                        <th>JM</th>
+                                        <th>Opak.</th>
+                                        <th style="min-width: 180px;">Komentarz</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="vrVpTBody"></tbody>
+                            </table>
+                        </div>
                     </section>
                 </div>
 

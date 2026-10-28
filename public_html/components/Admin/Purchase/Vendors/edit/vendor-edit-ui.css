@@ -459,6 +459,66 @@
 .vxe-modal .vxe-modal-block-title .bi { color: var(--rx-muted); }
 
 
+/* ---- Blok „Artykuły u dostawców" (filtry + stronicowanie) ------------
+   Lista artykułów rysuje się z AJAX-u, więc blok ma własny pasek
+   filtrów, linijkę wyników i pager. Wszystko z bazy receipts-ui.css
+   (.rx-toolbar, .rx-search, .rx-seg, .rx-filterbar, .rx-link-btn,
+   .rx-pager), tylko mocniej zbite, bo siedzi w modalu, a nie na
+   stronie. */
+
+.vxe-modal .vxe-vp-toolbar {
+    gap: .4rem;
+    padding: .4rem;
+    margin-bottom: .35rem;
+}
+.vxe-modal .vxe-vp-toolbar .rx-search { flex: 1 1 14rem; }
+
+/* .vxe-page .form-control ustawia padding — trzeba go przywrócić dla
+   pola wyszukiwarki, bo ikonka ląduje na tekście. */
+.vxe-page .rx-search .form-control { padding-left: 2rem; }
+
+/* .rx-seg z bazy liczy --rx-ctl-h względem własnego font-size, a
+   dziedziczy 16 px z body → 34 px zamiast 31 px jak .form-control-sm.
+   Ujednolicamy font-size. */
+.vxe-modal .rx-seg { font-size: .875rem; }
+
+/* Segment z małą etykietą z lewej — bez podpisu „Wszystkie / …" jest
+   nieczytelne. */
+.vxe-modal .vxe-vp-group {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+}
+.vxe-modal .vxe-vp-group-label {
+    font-size: .66rem;
+    font-weight: 700;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: var(--rx-faint);
+    white-space: nowrap;
+}
+
+.vxe-modal .vxe-vp-filterbar {
+    min-height: 1.9rem;
+    padding: .3rem .25rem .4rem;
+}
+.vxe-modal .vxe-vp-summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .25rem .75rem;
+}
+.vxe-modal .vxe-vp-summary .rx-link-btn { font-size: .8rem; }
+
+/* Wiersze zostają na ekranie (przygaszone), gdy lecą nowe dane —
+   tabela nie miga pusto. */
+.vxe-modal .vxe-vp-table-wrap { transition: opacity .15s ease; }
+.vxe-modal .vxe-vp-table-wrap.is-loading { opacity: .45; pointer-events: none; }
+
+/* Szkielety pierwszego wczytania listy artykułów. */
+.vxe-modal .rx-skel-row td { height: 3.1rem; }
+
+
 /* ---- Formularz osoby kontaktowej ----------------------------------- */
 
 .vxe-modal .vxe-subform {
