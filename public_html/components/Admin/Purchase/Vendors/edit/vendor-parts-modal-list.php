@@ -19,7 +19,7 @@
  * Parametry (POST):
  *     vendor_id  int     WYMAGANY. Id dostawcy (> 0).
  *     page       int     Numer strony (1-based), domyślnie 1, minimalnie 1.
- *     per_page   int     Liczba wierszy na stronę, domyślnie 20, zakres 1..100.
+ *     per_page   int     Liczba wierszy na stronę, domyślnie 10, zakres 1..100.
  *     q          string  Fraza wyszukiwania (podciąg), maks. 100 znaków.
  *     status     string  'all' | 'active' | 'inactive' (domyślnie 'all').
  *     packs      string  'all' | 'with' | 'without' (domyślnie 'all').
@@ -67,7 +67,7 @@ if ($page < 1) {
     $page = 1;
 }
 
-$perPage = isset($_POST['per_page']) ? (int)$_POST['per_page'] : 20;
+$perPage = isset($_POST['per_page']) ? (int)$_POST['per_page'] : 10;
 if ($perPage < 1)  { $perPage = 1; }
 if ($perPage > 100) { $perPage = 100; }
 

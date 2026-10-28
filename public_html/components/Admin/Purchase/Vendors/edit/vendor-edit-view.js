@@ -400,7 +400,7 @@
 
         const vendorId = parseInt($block.attr('data-vendor-id'), 10) || 0;
         const endpoint = COMPONENTS_PATH + '/Admin/Purchase/Vendors/edit/vendor-parts-modal-list.php';
-        const PER_PAGE = 20;
+        const PER_PAGE = 10;
         const COMMENT_TRUNCATE_AT = 200;
 
         const state = { q: '', status: 'all', packs: 'all', page: 1, total: null, pages: 0 };
