@@ -1,0 +1,670 @@
+/* Edycja / dodawanie producenta — /admin/purchase/producers/edit.
+
+   To jest świadoma KOPIA systemu kart ze strony edycji dostawcy
+   (Vendors/edit/vendor-edit-ui.css), a nie wspólny arkusz: karty dostawcy
+   wciąż są dopracowywane, a wyciągnięcie ich do wspólnego pliku
+   zamroziłoby ruchomy projekt i wymusiło zmianę nazw klas na stronie,
+   która jest już zatwierdzona. Kopia ma pozostać wierna — obie strony
+   mają wyglądać identycznie. Zmiana wyglądu kart dostawcy = ta sama
+   zmiana tutaj.
+
+   Prefiks klas: `pre-` (producer-edit). `prx-` zajmuje lista producentów
+   (producers-ui.css), `vxe-` — edycja dostawcy.
+
+   Baza wyglądu to receipts-ui.css (wczytywany przed tym plikiem, bez
+   zmian): .rx-page, .rx-head + .rx-eyebrow/.rx-title/.rx-lead, .rx-crumbs,
+   .rx-panel, .rx-table, .rx-count, .rx-empty, .rx-btn-quiet, .rx-alerts,
+   .rx-link-btn. Ten plik dokłada tylko to, czego w bazie nie ma —
+   wszystko pod .pre-page. */
+
+
+/* ---- Kolumna strony --------------------------------------------------
+   Cała strona (okruszki, nagłówek, karty, pasek zapisu) stoi w jednej
+   kolumnie o szerokości 75%, wyśrodkowanej. Poniżej 992px kolumna zajmuje
+   całą szerokość, bo 75% telefonu to za mało na pola formularza. */
+
+.pre-page .pre-column {
+    width: 75%;
+    margin: 0 auto;
+}
+@media (max-width: 991.98px) {
+    .pre-page .pre-column { width: 100%; }
+}
+
+
+/* ---- Nagłówek strony ------------------------------------------------ */
+
+.pre-page .pre-head-links {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .5rem;
+}
+/* Tekst nagłówka zajmuje wolne miejsce, a krótszy opis pozwala mu
+   zmieścić się obok przycisku — bez tego przycisk spadał pod lead. */
+.pre-page .rx-head-main { flex: 1 1 22rem; min-width: 0; }
+.pre-page .rx-head .rx-lead { max-width: 34rem; }
+
+/* Id producenta jako cichy znacznik obok przycisku „Artykuły". */
+.pre-page .pre-head-id {
+    font-variant-numeric: tabular-nums;
+}
+
+/* Przycisk „Artykuły": otwiera modal z listą artykułów u dostawców.
+   Liczba siedzi na samym przycisku (biała plakietka), więc widać ją bez
+   otwierania czegokolwiek. Miękki niebieski — to ważna akcja strony, ale
+   nie ma konkurować z pełnym przyciskiem zapisu. font-size ustawiony
+   wprost, żeby wysokość nie zależała od body. */
+.pre-page .pre-rel-btn {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: .35rem .65rem;
+    padding: .35rem .5rem .35rem .8rem;
+    border: 1px solid #b8d4ff;
+    border-radius: .3rem;
+    background: var(--rx-accent-soft);
+    color: var(--rx-accent-ink);
+    font-size: .875rem;
+    font-weight: 700;
+    text-align: left;
+    transition: background-color .12s ease, border-color .12s ease;
+}
+.pre-page .pre-rel-btn:hover {
+    background: #dfeaff;
+    border-color: var(--rx-accent);
+    color: var(--rx-accent-ink);
+}
+.pre-page .pre-rel-btn:focus { box-shadow: var(--rx-ring); }
+.pre-page .pre-rel-main { white-space: nowrap; }
+.pre-page .pre-rel-counts {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: .3rem;
+}
+.pre-page .pre-rel-chip {
+    display: inline-flex;
+    align-items: baseline;
+    gap: .25rem;
+    padding: .1rem .55rem;
+    border-radius: 999px;
+    background: #fff;
+    color: var(--rx-ink-2);
+    font-size: .74rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.pre-page .pre-rel-chip strong {
+    color: var(--rx-ink);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+/* Zero artykułów — plakietka cichnie, zamiast krzyczeć „0". */
+.pre-page .pre-rel-chip.is-zero,
+.pre-page .pre-rel-chip.is-zero strong { color: var(--rx-faint); }
+
+
+/* ---- Karty formularza ----------------------------------------------
+   Każda grupa pól to osobna karta: ramka (.rx-panel), nagłówek z ikoną,
+   wersalikowym tytułem i jednym zdaniem opisu, pod spodem pola.
+   overflow: visible jak w karcie dostawcy (tam menu pickerów musi wyjść
+   poza kartę); .rx-panel ma domyślnie overflow: hidden. Nagłówek sam
+   pilnuje zaokrąglenia górnych narożników. */
+
+.pre-page .pre-panel { margin-bottom: 1rem; }
+.pre-page .pre-panel:last-child { margin-bottom: 0; }
+.pre-page .pre-card { overflow: visible; }
+
+.pre-page .pre-card-head {
+    display: flex;
+    align-items: center;
+    gap: .85rem;
+    padding: .85rem 1.25rem;
+    border-bottom: 1px solid var(--rx-line-soft);
+    border-radius: calc(var(--rx-radius) - 1px) calc(var(--rx-radius) - 1px) 0 0;
+}
+.pre-page .pre-card-icon {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.1rem;
+    height: 2.1rem;
+    border-radius: .5rem;
+    background: var(--rx-accent-soft);
+    color: var(--rx-accent-ink);
+    font-size: 1rem;
+}
+.pre-page .pre-card-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: .1rem;
+}
+.pre-page .pre-card-desc {
+    margin: 0;
+    font-size: .82rem;
+    line-height: 1.35;
+    font-weight: 400;
+    color: var(--rx-muted);
+}
+.pre-page .pre-card-aside {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: .6rem;
+    margin-left: auto;
+}
+.pre-page .pre-card-body { padding: 1.15rem 1.25rem 1.25rem; }
+
+/* Mały wersalikowy tytuł karty. W nagłówku karty jest ciemniejszy i
+   bez dolnego marginesu — tytuł niesie hierarchię, opis jest pod nim. */
+.pre-page .pre-section-label {
+    margin: 0 0 .9rem;
+    font-size: .68rem;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--rx-muted);
+}
+.pre-page .pre-card-head .pre-section-label {
+    display: block;
+    margin: 0;
+    font-size: .74rem;
+    color: var(--rx-ink);
+}
+
+/* Wszystkie trzy karty: nagłówek jest przyciskiem zwijania. Reset
+   przycisku, a linia pod nagłówkiem pojawia się dopiero, gdy karta jest
+   rozwinięta (zwinięta karta to pasek z podsumowaniem, bez wiszącej
+   linii).
+
+   Dwa stany karty, oba sterowane klasą `collapsed`, którą Bootstrap sam
+   przełącza na przycisku:
+     zwinięta   → widać linijkę podsumowania, opis ukryty,
+     rozwinięta → widać opis i pola, podsumowanie ukryte.
+   Opis chowa zwykły selektor potomka (.collapsed .pre-card-desc).
+   Podsumowanie leży POZA przyciskiem, więc do jego ukrycia trzeba
+   :has() na karcie — przeglądarki bez :has() (@supports) dostają obie
+   linijki naraz, co jest tylko mało eleganckie, nie zepsute. */
+.pre-page .pre-card-toggle-h { margin: 0; font-size: inherit; }
+.pre-page .pre-card-head--toggle {
+    width: 100%;
+    border-top: 0;
+    border-right: 0;
+    border-left: 0;
+    background: transparent;
+    color: var(--rx-ink);
+    text-align: left;
+    cursor: pointer;
+    transition: background-color .12s ease;
+}
+.pre-page .pre-card-head--toggle:hover { background: var(--rx-hover); }
+/* Fokus: bez obwódki po kliknięciu myszą (przycisk zostaje z fokusem
+   i rysował niebieską ramkę tylko wokół nagłówka). Obwódka tylko przy
+   nawigacji klawiaturą (:focus-visible) — i wokół CAŁEJ karty, patrz
+   blok @supports niżej. Ten wpis to zapas dla przeglądarek bez :has(). */
+.pre-page .pre-card-head--toggle:focus { outline: none; box-shadow: none; }
+.pre-page .pre-card-head--toggle:focus-visible { box-shadow: inset var(--rx-ring); }
+.pre-page .pre-card-head--toggle.collapsed {
+    border-bottom-color: transparent;
+    border-radius: calc(var(--rx-radius) - 1px);
+}
+.pre-page .pre-card-chevron {
+    color: var(--rx-faint);
+    transition: transform .2s ease;
+}
+.pre-page .pre-card-head--toggle:not(.collapsed) .pre-card-chevron { transform: rotate(180deg); }
+
+/* Zwinięta karta: opis znika (zostaje tytuł + podsumowanie pod spodem). */
+.pre-page .pre-card-head--toggle.collapsed .pre-card-desc { display: none; }
+
+/* Linijka podsumowania zwiniętej karty — tylko do odczytu, wcięta pod
+   tytuł (ikona 2.1rem + odstęp .85rem), jedna linia z wielokropkiem;
+   pełny tekst jest w atrybucie title. Kliknięcie w nią też rozwija kartę
+   (JS) — cała zwinięta karta jest jednym dużym celem. */
+.pre-page .pre-card-summary {
+    margin: 0;
+    padding: 0 1.25rem .9rem calc(1.25rem + 2.1rem + .85rem);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: .84rem;
+    line-height: 1.4;
+    color: var(--rx-ink-2);
+    cursor: pointer;
+}
+.pre-page .pre-card-summary strong { font-weight: 700; color: var(--rx-ink); }
+/* Pole bez wartości w podsumowaniu zwiniętej karty: sama nazwa pola, w
+   kursywie i wyblakła — nie da się jej pomylić z wartością (wartości są
+   w zwykłym kroju i kolorze tekstu). Ten sam znacznik buduje PHP i JS. */
+.pre-page .pre-sum-missing {
+    font-style: italic;
+    font-weight: 400;
+    /* O ton ciemniejszy niż --rx-faint (#9aa5b1, ~2,5:1 na bieli), żeby
+       nazwa brakującego pola była czytelna; nadal wyraźnie jaśniejsza od
+       wartości (--rx-ink-2). */
+    color: #7b8794;
+}
+/* Kropka statusu w podsumowaniu (jak kropka w przełączniku Status). */
+.pre-page .pre-sum-dot {
+    display: inline-block;
+    width: .5rem;
+    height: .5rem;
+    margin-right: .45rem;
+    border-radius: 50%;
+    background: #8a96a3;
+    vertical-align: .05em;
+}
+.pre-page .pre-sum-dot.is-on { background: #28a745; }
+
+@supports selector(:has(a)) {
+    /* Podsumowanie tylko przy zwiniętej karcie. */
+    .pre-page .pre-card-summary { display: none; }
+    .pre-page .pre-card:has(> .pre-card-toggle-h > .collapsed) > .pre-card-summary { display: block; }
+
+    /* Zwinięta karta = nagłówek + podsumowanie. Nagłówek ma wtedy mniej
+       dolnego odstępu (podsumowanie siedzi tuż pod tytułem), a podświetlenie
+       po najechaniu obejmuje całą kartę, nie sam pasek nagłówka. */
+    .pre-page .pre-card:has(> .pre-card-toggle-h > .collapsed) .pre-card-head--toggle {
+        padding-bottom: .25rem;
+    }
+    .pre-page .pre-card:has(> .pre-card-toggle-h > .collapsed) .pre-card-head--toggle:hover {
+        background: transparent;
+    }
+    .pre-page .pre-card:has(> .pre-card-toggle-h > .collapsed):hover {
+        background: var(--rx-hover);
+    }
+
+    /* Fokus z klawiatury obrysowuje całą kartę (jak .form-control:focus),
+       a nie sam pasek nagłówka. */
+    .pre-page .pre-card-head--toggle:focus-visible { box-shadow: none; }
+    .pre-page .pre-card:has(> .pre-card-toggle-h > .pre-card-head--toggle:focus-visible) {
+        border-color: #80bdff;
+        box-shadow: var(--rx-ring);
+    }
+}
+
+/* Pasek nad kartami: „Rozwiń wszystko" / „Zwiń wszystko", po prawej. */
+.pre-page .pre-form-tools {
+    display: flex;
+    justify-content: flex-end;
+    margin: 0 0 .5rem;
+}
+.pre-page .pre-form-tools .rx-link-btn .bi { margin-right: .25rem; }
+
+/* Przypis o polach wymaganych (na dole karty „Dane podstawowe"). */
+.pre-page .pre-required-note { margin-top: .9rem; }
+
+/* Karta „Status": przełącznik z lewej, objaśnienie obok (zawija się
+   pod spód na wąskich ekranach). */
+.pre-page .pre-status-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .75rem 1.25rem;
+}
+.pre-page .pre-status-row .pre-help {
+    flex: 1 1 16rem;
+    margin: 0;
+}
+
+/* Siatka pól: 12 kolumn, pola rozciągają się wg klasy modyfikatora. */
+.pre-page .pre-grid {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: .95rem 1.25rem;
+}
+.pre-page .pre-field { grid-column: span 12; min-width: 0; }
+
+.pre-page .pre-fieldset {
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+.pre-page .pre-label {
+    display: block;
+    margin: 0 0 .35rem;
+    padding: 0;
+    font-size: .68rem;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--rx-muted);
+}
+.pre-page .pre-required { color: #dc3545; }
+.pre-page .pre-help {
+    margin: .35rem 0 0;
+    font-size: .78rem;
+    line-height: 1.4;
+    color: var(--rx-faint);
+}
+
+/* Kontrolki formularza w kolorze i wysokości reszty strony.
+   Uwaga na pułapkę `em`: --rx-ctl-h liczy się względem font-size
+   SAMEGO elementu. .form-control ma tu .875rem, więc wylicza się
+   21 + 8 + 2 = 31 px. Każda kontrolka na stronie musi mieć taki sam
+   font-size, inaczej wysokość by się rozjechała (patrz .pre-seg). */
+.pre-page .form-control {
+    height: var(--rx-ctl-h);
+    padding: .3rem .65rem;
+    border: 1px solid var(--rx-line);
+    border-radius: .25rem;
+    background: #fff;
+    color: var(--rx-ink);
+    font-size: .875rem;
+}
+.pre-page .form-control:focus {
+    border-color: #80bdff;
+    box-shadow: var(--rx-ring);
+}
+.pre-page textarea.form-control { height: auto; }
+.pre-page .form-control::placeholder { color: #b6bfca; }
+
+
+/* ---- Przełącznik statusu (dwa radio, jeden włączony) ---------------
+   Status producenta to jedna wartość (aktywny albo nie), więc jest parą
+   radio. Wygląda jak segment (.rx-seg) z zaznaczoną opcją w jej własnym
+   odcieniu, a radio pozostaje prawdziwym inputem (name="isActive",
+   wartości 1/0) — kontrakt zapisu bez zmian.
+
+   font-size: .875rem — bez tego segment dziedziczyłby 16 px z body
+   i --rx-ctl-h policzyłoby mu 34 px zamiast 31 px (patrz .form-control). */
+
+.pre-page .pre-seg {
+    display: inline-flex;
+    align-items: stretch;
+    gap: 2px;
+    height: var(--rx-ctl-h);
+    padding: 2px;
+    background: #fff;
+    border: 1px solid var(--rx-line);
+    border-radius: .25rem;
+    font-size: .875rem;
+}
+
+/* Odcienie semantyczne opcji: „Aktywny" to rodzina zielona,
+   „Nieaktywny" — szara. Klasa opisuje ZNACZENIE opcji, a nie to, czy jest
+   zaznaczona — zaznaczenie opisuje wyłącznie :checked. Dzięki temu
+   kropka nigdy nie przeczy wyborowi. */
+.pre-page .pre-seg-face--active {
+    --pre-tone: #28a745;      /* mocny odcień: kropka i obwódka */
+    --pre-tone-soft: #eef8f1; /* tło włączonej opcji */
+    --pre-tone-ink: #1b6e30;  /* czytelny tekst na jasnym tle */
+}
+.pre-page .pre-seg-face--inactive {
+    --pre-tone: #8a96a3;
+    --pre-tone-soft: #f3f5f8;
+    --pre-tone-ink: #495057;
+}
+
+.pre-page .pre-seg-item {
+    position: relative;
+    display: inline-flex;
+}
+.pre-page .pre-seg-item input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: 0;
+    opacity: 0;
+}
+.pre-page .pre-seg-face {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    padding: 0 .85rem;
+    border: 1px solid transparent;
+    border-radius: .18rem;
+    background: transparent;
+    color: var(--rx-ink-2);
+    font-size: .8rem;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color .12s ease, border-color .12s ease, color .12s ease;
+}
+.pre-page .pre-seg-item:hover .pre-seg-face { background: var(--rx-line-soft); }
+/* Włączona opcja: miękkie tło w jej odcieniu + obwódka w mocnym
+   odcieniu + ciemny, czytelny tekst w tym samym odcieniu. */
+.pre-page .pre-seg-item input:checked + .pre-seg-face {
+    background: var(--pre-tone-soft);
+    border-color: var(--pre-tone);
+    color: var(--pre-tone-ink);
+}
+.pre-page .pre-seg-item input:focus-visible + .pre-seg-face {
+    box-shadow: var(--rx-ring);
+}
+/* Kropka zawsze w odcieniu swojej opcji: niewybrana — przygaszona
+   (ledwie podpowiedź), wybrana — pełna. */
+.pre-page .pre-seg-dot {
+    width: .5rem;
+    height: .5rem;
+    border-radius: 50%;
+    background: var(--pre-tone, #adb5bd);
+    opacity: .45;
+    flex-shrink: 0;
+    transition: opacity .12s ease;
+}
+.pre-page .pre-seg-item input:checked + .pre-seg-face .pre-seg-dot { opacity: 1; }
+
+
+/* ---- Pasek zapisu pod kartami --------------------------------------- */
+
+.pre-page .pre-panel-foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem 1rem;
+    padding: .85rem 1.25rem;
+    border: 1px solid var(--rx-line);
+    border-radius: var(--rx-radius);
+    background: var(--rx-canvas);
+}
+.pre-page .pre-foot-hint {
+    font-size: .8rem;
+    color: var(--rx-muted);
+}
+.pre-page .pre-foot-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .5rem;
+}
+/* Przycisk zapisu startuje wyłączony (formularz jest „czysty").
+   Wyłączony wygląda świadomie wyłączony, nie jak zepsuty. */
+.pre-page .pre-save-btn:disabled {
+    background: var(--rx-line-soft);
+    border-color: var(--rx-line);
+    color: var(--rx-faint);
+    box-shadow: none;
+    opacity: 1;
+}
+
+
+/* ---- Modal artykułów -------------------------------------------------
+   Szyty w tym samym języku co .vxe-modal (edycja dostawcy), .dx-modal i
+   .cx-modal: biała treść, ramka 1px, promień .6rem, płótnowy nagłówek z
+   linią, miękki cień. Zmienne --rx-* dziedziczone są z .rx-page, bo modal
+   stoi w jego wnętrzu. */
+
+.pre-modal .modal-dialog {
+    /* Bootstrap daje .modal-dialog margines 1.75rem nad i pod (≥576px)
+       oraz .5rem na telefonie. Wysokość musi uwzględniać te marginesy,
+       inaczej dolna krawędź modala (stopka z przyciskiem Zamknij)
+       wychodzi poza ekran. */
+    height: calc(100vh - 3.5rem);
+    max-height: calc(100vh - 3.5rem);
+}
+@media (max-width: 575.98px) {
+    .pre-modal .modal-dialog {
+        height: calc(100vh - 1rem);
+        max-height: calc(100vh - 1rem);
+    }
+}
+.pre-modal .modal-content {
+    max-height: 100%;
+    border: 1px solid var(--rx-line);
+    border-radius: .6rem;
+    box-shadow: 0 1rem 2.5rem rgba(16, 24, 40, .18);
+    overflow: hidden;
+}
+.pre-modal .modal-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: .9rem 1.25rem;
+    background: var(--rx-canvas);
+    border-bottom: 1px solid var(--rx-line);
+}
+.pre-modal .modal-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--rx-ink);
+}
+.pre-modal .modal-title .bi { margin-right: .35rem; color: var(--rx-muted); }
+.pre-modal .pre-modal-head-right {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    margin-left: auto;
+}
+.pre-modal .pre-modal-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: .1rem .6rem;
+    border: 1px solid var(--rx-line);
+    border-radius: 999px;
+    background: #fff;
+    color: var(--rx-ink-2);
+    font-size: .72rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.pre-modal .modal-body {
+    padding: 1rem 1.25rem 1.25rem;
+    color: var(--rx-ink-2);
+    overflow-y: auto;
+}
+.pre-modal .modal-footer {
+    padding: .75rem 1.25rem;
+    background: #fff;
+    border-top: 1px solid var(--rx-line);
+}
+.pre-modal .modal-footer .btn { font-weight: 600; }
+
+.pre-page .pre-table-note {
+    margin: 0 0 .85rem;
+    font-size: .8rem;
+    color: var(--rx-muted);
+}
+
+
+/* ---- Tabela artykułów (podgląd w modalu) ----------------------------
+   Przeniesione z dawnego bloku <style> widoku (.pr-pack-badge,
+   .pr-vp-comment, tr.pr-vp-row--inactive, kolumna ID) i ubrane w ten
+   sam wygląd, co tabela artykułów w modalu dostawcy. Nazwy klas
+   .pr-* zostają — to kontrakt widoku i skryptu. */
+
+.pre-page .pr-vp-sub {
+    display: block;
+    font-size: .74rem;
+    color: var(--rx-muted);
+}
+.pre-page .pr-vp-code {
+    font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: .82rem;
+    font-weight: 600;
+    color: var(--rx-ink);
+}
+/* Komentarz artykułu: ikona + treść ucięta (pełna w title). */
+.pre-page .pr-vp-comment {
+    display: inline-block;
+    max-width: 22rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: .8rem;
+    font-style: italic;
+    color: var(--rx-muted);
+    vertical-align: middle;
+}
+.pre-page .pr-vp-comment .bi { font-style: normal; color: var(--rx-faint); }
+/* Opakowania: małe, ciche plakietki (jak na liście artykułów). */
+.pre-page .pr-pack-badge {
+    display: inline-block;
+    padding: .15rem .45rem;
+    margin: 0 .2rem .15rem 0;
+    background: var(--rx-line-soft);
+    color: var(--rx-ink-2);
+    border-radius: .25rem;
+    font-size: .75rem;
+    font-weight: 600;
+    line-height: 1.4;
+    font-variant-numeric: tabular-nums;
+}
+/* ID w kolumnie z cyframi o stałej szerokości. */
+.pre-page #prVpTable td.pr-vp-col-id,
+.pre-page #prVpTable th.pr-vp-col-id {
+    font-variant-numeric: tabular-nums;
+    color: var(--rx-faint);
+}
+/* Nieaktywne wiersze: cichy, lekko zszarzały wiersz z szarą krawędzią
+   po lewej — ten sam język co na listach dostawców i artykułów. */
+.pre-page #prVpTable tr.pr-vp-row--inactive { color: var(--rx-muted); }
+.pre-page #prVpTable tr.pr-vp-row--inactive > td { background: var(--rx-canvas); }
+.pre-page #prVpTable tr.pr-vp-row--inactive:hover > td { background: #f0f3f7; }
+.pre-page #prVpTable tr.pr-vp-row--inactive > td:first-child {
+    box-shadow: inset 3px 0 0 #cfd8e3;
+}
+
+
+/* ---- Pusty stan ------------------------------------------------------ */
+/* W modalu pusty stan nie może zajmować half strony. */
+.pre-page .rx-empty--compact { padding: 1.6rem 1.25rem; }
+.pre-page .rx-empty--compact .rx-empty-icon {
+    width: 2.6rem;
+    height: 2.6rem;
+    font-size: 1.15rem;
+    margin-bottom: .5rem;
+}
+.pre-page .rx-empty--compact .rx-empty-title { font-size: .95rem; }
+.pre-page .rx-empty--compact .rx-empty-text { font-size: .84rem; }
+
+
+/* ---- Wąskie ekrany --------------------------------------------------- */
+
+@media (max-width: 575.98px) {
+    .pre-page .pre-card-head,
+    .pre-page .pre-card-body,
+    .pre-page .pre-panel-foot { padding-left: .9rem; padding-right: .9rem; }
+    /* Nagłówek karty to jeden rząd: ikona, tekst (tytuł i opis mogą się
+       zawinąć), a po prawej strzałka. Podsumowanie zawija się do dwóch
+       linii zamiast ucinać wielokropkiem i wcina pod tytuł (ikona 2.1rem
+       + .7rem). */
+    .pre-page .pre-card-head { gap: .5rem .7rem; }
+    .pre-page .pre-card-head--toggle { flex-wrap: nowrap; }
+    .pre-page .pre-card-text { flex: 1 1 0; }
+    .pre-page .pre-card-aside { margin-left: auto; gap: .45rem; }
+    .pre-page .pre-card-summary {
+        padding-left: calc(.9rem + 2.1rem + .7rem);
+        padding-right: .9rem;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+    .pre-page .pre-form-tools { justify-content: flex-start; }
+    .pre-page .pre-head-links { width: 100%; }
+    .pre-page .pre-rel-btn { flex: 1 1 auto; }
+    .pre-page .pre-panel-foot { flex-direction: column; align-items: stretch; }
+    .pre-page .pre-foot-actions { justify-content: stretch; }
+    .pre-page .pre-foot-actions .btn { flex: 1 1 auto; }
+    .pre-page .pre-seg { width: 100%; }
+    .pre-page .pre-seg-item { flex: 1 1 0; }
+    .pre-page .pre-seg-face { justify-content: center; width: 100%; }
+    .pre-modal .modal-header { flex-wrap: wrap; }
+    .pre-modal .pre-modal-head-right { margin-left: 0; }
+    /* Tabela artykułów w modalu: komentarz nie rozpycha wiersza. */
+    .pre-page .pr-vp-comment { max-width: 14rem; }
+}
