@@ -1,0 +1,594 @@
+/* Edycja / dodawanie artykułu u dostawcy — /admin/purchase/vendor-parts/edit.
+
+   To jest świadoma KOPIA systemu kart ze stron edycji dostawcy
+   (Vendors/edit/vendor-edit-ui.css) i producenta
+   (Producers/edit/producer-edit-ui.css), a nie wspólny arkusz: karty
+   wciąż są dopracowywane, a wyciągnięcie ich do wspólnego pliku
+   zamroziłoby ruchomy projekt i wymusiło zmianę nazw klas na stronach,
+   które są już zatwierdzone. Kopia ma pozostać wierna — wszystkie trzy
+   strony mają wyglądać identycznie. Zmiana wyglądu kart dostawcy =
+   ta sama zmiana tutaj.
+
+   Prefiks klas: `vpe-` (vendor-part-edit). `vpx-` zajmuje lista
+   artykułów (vendor-parts-ui.css), `vxe-` — edycja dostawcy, `pre-` —
+   edycja producenta. Klasy .vp-pack-row / .vp-pack-remove / .vp-pack-help
+   zostają bez zmian, bo używa ich vendor-part-edit-view.js.
+
+   Baza wyglądu to receipts-ui.css (wczytywany przed tym plikiem, bez
+   zmian): .rx-page, .rx-head + .rx-eyebrow/.rx-title/.rx-lead, .rx-crumbs,
+   .rx-panel, .rx-count, .rx-empty, .rx-btn-quiet, .rx-alerts,
+   .rx-link-btn, .rx-picker-btn. Ten plik dokłada tylko to, czego w bazie
+   nie ma — wszystko pod .vpe-page. */
+
+
+/* ---- Kolumna strony --------------------------------------------------
+   Cała strona (okruszki, nagłówek, karty, pasek zapisu) stoi w jednej
+   kolumnie o szerokości 75%, wyśrodkowanej. Poniżej 992px kolumna zajmuje
+   całą szerokość, bo 75% telefonu to za mało na pola formularza. */
+
+.vpe-page .vpe-column {
+    width: 75%;
+    margin: 0 auto;
+}
+@media (max-width: 991.98px) {
+    .vpe-page .vpe-column { width: 100%; }
+}
+
+
+/* ---- Nagłówek strony ------------------------------------------------ */
+
+.vpe-page .vpe-head-links {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .5rem;
+}
+/* Tekst nagłówka zajmuje wolne miejsce, a krótszy opis pozwala mu
+   zmieścić się obok skrótów — bez tego spadałyby pod lead. */
+.vpe-page .rx-head-main { flex: 1 1 22rem; min-width: 0; }
+.vpe-page .rx-head .rx-lead { max-width: 34rem; }
+
+/* Id artykułu jako cichy znacznik obok skrótów. */
+.vpe-page .vpe-head-id {
+    font-variant-numeric: tabular-nums;
+}
+
+/* Skróty do karty dostawcy i producenta: ciche przyciski drugiego planu
+   (to tylko przejścia, nie akcje strony). font-size ustawiony wprost,
+   żeby wysokość nie zależała od body. */
+.vpe-page .vpe-rel-link {
+    padding: .3rem .7rem;
+    font-size: .82rem;
+    white-space: nowrap;
+}
+.vpe-page .vpe-rel-link .bi { margin-right: .2rem; color: var(--rx-muted); }
+
+
+/* ---- Karty formularza ----------------------------------------------
+   Każda grupa pól to osobna karta: ramka (.rx-panel), nagłówek z ikoną,
+   wersalikowym tytułem i jednym zdaniem opisu, pod spodem pola.
+   overflow: visible jak w karcie dostawcy (menu pickerów musi wyjść
+   poza kartę); .rx-panel ma domyślnie overflow: hidden. Nagłówek sam
+   pilnuje zaokrąglenia górnych narożników. */
+
+.vpe-page .vpe-panel { margin-bottom: 1rem; }
+.vpe-page .vpe-panel:last-child { margin-bottom: 0; }
+.vpe-page .vpe-card { overflow: visible; }
+
+.vpe-page .vpe-card-head {
+    display: flex;
+    align-items: center;
+    gap: .85rem;
+    padding: .85rem 1.25rem;
+    border-bottom: 1px solid var(--rx-line-soft);
+    border-radius: calc(var(--rx-radius) - 1px) calc(var(--rx-radius) - 1px) 0 0;
+}
+.vpe-page .vpe-card-icon {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.1rem;
+    height: 2.1rem;
+    border-radius: .5rem;
+    background: var(--rx-accent-soft);
+    color: var(--rx-accent-ink);
+    font-size: 1rem;
+}
+.vpe-page .vpe-card-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: .1rem;
+}
+.vpe-page .vpe-card-desc {
+    margin: 0;
+    font-size: .82rem;
+    line-height: 1.35;
+    font-weight: 400;
+    color: var(--rx-muted);
+}
+.vpe-page .vpe-card-aside {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: .6rem;
+    margin-left: auto;
+}
+.vpe-page .vpe-card-body { padding: 1.15rem 1.25rem 1.25rem; }
+
+/* Mały wersalikowy tytuł karty. W nagłówku karty jest ciemniejszy i
+   bez dolnego marginesu — tytuł niesie hierarchię, opis jest pod nim. */
+.vpe-page .vpe-section-label {
+    margin: 0 0 .9rem;
+    font-size: .68rem;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--rx-muted);
+}
+.vpe-page .vpe-card-head .vpe-section-label {
+    display: block;
+    margin: 0;
+    font-size: .74rem;
+    color: var(--rx-ink);
+}
+
+/* Wszystkie karty: nagłówek jest przyciskiem zwijania. Reset przycisku,
+   a linia pod nagłówkiem pojawia się dopiero, gdy karta jest rozwinięta
+   (zwinięta karta to pasek z podsumowaniem, bez wiszącej linii).
+
+   Dwa stany karty, oba sterowane klasą `collapsed`, którą Bootstrap sam
+   przełącza na przycisku:
+     zwinięta   → widać linijkę podsumowania, opis ukryty,
+     rozwinięta → widać opis i pola, podsumowanie ukryte.
+   Opis chowa zwykły selektor potomka (.collapsed .vpe-card-desc).
+   Podsumowanie leży POZA przyciskiem, więc do jego ukrycia trzeba
+   :has() na karcie — przeglądarki bez :has() (@supports) dostają obie
+   linijki naraz, co jest tylko mało eleganckie, nie zepsute. */
+.vpe-page .vpe-card-toggle-h { margin: 0; font-size: inherit; }
+.vpe-page .vpe-card-head--toggle {
+    width: 100%;
+    border-top: 0;
+    border-right: 0;
+    border-left: 0;
+    background: transparent;
+    color: var(--rx-ink);
+    text-align: left;
+    cursor: pointer;
+    transition: background-color .12s ease;
+}
+.vpe-page .vpe-card-head--toggle:hover { background: var(--rx-hover); }
+/* Fokus: bez obwódki po kliknięciu myszą (przycisk zostaje z fokusem
+   i rysował niebieską ramkę tylko wokół nagłówka). Obwódka tylko przy
+   nawigacji klawiaturą (:focus-visible) — i wokół CAŁEJ karty, patrz
+   blok @supports niżej. Ten wpis to zapas dla przeglądarek bez :has(). */
+.vpe-page .vpe-card-head--toggle:focus { outline: none; box-shadow: none; }
+.vpe-page .vpe-card-head--toggle:focus-visible { box-shadow: inset var(--rx-ring); }
+.vpe-page .vpe-card-head--toggle.collapsed {
+    border-bottom-color: transparent;
+    border-radius: calc(var(--rx-radius) - 1px);
+}
+.vpe-page .vpe-card-chevron {
+    color: var(--rx-faint);
+    transition: transform .2s ease;
+}
+.vpe-page .vpe-card-head--toggle:not(.collapsed) .vpe-card-chevron { transform: rotate(180deg); }
+
+/* Zwinięta karta: opis znika (zostaje tytuł + podsumowanie pod spodem). */
+.vpe-page .vpe-card-head--toggle.collapsed .vpe-card-desc { display: none; }
+
+/* Linijka podsumowania zwiniętej karty — tylko do odczytu, wcięta pod
+   tytuł (ikona 2.1rem + odstęp .85rem), jedna linia z wielokropkiem;
+   pełny tekst jest w atrybucie title. Kliknięcie w nią też rozwija kartę
+   (JS) — cała zwinięta karta jest jednym dużym celem. */
+.vpe-page .vpe-card-summary {
+    margin: 0;
+    padding: 0 1.25rem .9rem calc(1.25rem + 2.1rem + .85rem);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: .84rem;
+    line-height: 1.4;
+    color: var(--rx-ink-2);
+    cursor: pointer;
+}
+.vpe-page .vpe-card-summary strong { font-weight: 700; color: var(--rx-ink); }
+/* Pole bez wartości w podsumowaniu zwiniętej karty: sama nazwa pola, w
+   kursywie i wyblakła — nie da się jej pomylić z wartością (wartości są
+   w zwykłym kroju i kolorze tekstu). Ten sam znacznik buduje PHP i JS. */
+.vpe-page .vpe-sum-missing {
+    font-style: italic;
+    font-weight: 400;
+    /* O ton ciemniejszy niż --rx-faint (#9aa5b1, ~2,5:1 na bieli), żeby
+       nazwa brakującego pola była czytelna; nadal wyraźnie jaśniejsza od
+       wartości (--rx-ink-2). */
+    color: #7b8794;
+}
+/* Klucz przed wartością w podsumowaniu („dostawca TME") — drobny,
+   cienki i blady, żeby był podpowiedzią, a nie treścią. Prosty krój (nie
+   kursywa) i mniejszy rozmiar, więc nie myli się z nazwą pustego pola
+   (.vpe-sum-missing), która ma pełny rozmiar i kursywę. */
+.vpe-page .vpe-sum-key {
+    font-size: .7rem;
+    font-weight: 400;
+    color: var(--rx-faint);
+}
+/* Kropka statusu w podsumowaniu (jak kropka w przełączniku Status). */
+.vpe-page .vpe-sum-dot {
+    display: inline-block;
+    width: .5rem;
+    height: .5rem;
+    margin-right: .45rem;
+    border-radius: 50%;
+    background: #8a96a3;
+    vertical-align: .05em;
+}
+.vpe-page .vpe-sum-dot.is-on { background: #28a745; }
+
+@supports selector(:has(a)) {
+    /* Podsumowanie tylko przy zwiniętej karcie. */
+    .vpe-page .vpe-card-summary { display: none; }
+    .vpe-page .vpe-card:has(> .vpe-card-toggle-h > .collapsed) > .vpe-card-summary { display: block; }
+
+    /* Zwinięta karta = nagłówek + podsumowanie. Nagłówek ma wtedy mniej
+       dolnego odstępu (podsumowanie siedzi tuż pod tytułem), a podświetlenie
+       po najechaniu obejmuje całą kartę, nie sam pasek nagłówka. */
+    .vpe-page .vpe-card:has(> .vpe-card-toggle-h > .collapsed) .vpe-card-head--toggle {
+        padding-bottom: .25rem;
+    }
+    .vpe-page .vpe-card:has(> .vpe-card-toggle-h > .collapsed) .vpe-card-head--toggle:hover {
+        background: transparent;
+    }
+    .vpe-page .vpe-card:has(> .vpe-card-toggle-h > .collapsed):hover {
+        background: var(--rx-hover);
+    }
+
+    /* Fokus z klawiatury obrysowuje całą kartę (jak .form-control:focus),
+       a nie sam pasek nagłówka. */
+    .vpe-page .vpe-card-head--toggle:focus-visible { box-shadow: none; }
+    .vpe-page .vpe-card:has(> .vpe-card-toggle-h > .vpe-card-head--toggle:focus-visible) {
+        border-color: #80bdff;
+        box-shadow: var(--rx-ring);
+    }
+}
+
+/* Pasek nad kartami: „Rozwiń wszystko" / „Zwiń wszystko", po prawej. */
+.vpe-page .vpe-form-tools {
+    display: flex;
+    justify-content: flex-end;
+    margin: 0 0 .5rem;
+}
+.vpe-page .vpe-form-tools .rx-link-btn .bi { margin-right: .25rem; }
+
+/* Przypis o polach wymaganych (na dole kart z polami wymaganymi). */
+.vpe-page .vpe-required-note { margin-top: .9rem; }
+
+/* Karta „Status": przełącznik z lewej, objaśnienie obok (zawija się
+   pod spód na wąskich ekranach). */
+.vpe-page .vpe-status-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .75rem 1.25rem;
+}
+.vpe-page .vpe-status-row .vpe-help {
+    flex: 1 1 16rem;
+    margin: 0;
+}
+
+/* Siatka pól: 12 kolumn, pola rozciągają się wg klasy modyfikatora. */
+.vpe-page .vpe-grid {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: .95rem 1.25rem;
+}
+.vpe-page .vpe-field { grid-column: span 12; min-width: 0; }
+.vpe-page .vpe-field--4 { grid-column: span 4; }
+.vpe-page .vpe-field--6 { grid-column: span 6; }
+.vpe-page .vpe-field--12 { grid-column: span 12; }
+@media (max-width: 991.98px) {
+    .vpe-page .vpe-field--4 { grid-column: span 6; }
+}
+@media (max-width: 575.98px) {
+    .vpe-page .vpe-field--4,
+    .vpe-page .vpe-field--6 { grid-column: span 12; }
+}
+
+.vpe-page .vpe-fieldset {
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+.vpe-page .vpe-label {
+    display: block;
+    margin: 0 0 .35rem;
+    padding: 0;
+    font-size: .68rem;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--rx-muted);
+}
+.vpe-page .vpe-required { color: #dc3545; }
+.vpe-page .vpe-help {
+    margin: .35rem 0 0;
+    font-size: .78rem;
+    line-height: 1.4;
+    color: var(--rx-faint);
+}
+
+/* Kontrolki formularza w kolorze i wysokości reszty strony.
+   Uwaga na pułapkę `em`: --rx-ctl-h liczy się względem font-size
+   SAMEGO elementu. .form-control ma tu .875rem, więc wylicza się
+   21 + 8 + 2 = 31 px. Każda kontrolka na stronie musi mieć taki sam
+   font-size, inaczej wysokość by się rozjechała (patrz .vpe-seg,
+   .rx-picker-btn, przycisk usuwania opakowania). */
+.vpe-page .form-control {
+    height: var(--rx-ctl-h);
+    padding: .3rem .65rem;
+    border: 1px solid var(--rx-line);
+    border-radius: .25rem;
+    background: #fff;
+    color: var(--rx-ink);
+    font-size: .875rem;
+}
+.vpe-page .form-control:focus {
+    border-color: #80bdff;
+    box-shadow: var(--rx-ring);
+}
+.vpe-page textarea.form-control { height: auto; }
+.vpe-page .form-control::placeholder { color: #b6bfca; }
+
+
+/* ---- Pickery (część, dostawca, producent, JM) -----------------------
+   Komórka pickera. min-width: 0 — AGENTS.md: bez tego flex-item rośnie
+   do szerokości najdłuższej opcji i łamie data-width="100%".
+   Wysokość: .rx-picker-btn (receipts-ui.css) ma font-size .875rem,
+   więc --rx-ctl-h wylicza mu te same 31 px co .form-control.
+
+   Menu bootstrap-select jest doczepiane do komórki pickera
+   (data-container) i wychodzi poza kartę — dlatego .vpe-card ma
+   overflow: visible (patrz „Karty formularza"). Ten sam trik co
+   .vxe-picker na stronie dostawcy. Długi opis części (data-subtext)
+   zawija się w menu zamiast je rozpychać. */
+
+.vpe-page .vpe-picker { position: relative; min-width: 0; }
+.vpe-page .vpe-picker .bootstrap-select { min-width: 0; width: 100%; }
+.vpe-page .vpe-picker .dropdown-menu { max-width: 100%; }
+.vpe-page .vpe-picker .dropdown-menu li a { white-space: normal; }
+/* Pusty wymagany picker, który przeglądarka odrzuciła: czerwona obwódka
+   przycisku, żeby było widać, który to. Dymek walidacji pokazuje JS. */
+.vpe-page .vpe-picker.is-invalid .rx-picker-btn { border-color: #dc3545; }
+
+
+/* ---- Opakowania ------------------------------------------------------
+   Pozycje listy układają się w rzędzie i zawijają (wielkości opakowań są
+   krótkie, nie ma po co rozciągać ich na całą kolumnę). Rząd to pole
+   liczby + cichy przycisk × tej samej wysokości. Puste #vpPackList
+   (:empty — widok nie zostawia w nim białych znaków) pokazuje podpowiedź. */
+
+.vpe-page .vpe-pack-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem .75rem;
+}
+.vpe-page .vpe-pack-list:empty::before {
+    content: "Brak opakowań — lista może zostać pusta.";
+    font-size: .84rem;
+    font-style: italic;
+    color: #7b8794;
+}
+.vpe-page .vp-pack-row {
+    display: flex;
+    align-items: stretch;
+    flex: 0 1 12rem;
+    min-width: 0;
+}
+.vpe-page .vp-pack-row input[type="number"] {
+    flex: 1 1 auto;
+    min-width: 0;
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+/* Przycisk × — rx-btn-quiet, ale font-size ustawiony wprost (patrz uwaga
+   o pułapce `em` wyżej), żeby wysokość równała się polu obok. */
+.vpe-page .vp-pack-row .vp-pack-remove {
+    flex: 0 0 auto;
+    height: var(--rx-ctl-h);
+    margin-left: -1px;              /* nakłada się na prawą krawędź pola */
+    padding: 0 .6rem;
+    font-size: .875rem;
+    line-height: 1;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    color: var(--rx-muted);
+}
+.vpe-page .vp-pack-row .vp-pack-remove:hover {
+    color: #dc3545;
+    border-color: #f1b0b7;
+    background: #fff5f5;
+}
+.vpe-page .vp-pack-row .vp-pack-remove[disabled] { cursor: not-allowed; }
+/* Pole i przycisk „sklejone" — focus pola wychodzi nad przycisk. */
+.vpe-page .vp-pack-row input[type="number"]:focus { position: relative; z-index: 1; }
+
+.vpe-page .vpe-pack-tools { margin-top: .75rem; }
+.vpe-page .vpe-pack-tools .btn {
+    font-size: .82rem;
+}
+.vpe-page .vpe-pack-tools .bi { margin-right: .25rem; color: var(--rx-accent-ink); }
+
+.vpe-page .vp-pack-help {
+    margin: .75rem 0 0;
+    font-size: .78rem;
+    line-height: 1.45;
+    color: var(--rx-muted);
+}
+.vpe-page .vp-pack-help code {
+    padding: .05rem .3rem;
+    border-radius: .2rem;
+    background: var(--rx-line-soft);
+    color: var(--rx-ink-2);
+    font-size: .76rem;
+}
+.vpe-page .vp-pack-help strong { font-weight: 600; color: var(--rx-ink-2); }
+
+
+/* ---- Przełącznik statusu (dwa radio, jeden włączony) ---------------
+   Status artykułu to jedna wartość (aktywny albo nie), więc jest parą
+   radio. Wygląda jak segment (.rx-seg) z zaznaczoną opcją w jej własnym
+   odcieniu, a radio pozostaje prawdziwym inputem (name="isActive",
+   wartości 1/0) — kontrakt zapisu bez zmian.
+
+   font-size: .875rem — bez tego segment dziedziczyłby 16 px z body
+   i --rx-ctl-h policzyłoby mu 34 px zamiast 31 px (patrz .form-control). */
+
+.vpe-page .vpe-seg {
+    display: inline-flex;
+    align-items: stretch;
+    gap: 2px;
+    height: var(--rx-ctl-h);
+    padding: 2px;
+    background: #fff;
+    border: 1px solid var(--rx-line);
+    border-radius: .25rem;
+    font-size: .875rem;
+}
+
+/* Odcienie semantyczne opcji: „Aktywny" to rodzina zielona,
+   „Nieaktywny" — szara. Klasa opisuje ZNACZENIE opcji, a nie to, czy jest
+   zaznaczona — zaznaczenie opisuje wyłącznie :checked. Dzięki temu
+   kropka nigdy nie przeczy wyborowi. */
+.vpe-page .vpe-seg-face--active {
+    --vpe-tone: #28a745;      /* mocny odcień: kropka i obwódka */
+    --vpe-tone-soft: #eef8f1; /* tło włączonej opcji */
+    --vpe-tone-ink: #1b6e30;  /* czytelny tekst na jasnym tle */
+}
+.vpe-page .vpe-seg-face--inactive {
+    --vpe-tone: #8a96a3;
+    --vpe-tone-soft: #f3f5f8;
+    --vpe-tone-ink: #495057;
+}
+
+.vpe-page .vpe-seg-item {
+    position: relative;
+    display: inline-flex;
+}
+.vpe-page .vpe-seg-item input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: 0;
+    opacity: 0;
+}
+.vpe-page .vpe-seg-face {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    padding: 0 .85rem;
+    border: 1px solid transparent;
+    border-radius: .18rem;
+    background: transparent;
+    color: var(--rx-ink-2);
+    font-size: .8rem;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color .12s ease, border-color .12s ease, color .12s ease;
+}
+.vpe-page .vpe-seg-item:hover .vpe-seg-face { background: var(--rx-line-soft); }
+/* Włączona opcja: miękkie tło w jej odcieniu + obwódka w mocnym
+   odcieniu + ciemny, czytelny tekst w tym samym odcieniu. */
+.vpe-page .vpe-seg-item input:checked + .vpe-seg-face {
+    background: var(--vpe-tone-soft);
+    border-color: var(--vpe-tone);
+    color: var(--vpe-tone-ink);
+}
+.vpe-page .vpe-seg-item input:focus-visible + .vpe-seg-face {
+    box-shadow: var(--rx-ring);
+}
+/* Kropka zawsze w odcieniu swojej opcji: niewybrana — przygaszona
+   (ledwie podpowiedź), wybrana — pełna. */
+.vpe-page .vpe-seg-dot {
+    width: .5rem;
+    height: .5rem;
+    border-radius: 50%;
+    background: var(--vpe-tone, #adb5bd);
+    opacity: .45;
+    flex-shrink: 0;
+    transition: opacity .12s ease;
+}
+.vpe-page .vpe-seg-item input:checked + .vpe-seg-face .vpe-seg-dot { opacity: 1; }
+
+
+/* ---- Pasek zapisu pod kartami --------------------------------------- */
+
+.vpe-page .vpe-panel-foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem 1rem;
+    padding: .85rem 1.25rem;
+    border: 1px solid var(--rx-line);
+    border-radius: var(--rx-radius);
+    background: var(--rx-canvas);
+}
+.vpe-page .vpe-foot-hint {
+    font-size: .8rem;
+    color: var(--rx-muted);
+}
+.vpe-page .vpe-foot-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .5rem;
+}
+/* Przycisk zapisu startuje wyłączony (formularz jest „czysty").
+   Wyłączony wygląda świadomie wyłączony, nie jak zepsuty. */
+.vpe-page .vpe-save-btn:disabled {
+    background: var(--rx-line-soft);
+    border-color: var(--rx-line);
+    color: var(--rx-faint);
+    box-shadow: none;
+    opacity: 1;
+}
+
+
+/* ---- Wąskie ekrany --------------------------------------------------- */
+
+@media (max-width: 575.98px) {
+    .vpe-page .vpe-card-head,
+    .vpe-page .vpe-card-body,
+    .vpe-page .vpe-panel-foot { padding-left: .9rem; padding-right: .9rem; }
+    /* Nagłówek karty to jeden rząd: ikona, tekst (tytuł i opis mogą się
+       zawinąć), a po prawej strzałka. Podsumowanie zawija się do dwóch
+       linii zamiast ucinać wielokropkiem i wcina pod tytuł (ikona 2.1rem
+       + .7rem). */
+    .vpe-page .vpe-card-head { gap: .5rem .7rem; }
+    .vpe-page .vpe-card-head--toggle { flex-wrap: nowrap; }
+    .vpe-page .vpe-card-text { flex: 1 1 0; }
+    .vpe-page .vpe-card-aside { margin-left: auto; gap: .45rem; }
+    .vpe-page .vpe-card-summary {
+        padding-left: calc(.9rem + 2.1rem + .7rem);
+        padding-right: .9rem;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+    .vpe-page .vpe-form-tools { justify-content: flex-start; }
+    .vpe-page .vpe-head-links { width: 100%; }
+    .vpe-page .vpe-head-links .vpe-rel-link { flex: 1 1 auto; text-align: center; }
+    .vpe-page .vpe-panel-foot { flex-direction: column; align-items: stretch; }
+    .vpe-page .vpe-foot-actions { justify-content: stretch; }
+    .vpe-page .vpe-foot-actions .btn { flex: 1 1 auto; }
+    .vpe-page .vpe-seg { width: 100%; }
+    .vpe-page .vpe-seg-item { flex: 1 1 0; }
+    .vpe-page .vpe-seg-face { justify-content: center; width: 100%; }
+    /* Opakowania: jedno pole w rzędzie na całą szerokość karty, a przycisk
+       „Dodaj" tak samo — wygodny cel dla palca. */
+    .vpe-page .vp-pack-row { flex: 1 1 100%; }
+    .vpe-page .vp-pack-row .vp-pack-remove { padding: 0 .85rem; }
+    .vpe-page .vpe-pack-tools .btn { width: 100%; }
+}
