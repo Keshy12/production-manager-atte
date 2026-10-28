@@ -1153,28 +1153,68 @@ $(function () {
 
         // plPlural / plUnit / diffDaysYmd są teraz na poziomie modułu (współdzielone z krokiem 4).
 
-        // Miesiąc = 30 dni (tak samo jak szybki wybór „+1 miesiąc"). Max dwie największe jednostki.
-        function humanizeDays(n) {
-            const months = Math.floor(n / 30);
-            const weeks = Math.floor((n % 30) / 7);
-            const days = n - months * 30 - weeks * 7;
+        // Miesiąc = 30 dni (tak samo jak szybki wybór „+1 miesiąc").
+        // Linia główna zawsze w tygodniach i dniach — nigdy w miesiącach.
+        // (miesiące pojawiają się wyłącznie na drugiej, szarej linii)
+        function humanizeWeeksDays(n) {
+            const weeks = Math.floor(n / 7);
+            const days = n % 7;
             const parts = [];
-            if (months) parts.push(plUnit(months, 'miesiąc', 'miesiące', 'miesięcy'));
             if (weeks) parts.push(plUnit(weeks, 'tydzień', 'tygodnie', 'tygodni'));
-            if (days && !months) parts.push(plUnit(days, 'dzień', 'dni', 'dni'));
-            return parts.slice(0, 2).join(' i ');
+            if (days) parts.push(plUnit(days, 'dzień', 'dni', 'dni'));
+            return parts.join(' i ');
+        }
+
+        // Druga linia: miesiące + dni. Pusta, gdy nie ma pełnego miesiąca (linia się nie pokazuje).
+        function humanizeMonthsDays(n) {
+            const months = Math.floor(n / 30);
+            if (!months) return '';
+            const mdays = n % 30;
+            const parts = [];
+            parts.push(plUnit(months, 'miesiąc', 'miesiące', 'miesięcy'));
+            if (mdays) parts.push(plUnit(mdays, 'dzień', 'dni', 'dni'));
+            return parts.join(' i ');
         }
 
         function relativeHintHtml(ymd) {
-            if (!ymd) return '<span class="text-muted">nie ustawiono</span>';
+            if (!ymd) return '<span class="send-exp-rel-main text-muted">nie ustawiono</span>';
             const n = diffDaysYmd(sendBaseDateYmd(), ymd);
-            // Łączna liczba dni (z tego samego n) — tylko dla dziś/przyszłości; w „po terminie" już jest w „X temu".
-            const daysSpan = ' <span class="send-exp-rel-days">(' + plUnit(n, 'dzień', 'dni', 'dni') + ')</span>';
-            if (n === 0) return '<span class="send-exp-rel-today">dzisiaj' + daysSpan + '</span>';
-            if (n === 1) return '<span class="send-exp-rel-future">jutro' + daysSpan + '</span>';
-            if (n > 0) return '<span class="send-exp-rel-future">za ' + escapeHtml(humanizeDays(n)) + daysSpan + '</span>';
-            return '<span class="send-exp-rel-past"><i class="bi bi-exclamation-triangle"></i> po terminie ('
-                + escapeHtml(humanizeDays(-n)) + ' temu)</span>';
+            if (isNaN(n)) return '<span class="send-exp-rel-main text-muted">nie ustawiono</span>';
+
+            const abs = Math.abs(n);
+            // Miesiące + dni — druga, szara linia (tylko gdy jest pełny miesiąc).
+            const monthsTxt = humanizeMonthsDays(abs);
+            const monthsHtml = monthsTxt ? escapeHtml(monthsTxt) : '';
+            // Łączna liczba dni siedzi na dolnej, szarej linii — OBOK
+            // miesięcy, gdy są. Pomijamy ją tylko wtedy, gdy linia główna
+            // sama podaje dokładną liczbę dni („dzisiaj", „jutro",
+            // „za 3 dni") — wtedy powtórzenie byłoby szumem.
+            const showDays = (n !== 0 && n !== 1 && Math.floor(abs / 7) > 0);
+            const daysSpan = showDays
+                ? '<span class="send-exp-rel-days">(' + plUnit(abs, 'dzień', 'dni', 'dni') + ')</span>'
+                : '';
+            // Dolna linia: [miesiące + dni] [liczba dni] — obie części
+            // oddzielone spacją, gdy są obie.
+            const subHtml = monthsHtml
+                + (monthsHtml && daysSpan ? ' ' : '')
+                + daysSpan;
+
+            if (n === 0) {
+                return '<span class="send-exp-rel-main send-exp-rel-today">dzisiaj</span>';
+            }
+            if (n === 1) {
+                return '<span class="send-exp-rel-main send-exp-rel-future">jutro</span>';
+            }
+            if (n > 0) {
+                // Główna linia: zawsze tygodnie + dni. Bez miesięcy, bez liczby dni.
+                return '<span class="send-exp-rel-main send-exp-rel-future">za '
+                    + escapeHtml(humanizeWeeksDays(n)) + '</span>'
+                    + (subHtml ? '<span class="send-exp-rel-sub">' + subHtml + '</span>' : '');
+            }
+            // Po terminie — również bez miesięcy w nawiasie.
+            return '<span class="send-exp-rel-main send-exp-rel-past"><i class="bi bi-exclamation-triangle"></i> po terminie ('
+                + escapeHtml(humanizeWeeksDays(abs)) + ' temu)</span>'
+                + (subHtml ? '<span class="send-exp-rel-sub">' + subHtml + '</span>' : '');
         }
 
         // Kroki względem aktualnej daty (data-days ze znakiem). 0 = „Dziś" → zawsze data bazowa.
