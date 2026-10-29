@@ -233,6 +233,14 @@ Six scripts. All use `Atte\Utils\Locker`
   `data-container="#<parent-id>"` + `min-width: 0` on the flex
   wrapper is the answer to every picker-width issue.**
 
+- **NEVER close the user's Chrome (or any browser).** Headless/automated
+  browser runs must launch with their own `--user-data-dir` under the temp
+  dir, capture the PID they started, and kill **only that PID** (plus its
+  child tree, e.g. `taskkill /PID <pid> /T /F`). **Forbidden:** any
+  kill-by-name — `Stop-Process -Name chrome`, `Get-Process chrome | Stop-Process`,
+  `taskkill /IM chrome.exe`, `pkill chrome` — or any other command that can
+  touch browser processes you did not start yourself.
+
 ---
 
 ## Documentation map (authoritative source of truth)
