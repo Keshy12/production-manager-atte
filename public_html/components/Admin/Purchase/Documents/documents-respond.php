@@ -376,7 +376,10 @@ $itemCount        = count($items);
 
                     if ($isPo) {
                         $placeholder = $hasPrice ? 'bez zmian' : 'brak ceny — do uzupełnienia';
-                        $wasText = 'było: ' . $fmtMoney($storedPrice ?? 0);
+                        // Pozycja PO bez ceny (NULL albo 0) nie miała ceny —
+                        // nie wolno pisać "było: 0,00", bo operator musi
+                        // odróżnić "nie było ceny" od "cena wynosiła zero".
+                        $wasText = $hasPrice ? 'było: ' . $fmtMoney($storedPrice) : 'było: —';
                     } else {
                         $placeholder = 'nie wyceniono';
                         $wasText = $storedPrice === null ? 'było: nie wyceniono' : 'było: ' . $fmtMoney($storedPrice);
