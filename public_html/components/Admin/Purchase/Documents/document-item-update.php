@@ -14,11 +14,19 @@
  * po_item_id and can't be silently re-fitted to a smaller ordered
  * quantity.
  *
+ * PO price guard: a confirmed PO must always carry prices (receipts
+ * can be booked against it), so a PO in state `confirmed` may not
+ * have its line price cleared (blank → NULL). RFQ lines may always
+ * be blank ("price not set yet"), and a PO in `draft` / `sent` too.
+ *
  * Form-encoded payload (PHP $_POST):
  *   type             = 'rfq' | 'po'  (required)
  *   id               = int           (required, > 0)
  *   quantity         = float         (required, > 0)
- *   unit_price       = float         (optional, blank → NULL)
+ *   unit_price       = float         (optional, blank → NULL; for a PO
+ *                                    in state `confirmed` blank is
+ *                                    rejected — a confirmed PO must
+ *                                    always have a price)
  *   vendor_part_id   = int           (required, > 0)
  *   quantity_unit_id = int           (required, > 0)
  *   currency         = string        (default PLN)
@@ -122,6 +130,19 @@ if (!in_array($row['state'], $allowedStates, true)) {
     echo json_encode([
         'success' => false,
         'error'   => "Nie można edytować pozycji {$docLabel} w stanie: {$row['state']}.",
+    ]);
+    exit;
+}
+
+// ── PO-only price guard on a confirmed order ────────────────────────
+// A confirmed PO is a fact — receipts can be booked against it — so
+// every line must carry a price. Clearing the price field (blank →
+// NULL, i.e. "price not set yet") is allowed in `draft` / `sent`
+// (and always for RFQ), but not once the order is `confirmed`.
+if ($type === 'po' && $row['state'] === 'confirmed' && $unitPrice === null) {
+    echo json_encode([
+        'success' => false,
+        'error'   => 'Nie można wyczyścić ceny w potwierdzonym zamówieniu.',
     ]);
     exit;
 }

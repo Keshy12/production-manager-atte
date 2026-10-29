@@ -59,7 +59,7 @@ class PurchaseOrderItemRepository {
         return $result;
     }
 
-    public function create(int $poId, int $vendorPartId, float $quantity, int $quantityUnitId, float $unitPrice = 0, string $currency = 'PLN', ?string $comment = null, ?float $pickedPackSize = null): int {
+    public function create(int $poId, int $vendorPartId, float $quantity, int $quantityUnitId, ?float $unitPrice = null, string $currency = 'PLN', ?string $comment = null, ?float $pickedPackSize = null): int {
         $MsaDB = $this->MsaDB;
         if ($poId <= 0)          throw new \InvalidArgumentException("PurchaseOrderItem poId must be positive.");
         if ($vendorPartId <= 0)   throw new \InvalidArgumentException("PurchaseOrderItem vendorPartId must be positive.");
@@ -75,7 +75,7 @@ class PurchaseOrderItemRepository {
         );
     }
 
-    public function update(int $id, int $vendorPartId, float $quantity, int $quantityUnitId, float $unitPrice, string $currency, ?string $comment, ?float $pickedPackSize = null): bool {
+    public function update(int $id, int $vendorPartId, float $quantity, int $quantityUnitId, ?float $unitPrice, string $currency, ?string $comment, ?float $pickedPackSize = null): bool {
         $MsaDB = $this->MsaDB;
         if ($vendorPartId <= 0)   throw new \InvalidArgumentException("PurchaseOrderItem vendorPartId must be positive.");
         if ($quantityUnitId <= 0) throw new \InvalidArgumentException("PurchaseOrderItem quantityUnitId must be positive.");

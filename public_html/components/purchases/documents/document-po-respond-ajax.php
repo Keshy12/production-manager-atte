@@ -8,8 +8,9 @@
  *
  * Bliźniak `document-rfq-respond-ajax.php` — różnica jest jedna:
  * zamiast `responded` ustawiamy `confirmed` (zamówienie), a cena pusta
- * oznacza "zachowaj cenę istniejącą" (pozycja PO nie zna stanu
- * "niewycenione", w odróżnieniu od pozycji RFQ).
+ * oznacza "zachowaj cenę istniejącą". Pozycja PO zna stan "bez ceny"
+ * (`unit_price` IS NULL) — tak jak pozycja RFQ; potwierdzenie takiego
+ * zamówienia odrzuca bramka serwerowa (pozycje bez ceny).
  *
  * POST (form-encoded):
  *   id                int                    (wymagane, > 0)
@@ -178,8 +179,14 @@ if (isset($_POST['items']) && is_array($_POST['items']) && !empty($_POST['items'
 
         // unit_price: akceptujemy '.' albo ',' jako separator dziesiętny
         // (projekt miesza locale w inputach liczbowych). Puste/null →
-        // null (= zachowaj cenę istniejącą — pozycja PO nie zna stanu
-        // "niewycenione", więc puste NIE oznacza 0).
+        // null (= zachowaj cenę istniejącą — puste NIE oznacza 0).
+        // Uwaga: pozycja PO zna stan "bez ceny" (unit_price IS NULL), więc
+        // puste pole przy zapisanej cenie NULL nie zmienia nic, a przy
+        // takiej pozycji brak ceny zostaje w bazie — wtedy bramka
+        // potwierdzenia po stronie serwera (PurchaseActionHandler::
+        // assertPoItemsHavePrice()) odrzuci dokument z komunikatem
+        // "Zamówienie ma N pozycji bez ceny — uzupełnij ceny przed
+        // potwierdzeniem: …".
         $unitPrice = null;
         if (array_key_exists('unit_price', $raw) && $raw['unit_price'] !== null && $raw['unit_price'] !== '') {
             $priceRaw = trim((string)$raw['unit_price']);

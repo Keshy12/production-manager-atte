@@ -33,11 +33,13 @@
  *
  * Semantyka cen (ważna, nie zmieniać):
  *   - RFQ: pusta cena = pozycja niewyceniona (serwer zapisuje NULL).
- *   - PO: kolumna ceny nie jest nullable, więc PUSTE pole = "zachowaj
- *     dotychczasową cenę" — nigdy nie wysyłamy sztucznego 0.
- *   - PO: pozycja BEZ CENY (cena 0 w bazie i puste pole) BLOKUJE zapis —
- *     zamówienie w stanie "confirmed" musi mieć cenę w każdej pozycji
- *     (kontrola jest też po stronie serwera: PurchaseActionHandler).
+ *   - PO: kolumna `unit_price` jest nullable — pozycja bez ceny ma NULL.
+ *     PUSTE pole = "zachowaj dotychczasową cenę" — nigdy nie wysyłamy
+ *     sztucznego 0.
+ *   - PO: pozycja BEZ CENY (NULL albo cena <= 0 w bazie i puste pole)
+ *     BLOKUJE zapis — zamówienie w stanie "confirmed" musi mieć cenę w
+ *     każdej pozycji (kontrola jest też po stronie serwera:
+ *     PurchaseActionHandler).
  *   - Waluta zawsze ma wartość (select z zaznaczoną dotychczasową).
  *
  * Konwencje (AGENTS.md / header.js): setAlert() pisze do #alertContainer,
@@ -86,8 +88,8 @@ $(function () {
     // Cena efektywna pozycji — ta, która zostanie zapisana:
     //   RFQ — co jest w polu (puste = niewycenione → null),
     //   PO  — co jest w polu; puste pole = zachowaj cenę zapisaną w bazie.
-    //         Baza ma `unit_price` NOT NULL DEFAULT 0, więc "brak ceny"
-    //         = cena 0 (albo brak wiersza).
+    //         Baza ma `unit_price` nullable, więc "brak ceny" = NULL
+    //         (albo cena <= 0).
     function effectivePrice(r) {
         const p = parseNum(r.$price.val());
         if (p === null && IS_PO) {
@@ -156,7 +158,7 @@ $(function () {
             unit:     String($row.attr('data-asked-unit') || ''),
             pack:     parseFloat(($row.attr('data-pack') || '').replace(',', '.')) || 0,
             origQty:     parseNum($row.find('.js-qty').val()),
-            // null = brak ceny w bazie (RFQ niewyceniona); PO zawsze ma liczbę.
+            // null = brak ceny w bazie (RFQ niewyceniona; PO bez ustawionej ceny).
             origPrice:   origPriceS === '' ? null : parseNum(origPriceS),
             origCur:     String($row.find('select.js-currency').val() || '')
         };

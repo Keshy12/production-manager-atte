@@ -15,6 +15,11 @@
  * re-reads the header + the vendor_part and enforces this so the client
  * can't smuggle a vendor-part from another vendor in.
  *
+ * PO price guard: a confirmed PO must always carry prices (receipts
+ * can be booked against it), so a line may not be added to a PO in
+ * state `confirmed` without a price. RFQ lines may always be blank
+ * ("price not set yet"), and a PO in `draft` / `sent` too.
+ *
  * quantity_unit_id is auto-derived from list__vendor_part.vendor_jm_id
  * — the user never picks a unit; the catalog row's default JM is what
  * the purchase row carries. Matches cart-create-document behavior.
@@ -24,7 +29,10 @@
  *   doc_id           = int            (required, > 0) — rfq_id or po_id
  *   vendor_part_id   = int            (required, > 0)
  *   quantity         = float          (required, > 0)
- *   unit_price       = float          (optional, blank → NULL)
+ *   unit_price       = float          (optional, blank → NULL; for a PO
+ *                                     in state `confirmed` blank is
+ *                                     rejected — a confirmed PO must
+ *                                     always have a price)
  *   currency         = string         (default PLN)
  *   picked_pack_size = float          (optional, blank → NULL, > 0 when present)
  *   comment          = string         (optional, blank → NULL)
@@ -119,6 +127,19 @@ if (!in_array($docRow['state'], $allowedStates, true)) {
 }
 $docVendorId = (int)$docRow['vendor_id'];
 
+// ── PO-only price guard on a confirmed order ────────────────────────
+// A confirmed PO is a fact — receipts can be booked against it — so
+// every line must carry a price. Adding a line without a price
+// (blank → NULL, i.e. "price not set yet") is allowed in `draft` /
+// `sent` (and always for RFQ), but not once the order is `confirmed`.
+if ($type === 'po' && $docRow['state'] === 'confirmed' && $unitPrice === null) {
+    echo json_encode([
+        'success' => false,
+        'error'   => 'Nie można dodać pozycji bez ceny do potwierdzonego zamówienia.',
+    ]);
+    exit;
+}
+
 // ── Vendor-part membership check ────────────────────────────────────
 // Same VP must belong to the doc's vendor — prevents smuggling a
 // competitor's VP into the line items.
@@ -156,10 +177,10 @@ $docFkCol  = $type === 'po' ? 'po_id'                : 'rfq_id';
 // ── Merge detection ─────────────────────────────────────────────────
 // Look for an existing row on the same doc with the same
 // (vendor_part_id, currency, quantity_unit_id, unit_price) tuple.
-// `unit_price <=> ?` is NULL-safe equality so RFQ rows with a NULL
-// unit price match a proposal whose unit price is also NULL; PO rows
-// never carry NULL (default 0.0), so the same operator still produces
-// the expected equality for the numeric case. The picker lets users
+// `unit_price <=> ?` is NULL-safe equality, so it works identically
+// for RFQ and PO rows: a row with a NULL unit price matches a
+// proposal whose unit price is also NULL, and a row with a numeric
+// price matches the same numeric price. The picker lets users
 // re-add a VP at a different price/currency; this check only blocks
 // the exact-match duplicates that the old `excludeIds` filter used
 // to hide.

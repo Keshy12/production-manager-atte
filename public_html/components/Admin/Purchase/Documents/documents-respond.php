@@ -362,9 +362,10 @@ $itemCount        = count($items);
                     $vpId  = (int)($it->vendorPartId ?? 0);
                     $vpCmt = (string)($it->vendorPartComment ?? '');
 
-                    // Cena zapisana w bazie. RFQ: NULL = niewycenione. PO: kolumna
-                    // nie jest nullable (domyślnie 0), więc "bez ceny" = cena <= 0;
-                    // puste pole ceny oznacza wtedy "zachowaj dotychczasową".
+                    // Cena zapisana w bazie. Kolumna `unit_price` jest nullable
+                    // dla PO i dla RFQ: NULL = cena nieustalona. "Bez ceny" =
+                    // NULL albo cena <= 0; puste pole ceny oznacza "zachowaj
+                    // dotychczasową".
                     $storedPrice = ($it->unitPrice !== null) ? (float)$it->unitPrice : null;
                     $hasPrice    = ($storedPrice !== null && (!$isPo || $storedPrice > 0));
                     $isUnpriced  = !$hasPrice;

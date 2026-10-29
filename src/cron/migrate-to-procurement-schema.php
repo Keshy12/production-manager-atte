@@ -46,6 +46,17 @@
  * The conversion block below detects the current state from
  * information_schema and applies only what's needed.
  *
+ * purchase__order_item.unit_price is created as
+ * `decimal(30,10) DEFAULT NULL` — the same shape as
+ * purchase__rfq_item.unit_price — so a PO line can express "price not
+ * set yet" (NULL). This is an intentional deviation from
+ * atte_ms_struct_new.sql, where the column is `NOT NULL DEFAULT 0`.
+ * Zero is a legal price, so no existing row is rewritten: rows that
+ * already hold 0 keep the value 0. Databases where the table already
+ * exists are fixed by the dedicated one-shot migration
+ * src/cron/migrate-po-item-price-nullable.php (metadata-only ALTER —
+ * NOT NULL → NULL — no row data is touched).
+ *
  * Also seeds one row in ref__transfer_group_types (slug='purchase_receipt')
  * required by the goods-receipt flow. Does NOT seed purchase__number_counter
  * — allocateDocumentNumber() handles the missing-row case with
@@ -75,8 +86,10 @@ if ($dbName !== 'atte_ms') {
 echo "Connected to: {$dbName}\n\n";
 
 // ── The 13 tables, in strict FK order ─────────────────────────────────
-// DDL is copied verbatim from atte_ms_struct_new.sql. AUTO_INCREMENT,
-// indexes, and foreign keys are inlined — no separate ALTER TABLE blocks.
+// DDL is copied verbatim from atte_ms_struct_new.sql — except
+// purchase__order_item.unit_price, which is created nullable (see the
+// header docblock). AUTO_INCREMENT, indexes, and foreign keys are
+// inlined — no separate ALTER TABLE blocks.
 $tables = [
     'list__currency' => <<<'SQL'
 CREATE TABLE `list__currency` (
@@ -264,7 +277,7 @@ CREATE TABLE `purchase__order_item` (
   `vendor_part_id` int(11) NOT NULL,
   `quantity` decimal(30,10) NOT NULL,
   `quantity_unit_id` int(11) NOT NULL,
-  `unit_price` decimal(30,10) NOT NULL DEFAULT 0.0000000000,
+  `unit_price` decimal(30,10) DEFAULT NULL,
   `currency` varchar(8) NOT NULL DEFAULT 'PLN',
   `quantity_received` decimal(30,10) NOT NULL DEFAULT 0.0000000000,
   `comment` text DEFAULT NULL,

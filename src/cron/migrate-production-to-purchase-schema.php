@@ -44,6 +44,17 @@
  * import to succeed). If list__vendor already exists without the
  * default, this script issues an ALTER ... MODIFY to add it.
  *
+ * Second intentional deviation from the dump:
+ * purchase__order_item.unit_price is created as
+ * `decimal(30,10) DEFAULT NULL` instead of `NOT NULL DEFAULT 0`, so a
+ * PO line can express "price not set yet" (NULL) — the same shape as
+ * purchase__rfq_item.unit_price. Zero is a legal price, so existing
+ * rows are never rewritten: rows that already hold 0 keep the value 0.
+ * Databases where purchase__order_item already exists are fixed by the
+ * dedicated one-shot migration
+ * src/cron/migrate-po-item-price-nullable.php (metadata-only ALTER —
+ * NOT NULL → NULL — no row data is touched).
+ *
  * Pre-flight (refuses to run if any check fails):
  *   - server is MariaDB ≥ 10.2.2 or MySQL ≥ 5.7.7
  *   - innodb_default_row_format is not COMPACT/REDUNDANT
@@ -377,7 +388,7 @@ CREATE TABLE `purchase__order_item` (
   `vendor_part_id` int(11) NOT NULL,
   `quantity` decimal(30,10) NOT NULL,
   `quantity_unit_id` int(11) NOT NULL,
-  `unit_price` decimal(30,10) NOT NULL DEFAULT 0.0000000000,
+  `unit_price` decimal(30,10) DEFAULT NULL,
   `currency` varchar(8) NOT NULL DEFAULT 'PLN',
   `quantity_received` decimal(30,10) NOT NULL DEFAULT 0.0000000000,
   `comment` text DEFAULT NULL,
@@ -534,7 +545,7 @@ $expectedColumns = [
         ['vendor_part_id',    'int(11)',         'NO'],
         ['quantity',          'decimal(30,10)',  'NO'],
         ['quantity_unit_id',  'int(11)',         'NO'],
-        ['unit_price',        'decimal(30,10)',  'NO'],
+        ['unit_price',        'decimal(30,10)',  'YES'],
         ['currency',          'varchar(8)',      'NO'],
         ['quantity_received', 'decimal(30,10)',  'NO'],
         ['comment',           'text',            'YES'],

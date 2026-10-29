@@ -968,7 +968,11 @@ function importPos(
                 continue;
             }
             $price = $line['unit_price'];
-            // Per schema unit_price NOT NULL DEFAULT 0 — store 0 when unparseable.
+            // purchase__order_item.unit_price is now nullable (NULL = "price
+            // not set yet"), but this historical import deliberately still
+            // stores 0.0 for an unparseable sheet price: it treats a missing
+            // price as zero, consistent with the rows already in the table.
+            // The PO price gate accepts both 0 and NULL as "price missing".
             $priceStore = ($price !== null && $price > 0) ? $price : 0.0;
             if ($priceStore > 0) $hasPrice = true;
             $cur = parseSheetCurrency($line['currency_raw'], $GLOBALS['__currencyCodeToId']);

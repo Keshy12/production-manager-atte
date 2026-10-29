@@ -443,14 +443,14 @@ Vendor / producer / RFQ / PO / receipt domain — added in v1.6 (`feature/compon
 **File:** `src/classes/Utils/Purchase/Order/class-purchaseorderitem.php` — PO line item.
 
 - Constructor: `__construct(array $row)`.
-- Public typed properties: `id`, `poId`, `vendorPartId`, `quantity`, `quantityUnitId`, `unitPrice`, `currency`, `quantityReceived`, `pickedPackSize` (nullable), `comment`.
+- Public typed properties: `id`, `poId`, `vendorPartId`, `quantity`, `quantityUnitId`, `unitPrice` (nullable — NULL means "cena nieustalona"), `currency`, `quantityReceived`, `pickedPackSize` (nullable), `comment`.
 - No methods — pure data; `quantityReceived` is updated by `PurchaseActionHandler::createReceipt()`.
 
 #### PurchaseOrderItemRepository
 **File:** `src/classes/Utils/Purchase/Order/class-purchaseorderitemrepository.php` — CRUD over `purchase__order_item`.
 
 - `getById`, `getByPo(int $poId): array` — main lookup.
-- `create(int $poId, int $vendorPartId, float $quantity, int $quantityUnitId, float $unitPrice = 0, string $currency = 'PLN', ?string $comment = null, ?float $pickedPackSize = null): int` / `update(int $id, ..., ?float $pickedPackSize = null): bool` — `pickedPackSize` (last param) is the operator-chosen pack size (nullable, must be > 0 when provided). `delete(int $id)`.
+- `create(int $poId, int $vendorPartId, float $quantity, int $quantityUnitId, ?float $unitPrice = null, string $currency = 'PLN', ?string $comment = null, ?float $pickedPackSize = null): int` / `update(int $id, ..., ?float $unitPrice, ?float $pickedPackSize = null): bool` — `unitPrice` is nullable (NULL = "cena nieustalona"; `0` is a legal price and is not converted to NULL). `pickedPackSize` (last param) is the operator-chosen pack size (nullable, must be > 0 when provided). `delete(int $id)`.
 - `buildSelectJoin()` selects `i.picked_pack_size AS pickedPackSize` so hydrated `PurchaseOrderItem` entities carry the picked-pack value.
 
 **Used by:** `PurchaseActionHandler::createReceipt()`, `addItem()`.
@@ -474,11 +474,11 @@ Vendor / producer / RFQ / PO / receipt domain — added in v1.6 (`feature/compon
 **File:** `src/classes/Utils/Purchase/Order/class-purchaseactionhandler.php` (~460 lines) — the single orchestrator for all multi-step procurement operations. Instantiated per-request (holds no state); constructors injects the four transactional repos (`RFQRepository`, `RFQItemRepository`, `PurchaseOrderRepository`, `PurchaseOrderItemRepository`) plus the four master repos it needs to look up vendors / parts. Uses `MsaDB->db->beginTransaction()` for atomic writes and reuses the existing `TransferGroupManager` for the `inventory__parts` writes that close the receiving loop into the warehouse.
 
 - `createDocument(string $type, int $vendorId, int $userId): int` — creates an RFQ (`type='rfq'`) or PO (`type='po'`) in `state='draft'`. Auto-allocates the next number via `allocateDocumentNumber()`; admin can override before sending.
-- `addItem(string $type, int $docId, array $itemData): int` — appends one line item to an existing draft RFQ (`type='rfq'`) or PO (`type='po'`). Dispatches to `RFQItemRepository::create()` / `PurchaseOrderItemRepository::create()` with `picked_pack_size` plumbed through (must be `> 0` when provided, null otherwise). Used by the Koszyk `cart-create-document.php` endpoint.
+- `addItem(string $type, int $docId, array $itemData): int` — appends one line item to an existing draft RFQ (`type='rfq'`) or PO (`type='po'`). Dispatches to `RFQItemRepository::create()` / `PurchaseOrderItemRepository::create()` with `picked_pack_size` plumbed through (must be `> 0` when provided, null otherwise). `unit_price` is nullable on both item types (NULL = "cena nieustalona"). Used by the Koszyk `cart-create-document.php` endpoint.
 - `allocateDocumentNumber(string $type, int $vendorId): string` — `SELECT ... FOR UPDATE` on `purchase__number_counter` keyed on `(type, vendor_id)`, returns `RFQ/{vendor_id zero-padded to 5}/{seq zero-padded to 5}` / `PO/{vendor_id zero-padded to 5}/{seq zero-padded to 5}` / `GRN/{seq zero-padded to 6}` (e.g. `RFQ/00021/00001`, `PO/00021/00001`, `GRN/000001`). GRN is global — pass `$vendorId = 0`; RFQ and PO sequences are per-vendor and per-type.
-- `createPoFromRfQ(int $rfqId, int $userId): int` — converts an RFQ + items into a PO, copies `vendor_part_id`, `quantity`, `quantity_unit_id`, copies `unit_price` from the RFQ item as the starting point for negotiation.
+- `createPoFromRfQ(int $rfqId, int $userId): int` — converts an RFQ + items into a PO, copies `vendor_part_id`, `quantity`, `quantity_unit_id`, copies `unit_price` from the RFQ item as the starting point for negotiation (a NULL RFQ price stays NULL on the PO line — "cena nieustalona").
 - `createReceipt(int $poId, array $items, int $userId): int` — validates `quantity_received ≤ quantity × 1.10` per line (lenient per §9.2), opens a `TransferGroupManager::createTransferGroup(..., 'purchase_receipt')`, inserts `inventory__parts` rows with positive `qty`, updates `purchase__order_item.quantity_received`, and (if everything received) transitions the PO to `'received'` (or `'partially_received'`).
-- `computeLastKnownPrice(int $vendorPartId, ?string $currency = null): ?float` — single-purpose helper for the "last known price" hint shown greyed-out in the RFQ/PO draft UI. Runs a query against `purchase__order_item` history for the given `vendor_part_id` (optionally filtered by `currency`) and returns the most recent non-null `unit_price`. **Never persisted** — always computed at read time.
+- `computeLastKnownPrice(int $vendorPartId, ?string $currency = null): ?float` — single-purpose helper for the "last known price" hint shown greyed-out in the RFQ/PO draft UI. Runs a query against `purchase__order_item` history for the given `vendor_part_id` (optionally filtered by `currency`) and returns the most recent non-null `unit_price`; the query filters `unit_price IS NOT NULL AND unit_price > 0`, so NULL-priced ("cena nieustalona") and zero-priced rows are skipped. Returns null when no such history exists. **Never persisted** — always computed at read time.
 
 **Used by:** the Koszyk cart's `createDocument` (RFQ or PO at submit); `purchases/receipts/receipt-get.php` (`createReceipt`); the RFQ→PO conversion (in the Koszyk post-submit flow before the placeholder page).
 

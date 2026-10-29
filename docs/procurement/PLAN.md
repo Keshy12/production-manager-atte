@@ -143,7 +143,7 @@ or table reference; the codebase already does this in places.
    │  vendor_id         │        │ po_id                  │
    │   state             │        │ vendor_part_id         │
    │   po_number         │        │ quantity + unit        │
-   │   vendor_po_number  │        │ unit_price             │
+   │   vendor_po_number  │        │ unit_price (opt.)               │
    │   expected_delivery │        │ quantity_received      │
    └────────┬───────────┘        └────────────────────────┘
             │ 1
@@ -177,6 +177,10 @@ Key invariants:
 - Price history lives in `purchase__order_item.unit_price`; we never store a
   cached price on `list__vendor_part`. The "last known price" shown in the
   UI is a `MAX(updated_at)` / latest non-null aggregate query.
+- `purchase__order_item.unit_price` is nullable (P8): NULL means "cena
+  nieustalona" (price not set yet) — the same semantics as
+  `purchase__rfq_item.unit_price`. The value `0` remains a legal price and
+  is never rewritten to NULL.
 
 ---
 
@@ -307,7 +311,7 @@ CREATE TABLE `purchase__rfq_item` (
   `vendor_part_id`      INT NOT NULL,
   `quantity`            DECIMAL(30,10) NOT NULL,
   `quantity_unit_id`    INT NOT NULL,        -- defaults to vendor_jm_id but can differ
-  `unit_price`          DECIMAL(30,10),      -- admin's target/expected price; nullable until set
+  `unit_price`          DECIMAL(30,10) DEFAULT NULL, -- admin's target/expected price; nullable until set
   `currency`            VARCHAR(8) NOT NULL DEFAULT 'PLN',
   `comment`             TEXT,
   PRIMARY KEY (`id`),
@@ -352,7 +356,7 @@ CREATE TABLE `purchase__order_item` (
   `vendor_part_id`      INT NOT NULL,
   `quantity`            DECIMAL(30,10) NOT NULL,
   `quantity_unit_id`    INT NOT NULL,
-  `unit_price`          DECIMAL(30,10) NOT NULL DEFAULT 0,   -- negotiated price per unit
+  `unit_price`          DECIMAL(30,10) DEFAULT NULL,   -- negotiated price per unit; NULL = "cena nieustalona"
   `currency`            VARCHAR(8) NOT NULL DEFAULT 'PLN',
   `quantity_received`   DECIMAL(30,10) NOT NULL DEFAULT 0,
   `comment`             TEXT,
@@ -363,6 +367,12 @@ CREATE TABLE `purchase__order_item` (
   CONSTRAINT `fk_poi_unit` FOREIGN KEY (`quantity_unit_id`) REFERENCES `part__unit`(`id`)
 ) ENGINE=InnoDB;
 ```
+
+> `purchase__order_item.unit_price` is nullable — NULL means "cena
+> nieustalona" (price not set yet), the same semantics as
+> `purchase__rfq_item.unit_price` above. A price (> 0) is required on every
+> line only at the moment the PO is confirmed (`sent → confirmed`); a stored
+> `0` stays `0` and is never converted to NULL.
 
 ### 4.4 Receipts
 
@@ -500,7 +510,8 @@ The `PurchaseActionHandler` (in `Order/`) orchestrates multi-step operations:
   `currency`. See §7.2.
 - `createPoFromRfQ($rfqId, $userId)` — converts RFQ + items into a PO,
   copies `vendor_part_id`, `quantity`, `quantity_unit_id`, copies
-  `unit_price` from the RFQ item as the starting point for negotiation.
+  `unit_price` from the RFQ item as the starting point for negotiation (a
+  NULL RFQ price stays NULL on the PO line — "cena nieustalona").
   Producer is implicit via `vendor_part_id` (no separate `producer_id` on
   the line, per §9.2).
 - `createReceipt($poId, $items, $userId)` — validates
@@ -518,7 +529,9 @@ The `PurchaseActionHandler` (in `Order/`) orchestrates multi-step operations:
   helper for the "last known price" hint in the RFQ/PO draft UI. Runs a
   query against `purchase__order_item` history for the given `vendor_part_id`
   (optionally filtered by `currency`) and returns the most recent non-null
-  `unit_price`. **Never persisted** — always computed at read time.
+  `unit_price`; the query filters `unit_price IS NOT NULL AND unit_price > 0`,
+  so NULL-priced ("cena nieustalona") and zero-priced rows are skipped.
+  **Never persisted** — always computed at read time.
 - `searchPartsForReorder($query, $limit)` — read-only generic part picker
   on the reorder screen, backed by a search on `list__parts` (no forecast
   logic for v1 — forecast deferred).
@@ -634,7 +647,8 @@ buttons. Vendor detail page shows linked suppliers and vendor parts inline.
    - **Last known unit price** = the most recent non-null
      `purchase__order_item.unit_price` for the same `vendor_part_id` in
      the same currency, computed on the fly by
-     `PurchaseActionHandler::computeLastKnownPrice()`. Shown greyed out
+     `PurchaseActionHandler::computeLastKnownPrice()` (rows with NULL or 0
+     price are filtered out). Shown greyed out
      with a tooltip "orientacyjnie — cena może się różnić". The value is
      not stored anywhere — it is queried at render time.
 8. Draft can be saved (`state = 'draft'`) or sent (transitions to `'sent'`,
@@ -645,9 +659,11 @@ When the vendor replies to an RFQ:
 1. Admin opens the RFQ → "Konwertuj na zamówienie".
 2. `PurchaseActionHandler::createPoFromRfQ()` creates a `purchase__order`
    with the same `vendor_id`, copies items, sets
-   `converted_from_rfq_id`, leaves `unit_price` blank.
+   `converted_from_rfq_id`, leaves `unit_price` NULL ("cena nieustalona").
 3. Admin fills in negotiated `unit_price` per line and the vendor's
-   confirmation number, then sends (`state = 'sent' → 'confirmed'`).
+   confirmation number, then sends (`state = 'sent' → 'confirmed'`). A
+   price > 0 is required on every line at that moment — a line still
+   NULL ("cena nieustalona") blocks the confirmation.
 
 ### 7.4 Receive goods
 1. Admin opens PO → "Przyjmij towar".

@@ -106,7 +106,8 @@ class PurchaseActionHandler {
      *   - vendor_part_id      int    (required, > 0)
      *   - quantity            float  (required, > 0)
      *   - quantity_unit_id    int    (required, > 0)
-     *   - unit_price          float|null (optional, null/blank allowed)
+     *   - unit_price          float|null (optional, null/blank allowed — null
+     *                          oznacza "cena nieustalona" w RFQ i w PO)
      *   - currency            string (default 'PLN')
      *   - comment             string|null (optional)
      *   - picked_pack_size    float|null (optional, > 0 when provided)
@@ -137,7 +138,8 @@ class PurchaseActionHandler {
         if ($vpId   <= 0) throw new \InvalidArgumentException("vendor_part_id must be positive.");
         if ($unitId <= 0) throw new \InvalidArgumentException("quantity_unit_id must be positive.");
         if ($qty    <= 0) throw new \InvalidArgumentException("quantity must be positive.");
-        // unit_price may legitimately be null/blank for RFQs (target price).
+        // unit_price may legitimately be null/blank — for RFQs (target price)
+        // and for POs (price not negotiated yet).
         if ($unitPrice !== null && $unitPrice !== '' && is_numeric($unitPrice) === false) {
             throw new \InvalidArgumentException("unit_price must be numeric or null.");
         }
@@ -154,7 +156,7 @@ class PurchaseActionHandler {
             $itemRepo = new PurchaseOrderItemRepository($MsaDB);
             return $itemRepo->create(
                 $docId, $vpId, $qty, $unitId,
-                $unitPrice === null ? 0.0 : (float)$unitPrice,
+                $unitPrice, // null ok — pozycja bez ceny ("cena nieustalona")
                 $currency !== '' ? $currency : 'PLN',
                 $comment,
                 $pickedPack
@@ -676,8 +678,9 @@ class PurchaseActionHandler {
      * z sendRfq/sendPo poprzez normaliseSentAt($value, "potwierdzenia").
      *
      * Stan `confirmed` wymaga, żeby KAŻDA pozycja zamówienia miała cenę
-     * > 0 (pozycja PO nie zna stanu "niewycenione" — `unit_price` to
-     * `DECIMAL(30,10) NOT NULL DEFAULT 0`, więc "brak ceny" = cena 0).
+     * > 0 (`unit_price` jest `DECIMAL(30,10) DEFAULT NULL`, więc pozycja
+     * zna stan "niewycenione" — NULL = "cena nieustalona"; "brak ceny" to
+     * NULL albo cena 0).
      * Bez tej kontroli dałoby się potwierdzić zamówienie z pozycjami
      * bez ceny. Kontrola dotyczy momentu potwierdzenia — pozycje
      * zamówienia w stanie `confirmed` da się jeszcze edytować na stronie
@@ -760,13 +763,12 @@ class PurchaseActionHandler {
      * montowany w UI).
      *
      * Różnica względem {@see markRfqRespondedWithPrices} (wariant RFQ):
-     *   - pozycja PO nie zna pojęcia "niewycenione" — `unit_price` jest
-     *     `DECIMAL(30,10) DEFAULT 0` (NOT NULL w praktyce), a
-     *     `PurchaseOrderItemRepository::update()` przyjmuje
-     *     `float $unitPrice` (non-nullable). Puste pole ceny w formularzu
-     *     oznacza więc "zachowaj cenę istniejącą", a NIE "0" i NIE
-     *     NULL. Uwaga: to świadoma różnica semantyczna względem RFQ,
-     *     gdzie null = cena nieustalona przez dostawcę.
+     *   - `unit_price` jest `DECIMAL(30,10) DEFAULT NULL` — pozycja PO
+     *     zna stan "niewycenione" (NULL = "cena nieustalona"), tak jak
+     *     pozycja RFQ. Puste pole ceny w formularzu oznacza więc
+     *     "zachowaj cenę istniejącą", a NIE "0"; istniejąca cena może
+     *     być NULL — wtedy pozycja zostaje niewyceniona, a potwierdzenie
+     *     odrzuci ją w {@see assertPoItemsHavePrice()}.
      *   - pusta waluta znaczy "zachowaj istniejącą" (w RFQ pusta
      *     waluta byłaby błędem).
      *
@@ -862,7 +864,8 @@ class PurchaseActionHandler {
                 throw new \InvalidArgumentException("Pozycja #{$idx}: brak identyfikatora pozycji.");
             }
             // unit_price: nieujemna liczba albo puste/null/'' (= zachowaj
-            // cenę istniejącą — pozycja PO nie ma stanu "niewycenione").
+            // cenę istniejącą — która może być NULL, czyli pozycja
+            // niewyceniona).
             if (array_key_exists('unit_price', $it) && $it['unit_price'] !== null && $it['unit_price'] !== '') {
                 if (!is_numeric($it['unit_price']) || (float)$it['unit_price'] < 0) {
                     throw new \InvalidArgumentException(
@@ -906,7 +909,8 @@ class PurchaseActionHandler {
 
         // Ceny: KAŻDA pozycja zamówienia musi mieć cenę > 0. Puste pole
         // ceny w formularzu oznacza "zachowaj cenę istniejącą", więc
-        // wystarczy, że cena zapisana w bazie jest dodatnia. Sprawdzamy
+        // wystarczy, że cena zapisana w bazie jest dodatnia (NULL = brak
+        // ceny → brak potwierdzenia). Sprawdzamy
         // wszystkie pozycje zamówienia (także te pominięte w formularzu).
         $this->assertPoItemsHavePrice($itemRepo, $poId, $items);
 
@@ -925,9 +929,9 @@ class PurchaseActionHandler {
                 }
 
                 // Cena: gdy podana — nowa; gdy pusta/null — ZACHOWAJ istniejącą.
-                // (Nie 0 i nie NULL — pozycja PO nie zna "niewycenione",
-                // a update() wymaga float.)
-                $unitPrice = (float)$existing->unitPrice;
+                // (Istniejąca cena może być NULL — pozycja wtedy pozostaje
+                // niewyceniona, a brak ceny pilnuje assertPoItemsHavePrice.)
+                $unitPrice = $existing->unitPrice;
                 if (array_key_exists('unit_price', $it) && $it['unit_price'] !== null && $it['unit_price'] !== '') {
                     $unitPrice = (float)$it['unit_price'];
                 }
@@ -989,9 +993,10 @@ class PurchaseActionHandler {
     }
 
     /**
-     * Kontrola cen pozycji zamówienia. Pozycja PO nie zna stanu
-     * "niewycenione" (`unit_price` = `DECIMAL(30,10) NOT NULL DEFAULT 0`),
-     * więc "brak ceny" = cena <= 0. Potwierdzenie `sent → confirmed`
+     * Kontrola cen pozycji zamówienia. `unit_price` jest
+     * `DECIMAL(30,10) DEFAULT NULL`, więc pozycja PO zna stan
+     * "niewycenione" (NULL = "cena nieustalona"), a "brak ceny" to
+     * NULL albo cena <= 0. Potwierdzenie `sent → confirmed`
      * wymaga, żeby KAŻDA pozycja miała cenę > 0 — inaczej zamówienie
      * w stanie `confirmed` zawierałoby pozycje bez ceny.
      *
@@ -1000,7 +1005,7 @@ class PurchaseActionHandler {
      * oznacza "zachowaj cenę istniejącą" — wtedy decyduje cena z bazy.
      * Sprawdzamy WSZYSTKIE pozycje zamówienia, nie tylko te z formularza:
      * pozycja pominięta w formularzu zachowuje swoją cenę, a ta może
-     * wynosić 0.
+     * wynosić NULL albo 0.
      *
      * @param PurchaseOrderItemRepository $itemRepo
      * @param int                          $poId
@@ -1037,8 +1042,8 @@ class PurchaseActionHandler {
             $itemId = (int)$poItem->id;
             $price  = array_key_exists($itemId, $pricesFromForm)
                 ? $pricesFromForm[$itemId]
-                : (float)$poItem->unitPrice;
-            if ($price <= 0) {
+                : ($poItem->unitPrice === null ? null : (float)$poItem->unitPrice);
+            if ($price === null || $price <= 0) {
                 // Etykieta: numer części u dostawcy (albo nasza nazwa) —
                 // operator musi znaleźć tę pozycję na liście.
                 $label = trim((string)($poItem->vendorPartNo ?? ''));
@@ -1178,7 +1183,7 @@ class PurchaseActionHandler {
                     $item->vendorPartId,
                     $item->quantity,
                     $item->quantityUnitId,
-                    $item->unitPrice === null ? 0.0 : $item->unitPrice,
+                    $item->unitPrice, // null ok — pozycja bez ceny zostaje bez ceny
                     $item->currency,
                     $item->comment,
                     $item->pickedPackSize

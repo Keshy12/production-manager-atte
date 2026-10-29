@@ -9,7 +9,7 @@ class PurchaseOrderItem {
     public int $vendorPartId;
     public float $quantity;
     public int $quantityUnitId;
-    public float $unitPrice;
+    public ?float $unitPrice;
     public string $currency;
     public float $quantityReceived;
     public ?float $pickedPackSize;
@@ -28,7 +28,7 @@ class PurchaseOrderItem {
         $this->vendorPartId = (int)$row['vendorPartId'];
         $this->quantity = (float)$row['quantity'];
         $this->quantityUnitId = (int)$row['quantityUnitId'];
-        $this->unitPrice = (float)($row['unitPrice'] ?? 0);
+        $this->unitPrice = isset($row['unitPrice']) && $row['unitPrice'] !== null ? (float)$row['unitPrice'] : null;
         $this->currency = (string)($row['currency'] ?? 'PLN');
         $this->quantityReceived = (float)($row['quantityReceived'] ?? 0);
         $this->pickedPackSize = isset($row['pickedPackSize']) && $row['pickedPackSize'] !== null
