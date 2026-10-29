@@ -675,6 +675,14 @@ class PurchaseActionHandler {
      * / 'Data potwierdzenia nie może być z przyszłości.') współdzielone
      * z sendRfq/sendPo poprzez normaliseSentAt($value, "potwierdzenia").
      *
+     * Stan `confirmed` wymaga, żeby KAŻDA pozycja zamówienia miała cenę
+     * > 0 (pozycja PO nie zna stanu "niewycenione" — `unit_price` to
+     * `DECIMAL(30,10) NOT NULL DEFAULT 0`, więc "brak ceny" = cena 0).
+     * Bez tej kontroli dałoby się potwierdzić zamówienie z pozycjami
+     * bez ceny. Kontrola dotyczy momentu potwierdzenia — pozycje
+     * zamówienia w stanie `confirmed` da się jeszcze edytować na stronie
+     * edycji (`allowedEditStates('po')` zawiera 'confirmed').
+     *
      * @param int         $poId
      * @param int         $userId
      * @param string|null $vendorPoNumber      numer PO u dostawcy (max 64 zn.)
@@ -694,6 +702,13 @@ class PurchaseActionHandler {
                 'Zamówienie może być potwierdzone tylko w stanie „wysłane".'
             );
         }
+
+        // Bez cen nie potwierdzamy — sprawdzamy WSZYSTKIE pozycje zamówienia.
+        $this->assertPoItemsHavePrice(
+            new PurchaseOrderItemRepository($MsaDB),
+            $poId,
+            []
+        );
 
         // vendor_po_number: null/empty → nie zapisuj; dłuższe niż kolumna → obetnij cicho.
         if ($vendorPoNumber !== null) {
@@ -768,6 +783,10 @@ class PurchaseActionHandler {
      *   - `quantity_unit_id` — gdy podane: dodatni int
      *   - pozycja musi należeć do `$poId` (walidacja ownership —
      *     `LogicException`, żeby UI nie dało się oszukać cudzym id)
+     *   - KAŻDA pozycja zamówienia musi mieć cenę > 0 po zastosowaniu
+     *     podanych cen (puste pole = zachowaj cenę zapisaną w bazie) —
+     *     inaczej `InvalidArgumentException`; patrz
+     *     {@see assertPoItemsHavePrice()}
      *
      * `$vendorPoNumber` ("Numer zamówienia u dostawcy") — ta sama
      * normalizacja co w `confirmPo()`: trim; pusty → null (kolumna
@@ -885,6 +904,12 @@ class PurchaseActionHandler {
             }
         }
 
+        // Ceny: KAŻDA pozycja zamówienia musi mieć cenę > 0. Puste pole
+        // ceny w formularzu oznacza "zachowaj cenę istniejącą", więc
+        // wystarczy, że cena zapisana w bazie jest dodatnia. Sprawdzamy
+        // wszystkie pozycje zamówienia (także te pominięte w formularzu).
+        $this->assertPoItemsHavePrice($itemRepo, $poId, $items);
+
         $MsaDB->db->beginTransaction();
         try {
             // Aktualizuj każdą pozycję po kolei: najpierw odczyt istniejącej
@@ -961,6 +986,91 @@ class PurchaseActionHandler {
             }
             throw $e;
         }
+    }
+
+    /**
+     * Kontrola cen pozycji zamówienia. Pozycja PO nie zna stanu
+     * "niewycenione" (`unit_price` = `DECIMAL(30,10) NOT NULL DEFAULT 0`),
+     * więc "brak ceny" = cena <= 0. Potwierdzenie `sent → confirmed`
+     * wymaga, żeby KAŻDA pozycja miała cenę > 0 — inaczej zamówienie
+     * w stanie `confirmed` zawierałoby pozycje bez ceny.
+     *
+     * `$items` to pozycje z formularza (format jak w `confirmPoWithPrices`:
+     * ['item_id' => int, 'unit_price' => ?float]). Puste `unit_price`
+     * oznacza "zachowaj cenę istniejącą" — wtedy decyduje cena z bazy.
+     * Sprawdzamy WSZYSTKIE pozycje zamówienia, nie tylko te z formularza:
+     * pozycja pominięta w formularzu zachowuje swoją cenę, a ta może
+     * wynosić 0.
+     *
+     * @param PurchaseOrderItemRepository $itemRepo
+     * @param int                          $poId
+     * @param array                        $items
+     * @throws \InvalidArgumentException gdy któraś pozycja nie ma ceny
+     */
+    private function assertPoItemsHavePrice(
+        PurchaseOrderItemRepository $itemRepo,
+        int $poId,
+        array $items
+    ): void {
+        // Mapa cen z formularza: item_id => cena (tylko jawne wartości).
+        $pricesFromForm = [];
+        foreach ($items as $it) {
+            if (!is_array($it)) {
+                continue;
+            }
+            $itemId = (int)($it['item_id'] ?? 0);
+            if ($itemId <= 0) {
+                continue;
+            }
+            $raw = $it['unit_price'] ?? null;
+            if ($raw === null || $raw === '') {
+                continue;   // puste = zachowaj cenę zapisaną w bazie
+            }
+            $pricesFromForm[$itemId] = (float)$raw;
+        }
+
+        // Pozycje zamówienia w kolejności dokumentu (getByPo: ORDER BY id).
+        $missing  = [];
+        $position = 0;
+        foreach ($itemRepo->getByPo($poId) as $poItem) {
+            $position++;
+            $itemId = (int)$poItem->id;
+            $price  = array_key_exists($itemId, $pricesFromForm)
+                ? $pricesFromForm[$itemId]
+                : (float)$poItem->unitPrice;
+            if ($price <= 0) {
+                // Etykieta: numer części u dostawcy (albo nasza nazwa) —
+                // operator musi znaleźć tę pozycję na liście.
+                $label = trim((string)($poItem->vendorPartNo ?? ''));
+                if ($label === '') {
+                    $label = trim((string)($poItem->partName ?? ''));
+                }
+                $suffix = ($label !== '') ? (', ' . $label) : '';
+                $missing[] = 'poz. ' . $position . ' (ID ' . $itemId . $suffix . ')';
+            }
+        }
+
+        if (empty($missing)) {
+            return;
+        }
+
+        $count = count($missing);
+        if ($count === 1) {
+            $noun = 'pozycję bez ceny';
+            $verb = 'uzupełnij cenę';
+        } else {
+            // Polska liczba mnoga: 2–4 → "pozycje" (oprócz 12–14), reszta
+            // → "pozycji".
+            $mod10  = $count % 10;
+            $mod100 = $count % 100;
+            $twoToFour = ($mod10 >= 2 && $mod10 <= 4) && !($mod100 >= 12 && $mod100 <= 14);
+            $noun = $twoToFour ? 'pozycje bez ceny' : 'pozycji bez ceny';
+            $verb = 'uzupełnij ceny';
+        }
+        throw new \InvalidArgumentException(
+            "Zamówienie ma {$count} {$noun} — {$verb} przed potwierdzeniem: "
+            . implode(', ', $missing) . '.'
+        );
     }
 
     /**

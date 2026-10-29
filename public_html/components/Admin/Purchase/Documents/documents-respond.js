@@ -25,6 +25,9 @@
  *      część odpowiedzi: textarea nie ma name, więc nie trafia do payloadu,
  *      a edycja nie liczy się do zmian pozycji.
  *   5. Zapis: waliduje ilość > 0 w każdym wierszu, a dla PO dodatkowo
+ *      wymaga ceny > 0 w każdej pozycji (pozycja "BRAK CENY" blokuje zapis),
+ *      blokuje przyciski i pokazuje spinner, wysyła POST do
+ *      document-rfq-respond-ajax.php (type=rfq) albo
  *      document-po-respond-ajax.php (type=po) i przekierowuje na stronę edycji.
  *      Typ i id pochodzą z data-respond-type / data-respond-id formularza.
  *
@@ -32,6 +35,9 @@
  *   - RFQ: pusta cena = pozycja niewyceniona (serwer zapisuje NULL).
  *   - PO: kolumna ceny nie jest nullable, więc PUSTE pole = "zachowaj
  *     dotychczasową cenę" — nigdy nie wysyłamy sztucznego 0.
+ *   - PO: pozycja BEZ CENY (cena 0 w bazie i puste pole) BLOKUJE zapis —
+ *     zamówienie w stanie "confirmed" musi mieć cenę w każdej pozycji
+ *     (kontrola jest też po stronie serwera: PurchaseActionHandler).
  *   - Waluta zawsze ma wartość (select z zaznaczoną dotychczasową).
  *
  * Konwencje (AGENTS.md / header.js): setAlert() pisze do #alertContainer,
@@ -75,6 +81,19 @@ $(function () {
         if (t === '') { return null; }
         const n = parseFloat(t);
         return isNaN(n) ? null : n;
+    }
+
+    // Cena efektywna pozycji — ta, która zostanie zapisana:
+    //   RFQ — co jest w polu (puste = niewycenione → null),
+    //   PO  — co jest w polu; puste pole = zachowaj cenę zapisaną w bazie.
+    //         Baza ma `unit_price` NOT NULL DEFAULT 0, więc "brak ceny"
+    //         = cena 0 (albo brak wiersza).
+    function effectivePrice(r) {
+        const p = parseNum(r.$price.val());
+        if (p === null && IS_PO) {
+            return r.origPrice;
+        }
+        return p;
     }
 
     function esc(s) {
@@ -197,10 +216,7 @@ $(function () {
 
             // Cena efektywna: RFQ — to co w polu (puste = niewycenione);
             // PO — puste pole = zachowaj dotychczasową.
-            let eff = priceIn;
-            if (priceIn === null && IS_PO) {
-                eff = r.origPrice;
-            }
+            const eff = effectivePrice(r);
 
             // Co się zmieniło względem bazy?
             const qtyChanged = (qty === null || r.origQty === null || Math.abs(qty - r.origQty) > EPS);
@@ -271,12 +287,15 @@ $(function () {
                 $delta.text('').prop('hidden', true).removeClass('dx-delta--up dx-delta--down');
             }
 
-            // --- PO: pusta cena = "zostanie …" ---
+            // --- PO: pusta cena = "zostanie …" (albo "brak ceny", gdy
+            //     w bazie też jej nie ma — wtedy pozycja blokuje zapis) ---
             if (IS_PO) {
                 const $keep = r.$row.find('.js-price-keep');
                 if (priceIn === null) {
                     const keepPrice = (r.origPrice === null) ? 0 : r.origPrice;
-                    $keep.text('zostanie ' + formatPrice(keepPrice))
+                    $keep.text(keepPrice > 0
+                        ? ('zostanie ' + formatPrice(keepPrice))
+                        : 'brak ceny — uzupełnij')
                         .toggleClass('is-warn', keepPrice <= 0)
                         .prop('hidden', false);
                 } else {
@@ -326,7 +345,9 @@ $(function () {
 
         if (unpricedCount > 0) {
             $hint.text(IS_PO
-                ? ('Pozycje bez ceny (' + unpricedCount + ') zostaną zapisane z dotychczasową ceną 0.')
+                ? ('Uzupełnij cenę w ' + unpricedCount + ' '
+                    + (unpricedCount === 1 ? 'pozycji' : 'pozycjach')
+                    + ' — bez ceny nie potwierdzisz zamówienia.')
                 : ('Pozostawienie pustej ceny oznacza pozycję niewycenioną (' + unpricedCount + ').'));
         } else if (changedCount === 0) {
             $hint.text('Nic nie zmieniono — zapis zatwierdzi dotychczasowe wartości.');
@@ -673,6 +694,35 @@ $(function () {
         }
 
         // PO: żadna pozycja nie może zostać bez ceny. Puste pole ceny
+        // oznacza "zachowaj cenę z bazy" — blokada dotyczy pozycji, które
+        // po zastosowaniu tej reguły nadal nie mają ceny > 0 (UI: "brak ceny").
+        // RFQ tego nie wymaga: pozycja niewyceniona jest poprawną odpowiedzią.
+        if (IS_PO) {
+            const noPriceRows = rows.filter(function (r) {
+                const eff = effectivePrice(r);
+                return eff === null || eff <= 0;
+            });
+            if (noPriceRows.length > 0) {
+                setAlert(
+                    'Uzupełnij cenę w ' + noPriceRows.length + ' '
+                    + (noPriceRows.length === 1 ? 'pozycji' : 'pozycjach')
+                    + ' — zamówienia bez cen nie można potwierdzić.',
+                    'warning'
+                );
+                // Fokus na pierwszym polu ceny bez ceny: pole jest zawsze
+                // widoczne (nie jest ukryte w edytorze komórki).
+                const $price = noPriceRows[0].$price;
+                const el = $price[0];
+                if (el) {
+                    $price.trigger('focus');
+                    if (typeof el.scrollIntoView === 'function') {
+                        el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                    }
+                }
+                return;
+            }
+        }
+
         // Blokada + spinner.
         const $buttons = $form.find('button').add($btn)
             .add($('#respondFillAllBtn')).add($('#respondClearAllBtn'))
