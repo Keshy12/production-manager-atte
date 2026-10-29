@@ -473,7 +473,7 @@
    nie ma, a operator myślałby, że kliknie gdziekolwiek i trafi tam, gdzie
    chciał. Hover zostaje wyłącznie na samym linku, niżej. */
 
-/* `sent` — czeka na potwierdzenie dostawcy. Delikatne kreskowanie
+/* `sent` — czeka na odpowiedź dostawcy. Delikatne kreskowanie
    zamiast przygaszenia — tekst zostaje czytelny, a różnica widoczna na
    pierwszy rzut oka. */
 .queue-row-pending {

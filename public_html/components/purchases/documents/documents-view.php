@@ -28,15 +28,26 @@
  *     dokumentu, a caret otwiera menu z kolejnymi krokami:
  *       szkic                         → Wyślij
  *       RFQ wysłane                   → Oznacz odpowiedź
- *       PO wysłane                    → Potwierdź odbiór (modal #send-confirm-po-modal)
- *       PO confirmed / in_progress /
- *       partially_received           → Przyjmij towar
+ *       PO wysłane                    → Potwierdź odpowiedź (modal #send-confirm-po-modal)
+ *       PO potwierdzone               → Potwierdź odbiór (formularz przyjęcia)
+ *       PO w trakcie przyjęcia        → Dokończ przyjęcie
+ *       PO częściowo odebrane         → Przyjmij towar
  *     Wiersz terminalny (bez pozycji w menu) dostaje zwykły link,
  *     bez careta.
  *
  * Świadomie BEZ samodzielnych przycisków obok siebie — kosz + split
- * Edytuj/Podgląd, nic więcej. Dlatego też modal „Potwierdź odbiór"
+ * Edytuj/Podgląd, nic więcej. Dlatego też modal „Potwierdź odpowiedź"
  * (confirm-po-modal.php) jest tu wpinany — patrz niżej.
+ *
+ * Przepływ PO jest trzykrokowy i każdy krok jest niezależnie
+ * osiągalny:
+ *   sent → „Potwierdź odpowiedź" (modal) → confirmed
+ *   confirmed → „Potwierdź odbiór" (formularz przyjęcia) → in_progress
+ *   in_progress → „Dokończ przyjęcie" → partially_received / received
+ * Modal potwierdzenia odpowiedzi NIE przenosi operatora do formularza
+ * przyjęcia — to osobny, późniejszy krok. Ten sam modal jest wpinany
+ * również na /purchase/receipts (kolejka) i na stronie edycji
+ * dokumentu (/admin/purchase/documents/edit).
  *
  * Domyślny zakres dat: ostatnie 90 dni — widoczny w pasku (przycisk
  * „90 dni" zaznaczony) i w linijce podsumowania.
@@ -58,8 +69,8 @@ $activeVendors = $MsaDB->query(
       ORDER BY name ASC"
 );
 
-// Współdzielony modal „Potwierdź odbiór PO" — wpinany tu, bo pozycja
-// „Potwierdź odbiór" jest teraz w menu pod caretem Edytuj/Podgląd
+// Współdzielony modal „Potwierdź odpowiedź PO" — wpinany tu, bo pozycja
+// „Potwierdź odpowiedź" jest teraz w menu pod caretem Edytuj/Podgląd
 // (patrz documents-view.js → actionMenuItemsHtml, branch d.type==='po'
 // i d.state==='sent'). Identyczny partial jak na /purchase/receipts
 // i na stronie edycji PO.
@@ -111,7 +122,9 @@ $baseUrl = 'http://' . BASEURL;
     <div id="alertContainer" class="rx-alerts"></div>
 
     <!-- ===== Liczniki = skróty do filtra statusu =====
-         Wartości wypełnia JS (mode=count, bieżące filtry bez statusu). -->
+         Wartości wypełnia JS (mode=count, bieżące filtry bez statusu).
+         Wskazówka „+N" na końcu paska mówi, ile kafelków jest ukrytych
+         i dlaczego — nie zmienia filtrów sama w sobie. -->
     <div class="dx-stats" role="group" aria-label="Dokumenty według statusu">
         <button type="button" class="rx-stat dx-stat--draft" data-stat="draft" aria-pressed="false"
                 title="Szkice — dokumenty jeszcze niewysłane do dostawcy">
@@ -133,10 +146,15 @@ $baseUrl = 'http://' . BASEURL;
             <span class="rx-stat-value" data-stat-value>–</span>
             <span class="rx-stat-label">Skonwertowane</span>
         </button>
-        <button type="button" class="rx-stat dx-stat--progress" data-stat="progress" aria-pressed="false"
-                title="Zamówienia potwierdzone lub częściowo odebrane — czekają na towar">
+        <button type="button" class="rx-stat dx-stat--confirmed" data-stat="confirmed" aria-pressed="false"
+                title="Zamówienia potwierdzone przez dostawcę — czekają na odbiór towaru">
             <span class="rx-stat-value" data-stat-value>–</span>
-            <span class="rx-stat-label">Czeka na towar</span>
+            <span class="rx-stat-label">Potwierdzone</span>
+        </button>
+        <button type="button" class="rx-stat dx-stat--in_progress" data-stat="in_progress" aria-pressed="false"
+                title="Zamówienia w trakcie przyjęcia — odbiór rozpoczęty, towar jeszcze nie w całości odebrany">
+            <span class="rx-stat-value" data-stat-value>–</span>
+            <span class="rx-stat-label">W trakcie przyjęcia</span>
         </button>
         <button type="button" class="rx-stat dx-stat--received" data-stat="received" aria-pressed="false"
                 title="Zamówienia odebrane w całości">
@@ -147,6 +165,19 @@ $baseUrl = 'http://' . BASEURL;
                 title="Dokumenty anulowane">
             <span class="rx-stat-value" data-stat-value>–</span>
             <span class="rx-stat-label">Anulowane</span>
+        </button>
+
+        <!--
+            Wskazówka, że na pasku jest więcej kafelków niż widać.
+            Pojawia się, gdy jakiś kafelek jest ukryty (inny typ
+            dokumentu albo zakończony status przy włączonym
+            „Ukryj zakończone"). Kliknięcie NIE zmienia filtrów —
+            tylko mówi, co trzeba zmienić, żeby zobaczyć wszystkie.
+        -->
+        <button type="button" class="dx-stats-more" data-stat-more hidden
+                title="Ukryte karty (0) — kliknij, aby dowiedzieć się, co zmienić">
+            <i class="bi bi-plus-lg"></i>
+            <span data-stat-more-count>0</span>
         </button>
     </div>
 
@@ -271,6 +302,58 @@ $baseUrl = 'http://' . BASEURL;
     </div>
 
     <div id="paginationBottom"></div>
+
+    <!--
+        Modal „Ukryte karty" — otwierany wskazówką „+N" na końcu paska
+        kafelków. Sam NIE zmienia filtrów: pokazuje, które karty są
+        ukryte i co trzeba zmienić. Przycisk „Pokaż wszystkie karty"
+        zmienia filtry na żądanie operatora.
+
+        Stoi WEWNĄTRZ .dx-page, żeby dziedziczyć style kart (ton, zaokrąglenie,
+        znacznik RFQ/PO) — dzięki temu mini-karty w modalu wyglądają
+        jak te z paska. Bootstrap 4, modal-dialog-centered; backdrop
+        „static", żeby przypadkowy klik obok nie zamknął okna.
+    -->
+    <div class="modal fade"
+         id="docsStatsMoreModal"
+         tabindex="-1"
+         role="dialog"
+         aria-labelledby="docsStatsMoreModalTitle"
+         aria-hidden="true"
+         data-backdrop="static">
+        <div class="modal-dialog modal-dialog-centered" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="docsStatsMoreModalTitle">Ukryte karty</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Zamknij">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <!-- Stan 1: informacja o ukrytych kartach -->
+                    <div id="docsStatsMoreInfo">
+                        <p class="mb-2">Ukryte karty na pasku:</p>
+                        <div class="docs-stats-more-cards" id="docsStatsMoreCards"></div>
+                        <p class="text-muted small mb-0" id="docsStatsMoreHint"></p>
+                    </div>
+
+                    <!-- Stan 2: potwierdzenie zmiany filtrów -->
+                    <div id="docsStatsMoreConfirm" class="d-none">
+                        <p class="mb-2">Aby pokazać wszystkie karty, zostaną zmienione filtry:</p>
+                        <ul class="docs-filters-change mb-2" id="docsStatsMoreChange"></ul>
+                        <p class="text-muted small mb-0">
+                            Pozostałe filtry zostaną bez zmian, a lista dokumentów zostanie odświeżona.
+                        </p>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" id="docsStatsMoreApply">Pokaż wszystkie karty</button>
+                    <button type="button" class="btn btn-outline-secondary d-none" id="docsStatsMoreCancel">Anuluj</button>
+                    <button type="button" class="btn btn-primary" id="docsStatsMoreOk">Rozumiem</button>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script src="<?= htmlspecialchars(asset('public_html/components/purchases/documents/documents-view.js'), ENT_QUOTES) ?>"></script>

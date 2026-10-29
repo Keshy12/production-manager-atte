@@ -61,15 +61,18 @@
 .dx-page .dx-head-links { display: flex; flex-wrap: wrap; gap: .4rem; }
 
 
-/* ---- Liczniki statusów (6 kafelków w jednym pasku) ----------------- */
+/* ---- Liczniki statusów (pasek kafelków) ------------------------------
+   Flex, nie grid: przy włączonym „Ukryj zakończone" kafelki zakończonych
+   statusów znikają z paska, a pozostałe rozciągają się na całą szerokość.
+   Grid zostawiłby w tym miejscu puste kolumny. */
 
 .dx-page .dx-stats {
-    display: grid;
-    grid-template-columns: repeat(7, minmax(0, 1fr));
+    display: flex;
+    flex-wrap: wrap;
     gap: .5rem;
     margin-bottom: 1rem;
 }
-.dx-page .dx-stats .rx-stat { min-width: 0; }
+.dx-page .dx-stats .rx-stat { min-width: 0; flex: 1 1 0; }
 .dx-page .dx-stats .rx-stat-label {
     overflow: hidden;
     max-width: 100%;
@@ -82,17 +85,20 @@
 .dx-page .dx-stat--draft     { --rx-tone: #8a96a3; --rx-tone-soft: #f3f5f8; }
 .dx-page .dx-stat--sent      { --rx-tone: #6f42c1; --rx-tone-soft: #f7f3fd; }
 .dx-page .dx-stat--responded { --rx-tone: #17a2b8; --rx-tone-soft: #eef9fb; }
-.dx-page .dx-stat--progress  { --rx-tone: #007bff; --rx-tone-soft: #edf4ff; }
+.dx-page .dx-stat--confirmed  { --rx-tone: #007bff; --rx-tone-soft: #edf4ff; }
+.dx-page .dx-stat--in_progress { --rx-tone: #17a2b8; --rx-tone-soft: #eef9fb; }
 .dx-page .dx-stat--received  { --rx-tone: #28a745; --rx-tone-soft: #eef8f1; }
 .dx-page .dx-stat--converted { --rx-tone: #28a745; --rx-tone-soft: #eef8f1; }
 .dx-page .dx-stat--cancelled { --rx-tone: #dc3545; --rx-tone-soft: #fff4f5; }
 
 /* Kafelki, które dotyczą tylko jednego typu, dostają w rogu ten sam
-   cichy znacznik co wiersz. */
-.dx-page .dx-stats .rx-stat[data-stat="responded"]::after,
-.dx-page .dx-stats .rx-stat[data-stat="converted"]::after,
-.dx-page .dx-stats .rx-stat[data-stat="progress"]::after,
-.dx-page .dx-stats .rx-stat[data-stat="received"]::after {
+   cichy znacznik co wiersz. Selektor bez `.dx-stats`, żeby ten sam
+   znacznik dostały też mini-karty w modalu „Ukryte karty". */
+.dx-page .rx-stat[data-stat="responded"]::after,
+.dx-page .rx-stat[data-stat="converted"]::after,
+.dx-page .rx-stat[data-stat="confirmed"]::after,
+.dx-page .rx-stat[data-stat="in_progress"]::after,
+.dx-page .rx-stat[data-stat="received"]::after {
     position: absolute;
     top: .6rem;
     right: .6rem;
@@ -104,39 +110,90 @@
     letter-spacing: .05em;
     line-height: 1.3;
 }
-.dx-page .dx-stats .rx-stat[data-stat="responded"]::after,
-.dx-page .dx-stats .rx-stat[data-stat="converted"]::after {
+.dx-page .rx-stat[data-stat="responded"]::after,
+.dx-page .rx-stat[data-stat="converted"]::after {
     content: "RFQ";
     background: var(--dx-rfq-soft);
     border-color: var(--dx-rfq-line);
     color: var(--dx-rfq-ink);
 }
-.dx-page .dx-stats .rx-stat[data-stat="progress"]::after,
-.dx-page .dx-stats .rx-stat[data-stat="received"]::after {
+.dx-page .rx-stat[data-stat="confirmed"]::after,
+.dx-page .rx-stat[data-stat="in_progress"]::after,
+.dx-page .rx-stat[data-stat="received"]::after {
     content: "PO";
     background: var(--dx-po-soft);
     color: var(--dx-po-ink);
 }
 
-/* Kafelki zakończonych statusów przy włączonym „Ukryj zakończone":
-   wyszarzone, bez reakcji na najechanie i klik (układ się nie przesuwa). */
-.dx-page .dx-stats .rx-stat.is-disabled {
-    opacity: .45;
-    cursor: not-allowed;
-    background: var(--rx-canvas);
-    filter: grayscale(1);
+/* Kafelki zakończonych statusów przy włączonym „Ukryj zakończone" są
+   całkiem usuwane z paska (klasa d-none) — patrz syncTilesUi()
+   w documents-view.js. Zostają w DOM-ie, ale `display:none` wyciąga je
+   z tabulatora i z układu flex. */
+
+/* Wskazówka „+N" na końcu paska: informuje, że część kafelków jest
+   ukryta, i po kliknięciu przywraca pełny zestaw. Styl celowo inny
+   od kafelków (przerywana ramka, brak tła), żeby nie udawał licznika. */
+.dx-page .dx-stats-more {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .3rem;
+    min-width: 3.75rem;
+    padding: .65rem .8rem;
+    border: 1px dashed var(--rx-line);
+    border-radius: var(--rx-radius);
+    background: transparent;
+    color: var(--rx-muted);
+    font-size: .8125rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: border-color .15s ease, color .15s ease;
 }
-.dx-page .dx-stats .rx-stat.is-disabled:hover {
+.dx-page .dx-stats-more:hover {
+    border-color: #cfd8e3;
+    color: var(--rx-ink);
+}
+.dx-page .dx-stats-more:focus { outline: none; box-shadow: var(--rx-ring); }
+.dx-page .dx-stats-more[hidden] { display: none !important; }
+
+/* Mini-karty w modalu „Ukryte karty" — ten sam wygląd co karty na
+   pasku (ton, zaokrąglenie, znacznik RFQ/PO), tylko mniejsze. Dzięki
+   temu operator rozpoznaje je od razu. */
+.dx-page .docs-stats-more-cards {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+    margin-bottom: .85rem;
+}
+.dx-page .docs-stats-more-cards .rx-stat {
+    flex: 0 1 8.5rem;
+    min-width: 0;
+    padding: .5rem .7rem .45rem;
+    cursor: default;
+}
+.dx-page .docs-stats-more-cards .rx-stat:hover {
     border-color: var(--rx-line);
     box-shadow: none;
     transform: none;
 }
+.dx-page .docs-stats-more-cards .rx-stat-value { font-size: 1.15rem; }
+.dx-page .docs-stats-more-cards .rx-stat-label { font-size: .75rem; }
+
+/* Lista zmian filtrów w stanie potwierdzenia modalu „Ukryte karty". */
+.dx-page .docs-filters-change {
+    margin-bottom: .5rem;
+    padding-left: 1.1rem;
+    font-size: .9rem;
+    color: var(--rx-ink);
+}
+.dx-page .docs-filters-change li { margin-bottom: .2rem; }
 
 @media (max-width: 991.98px) {
-    .dx-page .dx-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .dx-page .dx-stats .rx-stat { flex: 1 1 calc(25% - .375rem); }
 }
 @media (max-width: 575.98px) {
-    .dx-page .dx-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .dx-page .dx-stats .rx-stat { flex: 1 1 calc(50% - .25rem); }
 }
 
 
@@ -321,8 +378,9 @@
    `nowrap` bo `wrap` łamał komórkę na dwa wiersze, gdy w akcji stały
    kosz + przycisk z długą etykietą + Edytuj/Podgląd — wiersz rósł
    w pionie i przyciski w sąsiednich wierszach nie były wyrównane.
-   Następne kroki (Wyślij / Oznacz odpowiedź / Potwierdź odbiór /
-   Przyjmij towar) są teraz w menu pod caretem Edytuj/Podgląd,
+   Następne kroki (Wyślij / Oznacz odpowiedź / Potwierdź odpowiedź /
+   Potwierdź odbiór / Dokończ przyjęcie / Przyjmij towar) są teraz
+   w menu pod caretem Edytuj/Podgląd,
    więc komórka akcji trzyma już tylko kosz + split-button edycji;
    Kolumna Akcje (11rem) oddała różnicę kolumnie Dostawca. */
 .dx-page .dx-cell--action {
@@ -424,7 +482,7 @@
     .dx-page .dx-cell--action > .btn-group { flex: 1 1 auto; min-width: 0; }
 }
 
-/* Przełącznik „Ukryj zakończone" w pasku filtrów */
+/* Przełącznik „Ukryj zakończone" — w pasku filtrów, obok „Odśwież". */
 .dx-hide-done { min-height: 0; margin: 0 .25rem 0 0; white-space: nowrap; }
 .dx-hide-done .custom-control-label { font-size: .8125rem; color: var(--rx-muted); cursor: pointer; user-select: none; }
 .dx-hide-done .custom-control-input:checked ~ .custom-control-label { color: var(--rx-ink); }

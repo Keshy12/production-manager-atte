@@ -404,21 +404,21 @@ $(document).ready(function () {
     // Pozycje menu pod caretem split-buttona Edytuj w wierszu kolejki.
     // Kolejka ma tylko PO, więc gałąz jest krótsza niż odpowiednik
     // w documents-view.js:
-    //   - sent (canRx === false) → „Potwierdź odbiór" jako
+    //   - sent (canRx === false) → „Potwierdź odpowiedź" jako
     //     <button data-action="confirm-po"> z pełnym zestawem atrybutów
     //     data-* (patrz confirm-po-modal.js). Item jest zielony
-    //     (.rx-action-success) — „Potwierdź odbiór" to potwierdzenie
-    //     faktu, akcja zamykająca etap, więc zielona.
-    //   - confirmed / partially_received       → „Przyjmij towar"
-    //   - in_progress                          → „Dokończ przyjęcie"
-    //     (zachowujemy rozróżnienie, które wcześniej żyło w inline label
-    //     akcji bezpośredniej). Item jest niebieski (.rx-action-primary) —
-    //     akcja, która zabiera operatora do dalszej pracy z towarem.
+    //     (.rx-action-success) — potwierdzenie odpowiedzi dostawcy
+    //     zamyka etap „czeka na odpowiedź", więc zielony.
+    //   - confirmed             → „Potwierdź odbiór"
+    //   - in_progress           → „Dokończ przyjęcie"
+    //   - partially_received    → „Przyjmij towar"
+    //     Itemy są niebieskie (.rx-action-primary) — akcja, która zabiera
+    //     operatora do dalszej pracy z towarem (formularz przyjęcia).
     //
     // Odcienie celowo NIE odzwierciedlają klasy przycisku na stronie
-    // edycji (tam „Przyjmij towar" jest zielony). To decyzja
-    // produktowa, nie Follow the Edit Page: w menu kolor rozróżnia
-    // rodzaj akcji, a nie dokładnie ten sam przycisk.
+    // edycji (tam „Potwierdź odbiór" / „Przyjmij towar" są zielone).
+    // To decyzja produktowa, nie Follow the Edit Page: w menu kolor
+    // rozróżnia rodzaj akcji, a nie dokładnie ten sam przycisk.
     // Item to <a> dla receive, <button> dla confirm — zachowujemy
     // dotychczasowe typy elementów (BS4 dropdown sam dopilnuje pozycjonowania).
     // Klasy kolorów są współdzielone z documents-view.js (actionMenuItemsHtml)
@@ -431,21 +431,27 @@ $(document).ready(function () {
                 + ' data-po-id="' + poId + '"'
                 + ' data-po-number="' + escAttr(poLabel) + '"'
                 + ' data-vendor-name="' + escAttr(p.vendorName || '') + '"'
-                + ' data-vendor-po-number="' + escAttr(p.vendorPoNumber || '') + '"'
-                + ' data-after-confirm-url="' + escAttr(receiveUrl(poId)) + '">'
-                + '<i class="bi bi-check2-square"></i> Potwierdź odbiór</button>';
+                + ' data-vendor-po-number="' + escAttr(p.vendorPoNumber || '') + '">'
+                + '<i class="bi bi-reply"></i> Potwierdź odpowiedź</button>';
         }
-        const label = p.state === 'in_progress' ? 'Dokończ przyjęcie' : 'Przyjmij towar';
+        let label = 'Przyjmij towar';
+        let icon  = 'bi-box-arrow-in-down';
+        if (p.state === 'confirmed') {
+            label = 'Potwierdź odbiór';
+            icon  = 'bi-check2-square';
+        } else if (p.state === 'in_progress') {
+            label = 'Dokończ przyjęcie';
+        }
         return '<a class="dropdown-item rx-action-primary"'
              + ' href="' + escAttr(receiveUrl(poId)) + '">'
-             + '<i class="bi bi-box-arrow-in-down"></i> ' + label + '</a>';
+             + '<i class="bi ' + icon + '"></i> ' + label + '</a>';
     }
 
     function queueRowHtml(p, idx, group) {
         const poId  = parseInt(p.poId, 10);
-        // canReceive === false tylko dla `sent` (czeka na potwierdzenie
+        // canReceive === false tylko dla `sent` (czeka na odpowiedź
         // dostawcy). Taki wiersz nie prowadzi do formularza — akcję niesie
-        // przycisk „Potwierdź odbiór" (współdzielony modal).
+        // przycisk „Potwierdź odpowiedź" (współdzielony modal).
         const canRx = p.canReceive !== false;
         const poLabel = p.poNumber || ('#' + poId);
 
@@ -464,7 +470,7 @@ $(document).ready(function () {
 
         let stateCell = stateBadge(p.state);
         if (!canRx) {
-            stateCell += '<div class="rx-sub"><i class="bi bi-hourglass-split"></i> czeka na potwierdzenie dostawcy</div>';
+            stateCell += '<div class="rx-sub"><i class="bi bi-hourglass-split"></i> czeka na odpowiedź dostawcy</div>';
         }
 
         // Drugi przycisk w komórce akcji — mały, tylko ikona kosza:
@@ -506,8 +512,8 @@ $(document).ready(function () {
         // Edytuj/Podgląd jako split-button (ten sam wzorzec co
         // documents-view.js → editControlHtml): etykieta Edytuj jest
         // zwykłym linkiem do ekranu zamówienia, a caret otwiera menu
-        // z kolejnym krokiem (Przyjmij towar / Dokończ przyjęcie /
-        // Potwierdź odbiór). Kosz stoi przed split-buttonem, żeby
+        // z kolejnym krokiem (Potwierdź odbiór / Dokończ przyjęcie /
+        // Przyjmij towar / Potwierdź odpowiedź). Kosz stoi przed split-buttonem, żeby
         // „mniej kuszący" przycisk nie wyglądał jak wizualne
         // następstwo Edytuj. Każdy wiersz kolejki ma co najmniej
         // jedną pozycję menu; gdyby kiedyś tak nie było, editControl

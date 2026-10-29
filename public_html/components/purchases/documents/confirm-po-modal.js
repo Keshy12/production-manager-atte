@@ -1,13 +1,17 @@
 /**
- * Modal "Potwierdź odbiór PO" — współdzielona logika dla DWÓCH wejść:
+ * Modal "Potwierdź odpowiedź PO" — współdzielona logika dla TRZECH wejść:
  *
- *   (A) /admin/purchase/documents/edit — header CTA na PO w stanie
- *       `sent`. PHP renderuje <button data-action="confirm-po" …>
- *       obok "Wróć".
+ *   (A) /purchase/documents — pozycja menu pod caretem Edytuj/Podgląd
+ *       dla PO w stanie `sent`. JS generuje
+ *       <button data-action="confirm-po" …> w actionMenuItemsHtml().
  *
  *   (B) /purchase/receipts — kolejka "Do przyjęcia" dla wierszy
  *       `sent`. JS generuje <button data-action="confirm-po" …>
  *       w queueRowHtml().
+ *
+ *   (C) /admin/purchase/documents/edit — header CTA na PO w stanie
+ *       `sent`. PHP renderuje <button data-action="confirm-po" …>
+ *       obok "Wróć".
  *
  * Każdy trigger niesie atrybuty:
  *
@@ -26,6 +30,12 @@
  * Na sukces: setAlert + location.reload() po 1.2 s (operator widzi
  * nowy stan w UI zanim strona się przeładuje). Na błąd: inline
  * #send-confirm-error + ponowne włączenie submitu.
+ *
+ * Modal kończy TYLKO etap „czeka na odpowiedź dostawcy" (`sent` →
+ * `confirmed`). Przyjęcie towaru to OSOBNY, późniejszy krok
+ * (`confirmed` → "Potwierdź odbiór" → formularz przyjęcia →
+ * `in_progress`) — dlatego po sukcesie NIE przenosimy operatora do
+ * formularza przyjęcia, tylko przeładowujemy stronę.
  *
  * Konwencje: Bootstrap 4 jQuery API ($('#…').modal('show'/'hide')),
  * brak `var`, brak `setAlert`-zależności (fallback na własny banner
@@ -60,12 +70,6 @@ $(document).ready(function () {
     // wysłać. Nie trzymamy w DOM, bo po drodze formularz ma tylko
     // dwa inputy i można je sczytać bezpośrednio.
     let currentPoId = null;
-
-    // Opcjonalny URL, do którego przechodzimy po sukcesie zamiast
-    // przeładowania strony (data-after-confirm-url na triggerze).
-    // Edit page PO ustawia go na formularz przyjęcia towaru; kolejka
-    // /purchase/receipts go nie ustawia i nadal się przeładowuje.
-    let afterConfirmUrl = '';
 
     // ---- Helpers ---------------------------------------------------
 
@@ -148,7 +152,6 @@ $(document).ready(function () {
         }
 
         currentPoId = poId;
-        afterConfirmUrl = $trigger.attr('data-after-confirm-url') || '';
 
         // Kontekst: "PO/2026/0042 — Farnell". Separator " — " (em dash
         // + spacje) spójny ze stylem wizarda. Pusta nazwa dostawcy →
@@ -250,18 +253,14 @@ $(document).ready(function () {
             // Sukces — pokaż banner + przeładuj stronę po 1.2 s, żeby
             // operator zobaczył nowy stan (np. PO w /receipts queue
             // zniknie z kolejki, w /edit badge zmieni się na
-            // "potwierdzone").
+            // "potwierdzone"). NIE przenosimy operatora do formularza
+            // przyjęcia — to osobny, późniejszy krok (potwierdzenie
+            // odpowiedzi dostawcy nie jest przyjęciem towaru).
             const docNumber = r.document_number || ('#' + currentPoId);
-            announceSuccess('Potwierdzono odbiór ' + docNumber + '. Stan: potwierdzone.');
-            const nextUrl = afterConfirmUrl;
+            announceSuccess('Potwierdzono odpowiedź dla ' + docNumber + '. Stan: potwierdzone.');
             setTimeout(function () {
-                if (nextUrl) {
-                    // Dalej do przyjęcia towaru (/purchase/receipts/receive).
-                    window.location.href = nextUrl;
-                } else {
-                    window.location.reload();
-                }
-            }, nextUrl ? 600 : 1200);
+                window.location.reload();
+            }, 1200);
         })
         .fail(function (xhr, status) {
             setSubmitting(false);
@@ -280,7 +279,6 @@ $(document).ready(function () {
     // wiadomości).
     $modal.on('hidden.bs.modal', function () {
         currentPoId = null;
-        afterConfirmUrl = '';
         hideInlineError();
         $errorBlock.removeClass('text-success').addClass('text-danger');
         resetBackdate();

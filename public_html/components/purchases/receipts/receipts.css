@@ -24,8 +24,8 @@
 .queue-row:not(.queue-row-pending),
 .receipt-row { cursor: pointer; }
 
-/* PO w stanie `sent` czeka na potwierdzenie dostawcy: wiersz przygaszony,
-   ale przycisk „Potwierdź odbiór" w środku pozostaje w pełni czytelny.
+/* PO w stanie `sent` czeka na odpowiedź dostawcy: wiersz przygaszony,
+   ale przycisk „Potwierdź odpowiedź" w środku pozostaje w pełni czytelny.
    Wcześniej było to inline style="opacity:.65" wstawiane z JS. */
 .queue-row-pending > td { opacity: .65; }
 .queue-row-pending > td .btn { opacity: 1; }

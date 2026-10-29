@@ -57,8 +57,8 @@ $(document).ready(function () {
         },
         po: {
             draft:              'do wysłania',
-            sent:               'czeka na potwierdzenie',
-            confirmed:          'czeka na towar',
+            sent:               'czeka na odpowiedź',
+            confirmed:          'czeka na odbiór',
             in_progress:        'przyjęcie rozpoczęte',
             partially_received: 'czeka na resztę towaru'
         }
@@ -66,18 +66,48 @@ $(document).ready(function () {
 
     // Statusy „zakończone" (zielone) — znikają przy „Ukryj zakończone".
     const FINISHED_STATES = ['converted', 'received', 'cancelled'];
-    const HIDDEN_TILE_TITLE = 'Ukryte — włączono „Ukryj zakończone"';
 
     // Kafelki → zestawy statusów (wartości opcji #states).
+    // `in_progress` obejmuje też `partially_received` — oba stany to
+    // trwające przyjęcie towaru. `confirmed` jest osobno: to zamówienie
+    // potwierdzone przez dostawcę, przed startem odbioru.
     const STAT_STATES = {
-        draft:     ['draft'],
-        sent:      ['sent'],
-        responded: ['responded'],
-        converted: ['converted'],
-        progress:  ['confirmed', 'in_progress', 'partially_received'],
-        received:  ['received'],
-        cancelled: ['cancelled']
+        draft:       ['draft'],
+        sent:        ['sent'],
+        responded:   ['responded'],
+        converted:   ['converted'],
+        confirmed:   ['confirmed'],
+        in_progress: ['in_progress', 'partially_received'],
+        received:    ['received'],
+        cancelled:   ['cancelled']
     };
+
+    // Statusy należące do każdego z typów dokumentu. Statusy wspólne
+    // (draft, sent, cancelled) pasują do obu typów — dlatego typ statusu
+    // nie jest pojedynczą flagą, tylko parą obecności.
+    const RFQ_STATES = ['draft', 'sent', 'responded', 'converted', 'cancelled'];
+    const PO_STATES  = ['draft', 'sent', 'confirmed', 'in_progress', 'partially_received', 'received', 'cancelled'];
+
+    // Typ dokumentu dla pojedynczego statusu: 'both' | 'rfq' | 'po'.
+    function stateType(s) {
+        const inRfq = RFQ_STATES.indexOf(s) !== -1;
+        const inPo  = PO_STATES.indexOf(s) !== -1;
+        if (inRfq && inPo) return 'both';
+        return inRfq ? 'rfq' : 'po';
+    }
+
+    // Typ dokumentu, którego dotyczy kafelek. Wyliczany z listy statusów
+    // kafelka, żeby nie rozjechać się z nią przy zmianie filtrów.
+    function tileType(key) {
+        let rfq = false, po = false;
+        (STAT_STATES[key] || []).forEach(function (s) {
+            const t = stateType(s);
+            if (t === 'rfq' || t === 'both') rfq = true;
+            if (t === 'po'  || t === 'both') po  = true;
+        });
+        if (rfq && po) return 'both';
+        return rfq ? 'rfq' : 'po';
+    }
 
     const $vendor    = $('#vendor');
     const $states    = $('#states');
@@ -102,7 +132,10 @@ $(document).ready(function () {
         try { window.localStorage.setItem(HIDE_DONE_KEY, on ? '1' : '0'); } catch (e) { /* bez pamięci */ }
     }
 
-    let hideDoneUiOn = null;
+    let stateOptionsUiKey = null;
+    // Liczniki ukrytych kafelków (pobierane na żądanie, przy otwarciu
+    // modalu „Ukryte karty").
+    const hiddenStatCounts = {};
     let docType = 'both';
     let currentPage = 1;
     let totalCount = null;
@@ -270,23 +303,198 @@ $(document).ready(function () {
         return (STAT_STATES[key] || []).some(function (s) { return FINISHED_STATES.indexOf(s) !== -1; });
     }
 
-    // Wyszarza kafelki zakończonych statusów i blokuje te opcje w liście
-    // statusów, gdy „Ukryj zakończone" jest włączone.
-    function syncHideDoneUi(on) {
-        $('.dx-stats .rx-stat').each(function () {
+    // Kafelek jest widoczny, gdy pasuje do wybranego typu dokumentu
+    // i nie jest statusem zakończonym przy włączonym „Ukryj zakończone".
+    // Obie reguły sterują tą samą klasą d-none, więc decyzja o widoczności
+    // musi być w jednym miejscu.
+    function tileVisible(key, f) {
+        const t = tileType(key);
+        // Kafelek wspólny dla obu typów (Szkice, Wysłane, Anulowane)
+        // pasuje do każdego filtra typu — chowamy tylko kafelki
+        // przypisane do KONKRETNEGO, innego typu.
+        if (f.type !== 'both' && t !== 'both' && t !== f.type) return false;
+        if (f.hideDone && isFinishedTile(key)) return false;
+        return true;
+    }
+
+    // Kafelki są usuwane z paska w całości (d-none), a nie tylko
+    // wyszarzane: kafelek innego typu dokumentu albo zakończonego
+    // statusu nie prowadzi do żadnego wyniku. Ukryty kafelek znika też
+    // z tabulatora (display:none) i z układu flex — pozostałe kafelki
+    // rozciągają się na całą szerokość.
+    //
+    // Liczba ukrytych kafelków idzie do wskazówki „+N" na końcu paska,
+    // żeby operator widział, że na pasku jest więcej pozycji niż widać.
+    function syncTilesUi(f) {
+        let hiddenCount = 0;
+        $('.dx-stats .rx-stat[data-stat]').each(function () {
             const $t = $(this);
-            if (!isFinishedTile($t.attr('data-stat'))) return;
-            if ($t.attr('data-orig-title') === undefined) $t.attr('data-orig-title', $t.attr('title') || '');
-            $t.toggleClass('is-disabled', on)
-              .attr('aria-disabled', on ? 'true' : 'false')
-              .attr('title', on ? HIDDEN_TILE_TITLE : $t.attr('data-orig-title'));
-            if (on) {
-                $t.find('[data-stat-value]').text('–');
-                $t.removeClass('is-zero');
-            }
+            const visible = tileVisible($t.attr('data-stat'), f);
+            if (!visible) hiddenCount++;
+            $t.toggleClass('d-none', !visible);
         });
+
+        const $more = $('.dx-stats-more');
+        $more.toggleClass('d-none', hiddenCount === 0);
+        $more.prop('hidden', hiddenCount === 0);
+        $more.find('[data-stat-more-count]').text(hiddenCount);
+        $more.attr('title', 'Ukryte karty (' + hiddenCount + ') — kliknij, aby dowiedzieć się, co zmienić')
+            .attr('aria-label', 'Ukryte karty: ' + hiddenCount + '. Kliknij, aby dowiedzieć się, co zmienić');
+    }
+
+    // Modal „Ukryte karty" ma dwa stany:
+    //   info   — pokazuje ukryte karty i mówi, co zmienić (nic nie zmienia)
+    //   confirm — pokazuje dokładnie, jakie filtry zostaną zmienione,
+    //             i dopiero wtedy operator może je zastosować
+    let statsMoreState = 'info';
+
+    function showStatsMoreInfo() {
+        statsMoreState = 'info';
+        $('#docsStatsMoreModalTitle').text('Ukryte karty');
+        $('#docsStatsMoreInfo').removeClass('d-none');
+        $('#docsStatsMoreConfirm').addClass('d-none');
+        $('#docsStatsMoreApply').removeClass('d-none');
+        $('#docsStatsMoreCancel').addClass('d-none');
+        $('#docsStatsMoreOk').text('Rozumiem');
+    }
+
+    function showStatsMoreConfirm() {
+        const f = readFilters();
+        const changes = [];
+        if (f.type !== 'both') {
+            changes.push('Typ dokumentu: ' + typeLabel(f.type) + ' → Wszystkie');
+        }
+        if (f.hideDone) {
+            changes.push('Ukryj zakończone: włączone → wyłączone');
+        }
+
+        statsMoreState = 'confirm';
+        $('#docsStatsMoreModalTitle').text('Zmiana filtrów');
+        $('#docsStatsMoreInfo').addClass('d-none');
+        $('#docsStatsMoreConfirm').removeClass('d-none');
+        $('#docsStatsMoreApply').addClass('d-none');
+        $('#docsStatsMoreCancel').removeClass('d-none');
+        $('#docsStatsMoreOk').text('Zmień filtry');
+        $('#docsStatsMoreChange').html(changes.map(function (c) {
+            return '<li>' + esc(c) + '</li>';
+        }).join(''));
+    }
+
+    // Etykieta segmentu typu dokumentu — tak, jak nazywa się przycisk.
+    function typeLabel(t) {
+        if (t === 'rfq') return 'Zapytania (RFQ)';
+        if (t === 'po') return 'Zamówienia (PO)';
+        return 'Wszystkie';
+    }
+
+    // Wskazówka „+N" NIE zmienia filtrów — tylko otwiera modal, który
+    // pokazuje ukryte karty i mówi, co operator ma zmienić, żeby je
+    // zobaczyć. Sama zmiana filtrów byłaby niespodzianką: kafelek
+    // sugeruje, że ktoś może chcieć filtrować właśnie tym statusem.
+    function explainHiddenTiles() {
+        const f = readFilters();
+
+        // Klucze ukrytych kafelków bierzemy z paska — dzięki temu
+        // mini-karty w modalu pokazują dokładnie te nazwy, które
+        // operator widzi na stronie.
+        const hidden = [];
+        $('.dx-stats .rx-stat[data-stat]').each(function () {
+            if (tileVisible($(this).attr('data-stat'), f)) return;
+            hidden.push($(this).attr('data-stat'));
+        });
+        if (!hidden.length) return;
+
+        const cards = hidden.map(function (key) {
+            const $tile = $('.dx-stats .rx-stat[data-stat="' + key + '"]');
+            const label = $tile.find('.rx-stat-label').text().trim();
+            const value = hiddenStatCounts[key];
+            return '<div class="rx-stat dx-stat--' + key + '" data-stat="' + key + '">'
+                 + '<span class="rx-stat-value" data-stat-value>'
+                 + (value === undefined ? '–' : value) + '</span>'
+                 + '<span class="rx-stat-label">' + esc(label) + '</span>'
+                 + '</div>';
+        }).join('');
+
+        const steps = [];
+        if (f.type !== 'both') steps.push('wybierz „Wszystkie" w filtrze typu dokumentu');
+        if (f.hideDone) steps.push('wyłącz „Ukryj zakończone" w pasku filtrów');
+
+        let hint;
+        if (steps.length === 1) {
+            hint = 'Aby zobaczyć wszystkie karty, ' + steps[0] + '.';
+        } else if (steps.length > 1) {
+            hint = 'Aby zobaczyć wszystkie karty, ' + steps[0] + ' oraz ' + steps[1] + '.';
+        } else {
+            hint = 'Wszystkie karty są widoczne.';
+        }
+
+        $('#docsStatsMoreCards').html(cards);
+        $('#docsStatsMoreHint').text(hint);
+        showStatsMoreInfo();
+        $('#docsStatsMoreModal').modal('show');
+
+        // Liczniki ukrytych kart dociągamy w tle — modal jest już
+        // otwarty, więc liczby pojawiają się bez czekania.
+        loadHiddenStatCounts(f);
+    }
+
+    // Liczniki dla UKRYTYCH kafelków. Liczymy je tak, jakby kafelek był
+    // widoczny: własny typ dokumentu kafelka (nie bieżący filtr typu)
+    // i bez „Ukryj zakończone". Dzięki temu mini-karta w modalu ma
+    // dokładnie tę samą liczbę co pełna karta na pasku.
+    function loadHiddenStatCounts(f) {
+        Object.keys(STAT_STATES).forEach(function (key) {
+            if (tileVisible(key, f)) { delete hiddenStatCounts[key]; return; }
+            $.ajax({
+                type: 'POST',
+                url: ENDPOINT,
+                data: $.extend({}, payload(f, STAT_STATES[key]), {
+                    mode: 'count',
+                    type: tileType(key),
+                    hide_finished: 0
+                }),
+                dataType: 'json'
+            })
+            .done(function (res) {
+                if (!res || typeof res.totalCount !== 'number') return;
+                hiddenStatCounts[key] = res.totalCount;
+                $('#docsStatsMoreCards .rx-stat[data-stat="' + key + '"] [data-stat-value]')
+                    .text(res.totalCount);
+            });
+        });
+    }
+
+    // Przycisk „Pokaż wszystkie karty" w modalu: przywraca pełny zestaw
+    // kafelków — typ dokumentu wraca do „Wszystkie", a „Ukryj
+    // zakończone" jest wyłączane. Jedno przeładowanie listy, nie dwa.
+    function showAllTiles() {
+        const typeChanged = docType !== 'both';
+        const hideChanged = $hideDone.is(':checked');
+
+        if (typeChanged) setType('both');
+        if (hideChanged) {
+            $hideDone.prop('checked', false);
+            saveHideDone(false);
+        }
+        $('#docsStatsMoreModal').modal('hide');
+
+        if (!typeChanged && !hideChanged) return;
+        // Przy powrocie do „Wszystkie" żaden status nie wypada.
+        dropTypeMismatchStates('both');
+        filtersChanged(true);
+    }
+
+    // Opcje w filtrze statusów muszą pasować do wybranego typu dokumentu
+    // i nie mogą być statusem zakończonym przy włączonym „Ukryj
+    // zakończone" — inaczej operator wybrałby filtr, który nie ma
+    // odpowiadającego mu kafelka i nie zwróciłby żadnych wyników.
+    function syncStateOptionsUi(f) {
         $states.find('option').each(function () {
-            if (FINISHED_STATES.indexOf($(this).val()) !== -1) $(this).prop('disabled', on);
+            const v = $(this).val();
+            const t = stateType(v);
+            const typeOk = f.type === 'both' || t === 'both' || t === f.type;
+            const finished = f.hideDone && FINISHED_STATES.indexOf(v) !== -1;
+            $(this).prop('disabled', !typeOk || finished);
         });
         if (typeof $.fn.selectpicker === 'function') $states.selectpicker('refresh');
     }
@@ -298,15 +506,37 @@ $(document).ready(function () {
         if (kept.length !== current.length) setPicker($states, kept);
     }
 
+    // Przy zmianie typu dokumentu zdejmuje statusy, które do tego typu
+    // nie pasują. Bez tego filtr wskazywałby na kafelek, którego na
+    // pasku już nie ma (jest ukryty), a lista i tak byłaby pusta.
+    function dropTypeMismatchStates(type) {
+        const current = ($states.val() || []).map(String);
+        if (!current.length) return;
+        const kept = current.filter(function (s) {
+            const t = stateType(s);
+            // Status wspólny dla obu typów (draft, sent, cancelled)
+            // zostaje — pasuje do każdego filtra typu.
+            return type === 'both' || t === 'both' || type === t;
+        });
+        if (kept.length !== current.length) setPicker($states, kept);
+    }
+
     function syncFilterUi(f) {
         $('#vendorCell').toggleClass('is-active', f.vendors.length > 0);
         $('#statesCell').toggleClass('is-active', f.states.length > 0);
         $('#dateRange').toggleClass('is-active', f.from !== '' || f.to !== '');
         $('#clearFilters').toggleClass('d-none', isDefault(f));
 
-        if (hideDoneUiOn !== f.hideDone) {
-            hideDoneUiOn = f.hideDone;
-            syncHideDoneUi(f.hideDone);
+        // Widoczność kafelków zależy od dwóch rzeczy: wybranego typu
+        // dokumentu i przełącznika „Ukryj zakończone".
+        syncTilesUi(f);
+
+        // Opcje w filtrze statusów aktualizujemy tylko przy zmianie
+        // klucza — selectpicker('refresh') nie jest darmowy.
+        const optsKey = f.type + '|' + (f.hideDone ? 1 : 0);
+        if (stateOptionsUiKey !== optsKey) {
+            stateOptionsUiKey = optsKey;
+            syncStateOptionsUi(f);
         }
 
         const r = activeRange(f);
@@ -450,8 +680,9 @@ $(document).ready(function () {
         $('.dx-stats').addClass('is-loading');
         let pending = 0;
         Object.keys(STAT_STATES).forEach(function (key) {
-            // Zakończone kafelki są wyszarzone — bez zapytania.
-            if (f.hideDone && isFinishedTile(key)) return;
+            // Kafelki ukryte (inny typ dokumentu albo zakończony status)
+            // nie mają licznika — nie pytamy o nie.
+            if (!tileVisible(key, f)) return;
             pending++;
             const $tile = $('.dx-stats .rx-stat[data-stat="' + key + '"]');
             const xhr = $.ajax({
@@ -476,6 +707,9 @@ $(document).ready(function () {
             });
             statXhrs.push(xhr);
         });
+        // Gdyby wszystkie kafelki były ukryte, żaden request nie wystartował
+        // by — trzeba zdjąć stan ładowania ręcznie, bo `.always` się nie odpali.
+        if (pending === 0) $('.dx-stats').removeClass('is-loading');
     }
 
     // =====================================================================
@@ -594,11 +828,13 @@ $(document).ready(function () {
     }
 
     // Następne kroki dokumentu (Wyślij / Oznacz odpowiedź / Potwierdź
-    // odbiór / Przyjmij towar) NIE są już osobnymi przyciskami obok Edytuj.
+    // odpowiedź / Potwierdź odbiór / Dokończ przyjęcie / Przyjmij towar)
+    // NIE są już osobnymi przyciskami obok Edytuj.
     // Stoją w menu pod caretem split-buttona edycji — patrz
     // actionMenuItemsHtml() poniżej. To samo z logistycznymi (Potwierdź
-    // odbiór / Przyjmij towar), które wcześniej na tej liście nie
-    // pojawiały się, a których brak był powodem długiej kolumny Akcji.
+    // odbiór / Dokończ przyjęcie / Przyjmij towar), które wcześniej na
+    // tej liście nie pojawiały się, a których brak był powodem długiej
+    // kolumny Akcji.
 
     // Przycisk zamknięcia — współdzielony z kolejką /purchase/receipts
     // (patrz receipts-view.js → queueRowHtml). Stoi pierwszy w komórce
@@ -696,12 +932,12 @@ $(document).ready(function () {
     // więc caller ukrywa caret i zostaje zwykły link Edytuj.
     //
     // Konwencje data-* dla każdej pozycji:
-    //   - Wyślij / Oznacz odpowiedź / Przyjmij towar → zwykły <a href>;
-    //     router je obsługuje po stronie serwera.
-    //   - Potwierdź odbiór → <button data-action="confirm-po"> z
+    //   - Wyślij / Oznacz odpowiedź / Potwierdź odbiór / Dokończ
+    //     przyjęcie / Przyjmij towar → zwykły <a href>; router je
+    //     obsługuje po stronie serwera.
+    //   - Potwierdź odpowiedź → <button data-action="confirm-po"> z
     //     atrybutami, których wymaga confirm-po-modal.js (patrz jego
-    //     nagłówek: poId, poNumber, vendorName, vendorPoNumber,
-    //     afterConfirmUrl).
+    //     nagłówek: poId, poNumber, vendorName, vendorPoNumber).
     function actionMenuItemsHtml(d) {
         const id = parseInt(d.id, 10);
         const items = [];
@@ -713,10 +949,11 @@ $(document).ready(function () {
 // obie listy miały identyczny odcień dla tej samej akcji.
 //
 // Odcienie rozróżniają RODZAJ akcji, nie kopiują klasy przycisku
-// ze strony edycji: „Potwierdź odbiór" i „Utwórz zamówienie" są
-// zielone (kończą etap / zakładają nowy), „Wyślij", „Oznacz odpowiedź"
-// i „Przyjmij towar" niebieskie (kierują operatora dalej). Mapping
-// ustalony wprost przez operatora — nie „wygląda jak na edycji".
+// ze strony edycji: „Potwierdź odpowiedź" i „Utwórz zamówienie" są
+// zielone (kończą etap / zakładają nowy), „Wyślij", „Oznacz odpowiedź",
+// „Potwierdź odbiór", „Dokończ przyjęcie" i „Przyjmij towar" niebieskie
+// (kierują operatora dalej). Mapping ustalony wprost przez operatora
+// — nie „wygląda jak na edycji".
             items.push('<a class="dropdown-item rx-action-primary" href="' + url + '">'
                 + '<i class="bi bi-send"></i> Wyślij</a>');
         }
@@ -729,17 +966,24 @@ $(document).ready(function () {
             const number    = esc(d.primary_number || ('#' + id));
             const vendor    = esc(d.vendor_name || '');
             const vendorPo  = esc(d.secondary_number || '');
-            const afterUrl  = esc(appUrl('/purchase/receipts/receive?po_id=' + id));
             items.push('<button type="button" class="dropdown-item rx-action-success" data-action="confirm-po"'
                 + ' data-po-id="' + id + '"'
                 + ' data-po-number="' + number + '"'
                 + ' data-vendor-name="' + vendor + '"'
-                + ' data-vendor-po-number="' + vendorPo + '"'
-                + ' data-after-confirm-url="' + afterUrl + '">'
-                + '<i class="bi bi-check2-square"></i> Potwierdź odbiór</button>');
+                + ' data-vendor-po-number="' + vendorPo + '">'
+                + '<i class="bi bi-reply"></i> Potwierdź odpowiedź</button>');
         }
-        if (d.type === 'po'
-            && (d.state === 'confirmed' || d.state === 'partially_received' || d.state === 'in_progress')) {
+        if (d.type === 'po' && d.state === 'confirmed') {
+            const url = esc(appUrl('/purchase/receipts/receive?po_id=' + id));
+            items.push('<a class="dropdown-item rx-action-primary" href="' + url + '">'
+                + '<i class="bi bi-check2-square"></i> Potwierdź odbiór</a>');
+        }
+        if (d.type === 'po' && d.state === 'in_progress') {
+            const url = esc(appUrl('/purchase/receipts/receive?po_id=' + id));
+            items.push('<a class="dropdown-item rx-action-primary" href="' + url + '">'
+                + '<i class="bi bi-box-arrow-in-down"></i> Dokończ przyjęcie</a>');
+        }
+        if (d.type === 'po' && d.state === 'partially_received') {
             const url = esc(appUrl('/purchase/receipts/receive?po_id=' + id));
             items.push('<a class="dropdown-item rx-action-primary" href="' + url + '">'
                 + '<i class="bi bi-box-arrow-in-down"></i> Przyjmij towar</a>');
@@ -948,7 +1192,39 @@ $(document).ready(function () {
         const t = $(this).attr('data-type');
         if (t === docType) return;
         setType(t);
+        // Statusy spoza nowego typu dokumentu nie mają sensu — zdejmujemy
+        // je, żeby filtr nie wskazywał na ukryty kafelek.
+        dropTypeMismatchStates(docType);
         filtersChanged(true);
+    });
+
+    // Wskazówka „+N" na końcu paska kafelków — klik otwiera modal
+    // „Ukryte karty", który NIE zmienia filtrów, tylko informuje, co
+    // trzeba zmienić, żeby zobaczyć wszystkie karty.
+    $('.dx-stats').on('click', '.dx-stats-more', function () {
+        explainHiddenTiles();
+    });
+
+    // Przycisk „Pokaż wszystkie karty" w modalu — NIE zmienia filtrów
+    // od razu. Najpierw pokazuje potwierdzenie, co dokładnie się
+    // zmieni; filtry ruszają dopiero po kliknięciu „Zmień filtry".
+    $('#docsStatsMoreApply').on('click', function () {
+        showStatsMoreConfirm();
+    });
+
+    // „Anuluj" w stanie potwierdzenia — wraca do stanu informacji.
+    $('#docsStatsMoreCancel').on('click', function () {
+        showStatsMoreInfo();
+    });
+
+    // Główny przycisk modalu. W stanie informacji nic nie zmienia
+    // („Rozumiem" tylko zamyka), w stanie potwierdzenia stosuje zmianę.
+    $('#docsStatsMoreOk').on('click', function () {
+        if (statsMoreState === 'confirm') {
+            showAllTiles();
+        } else {
+            $('#docsStatsMoreModal').modal('hide');
+        }
     });
 
     $vendor.on('change', function () { filtersChanged(true); });
@@ -1005,10 +1281,10 @@ $(document).ready(function () {
     $(document).on('click', '.js-docs-retry', function () { filtersChanged(true); });
 
     // Kafelek = filtr statusu; drugi klik zdejmuje filtr.
+    // Kafelki ukryte przy „Ukryj zakończone" (d-none) nie klikają się —
+    // display:none wyciąga je z tabulatora.
     $('.dx-stats').on('click', '.rx-stat', function () {
-        if ($(this).hasClass('is-disabled')) return;
-        const set = STAT_STATES[$(this).attr('data-stat')] || [];
-        const current = ($states.val() || []).map(String);
+        const set = STAT_STATES[$(this).attr('data-stat')] || [];        const current = ($states.val() || []).map(String);
         setPicker($states, sameSet(current, set) ? [] : set.slice());
         filtersChanged(false);
     });

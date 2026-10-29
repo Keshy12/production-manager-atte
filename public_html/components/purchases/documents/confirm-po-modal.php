@@ -1,14 +1,22 @@
 <?php
 /**
- * Modal partial — "Potwierdź odbiór zamówienia" (PO → stan `confirmed`).
+ * Modal partial — "Potwierdź odpowiedź" (PO `sent` → stan `confirmed`).
  *
  * Współdzielony widget renderowany RAZ na stronie, na której może
- * zostać otwarty. Dwa miejsca wpinania w tej roli:
+ * zostać otwarty. Trzy miejsca wpinania w tej roli:
  *
- *   1. /admin/purchase/documents/edit — przycisk "Potwierdź odbiór"
- *      w prawym górnym rogu dla PO w stanie `sent` (header CTA).
+ *   1. /purchase/documents — lista dokumentów, pozycja menu pod caretem
+ *      Edytuj/Podgląd dla PO w stanie `sent`.
  *   2. /purchase/receipts — kolejka "Do przyjęcia" dla wierszy
- *      `sent` (przycisk w kolumnie Akcja).
+ *      `sent` (pozycja menu pod caretem Edytuj).
+ *   3. /admin/purchase/documents/edit — przycisk "Potwierdź odpowiedź"
+ *      w prawym górnym rogu dla PO w stanie `sent` (header CTA).
+ *
+ * Modal kończy TYLKO etap „czeka na odpowiedź dostawcy"
+ * (`sent` → `confirmed`). Przyjęcie towaru to osobny, późniejszy krok:
+ * `confirmed` → "Potwierdź odbiór" → formularz przyjęcia → `in_progress`.
+ * Po sukcesie strona po prostu się przeładowuje — operator nie jest
+ * automatycznie przenoszony do formularza przyjęcia.
  *
  * Endpoint docelowy: POST .../purchases/documents/document-confirm-ajax.php
  * Kontrakt we/wy jest zamrożony (patrz AGENTS.md sekcja A tego zadania):
@@ -50,7 +58,7 @@
 
             <div class="modal-header">
                 <h5 class="modal-title" id="send-confirm-po-modal-title">
-                    <i class="bi bi-check2-square"></i> Potwierdź odbiór zamówienia
+                    <i class="bi bi-reply"></i> Potwierdź odpowiedź dostawcy
                 </h5>
                 <button type="button" class="close" data-dismiss="modal" aria-label="Zamknij">
                     <span aria-hidden="true">&times;</span>
@@ -70,8 +78,7 @@
                 </div>
 
                 <p class="text-muted small mb-3">
-                    Zamówienie przechodzi ze stanu „Wysłane" do „Potwierdzone".
-                    Od tego momentu można przyjmować dostawy.
+                    Zamówienie przechodzi ze stanu „Wysłane" do „Potwierdzone" — dostawca przyjął zamówienie. Przyjęcie towaru to osobny, późniejszy krok.
                 </p>
 
                 <div class="form-group">
@@ -110,7 +117,7 @@
                     Anuluj
                 </button>
                 <button type="button" class="btn btn-primary" id="send-confirm-submit">
-                    <i class="bi bi-check2-square"></i> Potwierdź
+                    <i class="bi bi-reply"></i> Potwierdź odpowiedź
                 </button>
             </div>
 

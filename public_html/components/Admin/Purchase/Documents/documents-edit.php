@@ -114,18 +114,19 @@ if ($type === 'po') {
 $allowedEdit = in_array($doc->state, PurchaseActionHandler::allowedEditStates($type), true);
 
 // "Wyślij dokument" / "Wyślij ponownie" / "Oznacz odpowiedź" /
-// "Potwierdź odbiór" — jeden button w prawym górnym rogu headera,
-// obok "Wróć". Mapa stanów: draft → Wyślij dokument;
-// PO sent → Potwierdź odbiór; RFQ sent → Oznacz odpowiedź;
-// RFQ responded → Wyślij ponownie; PO confirmed → brak buttona
-// (wysyłka powtórna usunięta, zostało samo „Przyjmij towar");
+// "Potwierdź odpowiedź" / "Potwierdź odbiór" — jeden button w
+// prawym górnym rogu headera, obok "Wróć". Mapa stanów: draft →
+// Wyślij dokument; PO sent → Potwierdź odpowiedź (modal);
+// PO confirmed → Potwierdź odbiór (formularz przyjęcia);
+// RFQ sent → Oznacz odpowiedź; RFQ responded → Wyślij ponownie;
 // inne stany → brak buttona.
 //
 // Klucz 'action' w tablicy to dyskryminator routingu: PO w stanie
-// `sent` triggeruje modal "Potwierdź odbiór" (data-action="confirm-po"),
-// RFQ w stanie `sent` przechodzi do dedykowanej strony
-// "Oznacz odpowiedź" (data-action="respond-rfq"). Pozostałe przypadki
-// prowadzą do klasycznego wizzarda "Wyślij dokument".
+// `sent` triggeruje modal "Potwierdź odpowiedź" (data-action="confirm-po"),
+// PO w stanie `confirmed` prowadzi do formularza przyjęcia towaru
+// (data-action="receive-po"), RFQ w stanie `sent` przechodzi do
+// dedykowanej strony "Oznacz odpowiedź" (data-action="respond-rfq").
+// Pozostałe przypadki prowadzą do klasycznego wizzarda "Wyślij dokument".
 $sendButton = null;
 if ($type === 'rfq') {
     if ($doc->state === 'draft') {
@@ -144,19 +145,23 @@ if ($type === 'rfq') {
     if ($doc->state === 'draft') {
         $sendButton = ['label' => 'Wyślij dokument',  'icon' => 'bi-send'];
     } elseif ($doc->state === 'sent') {
-        // sent → confirmation is the natural next step. Re-send is rarely
-        // useful before vendor confirmation, so make "Potwierdź odbiór"
-        // the primary CTA. Click triggers the shared confirm modal
-        // (see confirm-po-modal.php). The 'action' discriminator tells
-        // the rendered HTML to emit a <button data-action="confirm-po">
-        // instead of the wizard <a>.
-        $sendButton = ['label' => 'Potwierdź odbiór', 'icon' => 'bi-check2-square', 'action' => 'confirm-po'];
+        // sent → dostawca przyjął zamówienie, operator rejestruje
+        // odpowiedź. Re-send jest rzadko przydatny przed potwierdzeniem,
+        // więc "Potwierdź odpowiedź" to główny CTA. Klik otwiera
+        // współdzielony modal (patrz confirm-po-modal.php). The 'action'
+        // discriminator tells the rendered HTML to emit a
+        // <button data-action="confirm-po"> instead of the wizard <a>.
+        $sendButton = ['label' => 'Potwierdź odpowiedź', 'icon' => 'bi-reply', 'action' => 'confirm-po'];
+    } elseif ($doc->state === 'confirmed') {
+        // confirmed → dostawca potwierdził, czas przyjąć towar.
+        // Ten krok jest OSOBNY od potwierdzenia odpowiedzi: prowadzi
+        // do formularza przyjęcia, a stan `in_progress` ustawia dopiero
+        // krok "Akceptuję" w tym formularzu. 'action' === 'receive-po'
+        // renderuje <a> do /purchase/receipts/receive.
+        $sendButton = ['label' => 'Potwierdź odbiór', 'icon' => 'bi-check2-square', 'action' => 'receive-po'];
     }
-    // PO `confirmed` celowo NIE ma już przycisku wysyłki. Powtarzna
-    // wysyłka potwierdzonego zamówienia do dostawcy rzadko coś daje,
-    // a w nagłówku ustępowała miejsco „Przyjmij towar" — jedynej
-    // akcji, która dla `confirmed` faktycznie coś robi. Usunięte na
-    // wyraźne życzenie operatora.
+    // PO `in_progress` / `partially_received` nie mają już przycisku
+    // wysyłki — mają własny blok akcji przyjęcia towaru (niżej).
 }
 
 // Vendor's preferred currency — pre-selects the Waluta picker in the
@@ -185,6 +190,7 @@ $stateBadgeTone = $type === 'po' ? [
     'draft'              => 'neutral',
     'sent'               => 'violet',
     'confirmed'          => 'blue',
+    'in_progress'        => 'cyan',
     'partially_received' => 'amber',
     'received'           => 'green',
     'cancelled'          => 'red',
@@ -199,6 +205,7 @@ $stateBadgeLabel = $type === 'po' ? [
     'draft'              => 'szkic',
     'sent'               => 'wysłane',
     'confirmed'          => 'potwierdzone',
+    'in_progress'        => 'w trakcie przyjęcia',
     'partially_received' => 'częściowo odebrane',
     'received'           => 'odebrane',
     'cancelled'          => 'anulowane',
@@ -266,9 +273,16 @@ function formatPrice($v) {
                     /purchase/documents. Button wysyłki jest warunkowy — patrz
                     mapa stanów przy definicji $sendButton powyżej.
 
-                    PO w stanie `sent` → "Potwierdź odbiór" otwiera współdzielony
+                    PO w stanie `sent` → "Potwierdź odpowiedź" otwiera współdzielony
                     modal (confirm-po-modal.php), więc 'action' === 'confirm-po'
-                    renderuje <button> z data-* zamiast <a> do wizarda.
+                    renderuje <button> z data-* zamiast <a> do wizarda. Modal
+                    kończy TYLKO etap `sent` → `confirmed` — po sukcesie strona
+                    się przeładowuje, operator NIE jest przenoszony do
+                    formularza przyjęcia.
+
+                    PO w stanie `confirmed` → "Potwierdź odbiór" prowadzi do
+                    formularza przyjęcia towaru, więc 'action' === 'receive-po'
+                    renderuje <a> do /purchase/receipts/receive.
 
                     RFQ w stanie `sent` → "Oznacz odpowiedź" prowadzi do
                     documents-respond.php, więc 'action' === 'respond-rfq'
@@ -277,7 +291,7 @@ function formatPrice($v) {
                 <div class="rx-dochead-actions rx-no-print">
                     <?php
                         // Przycisk anulowania — NAJLEWIEJ w grupie akcji,
-                        // przed "Wyślij"/"Potwierdź odbiór" i "Przyjmij towar".
+                        // przed "Wyślij"/"Potwierdź odpowiedź" i "Przyjmij towar".
                         // Kolejność jest tu functionalna: wyjście z ekranu
                         // ("Wróć") jest najbliżej prawego końca, operacja
                         // odwracalna w ramach sesji (zapisz/wyślij) jest
@@ -372,47 +386,57 @@ function formatPrice($v) {
                                     data-po-id="<?= (int)$doc->id ?>"
                                     data-po-number="<?= htmlspecialchars((string)($doc->poNumber ?? ''), ENT_QUOTES) ?>"
                                     data-vendor-name="<?= htmlspecialchars((string)($doc->vendorName ?? ''), ENT_QUOTES) ?>"
-                                    data-vendor-po-number="<?= htmlspecialchars((string)($doc->vendorPoNumber ?? ''), ENT_QUOTES) ?>"
-                                    data-after-confirm-url="<?= htmlspecialchars('http://' . BASEURL . '/purchase/receipts/receive?po_id=' . (int)$doc->id, ENT_QUOTES) ?>">
-                                <i class="<?= htmlspecialchars($sendButton['icon']) ?>"></i>
+                                    data-vendor-po-number="<?= htmlspecialchars((string)($doc->vendorPoNumber ?? ''), ENT_QUOTES) ?>">
+                                <i class="bi <?= htmlspecialchars($sendButton['icon']) ?>"></i>
                                 <?= htmlspecialchars($sendButton['label']) ?>
                             </button>
+                        <?php elseif (($sendButton['action'] ?? '') === 'receive-po'): ?>
+                            <a href="<?= 'http://' . BASEURL . '/purchase/receipts/receive?po_id=' . (int)$doc->id ?>"
+                               class="btn btn-primary btn-sm">
+                                <i class="bi <?= htmlspecialchars($sendButton['icon']) ?>"></i>
+                                <?= htmlspecialchars($sendButton['label']) ?>
+                            </a>
                         <?php elseif (($sendButton['action'] ?? '') === 'respond-rfq'): ?>
                             <a href="http://<?= BASEURL ?>/admin/purchase/documents/respond?id=<?= (int)$doc->id ?>&amp;type=rfq"
                                class="btn btn-primary btn-sm">
-                                <i class="<?= htmlspecialchars($sendButton['icon']) ?>"></i>
+                                <i class="bi <?= htmlspecialchars($sendButton['icon']) ?>"></i>
                                 <?= htmlspecialchars($sendButton['label']) ?>
                             </a>
                         <?php else: ?>
                             <a href="http://<?= BASEURL ?>/admin/purchase/documents/send?id=<?= (int)$doc->id ?>&amp;type=<?= htmlspecialchars($type, ENT_QUOTES) ?>"
                                class="btn btn-primary btn-sm">
-                                <i class="<?= htmlspecialchars($sendButton['icon']) ?>"></i>
+                                <i class="bi <?= htmlspecialchars($sendButton['icon']) ?>"></i>
                                 <?= htmlspecialchars($sendButton['label']) ?>
                             </a>
                         <?php endif; ?>
                     <?php endif; ?>
-                    <?php if ($type === 'po' && in_array($doc->state, ['confirmed', 'partially_received'], true)): ?>
+                    <?php if ($type === 'po' && in_array($doc->state, ['in_progress', 'partially_received'], true)): ?>
                         <!--
-                            Przyjęcie towaru: dostępne dla PO w stanie `confirmed`
-                            oraz `partially_received`.
+                            Przyjęcie towaru: dostępne dla PO w stanie
+                            `in_progress` oraz `partially_received`.
                             Klik prowadzi do /purchase/receipts/receive?po_id=N, gdzie
                             operator wpisuje faktycznie dostarczone ilości per pozycja.
                             Receive handler (PurchaseActionHandler::createReceipt)
-                            akceptuje też stan `in_progress` — jeśli chcesz pokazać ten
-                            button także w nim, wystarczy dopisać go tu (formularz
-                            przyjęcia już dziś go przyjmuje).
+                            akceptuje oba te stany.
 
-                            `partially_received` wróciło tu, bo operator dostawał
-                            częściowe zamówienie i ekran nie dawał mu żadnego
-                            wyjścia do dokończenia odbioru — a receive handler
-                            właśnie na to pozwala. Etykieta zostaje „Przyjmij towar",
-                            żeby przycisk wyglądał tak samo niezależnie od stanu
-                            (kolejka na /purchase/receipts używa w tym stanie
-                            tej samej etykiety).
+                            Stan `confirmed` NIE jest tu — ma własny, główny
+                            przycisk "Potwierdź odbiór" w nagłówku (patrz
+                            $sendButton), żeby nie dublować akcji.
+
+                            Etykieta zależy od stanu: `in_progress` → "Dokończ
+                            przyjęcie" (operator już zaczął odbiór), a
+                            `partially_received` → "Przyjmij towar" (częściowa
+                            dostawa, trzeba dokończyć). Ta sama etykieta
+                            widnieje w kolejce /purchase/receipts.
                         -->
+                        <?php
+                            $receiveLabel = $doc->state === 'in_progress'
+                                ? 'Dokończ przyjęcie'
+                                : 'Przyjmij towar';
+                        ?>
                         <a href="http://<?= BASEURL ?>/purchase/receipts/receive?po_id=<?= (int)$doc->id ?>"
                            class="btn btn-success btn-sm">
-                            <i class="bi bi-box-arrow-in-down"></i> Przyjmij towar
+                            <i class="bi bi-box-arrow-in-down"></i> <?= htmlspecialchars($receiveLabel, ENT_QUOTES) ?>
                         </a>
                     <?php endif; ?>
                     <?php if ($type === 'rfq' && $doc->state === 'responded'): ?>
@@ -1073,10 +1097,11 @@ function formatPrice($v) {
 <script src="<?= htmlspecialchars(asset('public_html/components/Admin/Purchase/Documents/documents-edit.js')) ?>"></script>
 
 <?php
-    // Współdzielony modal "Potwierdź odbiór PO" — renderowany RAZ na
-    // stronie, bo JS jest zdarzeniowy (delegacja na document). Dwa
-    // miejsca wpinania: tu (header CTA na PO w stanie `sent`) oraz
-    // /purchase/receipts (kolejka). Ścieżka liczona względem __DIR__
+    // Współdzielony modal "Potwierdź odpowiedź PO" — renderowany RAZ na
+    // stronie, bo JS jest zdarzeniowy (delegacja na document). Trzy
+    // miejsca wpinania: tu (header CTA na PO w stanie `sent`),
+    // /purchase/documents (lista dokumentów) oraz /purchase/receipts
+    // (kolejka). Ścieżka liczona względem __DIR__
     // dokumentu (Admin/Purchase/Documents/) — trzy poziomy w górę do
     // public_html/components/, potem w dół do purchases/documents/.
     include __DIR__ . '/../../../purchases/documents/confirm-po-modal.php';

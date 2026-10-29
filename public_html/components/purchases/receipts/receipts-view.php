@@ -43,7 +43,7 @@ require_once __DIR__ . '/receipts-helpers.php';
 // POST receipts-history.php, paginacja/filtrowanie są po stronie JS.
 // (Klasy OrderReceipt / OrderReceiptRepository ładuje sam endpoint AJAX.)
 
-// Współdzielony modal „Potwierdź odbiór" — otwierany z kolejki przyciskiem
+// Współdzielony modal „Potwierdź odpowiedź" — otwierany z kolejki przyciskiem
 // data-action="confirm-po" (zamówienia w stanie `sent`). __DIR__ zamiast
 // "../" — ścieżki względne PHP liczy od index.php, nie od tego pliku.
 include __DIR__ . '/../documents/confirm-po-modal.php';
