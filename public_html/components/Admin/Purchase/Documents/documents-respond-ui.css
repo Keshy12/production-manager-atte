@@ -1,0 +1,678 @@
+/* Odpowiedź na dokument zakupu (RFQ / PO) — /admin/purchase/documents/respond.
+
+   Ten plik NIE jest samodzielny: strona wczytuje przed nim
+   purchases/receipts/receipts-ui.css i korzysta z jego klas rx-*
+   (.rx-page, .rx-crumbs, .rx-sheet, .rx-dochead, .rx-facts, .rx-panel,
+   .rx-badge, .rx-empty, .rx-btn-quiet …). Tutaj jest warstwa dx-* /
+   dx-respond-*: kolor typu, lista pozycji (wiersze-siatka zamiast
+   tabeli), podsumowanie, panel „Dane odpowiedzi" i pasek akcji.
+   Wszystko pod .dx-respond, żeby nic nie wyciekło na inne strony.
+
+   Układ pozycji: po lewej tożsamość części, po prawej odpowiedź
+   dostawcy w czterech kolumnach tej samej siatki (patrz --dx-cols),
+   więc pola ceny wszystkich pozycji leżą w jednej pionowej kolumnie.
+   Stany ustawia JS klasami: .is-changed (pozycja), .is-dirty (pole /
+   widok), .is-unpriced (RFQ) / .is-noprice (PO), .is-editing (komórka). */
+
+
+/* ---- Kolor typu dokumentu (RFQ / PO) -------------------------------- */
+/* Te same wartości co w documents-edit-ui.css (tamten plik nie jest tu
+   wczytywany). Typ wybiera klasa .dx-edit--rfq / .dx-edit--po. */
+
+.dx-respond.dx-edit--rfq {
+    --dx-type:       #cf8a4f;
+    --dx-type-ink:   #8a5228;
+    --dx-type-soft:  #f7ebdd;
+    --dx-type-line:  #ebd3b8;
+}
+.dx-respond.dx-edit--po {
+    --dx-type:       #4f6d92;
+    --dx-type-ink:   #34506f;
+    --dx-type-soft:  #dfe7f1;
+    --dx-type-line:  #b9c8da;
+}
+
+/* Atrybut hidden ma wygrywać z display ustawianym niżej. */
+.dx-respond [hidden] { display: none !important; }
+
+.dx-respond .rx-sheet::before { height: 6px; background: var(--dx-type); }
+.dx-respond .rx-dochead { border-bottom-color: var(--dx-type-line); }
+.dx-respond .dx-type-tag {
+    display: inline-block;
+    padding: .25rem .6rem;
+    border: 1px solid var(--dx-type-line);
+    border-radius: .3rem;
+    background: var(--dx-type-soft);
+    color: var(--dx-type-ink);
+}
+.dx-respond .rx-dochead-actions .btn { font-weight: 600; white-space: nowrap; }
+.dx-respond .rx-panel-head .rx-count {
+    background: var(--dx-type-soft);
+    color: var(--dx-type-ink);
+}
+.dx-respond .rx-panel-title .bi { color: var(--dx-type); }
+
+.dx-respond-tools { display: flex; flex-wrap: wrap; gap: .4rem; }
+.dx-respond-tools .btn { white-space: nowrap; }
+
+
+/* ---- Podsumowanie nad listą ----------------------------------------- */
+
+.dx-sumbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: .6rem 1.5rem;
+    padding: .85rem 1.25rem;
+    background: var(--rx-canvas);
+    border-bottom: 1px solid var(--rx-line);
+}
+.dx-sumbar-total { display: flex; flex-wrap: wrap; align-items: baseline; gap: .3rem 1rem; }
+.dx-sumbar-side { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .9rem; }
+.dx-respond-sum-label {
+    font-size: .68rem;
+    font-weight: 700;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: var(--rx-muted);
+}
+.dx-respond-totals,
+.dx-respond-bar-totals { font-variant-numeric: tabular-nums; }
+.dx-respond-totals { display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem 1.75rem; }
+.dx-respond-tline {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: .1rem .5rem;
+}
+.dx-respond-tval { font-size: 1.3rem; font-weight: 700; line-height: 1.2; color: var(--rx-ink); }
+.dx-respond-tcur { margin-left: -.2rem; font-size: .85rem; font-weight: 700; color: var(--rx-ink-2); }
+.dx-respond-was {
+    font-size: .8rem;
+    font-weight: 500;
+    color: var(--rx-muted);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+.dx-respond-dash { color: var(--rx-faint); font-size: 1.1rem; font-weight: 700; }
+.dx-respond-unpriced { font-size: .8rem; font-weight: 600; color: #8a6100; }
+.dx-respond-unpriced:empty { display: none; }
+
+/* Znaczek różnicy: zielony = wzrost, czerwony = spadek. Znak (+ / −)
+   jest w tekście, więc nie polegamy tylko na kolorze. */
+.dx-delta {
+    display: inline-block;
+    padding: .1rem .5rem;
+    border-radius: 999px;
+    font-size: .74rem;
+    font-weight: 700;
+    line-height: 1.35;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+.dx-delta--up   { background: #e6f5eb; color: #1b6e30; }
+.dx-delta--down { background: #fdecee; color: #a71d2a; }
+
+/* Licznik zmian: szary, gdy nic się nie zmieniło; akcent, gdy są zmiany. */
+.dx-respond-changed {
+    display: inline-block;
+    padding: .3rem .75rem;
+    border-radius: 999px;
+    background: #fff;
+    border: 1px solid var(--rx-line);
+    color: var(--rx-muted);
+    font-size: .8rem;
+    font-weight: 600;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    transition: background-color .15s ease, color .15s ease, border-color .15s ease;
+}
+.dx-respond-changed strong { font-weight: 800; }
+.dx-respond-changed.is-active {
+    background: var(--rx-accent-soft);
+    border-color: transparent;
+    color: var(--rx-accent-ink);
+}
+
+
+/* ---- Lista pozycji --------------------------------------------------- */
+
+/* Kolumny prawej strefy: Ilość · Cena (+ waluta) · Wartość. Lewa kolumna
+   (tożsamość) bierze całą resztę. Szerokości liczą się razem z paddingiem. */
+.dx-lines {
+    --dx-cols: minmax(0, 1fr) 10rem 13rem 9rem;
+    --dx-gap: 1.25rem;
+}
+.dx-lines-head,
+.dx-line {
+    display: grid;
+    grid-template-columns: var(--dx-cols);
+    column-gap: var(--dx-gap);
+    padding-left: 1.25rem;
+    padding-right: 1.25rem;
+}
+.dx-lines-head {
+    padding-top: .65rem;
+    padding-bottom: .65rem;
+    border-bottom: 1px solid var(--rx-line);
+    font-size: .68rem;
+    font-weight: 700;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: var(--rx-muted);
+}
+.dx-lines-head .is-r { text-align: right; }
+/* Ilość ma w widoku padding .55rem — nagłówek siedzi w tej samej osi. */
+.dx-lines-head span:nth-child(2) { padding-right: .55rem; }
+
+.dx-line {
+    position: relative;
+    align-items: start;
+    padding-top: 1.05rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--rx-line-soft);
+    transition: background-color .12s ease;
+}
+.dx-line:last-child { border-bottom: 0; }
+.dx-line:hover { background: var(--rx-hover); }
+
+/* Pozycja zmieniona względem bazy — pasek akcentu jak przy edycji inline
+   na stronie edycji. Niezmienione pozycje zostają neutralne. */
+.dx-line.is-changed { background: rgba(0, 123, 255, .04); box-shadow: inset 3px 0 0 var(--rx-accent); }
+/* Pozycja niewyceniona (RFQ) / bez ceny (PO) — bursztynowy pasek. */
+.dx-line.is-unpriced,
+.dx-line.is-noprice { box-shadow: inset 3px 0 0 #f0ad00; }
+.dx-line.is-changed.is-unpriced,
+.dx-line.is-changed.is-noprice { box-shadow: inset 3px 0 0 #f0ad00, inset 6px 0 0 var(--rx-accent); }
+
+/* -- Tożsamość: numer dostawcy jako nagłówek, pod nim nasza nazwa -------- */
+/* Jedna rodzina czcionek na wszystkich liniach (bez monospace i bez
+   mikro-etykiet); znaczenie numerów jest w atrybutach title. */
+
+.dx-line-id { min-width: 0; font-variant-numeric: tabular-nums; }
+.dx-headrow { display: flex; flex-wrap: wrap; align-items: center; gap: .2rem .6rem; }
+/* Linia 1 (nagłówek) — numer dostawcy. */
+.dx-headline {
+    min-width: 0;
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1.4;
+    color: var(--rx-ink);
+    overflow-wrap: anywhere;
+}
+/* Linia 2 — nasza nazwa · producent + przycisk "Opis". */
+.dx-subrow {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    margin-top: .1rem;
+    min-width: 0;
+}
+.dx-subline {
+    min-width: 0;
+    flex: 0 1 auto;
+    font-size: .82rem;
+    line-height: 1.4;
+    color: var(--rx-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.dx-sub-own { font-weight: 600; color: var(--rx-ink-2); }
+.dx-sub-sep { margin: 0 .4rem; color: var(--rx-faint); }
+
+/* Etykieta „niewyceniona" / „brak ceny" — obok identyfikatorów. */
+.dx-respond-flag {
+    display: none;
+    padding: .1rem .5rem;
+    border-radius: 999px;
+    background: #fff3d4;
+    color: #775300;
+    font-size: .66rem;
+    font-weight: 700;
+    line-height: 1.35;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    align-self: center;
+}
+.dx-line.is-unpriced .dx-respond-flag,
+.dx-line.is-noprice .dx-respond-flag { display: inline-block; }
+
+/* Przycisk "Opis" (rozwija pełny opis części) — domyślnie zwinięty.
+   Każda pozycja rozwija się niezależnie. */
+.dx-details-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    padding: .1rem .5rem;
+    border: 1px solid var(--rx-line);
+    border-radius: 999px;
+    background: #fff;
+    font: inherit;
+    font-size: .74rem;
+    font-weight: 600;
+    line-height: 1.4;
+    color: var(--rx-muted);
+    cursor: pointer;
+    transition: background-color .12s ease, color .12s ease, border-color .12s ease;
+}
+.dx-details-toggle:hover { background: var(--rx-accent-soft); border-color: #c9dcf7; color: var(--rx-accent-ink); }
+.dx-details-toggle:focus { outline: none; box-shadow: var(--rx-ring); }
+.dx-details-chev { font-size: .6rem; transition: transform .15s ease; }
+.dx-details-toggle.is-open { color: var(--rx-ink-2); }
+.dx-details-toggle.is-open .dx-details-chev { transform: rotate(180deg); }
+.dx-details {
+    margin-top: .45rem;
+    padding: .1rem 0 .1rem .8rem;
+    border-left: 2px solid var(--dx-type-line);
+}
+.dx-det-desc {
+    margin-top: .25rem;
+    max-width: 70ch;
+    font-size: .78rem;
+    line-height: 1.45;
+    color: var(--rx-muted);
+    overflow-wrap: anywhere;
+}
+/* -- Strefa odpowiedzi: Ilość · Cena + waluta · Wartość ------------------ */
+/* Pierwszy rząd każdej kolumny ma wysokość kontrolki (2.4rem) i środek
+   w osi pola ceny, więc teksty i pola siedzą na jednej linii. Drugi rząd
+   (było / różnica / „było" wartości) startuje we wszystkich kolumnach
+   w tym samym miejscu. */
+
+.dx-line-qty,
+.dx-line-price,
+.dx-line-value { min-width: 0; }
+
+/* Wspólny reset przycisków-widoków (Ilość, Waluta). */
+.dx-respond-view {
+    appearance: none;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    font: inherit;
+    color: inherit;
+    text-align: inherit;
+    cursor: pointer;
+}
+.dx-respond-view:focus { outline: none; box-shadow: var(--rx-ring); }
+
+.dx-respond-cell:not(.is-editing) > .dx-respond-editor { display: none; }
+.dx-respond-cell.is-editing > .dx-respond-view { display: none; }
+
+/* Ilość — odczyt. Ołówek z lewej (tekst jest wyrównany do prawej),
+   widoczny cicho cały czas, mocniej po najechaniu. */
+.dx-line-qty .dx-respond-cell { text-align: right; }
+.dx-line-qty .dx-respond-view {
+    position: relative;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-end;
+    justify-content: center;
+    max-width: 100%;
+    min-height: 2.4rem;
+    padding: .2rem .55rem .2rem 1.5rem;
+    border-radius: .4rem;
+    transition: background-color .12s ease;
+}
+.dx-line-qty .dx-respond-view:hover { background: var(--rx-accent-soft); }
+.dx-respond-pen {
+    position: absolute;
+    left: .5rem;
+    top: .75rem;
+    font-size: .72rem;
+    color: var(--rx-faint);
+    transition: color .12s ease;
+}
+.dx-respond-view:hover .dx-respond-pen,
+.dx-respond-view:focus .dx-respond-pen { color: var(--rx-accent-ink); }
+.dx-respond-view-main {
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1.3;
+    color: var(--rx-ink);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.dx-respond-view-main.is-invalid { color: #c82333; }
+.dx-respond-view-sub,
+.dx-respond-view-was {
+    margin-top: .1rem;
+    font-size: .76rem;
+    line-height: 1.3;
+    color: var(--rx-muted);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.dx-respond-view-sub.is-uneven { color: #8a6100; font-weight: 600; }
+/* Ilość różni się od zapisanej: akcent także w trybie odczytu. */
+.dx-line-qty .dx-respond-view.is-dirty { background: var(--rx-accent-soft); }
+.dx-line-qty .dx-respond-view.is-dirty .dx-respond-view-main { color: var(--rx-accent-ink); }
+.dx-line-qty .dx-respond-view.is-dirty .dx-respond-pen { color: var(--rx-accent); }
+
+/* Ilość — edytor: pole z jednostką + opakowania (podwiersz się nie łamie). */
+.dx-line-qty .input-group .form-control,
+.dx-line-qty .input-group-text { height: 2.4rem; }
+.dx-line-qty .input-group .form-control { font-weight: 600; }
+.dx-respond .dx-respond-unit {
+    max-width: 3.4rem;
+    padding: 0 .45rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    background: var(--rx-line-soft);
+    border-color: #cfd8e3;
+    font-size: .76rem;
+    color: var(--rx-muted);
+}
+.dx-respond-qty-sub {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: .3rem;
+    margin-top: .45rem;
+    white-space: nowrap;
+}
+.dx-respond .dx-respond-qty-sub .js-packs { width: 3.6rem; min-width: 0; flex: 0 0 auto; }
+.dx-respond-qty-sub > small { white-space: nowrap; }
+.dx-respond-pack {
+    display: inline-block;
+    padding: .1rem .4rem;
+    border: 1px solid var(--rx-line);
+    border-radius: .25rem;
+    background: var(--rx-line-soft);
+    color: var(--rx-ink-2);
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    font-size: .74rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.dx-respond-asked {
+    margin-top: .4rem;
+    font-size: .76rem;
+    color: var(--rx-muted);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+.dx-line-qty .invalid-feedback { text-align: right; }
+/* Ilość nie dzieli się na pełne opakowania — tylko podpowiedź. */
+.dx-respond .packages-uneven { border-color: #ffc107 !important; background-color: #fff8e1 !important; }
+.dx-respond .packages-uneven:focus { border-color: #ffb300 !important; box-shadow: 0 0 0 .2rem rgba(255, 193, 7, .25) !important; }
+
+/* Cena — jedyne pole, które jest otwarte od razu. Waluta dokleja się
+   do niego jako przycisk (klik = wybór waluty). */
+.dx-priceinput { display: flex; align-items: stretch; }
+.dx-respond .dx-priceinput .js-price {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 2.4rem;
+    border-color: #cfd8e3;
+    border-radius: .4rem 0 0 .4rem;
+    background: #fff;
+    font-size: 1.02rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+.dx-respond .dx-priceinput .js-price:focus {
+    position: relative;
+    z-index: 1;
+    border-color: #80bdff;
+    box-shadow: var(--rx-ring);
+}
+.dx-respond .dx-priceinput .js-price.is-dirty { border-color: var(--rx-accent); }
+/* Długi placeholder („brak ceny — do uzupełnienia"): mniejszy, od lewej,
+   z wielokropkiem; pełny tekst jest w title. */
+.dx-respond .js-price:placeholder-shown {
+    text-align: left;
+    font-size: .78rem;
+    font-weight: 400;
+    text-overflow: ellipsis;
+}
+/* PO bez ceny: pole podbarwione, żeby było widać, że czeka na wpis. */
+.dx-line.is-noprice .js-price { background: #fff8e1; border-color: #f0ad00; }
+.dx-line.is-noprice .js-price:focus { border-color: #ffb300; box-shadow: 0 0 0 .2rem rgba(255, 193, 7, .25); }
+
+.dx-curcell { flex: 0 0 4.75rem; margin-left: -1px; }
+.dx-cur-btn {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .25rem;
+    width: 100%;
+    height: 2.4rem;
+    padding: 0 .55rem;
+    border: 1px solid #cfd8e3;
+    border-radius: 0 .4rem .4rem 0;
+    background: var(--rx-canvas);
+    font-size: .88rem;
+    font-weight: 700;
+    color: var(--rx-ink-2);
+    transition: background-color .12s ease, border-color .12s ease;
+}
+.dx-cur-btn:hover { background: var(--rx-accent-soft); border-color: #b3c0d0; color: var(--rx-accent-ink); }
+.dx-cur-caret { font-size: .6rem; color: var(--rx-faint); }
+.dx-cur-btn.is-dirty { background: var(--rx-accent-soft); border-color: var(--rx-accent); color: var(--rx-accent-ink); }
+
+/* Waluta — edytor: bootstrap-select. Kontener musi być position: relative:
+   plugin liczy pozycję menu względem kontenera z data-container. */
+.dx-respond-cur { position: relative; min-width: 0; width: 100%; }
+.dx-respond .bootstrap-select { min-width: 0; }
+.dx-respond .bootstrap-select > .dropdown-toggle,
+.dx-respond .bootstrap-select > .dropdown-toggle.dx-respond-pick {
+    height: 2.4rem;
+    padding: 0 .55rem;
+    border: 1px solid #80bdff;
+    border-radius: 0 .4rem .4rem 0;
+    background: #fff;
+    font-size: .88rem;
+    font-weight: 700;
+    line-height: 1.5;
+    color: var(--rx-ink);
+    box-shadow: var(--rx-ring);
+}
+.dx-respond .bootstrap-select > .dropdown-toggle:focus { outline: none !important; }
+.dx-respond .dx-respond-cur .dropdown-menu {
+    border-color: var(--rx-line);
+    box-shadow: 0 .6rem 1.4rem rgba(16, 24, 40, .12);
+}
+.dx-respond .dx-respond-cur .dropdown-item.active,
+.dx-respond .dx-respond-cur .dropdown-item:active { background: var(--rx-accent); }
+
+/* Drugi rząd strefy ceny: „było", różnica, „zostanie …". */
+.dx-price-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .2rem .5rem;
+    margin-top: .4rem;
+    min-height: 1.3rem;
+    font-size: .8rem;
+}
+.dx-price-meta .js-price-delta,
+.dx-price-meta .dx-respond-keep { margin-left: auto; }
+.dx-respond-keep { color: var(--rx-muted); font-variant-numeric: tabular-nums; }
+.dx-respond-keep.is-warn { color: #8a6100; font-weight: 600; }
+
+/* Wartość — tylko do odczytu, cyfry w równych kolumnach. */
+.dx-line-value { text-align: right; font-variant-numeric: tabular-nums; }
+.dx-value-main {
+    display: flex;
+    align-items: baseline;
+    justify-content: flex-end;
+    gap: .3rem;
+    min-height: 2.4rem;
+    padding-top: .35rem;
+    flex-wrap: wrap;
+}
+.dx-respond-val { font-size: 1.1rem; font-weight: 700; line-height: 1.3; color: var(--rx-ink); white-space: nowrap; }
+.dx-respond-val-cur { font-size: .8rem; font-weight: 600; color: var(--rx-muted); }
+.dx-respond-val-cur:empty { display: none; }
+.dx-respond-val-was { margin-top: .4rem; font-size: .8rem; color: var(--rx-muted); }
+
+/* -- Uwagi do artykułu: linia 3 strefy "Część" (zawsze widoczna) -------- */
+/* Jak w koszyku (.cart-row-comment-line): ikona dziennika + tekst + ołówek.
+   Ołówek rozwija edytor pod linią; zapis idzie osobnym POSTem
+   (vendor-part-comment.php) — to NIE jest część odpowiedzi na dokument. */
+
+.dx-line-vpcomment { margin-top: .35rem; min-width: 0; }
+/* W trakcie edycji ukrywamy linię odczytu — zostaje sam edytor. */
+.dx-line-vpcomment.is-editing .dx-vpcomment-line { display: none; }
+.dx-vpcomment-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: .3rem .4rem;
+    font-size: .78rem;
+    line-height: 1.45;
+    color: var(--rx-muted);
+    overflow-wrap: anywhere;
+}
+.dx-vpcomment-line .bi-journal-text { color: var(--rx-faint); }
+.js-vpc-label { white-space: nowrap; }
+.js-vpc-text { color: var(--rx-ink-2); font-style: normal; }
+.js-vpc-text.is-empty { color: var(--rx-faint); font-style: italic; }
+.dx-vpc-edit {
+    appearance: none;
+    padding: 0 .1rem;
+    border: 0;
+    background: transparent;
+    font: inherit;
+    font-size: .74rem;
+    line-height: 1;
+    color: var(--rx-accent-ink);
+    cursor: pointer;
+}
+.dx-vpc-edit:hover { color: var(--rx-accent); }
+.dx-vpc-edit:focus { outline: none; box-shadow: var(--rx-ring); }
+.dx-vpcomment-editor {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: .35rem;
+    margin-top: .35rem;
+}
+.dx-vpcomment-editor .js-vpc-input { flex: 1 1 14rem; min-width: 0; }
+.dx-vpcomment-editor .btn { font-weight: 600; }
+
+/* Pola wprowadzania — wspólne. */
+.dx-respond .dx-lines .form-control { border-color: #cfd8e3; background: #fff; }
+.dx-respond .dx-lines .form-control:focus { border-color: #80bdff; box-shadow: var(--rx-ring); }
+.dx-respond .dx-lines .form-control.is-dirty { border-color: var(--rx-accent); }
+.dx-respond .dx-lines .form-control.is-invalid { border-color: #dc3545; }
+
+
+/* ---- Panel „Dane odpowiedzi" ---------------------------------------- */
+
+.dx-respond-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 22rem));
+    gap: 1.1rem 2rem;
+    padding: 1.1rem 1.25rem 1.2rem;
+}
+.dx-respond-field { min-width: 0; }
+/* Etykiety — ten sam styl co etykiety w .rx-facts i w formularzu
+   „Dodaj pozycję" na stronie edycji. */
+.dx-respond-label {
+    display: block;
+    margin-bottom: .25rem;
+    font-size: .66rem;
+    font-weight: 700;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: var(--rx-muted);
+}
+.dx-respond-fields .form-control { border-color: #cfd8e3; background: #fff; }
+.dx-respond-fields .form-control:focus { border-color: #80bdff; box-shadow: var(--rx-ring); }
+.dx-respond-help {
+    display: block;
+    margin-top: .3rem;
+    font-size: .78rem;
+    line-height: 1.35;
+    color: var(--rx-muted);
+}
+
+
+/* ---- Przyklejony pasek akcji ---------------------------------------- */
+
+.dx-respond-actionbar {
+    position: sticky;
+    bottom: 0;
+    z-index: 20;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem 1.5rem;
+    margin-top: 1rem;
+    padding: .75rem 1.25rem;
+    background: #fff;
+    border: 1px solid var(--rx-line);
+    border-top: 2px solid var(--dx-type-line);
+    border-radius: var(--rx-radius);
+    box-shadow: 0 -.4rem 1.2rem rgba(16, 24, 40, .08);
+}
+.dx-respond-bar-main { flex: 1 1 22rem; min-width: 0; }
+.dx-respond-bar-title { font-size: .95rem; font-weight: 700; color: var(--rx-ink); }
+.dx-respond-bar-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .25rem 1rem;
+    margin-top: .25rem;
+}
+.dx-respond-bar-totals { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: .15rem 1rem; }
+.dx-respond-bar-totals .dx-respond-tval { font-size: 1.1rem; }
+.dx-respond-bar-hint { font-size: .78rem; color: var(--rx-muted); }
+.dx-respond-bar-hint:empty { display: none; }
+.dx-respond-bar-actions { display: flex; flex: 0 0 auto; align-items: center; gap: .5rem; margin-left: auto; }
+.dx-respond-bar-actions .btn { font-weight: 600; }
+
+
+/* ---- Węższe ekrany --------------------------------------------------- */
+/* Poniżej 1200 px (przy w-75 strona ma wtedy < 53rem) cztery kolumny
+   prawej strefy zabrałyby tożsamości całe miejsce, więc pozycja składa
+   się w trzy rzędy: tożsamość / Ilość · Cena · Wartość / uwagi do artykułu.
+   Nic nie przewija się poziomo. */
+
+.dx-line-qty::before,
+.dx-line-price::before,
+.dx-line-value::before { display: none; }
+
+@media (max-width: 1199.98px) {
+    .dx-lines-head { display: none; }
+    .dx-line {
+        grid-template-columns: minmax(7.5rem, .9fr) minmax(12rem, 1.5fr) minmax(7rem, .9fr);
+        column-gap: 1rem;
+        row-gap: .75rem;
+    }
+    .dx-line-id { grid-column: 1 / -1; }
+    .dx-line-qty, .dx-line-price, .dx-line-value { grid-row: 2; }
+    .dx-line-qty::before,
+    .dx-line-price::before,
+    .dx-line-value::before {
+        content: attr(data-label);
+        display: block;
+        margin-bottom: .3rem;
+        font-size: .66rem;
+        font-weight: 700;
+        letter-spacing: .07em;
+        text-transform: uppercase;
+        color: var(--rx-muted);
+    }
+    .dx-line-qty::before, .dx-line-value::before { text-align: right; }
+    .dx-respond-qty-sub { flex-wrap: wrap; }
+}
+
+@media (max-width: 575.98px) {
+    .dx-line { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+    .dx-line-qty { grid-row: 2; grid-column: 1; }
+    .dx-line-value { grid-row: 2; grid-column: 2; }
+    .dx-line-price { grid-row: 3; grid-column: 1 / -1; }
+    .dx-sumbar, .dx-line, .dx-lines-head { padding-left: .9rem; padding-right: .9rem; }
+    .dx-respond-asked { display: none; }
+    .dx-respond-fields { grid-template-columns: minmax(0, 1fr); padding: 1rem; }
+    .dx-respond-actionbar { padding: .65rem .9rem; }
+    .dx-respond-bar-actions { width: 100%; justify-content: flex-end; }
+}

@@ -1310,8 +1310,8 @@ a.rx-timeline-doc { color: var(--rx-accent-ink); }
    zestaw przycisków.
 
    Scope: celujemy w samą klasę, nie w .rx-qcell--action /
-   .dx-cell--action. Modal #receiveClosePoModal, #receiveCancelPoModal
-   i #send-confirm-po-modal nie nadają tych klas swoim
+   .dx-cell--action. Modale #receiveClosePoModal i #receiveCancelPoModal
+   nie nadają tych klas swoim
    .dropdown-item (renderują zwykłe itemy); pager .rx-pager-menu
    też nie. Dlatego reguła może być globalna — jedyne nadawane
    klasy są w tych dwóch builderach, a tam, gdzie klasy nie ma,

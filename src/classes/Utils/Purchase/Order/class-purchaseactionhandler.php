@@ -558,13 +558,13 @@ class PurchaseActionHandler {
                     ? (string)$it['currency']
                     : $existing->currency;
 
-                // Komentarz: trim, pusty → null. Jeśli operator nie podał
-                // klucza w ogóle, zachowaj istniejący (np. żeby formularz
-                // nie nadpisał istniejącego komentarza wartością pustą
-                // przy pustym polu input).
+                // Komentarz: trim, pusty → null (wyczyść kolumnę). Brak
+                // klucza 'comment' = nie ruszaj istniejącego (formularz
+                // odpowiedzi tego pola nie wysyła). Tak samo jak w wariancie
+                // PO (confirmPoWithPrices) — pusta wartość czyści kolumnę.
                 $comment = $existing->comment;
-                if (array_key_exists('comment', $it) && $it['comment'] !== null) {
-                    $trimmed = trim((string)$it['comment']);
+                if (array_key_exists('comment', $it)) {
+                    $trimmed = trim((string)($it['comment'] ?? ''));
                     $comment = $trimmed === '' ? null : $trimmed;
                 }
 
@@ -712,6 +712,241 @@ class PurchaseActionHandler {
 
         $MsaDB->db->beginTransaction();
         try {
+            if ($vendorPoNumber !== null) {
+                $repo->setVendorPoNumber($poId, $vendorPoNumber);
+            }
+            $repo->setState($poId, 'confirmed');
+            $repo->setConfirmedAt($poId, $normalisedConfirmedAt);
+
+            $MsaDB->db->commit();
+            return true;
+        } catch (\Throwable $e) {
+            if ($MsaDB->db->inTransaction()) {
+                $MsaDB->db->rollBack();
+            }
+            throw $e;
+        }
+    }
+
+    /**
+     * Wariant potwierdzenia zamówienia (PO) Z CENAMI — używany przez
+     * dedykowaną stronę "Potwierdź odpowiedź" (documents-respond.php
+     * z `?type=po`), gdzie operator ręcznie wpisuje wynegocjowane
+     * przez dostawcę ceny na każdej pozycji zamówienia. Metoda łączy
+     * dwie rzeczy, których wcześniej nie dało się zrobić naraz:
+     *   1) zapisanie odpowiedzi dostawcy na pozycjach PO
+     *      (cena / waluta / uwaga / ilość / jednostka),
+     *   2) przejście stanu `sent → confirmed` w tej samej transakcji.
+     *
+     * Powtórzenie `confirmPo()` ({@see confirmPo}) rozszerzone o
+     * aktualizację pozycji — wersja bez cen pozostaje dostępna jako
+     * osobna metoda (wołana przez punkt końcowy
+     * `purchases/documents/document-confirm-ajax.php`, który nie jest
+     * montowany w UI).
+     *
+     * Różnica względem {@see markRfqRespondedWithPrices} (wariant RFQ):
+     *   - pozycja PO nie zna pojęcia "niewycenione" — `unit_price` jest
+     *     `DECIMAL(30,10) DEFAULT 0` (NOT NULL w praktyce), a
+     *     `PurchaseOrderItemRepository::update()` przyjmuje
+     *     `float $unitPrice` (non-nullable). Puste pole ceny w formularzu
+     *     oznacza więc "zachowaj cenę istniejącą", a NIE "0" i NIE
+     *     NULL. Uwaga: to świadoma różnica semantyczna względem RFQ,
+     *     gdzie null = cena nieustalona przez dostawcę.
+     *   - pusta waluta znaczy "zachowaj istniejącą" (w RFQ pusta
+     *     waluta byłaby błędem).
+     *
+     * Walidacja per pozycja (PRZED otwarciem transakcji — ten sam
+     * wzorzec co w `markRfqRespondedWithPrices`):
+     *   - `item_id` > 0 (wymagane)
+     *   - `unit_price` gdy podane — numeryczne i `>= 0` (puste/null/''
+     *     → zachowaj cenę istniejącą)
+     *   - `currency` — gdy podana i niepusta: max 8 znaków (szerokość
+     *     kolumny `purchase__order_item.currency` per schema)
+     *   - `comment` — dowolny string, trim + null gdy pusty (czyści
+     *     kolumnę); brak klucza → zachowaj istniejący komentarz
+     *   - `quantity` — gdy podane: numeryczne i `> 0`
+     *   - `quantity_unit_id` — gdy podane: dodatni int
+     *   - pozycja musi należeć do `$poId` (walidacja ownership —
+     *     `LogicException`, żeby UI nie dało się oszukać cudzym id)
+     *
+     * `$vendorPoNumber` ("Numer zamówienia u dostawcy") — ta sama
+     * normalizacja co w `confirmPo()`: trim; pusty → null (kolumna
+     * pozostaje bez zmian — NIE jest czyszczona, inaczej niż
+     * `vendor_reference` w RFQ); dłuższy niż 64 znaki → ciche
+     * obcięcie (szerokość kolumny `purchase__order.vendor_po_number`).
+     *
+     * `$confirmedAt` — walidowany przez `normaliseSentAt($value,
+     * "potwierdzenia")`: 'Y-m-d H:i:s' albo null/empty → NOW();
+     * komunikaty błędów ('Nieprawidłowy format daty potwierdzenia.' /
+     * 'Data potwierdzenia nie może być z przyszłości.') są wspólne
+     * z `confirmPo()`, `sendRfq()` i `sendPo()`.
+     *
+     * @param int         $poId
+     * @param int         $userId
+     * @param array       $items             lista map per pozycja (pusta = bez aktualizacji pozycji):
+     *                                          ['item_id' => int, 'unit_price' => ?float, 'currency' => ?string, 'comment' => ?string,
+     *                                           'quantity' => ?float,         // null = keep existing
+     *                                           'quantity_unit_id' => ?int]   // null = keep existing
+     * @param string|null $vendorPoNumber    numer PO u dostawcy (max 64 zn.); null/empty → kolumna bez zmian
+     * @param string|null $confirmedAt       'Y-m-d H:i:s' lub null/empty → NOW()
+     * @return bool
+     */
+    public function confirmPoWithPrices(
+        int $poId,
+        int $userId,
+        array $items,
+        ?string $vendorPoNumber = null,
+        ?string $confirmedAt = null
+    ): bool {
+        $MsaDB    = $this->MsaDB;
+        $repo     = new PurchaseOrderRepository($MsaDB);
+        $itemRepo = new PurchaseOrderItemRepository($MsaDB);
+
+        // Zamówienie musi istnieć i być w stanie 'sent'. Stan końcowy
+        // po wywołaniu to zawsze 'confirmed'.
+        $po = $repo->getById($poId);
+        if ($po === null) {
+            throw new \LogicException("Nie znaleziono zamówienia.");
+        }
+        if ($po->state !== 'sent') {
+            throw new \LogicException(
+                'Zamówienie może być potwierdzone tylko w stanie „wysłane".'
+            );
+        }
+
+        // vendor_po_number: null/empty → nie zapisuj; dłuższe niż kolumna → obetnij cicho.
+        // (Identycznie z confirmPo() — cicha normalizacja jest przyjaźniejsza
+        // dla operatora niż błąd walidacji, którego nie widzi w formularzu.)
+        if ($vendorPoNumber !== null) {
+            $vendorPoNumber = trim($vendorPoNumber);
+            if ($vendorPoNumber === '') {
+                $vendorPoNumber = null;
+            } elseif (strlen($vendorPoNumber) > 64) {
+                $vendorPoNumber = substr($vendorPoNumber, 0, 64);
+            }
+        }
+
+        // confirmedAt: ten sam helper co sendRfq/sendPo/confirmPo z etykietą
+        // 'potwierdzenia', dzięki czemu komunikaty błędów są spójne i po polsku.
+        $normalisedConfirmedAt = $this->normaliseSentAt($confirmedAt, "potwierdzenia");
+
+        // Pre-walidacja pozycji — PRZED otwarciem transakcji, żeby złe dane
+        // wejściowe nie blokowały sesji DB i żeby operator dostał czytelny
+        // komunikat (komunikaty po polsku trafiają wprost do UI przez
+        // endpoint AJAX).
+        foreach ($items as $idx => $it) {
+            if (!is_array($it)) {
+                throw new \InvalidArgumentException("Pozycja #{$idx}: nieprawidłowy format danych.");
+            }
+            $itemId = (int)($it['item_id'] ?? 0);
+            if ($itemId <= 0) {
+                throw new \InvalidArgumentException("Pozycja #{$idx}: brak identyfikatora pozycji.");
+            }
+            // unit_price: nieujemna liczba albo puste/null/'' (= zachowaj
+            // cenę istniejącą — pozycja PO nie ma stanu "niewycenione").
+            if (array_key_exists('unit_price', $it) && $it['unit_price'] !== null && $it['unit_price'] !== '') {
+                if (!is_numeric($it['unit_price']) || (float)$it['unit_price'] < 0) {
+                    throw new \InvalidArgumentException(
+                        "Pozycja #{$idx} ({$itemId}): cena jednostkowa musi być liczbą nieujemną."
+                    );
+                }
+            }
+            // currency: pusta wartość jest DOZWOLONA i oznacza "zachowaj
+            // istniejącą walutę"; niepusta musi mieścić się w 8 znakach.
+            if (isset($it['currency'])) {
+                $currencyRaw = trim((string)$it['currency']);
+                if ($currencyRaw !== '' && strlen($currencyRaw) > 8) {
+                    throw new \InvalidArgumentException(
+                        "Pozycja #{$idx} ({$itemId}): kod waluty jest zbyt długi (max 8 znaków)."
+                    );
+                }
+            }
+            // quantity: opcjonalne; gdy podane musi być numeryczne > 0.
+            // null/absent = fallback do istniejącej wartości w wierszu.
+            if (array_key_exists('quantity', $it) && $it['quantity'] !== null) {
+                if (!is_numeric($it['quantity']) || (float)$it['quantity'] <= 0) {
+                    throw new \InvalidArgumentException(
+                        "Pozycja #{$idx} ({$itemId}): ilość musi być > 0."
+                    );
+                }
+            }
+            // quantity_unit_id: opcjonalne; gdy podane musi być dodatnim intem.
+            // null/absent = fallback do istniejącej wartości w wierszu.
+            if (array_key_exists('quantity_unit_id', $it) && $it['quantity_unit_id'] !== null) {
+                $uidVal = $it['quantity_unit_id'];
+                $uidOk  = is_int($uidVal)
+                    || (is_string($uidVal) && ctype_digit($uidVal))
+                    || (is_numeric($uidVal) && (float)$uidVal == (int)$uidVal);
+                if (!$uidOk || (int)$uidVal <= 0) {
+                    throw new \InvalidArgumentException(
+                        "Pozycja #{$idx} ({$itemId}): nieprawidłowa jednostka miary."
+                    );
+                }
+            }
+        }
+
+        $MsaDB->db->beginTransaction();
+        try {
+            // Aktualizuj każdą pozycję po kolei: najpierw odczyt istniejącej
+            // encji (ownership check + odczyt pól, których nie zmieniamy),
+            // potem update() z istniejącymi polami i nowymi wartościami.
+            foreach ($items as $idx => $it) {
+                $itemId = (int)($it['item_id']);
+                $existing = $itemRepo->getById($itemId);
+                if ($existing === null || $existing->poId !== $poId) {
+                    throw new \LogicException(
+                        "Pozycja #{$idx}: pozycja {$itemId} nie należy do zamówienia {$poId}."
+                    );
+                }
+
+                // Cena: gdy podana — nowa; gdy pusta/null — ZACHOWAJ istniejącą.
+                // (Nie 0 i nie NULL — pozycja PO nie zna "niewycenione",
+                // a update() wymaga float.)
+                $unitPrice = (float)$existing->unitPrice;
+                if (array_key_exists('unit_price', $it) && $it['unit_price'] !== null && $it['unit_price'] !== '') {
+                    $unitPrice = (float)$it['unit_price'];
+                }
+
+                // Waluta: gdy podana i niepusta — użyj jej; w przeciwnym razie
+                // zostaw istniejącą (operator może chcieć zmienić tylko cenę).
+                $currency = isset($it['currency']) && trim((string)$it['currency']) !== ''
+                    ? (string)$it['currency']
+                    : $existing->currency;
+
+                // Komentarz: trim, pusty → null (czyści kolumnę). Jeśli klucza
+                // `comment` nie ma w ogóle w wierszu — zachowaj istniejący
+                // (np. żeby formularz nie nadpisał komentarza wartością pustą).
+                $comment = $existing->comment;
+                if (array_key_exists('comment', $it)) {
+                    $trimmed = trim((string)($it['comment'] ?? ''));
+                    $comment = $trimmed === '' ? null : $trimmed;
+                }
+
+                // Quantity: użyj podanej gdy obecna i różna od null; w przeciwnym
+                // razie zachowaj istniejącą.
+                $newQty = (array_key_exists('quantity', $it) && $it['quantity'] !== null)
+                    ? (float)$it['quantity']
+                    : (float)$existing->quantity;
+
+                // Quantity_unit_id: jak wyżej — fallback do istniejącej.
+                $newUnitId = (array_key_exists('quantity_unit_id', $it) && $it['quantity_unit_id'] !== null)
+                    ? (int)$it['quantity_unit_id']
+                    : (int)$existing->quantityUnitId;
+
+                $itemRepo->update(
+                    $existing->id,
+                    $existing->vendorPartId,
+                    $newQty,
+                    $newUnitId,
+                    $unitPrice,
+                    $currency,
+                    $comment,
+                    $existing->pickedPackSize
+                );
+            }
+
+            // Numer PO u dostawcy — tylko gdy podano (puste/null = kolumna
+            // bez zmian). Walidacja długości odbyła się wyżej.
             if ($vendorPoNumber !== null) {
                 $repo->setVendorPoNumber($poId, $vendorPoNumber);
             }

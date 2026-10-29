@@ -28,7 +28,8 @@
  *     dokumentu, a caret otwiera menu z kolejnymi krokami:
  *       szkic                         → Wyślij
  *       RFQ wysłane                   → Oznacz odpowiedź
- *       PO wysłane                    → Potwierdź odpowiedź (modal #send-confirm-po-modal)
+ *       PO wysłane                    → Potwierdź odpowiedź (strona
+ *                                       /admin/purchase/documents/respond?id=N&type=po)
  *       PO potwierdzone               → Potwierdź odbiór (formularz przyjęcia)
  *       PO w trakcie przyjęcia        → Dokończ przyjęcie
  *       PO częściowo odebrane         → Przyjmij towar
@@ -36,18 +37,15 @@
  *     bez careta.
  *
  * Świadomie BEZ samodzielnych przycisków obok siebie — kosz + split
- * Edytuj/Podgląd, nic więcej. Dlatego też modal „Potwierdź odpowiedź"
- * (confirm-po-modal.php) jest tu wpinany — patrz niżej.
+ * Edytuj/Podgląd, nic więcej.
  *
  * Przepływ PO jest trzykrokowy i każdy krok jest niezależnie
  * osiągalny:
- *   sent → „Potwierdź odpowiedź" (modal) → confirmed
+ *   sent → „Potwierdź odpowiedź" (dedykowana strona odpowiedzi) → confirmed
  *   confirmed → „Potwierdź odbiór" (formularz przyjęcia) → in_progress
  *   in_progress → „Dokończ przyjęcie" → partially_received / received
- * Modal potwierdzenia odpowiedzi NIE przenosi operatora do formularza
- * przyjęcia — to osobny, późniejszy krok. Ten sam modal jest wpinany
- * również na /purchase/receipts (kolejka) i na stronie edycji
- * dokumentu (/admin/purchase/documents/edit).
+ * Strona potwierdzenia odpowiedzi NIE przenosi operatora do formularza
+ * przyjęcia — to osobny, późniejszy krok.
  *
  * Domyślny zakres dat: ostatnie 90 dni — widoczny w pasku (przycisk
  * „90 dni" zaznaczony) i w linijce podsumowania.
@@ -69,13 +67,6 @@ $activeVendors = $MsaDB->query(
       ORDER BY name ASC"
 );
 
-// Współdzielony modal „Potwierdź odpowiedź PO" — wpinany tu, bo pozycja
-// „Potwierdź odpowiedź" jest teraz w menu pod caretem Edytuj/Podgląd
-// (patrz documents-view.js → actionMenuItemsHtml, branch d.type==='po'
-// i d.state==='sent'). Identyczny partial jak na /purchase/receipts
-// i na stronie edycji PO.
-include __DIR__ . '/confirm-po-modal.php';
-
 // Współdzielony modal „Zamknij zamówienie" + (na tej stronie) prosty
 // modal „Anuluj zamówienie" — ten sam partial co /purchase/receipts,
 // zaimportowany z ../receipts/close-po-modal.php. Przyciski-kosze w
@@ -95,7 +86,6 @@ $baseUrl = 'http://' . BASEURL;
 
 <link rel="stylesheet" href="<?= asset('public_html/components/purchases/receipts/receipts-ui.css') ?>">
 <link rel="stylesheet" href="<?= asset('public_html/components/purchases/documents/documents-ui.css') ?>">
-<link rel="stylesheet" href="<?= asset('public_html/components/purchases/documents/confirm-po-modal.css') ?>">
 
 <div class="rx-page dx-page" id="documentsView">
 
@@ -357,7 +347,6 @@ $baseUrl = 'http://' . BASEURL;
 </div>
 
 <script src="<?= htmlspecialchars(asset('public_html/components/purchases/documents/documents-view.js'), ENT_QUOTES) ?>"></script>
-<script src="<?= htmlspecialchars(asset('public_html/components/purchases/documents/confirm-po-modal.js'), ENT_QUOTES) ?>"></script>
 <script src="<?= htmlspecialchars(asset('public_html/components/purchases/receipts/close-po.js'), ENT_QUOTES) ?>"></script>
 <script src="<?= htmlspecialchars(asset('public_html/components/purchases/documents/rfq-convert.js'), ENT_QUOTES) ?>"></script>
 

@@ -18,9 +18,10 @@
 // — pokazujemy komunikat sukcesu i podświetlamy nowy wiersz historii
 // (klasa .receipt-row-new, wiersz szukany po data-doc).
 //
-// Potwierdzenie zamówienia (stan `sent`) obsługuje współdzielony
-// ../documents/confirm-po-modal.js — tu tylko renderujemy przycisk
-// z data-action="confirm-po" i kompletem atrybutów data-*.
+// Potwierdzenie zamówienia (stan `sent`) ma własną stronę:
+// /admin/purchase/documents/respond?id=POID&type=po — operator wpisuje
+// tam wynegocjowane przez dostawcę ceny per pozycja, a zapis przenosi
+// zamówienie do stanu `confirmed`. Tu tylko renderujemy link do niej.
 
 $(document).ready(function () {
     const ajaxBase = COMPONENTS_PATH + '/purchases/receipts/';
@@ -150,6 +151,15 @@ $(document).ready(function () {
     function editUrl(poId) {
         return window.location.origin + ROOT_DIR
             + '/admin/purchase/documents/edit?id=' + encodeURIComponent(poId) + '&type=po';
+    }
+
+    // Strona "Potwierdź odpowiedź" dla PO w stanie `sent` — operator
+    // wpisuje tam wynegocjowane przez dostawcę ceny per pozycja, a
+    // zapis przenosi zamówienie do stanu `confirmed`. Ten sam router co
+    // dla RFQ (documents-respond.php), inny parametr type.
+    function respondPoUrl(poId) {
+        return window.location.origin + ROOT_DIR
+            + '/admin/purchase/documents/respond?id=' + encodeURIComponent(poId) + '&type=po';
     }
 
     // Klik w wiersz działa jak link: Ctrl/Cmd otwiera w nowej karcie,
@@ -405,10 +415,12 @@ $(document).ready(function () {
     // Kolejka ma tylko PO, więc gałąz jest krótsza niż odpowiednik
     // w documents-view.js:
     //   - sent (canRx === false) → „Potwierdź odpowiedź" jako
-    //     <button data-action="confirm-po"> z pełnym zestawem atrybutów
-    //     data-* (patrz confirm-po-modal.js). Item jest zielony
-    //     (.rx-action-success) — potwierdzenie odpowiedzi dostawcy
-    //     zamyka etap „czeka na odpowiedź", więc zielony.
+    //     <a href> do dedykowanej strony odpowiedzi
+    //     /admin/purchase/documents/respond?id=POID&type=po (operator
+    //     wpisuje tam wynegocjowane ceny dostawcy per pozycja).
+    //     Item jest zielony (.rx-action-success) — potwierdzenie
+    //     odpowiedzi dostawcy zamyka etap „czeka na odpowiedź",
+    //     więc zielony.
     //   - confirmed             → „Potwierdź odbiór"
     //   - in_progress           → „Dokończ przyjęcie"
     //   - partially_received    → „Przyjmij towar"
@@ -419,20 +431,16 @@ $(document).ready(function () {
     // edycji (tam „Potwierdź odbiór" / „Przyjmij towar" są zielone).
     // To decyzja produktowa, nie Follow the Edit Page: w menu kolor
     // rozróżnia rodzaj akcji, a nie dokładnie ten sam przycisk.
-    // Item to <a> dla receive, <button> dla confirm — zachowujemy
+    // Item to <a> dla receive i dla confirm — zachowujemy
     // dotychczasowe typy elementów (BS4 dropdown sam dopilnuje pozycjonowania).
     // Klasy kolorów są współdzielone z documents-view.js (actionMenuItemsHtml)
     // — ich definicja siedzi w receipts-ui.css, który obie strony wczytują,
     // więc odcień nie może się rozjechać między listami.
     function queueActionMenuHtml(p, poId, poLabel) {
         if (p.canReceive === false) {
-            return '<button type="button" class="dropdown-item rx-action-success"'
-                + ' data-action="confirm-po"'
-                + ' data-po-id="' + poId + '"'
-                + ' data-po-number="' + escAttr(poLabel) + '"'
-                + ' data-vendor-name="' + escAttr(p.vendorName || '') + '"'
-                + ' data-vendor-po-number="' + escAttr(p.vendorPoNumber || '') + '">'
-                + '<i class="bi bi-reply"></i> Potwierdź odpowiedź</button>';
+            return '<a class="dropdown-item rx-action-success"'
+                + ' href="' + escAttr(respondPoUrl(poId)) + '">'
+                + '<i class="bi bi-reply"></i> Potwierdź odpowiedź</a>';
         }
         let label = 'Przyjmij towar';
         let icon  = 'bi-box-arrow-in-down';
@@ -451,7 +459,7 @@ $(document).ready(function () {
         const poId  = parseInt(p.poId, 10);
         // canReceive === false tylko dla `sent` (czeka na odpowiedź
         // dostawcy). Taki wiersz nie prowadzi do formularza — akcję niesie
-        // przycisk „Potwierdź odpowiedź" (współdzielony modal).
+        // link „Potwierdź odpowiedź" do strony respond?id=N&type=po.
         const canRx = p.canReceive !== false;
         const poLabel = p.poNumber || ('#' + poId);
 

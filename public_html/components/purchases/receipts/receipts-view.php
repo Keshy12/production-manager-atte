@@ -20,6 +20,10 @@
  *     (receive-page.php + receive-page.js),
  *   - szczegóły przyjęcia: /purchase/receipts/view?id=N
  *     (receipt-view.php — osobna strona, zastąpiła dawny modal),
+ *   - potwierdzenie odpowiedzi dostawcy (PO w stanie `sent`):
+ *     /admin/purchase/documents/respond?id=POID&type=po — operator
+ *     wpisuje tam wynegocjowane ceny per pozycja, a zapis przenosi
+ *     zamówienie do stanu `confirmed`,
  *   - zakładka historii ma adres /purchase/receipts#historia, więc
  *     „Wróć" ze strony szczegółów ląduje od razu w historii.
  *
@@ -43,11 +47,6 @@ require_once __DIR__ . '/receipts-helpers.php';
 // POST receipts-history.php, paginacja/filtrowanie są po stronie JS.
 // (Klasy OrderReceipt / OrderReceiptRepository ładuje sam endpoint AJAX.)
 
-// Współdzielony modal „Potwierdź odpowiedź" — otwierany z kolejki przyciskiem
-// data-action="confirm-po" (zamówienia w stanie `sent`). __DIR__ zamiast
-// "../" — ścieżki względne PHP liczy od index.php, nie od tego pliku.
-include __DIR__ . '/../documents/confirm-po-modal.php';
-
 // Współdzielony modal „Zamknij zamówienie" + (na tej stronie) prosty
 // modal „Anuluj zamówienie" — otwierane z kolejki przyciskami-koszami:
 //   - data-action="close-po" → #receiveClosePoModal (received/cancelled)
@@ -65,7 +64,6 @@ include __DIR__ . '/close-po-modal.php';
 
 <link rel="stylesheet" href="<?= asset('public_html/components/purchases/cart/purchases.css') ?>">
 <link rel="stylesheet" href="<?= asset('public_html/components/purchases/receipts/receipts-ui.css') ?>">
-<link rel="stylesheet" href="<?= asset('public_html/components/purchases/documents/confirm-po-modal.css') ?>">
 
 <div class="rx-page" id="receiptsListView">
 
@@ -286,5 +284,4 @@ include __DIR__ . '/close-po-modal.php';
 </div>
 
 <script src="<?= asset('public_html/components/purchases/receipts/receipts-view.js') ?>"></script>
-<script src="<?= asset('public_html/components/purchases/documents/confirm-po-modal.js') ?>"></script>
 <script src="<?= asset('public_html/components/purchases/receipts/close-po.js') ?>"></script>

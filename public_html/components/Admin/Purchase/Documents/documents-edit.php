@@ -53,6 +53,13 @@ if ($id <= 0) {
     return;
 }
 
+// Komunikat ze strony odpowiedzi (?respond_error=…), gdy dokument nie
+// jest już w stanie `sent` — operator wraca tu z wyjaśnieniem, dlaczego
+// odpowiedzi nie dało się oznaczyć.
+$respondError = isset($_GET['respond_error']) && $_GET['respond_error'] !== ''
+    ? trim((string)$_GET['respond_error'])
+    : null;
+
 $MsaDB = MsaDB::getInstance();
 if ($type === 'po') {
     $docRepo  = new PurchaseOrderRepository($MsaDB);
@@ -116,17 +123,18 @@ $allowedEdit = in_array($doc->state, PurchaseActionHandler::allowedEditStates($t
 // "Wyślij dokument" / "Wyślij ponownie" / "Oznacz odpowiedź" /
 // "Potwierdź odpowiedź" / "Potwierdź odbiór" — jeden button w
 // prawym górnym rogu headera, obok "Wróć". Mapa stanów: draft →
-// Wyślij dokument; PO sent → Potwierdź odpowiedź (modal);
-// PO confirmed → Potwierdź odbiór (formularz przyjęcia);
+// Wyślij dokument; PO sent → Potwierdź odpowiedź (dedykowana strona
+// odpowiedzi); PO confirmed → Potwierdź odbiór (formularz przyjęcia);
 // RFQ sent → Oznacz odpowiedź; RFQ responded → Wyślij ponownie;
 // inne stany → brak buttona.
 //
 // Klucz 'action' w tablicy to dyskryminator routingu: PO w stanie
-// `sent` triggeruje modal "Potwierdź odpowiedź" (data-action="confirm-po"),
-// PO w stanie `confirmed` prowadzi do formularza przyjęcia towaru
-// (data-action="receive-po"), RFQ w stanie `sent` przechodzi do
-// dedykowanej strony "Oznacz odpowiedź" (data-action="respond-rfq").
-// Pozostałe przypadki prowadzą do klasycznego wizzarda "Wyślij dokument".
+// `sent` triggeruje dedykowaną stronę "Potwierdź odpowiedź"
+// (data-action="respond-po"), PO w stanie `confirmed` prowadzi do
+// formularza przyjęcia towaru (data-action="receive-po"), RFQ w stanie
+// `sent` przechodzi do dedykowanej strony "Oznacz odpowiedź"
+// (data-action="respond-rfq"). Pozostałe przypadki prowadzą do
+// klasycznego wizzarda "Wyślij dokument".
 $sendButton = null;
 if ($type === 'rfq') {
     if ($doc->state === 'draft') {
@@ -148,10 +156,11 @@ if ($type === 'rfq') {
         // sent → dostawca przyjął zamówienie, operator rejestruje
         // odpowiedź. Re-send jest rzadko przydatny przed potwierdzeniem,
         // więc "Potwierdź odpowiedź" to główny CTA. Klik otwiera
-        // współdzielony modal (patrz confirm-po-modal.php). The 'action'
-        // discriminator tells the rendered HTML to emit a
-        // <button data-action="confirm-po"> instead of the wizard <a>.
-        $sendButton = ['label' => 'Potwierdź odpowiedź', 'icon' => 'bi-reply', 'action' => 'confirm-po'];
+        // dedykowaną stronę odpowiedzi (documents-respond.php z
+        // ?type=po), gdzie operator wpisuje wynegocjowane ceny dostawcy.
+        // The 'action' discriminator tells the rendered HTML to emit an
+        // <a> to that page instead of the wizard <a>.
+        $sendButton = ['label' => 'Potwierdź odpowiedź', 'icon' => 'bi-reply', 'action' => 'respond-po'];
     } elseif ($doc->state === 'confirmed') {
         // confirmed → dostawca potwierdził, czas przyjąć towar.
         // Ten krok jest OSOBNY od potwierdzenia odpowiedzi: prowadzi
@@ -249,6 +258,13 @@ function formatPrice($v) {
 
     <div id="alertContainer" class="mb-2"></div>
 
+    <?php if ($respondError !== null && $respondError !== ''): ?>
+        <div class="alert alert-warning" role="alert">
+            <i class="bi bi-exclamation-triangle"></i>
+            <?= htmlspecialchars($respondError, ENT_QUOTES) ?>
+        </div>
+    <?php endif; ?>
+
     <!-- ===== Arkusz dokumentu: nagłówek, przyciski akcji, dane ===== -->
     <section class="rx-panel rx-sheet mb-3">
         <div class="rx-dochead">
@@ -273,12 +289,14 @@ function formatPrice($v) {
                     /purchase/documents. Button wysyłki jest warunkowy — patrz
                     mapa stanów przy definicji $sendButton powyżej.
 
-                    PO w stanie `sent` → "Potwierdź odpowiedź" otwiera współdzielony
-                    modal (confirm-po-modal.php), więc 'action' === 'confirm-po'
-                    renderuje <button> z data-* zamiast <a> do wizarda. Modal
-                    kończy TYLKO etap `sent` → `confirmed` — po sukcesie strona
-                    się przeładowuje, operator NIE jest przenoszony do
-                    formularza przyjęcia.
+                    PO w stanie `sent` → "Potwierdź odpowiedź" otwiera
+                    dedykowaną stronę odpowiedzi (documents-respond.php
+                    z ?type=po), więc 'action' === 'respond-po' renderuje
+                    <a> do tej strony zamiast <a> do wizarda. Operator
+                    wpisuje tam wynegocjowane przez dostawcę ceny per
+                    pozycja; zapis przenosi PO ze stanu `sent` do
+                    `confirmed`. Operator NIE jest przenoszony do
+                    formularza przyjęcia — to osobny, późniejszy krok.
 
                     PO w stanie `confirmed` → "Potwierdź odbiór" prowadzi do
                     formularza przyjęcia towaru, więc 'action' === 'receive-po'
@@ -379,18 +397,7 @@ function formatPrice($v) {
                         </button>
                     <?php endif; ?>
                     <?php if ($sendButton !== null): ?>
-                        <?php if (($sendButton['action'] ?? '') === 'confirm-po'): ?>
-                            <button type="button"
-                                    class="btn btn-primary btn-sm"
-                                    data-action="confirm-po"
-                                    data-po-id="<?= (int)$doc->id ?>"
-                                    data-po-number="<?= htmlspecialchars((string)($doc->poNumber ?? ''), ENT_QUOTES) ?>"
-                                    data-vendor-name="<?= htmlspecialchars((string)($doc->vendorName ?? ''), ENT_QUOTES) ?>"
-                                    data-vendor-po-number="<?= htmlspecialchars((string)($doc->vendorPoNumber ?? ''), ENT_QUOTES) ?>">
-                                <i class="bi <?= htmlspecialchars($sendButton['icon']) ?>"></i>
-                                <?= htmlspecialchars($sendButton['label']) ?>
-                            </button>
-                        <?php elseif (($sendButton['action'] ?? '') === 'receive-po'): ?>
+                        <?php if (($sendButton['action'] ?? '') === 'receive-po'): ?>
                             <a href="<?= 'http://' . BASEURL . '/purchase/receipts/receive?po_id=' . (int)$doc->id ?>"
                                class="btn btn-primary btn-sm">
                                 <i class="bi <?= htmlspecialchars($sendButton['icon']) ?>"></i>
@@ -398,6 +405,12 @@ function formatPrice($v) {
                             </a>
                         <?php elseif (($sendButton['action'] ?? '') === 'respond-rfq'): ?>
                             <a href="http://<?= BASEURL ?>/admin/purchase/documents/respond?id=<?= (int)$doc->id ?>&amp;type=rfq"
+                               class="btn btn-primary btn-sm">
+                                <i class="bi <?= htmlspecialchars($sendButton['icon']) ?>"></i>
+                                <?= htmlspecialchars($sendButton['label']) ?>
+                            </a>
+                        <?php elseif (($sendButton['action'] ?? '') === 'respond-po'): ?>
+                            <a href="http://<?= BASEURL ?>/admin/purchase/documents/respond?id=<?= (int)$doc->id ?>&amp;type=po"
                                class="btn btn-primary btn-sm">
                                 <i class="bi <?= htmlspecialchars($sendButton['icon']) ?>"></i>
                                 <?= htmlspecialchars($sendButton['label']) ?>
@@ -1095,19 +1108,6 @@ function formatPrice($v) {
 
 <script src="<?= htmlspecialchars(asset('public_html/assets/js/shared/items-format.js'), ENT_QUOTES) ?>"></script>
 <script src="<?= htmlspecialchars(asset('public_html/components/Admin/Purchase/Documents/documents-edit.js')) ?>"></script>
-
-<?php
-    // Współdzielony modal "Potwierdź odpowiedź PO" — renderowany RAZ na
-    // stronie, bo JS jest zdarzeniowy (delegacja na document). Trzy
-    // miejsca wpinania: tu (header CTA na PO w stanie `sent`),
-    // /purchase/documents (lista dokumentów) oraz /purchase/receipts
-    // (kolejka). Ścieżka liczona względem __DIR__
-    // dokumentu (Admin/Purchase/Documents/) — trzy poziomy w górę do
-    // public_html/components/, potem w dół do purchases/documents/.
-    include __DIR__ . '/../../../purchases/documents/confirm-po-modal.php';
-?>
-<link rel="stylesheet" href="<?= htmlspecialchars(asset('public_html/components/purchases/documents/confirm-po-modal.css'), ENT_QUOTES) ?>">
-<script src="<?= htmlspecialchars(asset('public_html/components/purchases/documents/confirm-po-modal.js'), ENT_QUOTES) ?>"></script>
 
 <?php
     // Okna „Zamknij zamówienie" / „Anuluj dokument" — te same, co na

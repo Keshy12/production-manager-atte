@@ -221,14 +221,28 @@ switch ($request) {
         require $componentsDir . '/Admin/Purchase/Documents/documents-send.php';
         break;
     case 'admin/purchase/documents/respond':
-        // Dedykowana jednoetapowa strona "Oznacz odpowiedź" dla RFQ
-        // w stanie `sent` — operator wpisuje wynegocjowane ceny/waluty/uwagi
-        // i klika Zapisz. Następca "kroku odpowiedź" wyodrębniony z
-        // wizzarda documents-send.php, który jest wieloetapowy i zbyt
-        // ciężki dla tego flow. Wymaga admina (jak reszta admin/purchase/*).
+        // Dedykowana jednoetapowa strona odpowiedzi — dla RFQ w stanie
+        // `sent` operator wpisuje wynegocjowane ceny/waluty i klika
+        // Zapisz ("Oznacz odpowiedź"), dla PO w stanie `sent` te same
+        // dane plus potwierdzenie zamówienia ("Potwierdź odpowiedź").
+        // Następca "kroku odpowiedź" wyodrębniony z wizzarda
+        // documents-send.php, który jest wieloetapowy i zbyt ciężki dla
+        // tego flow. Wymaga admina (jak reszta admin/purchase/*).
+        // requireAdmin() MUSI być przed includeWithVariables() — inaczej
+        // header() w layoutcie wywoła "headers already sent".
         requireAdmin();
-        includeWithVariables($headerDir, array('title' => 'Oznacz odpowiedź'));
+        $respondType = (string)($_GET['type'] ?? '');
+        $respondTitle = ($respondType === 'po') ? 'Potwierdź odpowiedź' : 'Oznacz odpowiedź';
+        // Layout renderujemy DO BUFORA i wypisujemy dopiero PO
+        // komponencie. Komponent potrafi zrobić header('Location:')
+        // (dokument nie jest już w stanie `sent`), a nagłówek HTTP
+        // musi zostać wysłany przed jakimkolwiek outputem — wypisanie
+        // layoutu najpierw dałoby "headers already sent" i pustą stronę.
+        $respondLayout = includeWithVariables($headerDir, array('title' => $respondTitle), false);
+        ob_start();
         require $componentsDir . '/Admin/Purchase/Documents/documents-respond.php';
+        $respondBody = ob_get_clean();
+        print $respondLayout . $respondBody;
         break;
     case 'purchase/cart':
         requireAdmin();

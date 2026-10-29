@@ -5,7 +5,7 @@
  *   - wizard "Wyślij dokument" (Admin/Purchase/Documents/documents-send.php)
  *     → POST { id, responded_at } bez pozycji, kompatybilność wstecz
  *   - stronę "Oznacz odpowiedź" (Admin/Purchase/Documents/documents-respond.php)
- *     → POST { id, responded_at, items[i][item_id|unit_price|currency|comment] }
+ *     → POST { id, responded_at, items[i][item_id|unit_price|currency] }
  *
  * Kontrakt wejścia/wyjścia zamrożony dla wizarda (fronted przez
  * send-view.js). Wariant z `items` dodaje per-item pola dla dedykowanej
@@ -32,7 +32,16 @@
  *                                     miesza locale — patrz audits/DISCREPANCIES),
  *                                     pusty → null
  *   items[i][currency]         string          opcjonalne; max 8 znaków
- *   items[i][comment]          string|empty    opcjonalne; pusty → null
+ *   items[i][comment]          string|empty    OPCJONALNE i nieobowiązkowe:
+ *                                     brak klucza = "nie ruszaj zapisanej
+ *                                     uwagi pozycji" (handler sprawdza
+ *                                     array_key_exists); pusta wartość =
+ *                                     wyczyść kolumnę. Strona odpowiedzi
+ *                                     (documents-respond.php) tego pola nie
+ *                                     wysyła — uwagi do artykułu
+ *                                     (list__vendor_part.comment) zapisywane
+ *                                     są osobnym POSTem do
+ *                                     purchases/cart/vendor-part-comment.php.
  *   items[i][quantity]         string          decimal (locale-tolerant via ,→. normalize) > 0
  *   items[i][quantity_unit_id] int             > 0
  *
@@ -115,25 +124,40 @@ if ($vendorReferenceRaw !== null) {
 }
 
 // Parsowanie per-item pól. items[i] to tablica asocjacyjna
-// (item_id/unit_price/currency/comment) sparsowana przez PHP z
+// (item_id/unit_price/currency, opcjonalnie comment) sparsowana przez PHP z
 // form-encoding `items[i][…]`. Akceptujemy zarówno listę (`$_POST['items']`
 // jest indexed array) jak i mapę (asocjacyjna po kluczach item_id —
 // teoretyczny przypadek gdyby frontend wysłał to inaczej); normalizujemy
 // do listy przed walidacją.
 $normalizedItems = [];
 if (isset($_POST['items']) && is_array($_POST['items']) && !empty($_POST['items'])) {
-    // Strona documents-respond serializuje formularz jako items[<item_id>][pole]
-    // (klucz = id pozycji, brak osobnego pola item_id); wizard/inni wołający
-    // mogą słać items[i][item_id]. Iterujemy z kluczami i gdy item_id brak
-    // w wierszu — używamy klucza.
+    // Kształt payloadu ustalamy RAZ, dla całego requestu: strona
+    // documents-respond serializuje formularz jako items[<item_id>][pole]
+    // (klucz = id pozycji, brak osobnego pola item_id); wizard/inni
+    // wołający mogą słać items[i][item_id]. Mieszanie obu w jednym
+    // requestcie byłoby niejednoznaczne (klucze listy 0,1,2… wyglądałyby
+    // jak id pozycji) — wtedy wiersz bez item_id jest błędem.
+    $hasExplicitItemIds = false;
+    foreach ($_POST['items'] as $rawRow) {
+        if (is_array($rawRow) && isset($rawRow['item_id']) && (int)$rawRow['item_id'] > 0) {
+            $hasExplicitItemIds = true;
+            break;
+        }
+    }
     foreach ($_POST['items'] as $idx => $raw) {
         if (!is_array($raw)) {
             echo json_encode(['success' => false, 'error' => "Pozycja #{$idx}: nieprawidłowy format danych."]);
             exit;
         }
         $itemId = (int)($raw['item_id'] ?? 0);
-        if ($itemId <= 0 && is_int($idx)) {
-            $itemId = $idx;
+        if ($itemId <= 0) {
+            if ($hasExplicitItemIds) {
+                echo json_encode(['success' => false, 'error' => "Pozycja #{$idx}: brak identyfikatora pozycji."]);
+                exit;
+            }
+            if (is_int($idx)) {
+                $itemId = $idx;
+            }
         }
         if ($itemId <= 0) {
             echo json_encode(['success' => false, 'error' => "Pozycja #{$idx}: brak identyfikatora pozycji."]);
@@ -241,18 +265,27 @@ if (isset($_POST['items']) && is_array($_POST['items']) && !empty($_POST['items'
             }
         }
 
-        $normalizedItems[] = [
+        // Uwaga do pozycji dokumentu: klucz 'comment' dokładamy TYLKO wtedy,
+        // gdy klient go faktycznie wysłał. Brak klucza = "nie ruszaj
+        // zapisanej uwagi" (handler sprawdza array_key_exists); klucz z pustą
+        // wartością = wyczyść kolumnę. Strona odpowiedzi
+        // (documents-respond.php) NIE wysyła tego pola — uwagi do pozycji
+        // dokumentu są tam zastąpione przez „Uwagi do artykułu"
+        // (list__vendor_part.comment), zapisywane osobnym POSTem.
+        $itemRow = [
             'item_id'          => $itemId,
             'unit_price'       => $unitPrice,
             'currency'         => isset($raw['currency']) && $raw['currency'] !== ''
                 ? trim((string)$raw['currency'])
                 : null,
-            'comment'          => isset($raw['comment']) && $raw['comment'] !== ''
-                ? (string)$raw['comment']
-                : null,
             'quantity'         => $itemQty,        // null = keep existing (handler fallback)
             'quantity_unit_id' => $itemUnitId,     // null = keep existing (handler fallback)
         ];
+        if (array_key_exists('comment', $raw)) {
+            $cmt = trim((string)$raw['comment']);
+            $itemRow['comment'] = $cmt === '' ? null : $cmt;   // null = wyczyść kolumnę
+        }
+        $normalizedItems[] = $itemRow;
     }
 }
 
@@ -268,7 +301,7 @@ $handler = new PurchaseActionHandler($MsaDB);
 try {
     // Jeden handler obsługuje oba warianty: items=[] zachowuje stare
     // zachowanie (czysta zmiana stanu, bez ruszania pozycji); items>0
-    // aktualizuje ceny/waluty/uwagi i dopiero potem przechodzi w responded.
+    // aktualizuje ceny/waluty i dopiero potem przechodzi w responded.
     // vendorReference (5. argument) zapisywany jest zawsze — null/'' czyści
     // kolumnę, więc ponowne oznaczenie odpowiedzi może nadpisać wcześniejszy
     // numer u dostawcy (zgodnie z zadaniem).

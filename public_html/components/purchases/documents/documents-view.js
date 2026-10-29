@@ -935,9 +935,11 @@ $(document).ready(function () {
     //   - Wyślij / Oznacz odpowiedź / Potwierdź odbiór / Dokończ
     //     przyjęcie / Przyjmij towar → zwykły <a href>; router je
     //     obsługuje po stronie serwera.
-    //   - Potwierdź odpowiedź → <button data-action="confirm-po"> z
-    //     atrybutami, których wymaga confirm-po-modal.js (patrz jego
-    //     nagłówek: poId, poNumber, vendorName, vendorPoNumber).
+    //   - Potwierdź odpowiedź (PO `sent`) → zwykły <a href> do
+    //     dedykowanej strony odpowiedzi
+    //     /admin/purchase/documents/respond?id=N&type=po (ten sam
+    //     router co dla RFQ, inny parametr type). Operator wpisuje tam
+    //     wynegocjowane ceny dostawcy per pozycja.
     function actionMenuItemsHtml(d) {
         const id = parseInt(d.id, 10);
         const items = [];
@@ -963,15 +965,9 @@ $(document).ready(function () {
                 + '<i class="bi bi-reply"></i> Oznacz odpowiedź</a>');
         }
         if (d.type === 'po' && d.state === 'sent') {
-            const number    = esc(d.primary_number || ('#' + id));
-            const vendor    = esc(d.vendor_name || '');
-            const vendorPo  = esc(d.secondary_number || '');
-            items.push('<button type="button" class="dropdown-item rx-action-success" data-action="confirm-po"'
-                + ' data-po-id="' + id + '"'
-                + ' data-po-number="' + number + '"'
-                + ' data-vendor-name="' + vendor + '"'
-                + ' data-vendor-po-number="' + vendorPo + '">'
-                + '<i class="bi bi-reply"></i> Potwierdź odpowiedź</button>');
+            const url = esc(appUrl('/admin/purchase/documents/respond?id=' + id + '&type=po'));
+            items.push('<a class="dropdown-item rx-action-success" href="' + url + '">'
+                + '<i class="bi bi-reply"></i> Potwierdź odpowiedź</a>');
         }
         if (d.type === 'po' && d.state === 'confirmed') {
             const url = esc(appUrl('/purchase/receipts/receive?po_id=' + id));
