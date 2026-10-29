@@ -34,6 +34,19 @@
 }
 @media (min-width: 576px)  { .rx-page { padding-left: 1.5rem; padding-right: 1.5rem; } }
 
+/* ---- Kolumna strony zakupowych ---------------------------------------
+   Strony modułu zakupowego (koszyk, przyjęcia, szczegóły przyjęcia,
+   zapytania i zamówienia, edycja dokumentu) stoją w jednej kolumnie o
+   szerokości 75% — klasa Bootstrap `w-75` na korzeniu strony (tak jak
+   documents-respond.php / documents-send.php / receive-page.php).
+   Poniżej 992px kolumna zajmuje całą szerokość, bo 75% telefonu to za
+   mało na tabele i pola formularza (jak .vxe-column / .vpe-column
+   w admin/purchase). */
+@media (max-width: 991.98px) {
+    .rx-page.w-75 { width: 100% !important; }
+    #receiptsReceiveView { width: 100% !important; }
+}
+
 .rx-page .text-faint { color: var(--rx-faint) !important; }
 
 /* :not(.btn) — inaczej ta reguła przebija kolor tekstu przycisków-

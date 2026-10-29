@@ -218,7 +218,7 @@ $canResume = $poState !== null && in_array($poState, ['confirmed', 'in_progress'
 
 <link rel="stylesheet" href="<?= asset('public_html/components/purchases/receipts/receipts-ui.css') ?>">
 
-<div class="rx-page rx-detail" id="receiptDetailView"
+<div class="rx-page rx-detail w-75" id="receiptDetailView"
      data-list-url="<?= rx_e($listUrl) ?>">
 
     <nav aria-label="Ścieżka">

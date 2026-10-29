@@ -162,7 +162,7 @@ $baseUrl = 'http://' . BASEURL;
 <link rel="stylesheet" href="<?= asset('public_html/components/purchases/cart/purchases.css') ?>">
 <link rel="stylesheet" href="<?= asset('public_html/components/purchases/cart/cart-ui.css') ?>">
 
-<div class="rx-page cx-page" id="cartView">
+<div class="rx-page cx-page w-75" id="cartView">
 
     <!-- ===== Nagłówek strony + liczniki koszyka ===== -->
     <header class="rx-head">

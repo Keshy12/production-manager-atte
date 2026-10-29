@@ -65,7 +65,7 @@ include __DIR__ . '/close-po-modal.php';
 <link rel="stylesheet" href="<?= asset('public_html/components/purchases/cart/purchases.css') ?>">
 <link rel="stylesheet" href="<?= asset('public_html/components/purchases/receipts/receipts-ui.css') ?>">
 
-<div class="rx-page" id="receiptsListView">
+<div class="rx-page w-75" id="receiptsListView">
 
     <!-- ===== Nagłówek strony + liczniki kolejki ===== -->
     <header class="rx-head">

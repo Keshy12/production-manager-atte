@@ -244,7 +244,7 @@ function formatPrice($v) {
 <link rel="stylesheet" href="<?= htmlspecialchars(asset('public_html/components/purchases/receipts/receipts-ui.css'), ENT_QUOTES) ?>">
 <link rel="stylesheet" href="<?= htmlspecialchars(asset('public_html/components/Admin/Purchase/Documents/documents-edit-ui.css'), ENT_QUOTES) ?>">
 
-<div class="rx-page rx-detail dx-edit dx-edit--<?= $type === 'po' ? 'po' : 'rfq' ?>" id="docEditView">
+<div class="rx-page rx-detail dx-edit dx-edit--<?= $type === 'po' ? 'po' : 'rfq' ?> w-75" id="docEditView">
 
     <nav aria-label="Ścieżka">
         <ol class="rx-crumbs">

@@ -87,7 +87,7 @@ $baseUrl = 'http://' . BASEURL;
 <link rel="stylesheet" href="<?= asset('public_html/components/purchases/receipts/receipts-ui.css') ?>">
 <link rel="stylesheet" href="<?= asset('public_html/components/purchases/documents/documents-ui.css') ?>">
 
-<div class="rx-page dx-page" id="documentsView">
+<div class="rx-page dx-page w-75" id="documentsView">
 
     <!-- ===== Nagłówek strony ===== -->
     <header class="rx-head">
