@@ -345,6 +345,22 @@
 .dx-page .dx-empty-actions .btn { margin-top: 0; }
 
 
+/* ---- Szerokość strony -----------------------------------------------
+   Siatka wiersza ma minimum 1008px (kolumny 57rem + 6 odstępów po 1rem),
+   do tego padding wiersza 41px i obramowanie panelu 2px = panel co
+   najmniej 1051px, plus padding strony 48px. 75% okna mieści to dopiero
+   od ok. 1470px — węższe okno ucinało kolumnę Akcje (panel ma overflow:
+   hidden). Dlatego strona nie jest węższa niż 1140px (≈40px zapasu w
+   wierszu), a na szerokich ekranach zostaje 75%, jak reszta modułu.
+   Bootstrapowe `.w-75` ma !important, więc ta reguła też; stoi w
+   media query ≥992px, żeby nie przebić reguły `.rx-page.w-75 { width:
+   100% !important }` z receipts-ui.css (ta sama specyficzność, a ten
+   plik jest wczytywany później). */
+@media (min-width: 992px) {
+    .dx-page.w-75 { width: min(100%, max(75%, 1140px)) !important; }
+}
+
+
 /* ---- Wiersze dokumentów --------------------------------------------
    Każdy wiersz to osobna siatka, więc kolumny mają stałe minima
    (bez `auto`), żeby wyrównanie trzymało się między wierszami. */
@@ -359,7 +375,7 @@
         4.5rem                  /* Pozycje   */
         minmax(6.5rem, .8fr)    /* Wartość   */
         7rem                    /* Utworzony */
-        11rem;                  /* Akcje     */
+        10.5rem;                /* Akcje     */
     column-gap: 1rem;
     align-items: center;
     padding: .8rem 1.15rem .8rem 1.4rem;
@@ -438,7 +454,7 @@
    Potwierdź odbiór / Dokończ przyjęcie / Przyjmij towar) są teraz
    w menu pod caretem Edytuj/Podgląd,
    więc komórka akcji trzyma już tylko kosz + split-button edycji;
-   Kolumna Akcje (11rem) oddała różnicę kolumnie Dostawca. */
+   Kolumna Akcje (10,5rem) oddała różnicę kolumnie Dostawca. */
 .dx-page .dx-cell--action {
     display: flex;
     flex-wrap: nowrap;
