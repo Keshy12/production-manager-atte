@@ -15,7 +15,12 @@
  *
  * Liczniki (kafelki pod nagłówkiem) liczy JS przez documents-table.php
  * w trybie mode=count — po jednym zapytaniu na kafelek, z bieżącymi
- * filtrami poza statusem. Klik w kafelek ustawia filtr statusu.
+ * filtrami poza statusem. Kafelki to niezależne przełączniki filtra
+ * statusu (ten sam wzorzec co /admin/purchase/vendor-parts): klik włącza
+ * albo wyłącza statusy danego kafelka, a wybór pozostałych zostaje —
+ * kilka kafelków może być włączonych naraz, a filtr jest wtedy sumą
+ * ich statusów. Kafelek pokazuje stan przełącznikiem w prawym górnym
+ * rogu, a znacznik typu (RFQ/PO) siedzi przy etykiecie.
  *
  * Akcje w wierszu:
  *   - kosz („x") → anulowanie/zamknięcie dokumentu (PO wszystkie
@@ -115,60 +120,89 @@ $baseUrl = 'http://' . BASEURL;
          Wartości wypełnia JS (mode=count, bieżące filtry bez statusu).
          Wskazówka „+N" na końcu paska mówi, ile kafelków jest ukrytych
          i dlaczego — nie zmienia filtrów sama w sobie. -->
-    <div class="dx-stats" role="group" aria-label="Dokumenty według statusu">
-        <button type="button" class="rx-stat dx-stat--draft" data-stat="draft" aria-pressed="false"
-                title="Szkice — dokumenty jeszcze niewysłane do dostawcy">
-            <span class="rx-stat-value" data-stat-value>–</span>
-            <span class="rx-stat-label">Szkice</span>
-        </button>
-        <button type="button" class="rx-stat dx-stat--sent" data-stat="sent" aria-pressed="false"
-                title="Wysłane — czekają na odpowiedź lub potwierdzenie dostawcy">
-            <span class="rx-stat-value" data-stat-value>–</span>
-            <span class="rx-stat-label">Wysłane</span>
-        </button>
-        <button type="button" class="rx-stat dx-stat--responded" data-stat="responded" aria-pressed="false"
-                title="Zapytania, na które dostawca odpowiedział — można z nich utworzyć zamówienie">
-            <span class="rx-stat-value" data-stat-value>–</span>
-            <span class="rx-stat-label">Z odpowiedzią</span>
-        </button>
-        <button type="button" class="rx-stat dx-stat--converted" data-stat="converted" aria-pressed="false"
-                title="Zapytania skonwertowane na zamówienie (PO)">
-            <span class="rx-stat-value" data-stat-value>–</span>
-            <span class="rx-stat-label">Skonwertowane</span>
-        </button>
-        <button type="button" class="rx-stat dx-stat--confirmed" data-stat="confirmed" aria-pressed="false"
-                title="Zamówienia potwierdzone przez dostawcę — czekają na odbiór towaru">
-            <span class="rx-stat-value" data-stat-value>–</span>
-            <span class="rx-stat-label">Potwierdzone</span>
-        </button>
-        <button type="button" class="rx-stat dx-stat--in_progress" data-stat="in_progress" aria-pressed="false"
-                title="Zamówienia w trakcie przyjęcia — odbiór rozpoczęty, towar jeszcze nie w całości odebrany">
-            <span class="rx-stat-value" data-stat-value>–</span>
-            <span class="rx-stat-label">W trakcie przyjęcia</span>
-        </button>
-        <button type="button" class="rx-stat dx-stat--received" data-stat="received" aria-pressed="false"
-                title="Zamówienia odebrane w całości">
-            <span class="rx-stat-value" data-stat-value>–</span>
-            <span class="rx-stat-label">Odebrane</span>
-        </button>
-        <button type="button" class="rx-stat dx-stat--cancelled" data-stat="cancelled" aria-pressed="false"
-                title="Dokumenty anulowane">
-            <span class="rx-stat-value" data-stat-value>–</span>
-            <span class="rx-stat-label">Anulowane</span>
-        </button>
+    <div class="dx-stat-group">
+        <div class="dx-stat-group-head">
+            <span class="dx-stat-group-label">Status</span>
+            <span class="dx-stat-group-hint">włącz, aby filtrować</span>
+        </div>
 
-        <!--
-            Wskazówka, że na pasku jest więcej kafelków niż widać.
-            Pojawia się, gdy jakiś kafelek jest ukryty (inny typ
-            dokumentu albo zakończony status przy włączonym
-            „Ukryj zakończone"). Kliknięcie NIE zmienia filtrów —
-            tylko mówi, co trzeba zmienić, żeby zobaczyć wszystkie.
-        -->
-        <button type="button" class="dx-stats-more" data-stat-more hidden
-                title="Ukryte karty (0) — kliknij, aby dowiedzieć się, co zmienić">
-            <i class="bi bi-plus-lg"></i>
-            <span data-stat-more-count>0</span>
-        </button>
+        <div class="dx-stats" role="group" aria-label="Dokumenty według statusu">
+            <button type="button" class="rx-stat dx-stat--draft" data-stat="draft" aria-pressed="false"
+                    title="Szkice — dokumenty jeszcze niewysłane do dostawcy">
+                <span class="rx-stat-value" data-stat-value>–</span>
+                <span class="dx-stat-foot">
+                    <span class="rx-stat-label">Szkice</span>
+                </span>
+            </button>
+            <button type="button" class="rx-stat dx-stat--sent" data-stat="sent" aria-pressed="false"
+                    title="Wysłane — czekają na odpowiedź lub potwierdzenie dostawcy">
+                <span class="rx-stat-value" data-stat-value>–</span>
+                <span class="dx-stat-foot">
+                    <span class="rx-stat-label">Wysłane</span>
+                </span>
+            </button>
+            <button type="button" class="rx-stat dx-stat--responded" data-stat="responded" aria-pressed="false"
+                    title="Z odpowiedzią — zapytania, na które dostawca odpowiedział; można z nich utworzyć zamówienie">
+                <span class="rx-stat-value" data-stat-value>–</span>
+                <span class="dx-stat-foot">
+                    <span class="rx-stat-label">Z odpowiedzią</span>
+                    <span class="dx-stat-tag dx-stat-tag--rfq">RFQ</span>
+                </span>
+            </button>
+            <button type="button" class="rx-stat dx-stat--converted" data-stat="converted" aria-pressed="false"
+                    title="Skonwertowane — zapytania skonwertowane na zamówienie (PO)">
+                <span class="rx-stat-value" data-stat-value>–</span>
+                <span class="dx-stat-foot">
+                    <span class="rx-stat-label">Skonwertowane</span>
+                    <span class="dx-stat-tag dx-stat-tag--rfq">RFQ</span>
+                </span>
+            </button>
+            <button type="button" class="rx-stat dx-stat--confirmed" data-stat="confirmed" aria-pressed="false"
+                    title="Potwierdzone — zamówienia potwierdzone przez dostawcę; czekają na odbiór towaru">
+                <span class="rx-stat-value" data-stat-value>–</span>
+                <span class="dx-stat-foot">
+                    <span class="rx-stat-label">Potwierdzone</span>
+                    <span class="dx-stat-tag dx-stat-tag--po">PO</span>
+                </span>
+            </button>
+            <button type="button" class="rx-stat dx-stat--in_progress" data-stat="in_progress" aria-pressed="false"
+                    title="W trakcie przyjęcia — odbiór towaru rozpoczęty, towar jeszcze nie w całości odebrany">
+                <span class="rx-stat-value" data-stat-value>–</span>
+                <span class="dx-stat-foot">
+                    <span class="rx-stat-label">W trakcie przyjęcia</span>
+                    <span class="dx-stat-tag dx-stat-tag--po">PO</span>
+                </span>
+            </button>
+            <button type="button" class="rx-stat dx-stat--received" data-stat="received" aria-pressed="false"
+                    title="Odebrane — zamówienia odebrane w całości">
+                <span class="rx-stat-value" data-stat-value>–</span>
+                <span class="dx-stat-foot">
+                    <span class="rx-stat-label">Odebrane</span>
+                    <span class="dx-stat-tag dx-stat-tag--po">PO</span>
+                </span>
+            </button>
+            <button type="button" class="rx-stat dx-stat--cancelled" data-stat="cancelled" aria-pressed="false"
+                    title="Anulowane — dokumenty anulowane">
+                <span class="rx-stat-value" data-stat-value>–</span>
+                <span class="dx-stat-foot">
+                    <span class="rx-stat-label">Anulowane</span>
+                </span>
+            </button>
+
+            <!--
+                Wskazówka, że na pasku jest więcej kafelków niż widać.
+                Pojawia się, gdy jakiś kafelek jest ukryty (inny typ
+                dokumentu albo zakończony status przy włączonym
+                „Ukryj zakończone"). Kliknięcie NIE zmienia filtrów —
+                tylko mówi, co trzeba zmienić, żeby zobaczyć wszystkie.
+                Musi zostać OSTATNIM dzieckiem .dx-stats.
+            -->
+            <button type="button" class="dx-stats-more" data-stat-more hidden
+                    title="Ukryte karty (0) — kliknij, aby dowiedzieć się, co zmienić">
+                <i class="bi bi-plus-lg"></i>
+                <span data-stat-more-count>0</span>
+            </button>
+        </div>
     </div>
 
     <!-- ===== Pasek filtrów ===== -->

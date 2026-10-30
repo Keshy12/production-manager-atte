@@ -16,6 +16,11 @@
 // Liczniki statusów (kafelki) to te same zapytania mode=count — po jednym
 // na kafelek, z bieżącymi filtrami, ale z własnym zestawem statusów.
 //
+// Kafelki to niezależne przełączniki filtra statusu (ten sam wzorzec co
+// /admin/purchase/vendor-parts): klik włącza albo wyłącza statusy tego
+// kafelka, a wybór pozostałych kafelków zostaje. Kilka kafelków może być
+// włączonych naraz — filtr statusu to wtedy suma ich statusów.
+//
 // Filtry są zapamiętywane w history.state: strona edycji ma przycisk
 // „Wróć" oparty na history.back(), więc po powrocie lista wraca do tych
 // samych filtrów i tej samej strony zamiast do ustawień domyślnych.
@@ -192,11 +197,6 @@ $(document).ready(function () {
         return many;
     }
 
-    function sameSet(a, b) {
-        if (a.length !== b.length) return false;
-        return a.every(function (x) { return b.indexOf(x) !== -1; });
-    }
-
     // Kwoty: polski zapis (przecinek, spacja tysięcy), 2–4 miejsca.
     function fmtMoney(n) {
         const v = parseFloat(n);
@@ -317,6 +317,50 @@ $(document).ready(function () {
         return true;
     }
 
+    // ---- Kafelki jako niezależne przełączniki -------------------------
+    // Ten sam wzorzec co /admin/purchase/vendor-parts: kafelek jest
+    // przełącznikiem wł./wył., a kilka kafelków może być włączonych
+    // naraz. Kafelek steruje filtrem statusu (#states) — włączenie
+    // kafelka dodaje jego statusy do filtra, wyłączenie je zdejmuje.
+    // Wybór z pozostałych kafelków nietknięty.
+
+    // Statusy kafelka (kafelek „W trakcie przyjęcia" obejmuje dwa:
+    // in_progress + partially_received).
+    function tileStates(key) {
+        return STAT_STATES[key] || [];
+    }
+
+    // Kafelek jest włączony, gdy wybrany jest którykolwiek z jego statusów.
+    function tileActive(key, states) {
+        const set = tileStates(key);
+        for (let i = 0; i < set.length; i++) {
+            if (states.indexOf(set[i]) !== -1) return true;
+        }
+        return false;
+    }
+
+    // Przełączenie kafelka: włączony → zdejmuje swoje statusy z filtra,
+    // wyłączony → dodaje je. Gdy wszystkie statusy kafelka są już
+    // wybrane, klik wyłącza kafelek; w przeciwnym razie włącza go
+    // (dodając brakujące statusy).
+    function toggleTile(key) {
+        const set = tileStates(key);
+        if (!set.length) return;
+        const current = ($states.val() || []).map(String);
+        const allOn = set.every(function (s) { return current.indexOf(s) !== -1; });
+        let next;
+        if (allOn) {
+            next = current.filter(function (s) { return set.indexOf(s) === -1; });
+        } else {
+            next = current.slice();
+            set.forEach(function (s) {
+                if (next.indexOf(s) === -1) next.push(s);
+            });
+        }
+        setPicker($states, next);
+        filtersChanged(false);
+    }
+
     // Kafelki są usuwane z paska w całości (d-none), a nie tylko
     // wyszarzane: kafelek innego typu dokumentu albo zakończonego
     // statusu nie prowadzi do żadnego wyniku. Ukryty kafelek znika też
@@ -407,11 +451,18 @@ $(document).ready(function () {
         const cards = hidden.map(function (key) {
             const $tile = $('.dx-stats .rx-stat[data-stat="' + key + '"]');
             const label = $tile.find('.rx-stat-label').text().trim();
+            // Znacznik typu (RFQ/PO) kopiujemy z kafelka — mini-karta ma
+            // wyglądać jak pełna, tylko mniejsza.
+            const $tag = $tile.find('.dx-stat-tag').first();
+            const tagHtml = $tag.length ? $tag.outerHTML() : '';
             const value = hiddenStatCounts[key];
             return '<div class="rx-stat dx-stat--' + key + '" data-stat="' + key + '">'
                  + '<span class="rx-stat-value" data-stat-value>'
                  + (value === undefined ? '–' : value) + '</span>'
-                 + '<span class="rx-stat-label">' + esc(label) + '</span>'
+                 + '<span class="dx-stat-foot">'
+                 +   '<span class="rx-stat-label">' + esc(label) + '</span>'
+                 +   tagHtml
+                 + '</span>'
                  + '</div>';
         }).join('');
 
@@ -545,9 +596,10 @@ $(document).ready(function () {
             $(this).toggleClass('is-active', on).attr('aria-pressed', on ? 'true' : 'false');
         });
 
+        // Kafelek jest włączony, gdy wybrany jest którykolwiek z jego
+        // statusów — kilka kafelków może być włączonych naraz.
         $('.dx-stats .rx-stat').each(function () {
-            const set = STAT_STATES[$(this).attr('data-stat')] || [];
-            const on = f.states.length > 0 && sameSet(f.states, set);
+            const on = tileActive($(this).attr('data-stat'), f.states);
             $(this).toggleClass('is-active', on).attr('aria-pressed', on ? 'true' : 'false');
         });
     }
@@ -1104,6 +1156,13 @@ $(document).ready(function () {
         if (f.from !== '' || f.to !== '') {
             html += ' <button type="button" class="rx-link-btn js-range-all">pokaż wszystkie daty</button>';
         }
+        // Wybrane statusy (mogą być włączone kilka kafelków naraz) —
+        // w linijce wyników widać, co dokładnie zostało włączone.
+        if (f.states.length) {
+            html += ' <span class="dx-sep">·</span> ' + esc(f.states.map(function (s) {
+                return stateMeta(s).label;
+            }).join(', '));
+        }
         $el.html(html);
     }
 
@@ -1276,13 +1335,14 @@ $(document).ready(function () {
     $refresh.on('click', function () { filtersChanged(true); });
     $(document).on('click', '.js-docs-retry', function () { filtersChanged(true); });
 
-    // Kafelek = filtr statusu; drugi klik zdejmuje filtr.
+    // Kafelek = przełącznik filtra statusu (ten sam wzorzec co
+    // /admin/purchase/vendor-parts): klik włącza albo wyłącza statusy
+    // tego kafelka, a wybór pozostałych kafelków zostaje. Kilka kafelków
+    // może być włączonych naraz — wtedy filtr to suma ich statusów.
     // Kafelki ukryte przy „Ukryj zakończone" (d-none) nie klikają się —
     // display:none wyciąga je z tabulatora.
     $('.dx-stats').on('click', '.rx-stat', function () {
-        const set = STAT_STATES[$(this).attr('data-stat')] || [];        const current = ($states.val() || []).map(String);
-        setPicker($states, sameSet(current, set) ? [] : set.slice());
-        filtersChanged(false);
+        toggleTile($(this).attr('data-stat'));
     });
 
     $(document).on('click', '#documentsView .pagination-btn', function () {
