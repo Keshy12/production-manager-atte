@@ -1855,19 +1855,22 @@
                         '</div>';
                 }
 
-                // Część cell carries prefixed sub-lines: vendor/producer
-                // numbers (merged when identical) and the description.
+                // Część cell: the vendor part number (what we order by) is the
+                // bold primary line, with the producer number next to it
+                // (omitted when identical); our part name sits directly above
+                // the description. No vendor number → the part name is the
+                // primary line and the separate name line is dropped.
                 let vn = item.vendor_part_no || '';
                 let pn = item.producer_part_no || '';
-                let partCell = '<div class="cx-part-name">' + escapeHtml(item.part_name) + '</div>';
-                let nums = '';
-                if (vn && pn && vn === pn) {
-                    nums += '<span>Nr dost./prod.:<span class="rx-partno">' + escapeHtml(vn) + '</span></span>';
-                } else {
-                    if (vn) nums += '<span>Nr dost.:<span class="rx-partno">' + escapeHtml(vn) + '</span></span>';
-                    if (pn) nums += '<span>Nr prod.:<span class="rx-partno">' + escapeHtml(pn) + '</span></span>';
-                }
-                if (nums) partCell += '<div class="cx-nums">' + nums + '</div>';
+                let partCell = '<div class="cx-part-head"><div class="cx-part-vendor-no">' +
+                    escapeHtml(vn || item.part_name) + '</div>' +
+                    (pn && pn !== vn
+                        ? '<div class="cx-nums">Nr prod.:<span class="rx-partno">' + escapeHtml(pn) + '</span></div>'
+                        : '') +
+                    (vn
+                        ? '<div class="cx-part-name">' + escapeHtml(item.part_name) + '</div>'
+                        : '') +
+                    '</div>';
                 if (item.description) { partCell += '<div class="rx-sub cx-part-desc">' + escapeHtml(item.description) + '</div>'; }
                 let vpLive = getVpById(item.vendor_part_id);
                 let liveCmt = vpLive ? (vpLive.private_comment || '') : '';
@@ -1889,7 +1892,12 @@
                     let pkgs = item.quantity / pickedPack;
                     let evenPkgs = Math.abs(pkgs - Math.round(pkgs)) < 1e-9;
                     qtySub += '<span' + (evenPkgs ? '' : ' class="cx-uneven"') + '>' + parseFloat(pkgs.toFixed(2)) + ' opak.</span>';
-                    qtySub += '<span class="cx-packchip" title="Wybrana wielkość opakowania">opak. ' + formatQty(pickedPack) + '</span>';
+                    // "12szt/opak." — pack size + the line's own JM; the tooltip
+                    // spells out the relation ("1 opak. = 12 szt").
+                    let packUnit = item.unit_name || '';
+                    let packTxt = formatQty(pickedPack) + packUnit;
+                    qtySub += '<span class="cx-packchip" title="' + escapeHtml('1 opak. = ' + formatQty(pickedPack) + (packUnit ? ' ' + packUnit : '')) + '">' +
+                        escapeHtml(packTxt) + '/opak.</span>';
                 }
                 if (qtySub) qtyCell += '<div class="cx-qty-sub">' + qtySub + '</div>';
 

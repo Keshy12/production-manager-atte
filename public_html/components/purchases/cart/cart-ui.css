@@ -641,23 +641,31 @@
 .cx-page .cx-cell--price .cx-val,
 .cx-page .cx-cell--total .cx-val { padding-top: .08rem; }
 
-.cx-page .cx-part-name {
-    font-size: .95rem;
-    font-weight: 700;
+/* Komórka Część, jedna pod drugą: numer u dostawcy (pogrubiony — po nim
+   zamawiamy), mały wyciszony „Nr prod.: …", nasza nazwa (zwykły tekst)
+   i opis. */
+.cx-page .cx-part-head {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: .15rem;
+}
+.cx-page .cx-part-vendor-no {
+    font-size: 1.02rem;
+    font-weight: 800;
     letter-spacing: -.005em;
     color: var(--rx-ink);
     overflow-wrap: anywhere;
 }
-.cx-page .cx-nums {
-    display: flex;
-    flex-wrap: wrap;
-    gap: .2rem .8rem;
-    margin-top: .3rem;
-    font-size: .76rem;
-    color: var(--rx-muted);
+.cx-page .cx-nums { font-size: .76rem; color: var(--rx-muted); overflow-wrap: anywhere; }
+/* Nasza nazwa: mały pogrubiony tekst (bez pigułki), tuż nad opisem. */
+.cx-page .cx-part-name {
+    font-size: .84rem;
+    font-weight: 700;
+    color: var(--rx-ink);
+    overflow-wrap: anywhere;
 }
-.cx-page .cx-nums .rx-partno { margin-left: .2rem; }
-.cx-page .cx-part-desc { margin-top: .25rem; }
+.cx-page .cx-part-desc { margin-top: .15rem; }
 
 /* Uwagi do artykułu pod nazwą części + ołówek (edycja w miejscu). */
 .cx-page .cart-row-comment-line {
