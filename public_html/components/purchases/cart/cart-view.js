@@ -123,7 +123,6 @@
     // the variants table and the step-3 summary. docs === null → loading.
     //   token : bumped on every (re)fetch/invalidate so stale responses are dropped
     let variantDocs = { partId: null, docs: null, token: 0 };
-    let docsOpen = {};   // vpId → detail sub-row expanded
     let cartDocsOpen = {};   // vpId → docs details expanded in the Koszyk table
 
     // ---- cart persistence (localStorage, survives refresh) ----
@@ -136,6 +135,11 @@
     //         become visible and editable. "Dodaj" creates the new
     //         VendorPart AND adds the line to the cart in one click.
     let pickerMode = 'pick';
+
+    // Część picker (pick mode): false = only parts with an order variant
+    // (default), true = all parts ("Pokaż wszystkie" in the hint line under
+    // the picker). The vendor cascade applies in both states.
+    let showAllParts = false;
 
     // ---- cart step (pick mode only) ----
     // 'select'  : steps 1 + 2 — pickers + variants table.
@@ -211,6 +215,7 @@
             // re-renders the variants table.
             refreshVendorPartRow();
         }
+        renderPartFilterHint();   // hidden in add mode, back in pick mode
         setCartStep();   // show/hide steps for the new mode (also updates the Dodaj state)
     }
 
@@ -643,6 +648,9 @@
                 try { $partSelect.selectpicker('val', prevPartId); } catch (e) { /* noop */ }
             }
             refreshSelectpicker($partSelect);
+            // The rebuild dropped the `hidden` flags → re-apply the pick-mode
+            // filter (parts without a variant; no-op in add mode).
+            applyVendorFilter();
             if (typeof callback === 'function') callback();
         }).fail(function () {
             setAlert('Błąd ładowania listy dostawców/części.', 'danger');
@@ -652,9 +660,23 @@
 
     // ---- cascading-filter logic ----
 
+    // Ids of parts that have at least one orderable variant, i.e. every part
+    // present in VENDOR_PARTS_INDEX (keys are "<vendorId>:<partId>"; the
+    // index holds exactly the rows the step-2 variants table can show).
+    function partIdsWithVariants() {
+        let ids = {};
+        Object.keys(VENDOR_PARTS_INDEX).forEach(function (key) {
+            if (!VENDOR_PARTS_INDEX[key] || VENDOR_PARTS_INDEX[key].length === 0) return;
+            let pid = parseInt(key.split(':')[1], 10);
+            if (pid) ids[pid] = true;
+        });
+        return ids;
+    }
+
     function applyVendorFilter() {
         // In add mode the part picker must stay un-filtered so the user
-        // can pick ANY active part for the new VendorPart.
+        // can pick ANY active part for the new VendorPart (also those
+        // that have no variant yet — that's what the flow is for).
         if (pickerMode === 'add') return;
         let vendorId = parseInt($vendorSelect.val(), 10) || null;
         let partsIds = [];
@@ -663,11 +685,16 @@
             partsIds = safeJsonArray($opt.attr('data-parts'));
         }
         let partId = parseInt($partSelect.val(), 10) || null;
+        let withVariants = partIdsWithVariants();
 
         $partSelect.find('option').each(function () {
             let id = parseInt($(this).val(), 10) || 0;
             if (id === 0) return; // skip the placeholder
-            let hide = !!(vendorId && partsIds.indexOf(id) === -1);
+            // Pick mode: only parts with any variant (a part without one
+            // leads to an empty variants table) unless "Pokaż wszystkie"
+            // is on; with a vendor chosen, additionally only that
+            // vendor's parts (the cascade always applies).
+            let hide = (!showAllParts && !withVariants[id]) || !!(vendorId && partsIds.indexOf(id) === -1);
             $(this).prop('hidden', hide);
         });
         refreshSelectpicker($partSelect);
@@ -676,6 +703,84 @@
             $partSelect.val('');
             refreshSelectpicker($partSelect);
         }
+        renderPartFilterHint();
+    }
+
+    // Counts for the hint line, scoped like the picker: with a vendor
+    // selected → that vendor's parts only (its data-parts), otherwise the
+    // whole catalogue in the picker. `total` = parts in scope, `withV` =
+    // those that have a variant.
+    function partFilterStats() {
+        let withVariants = partIdsWithVariants();
+        let vendorId = parseInt($vendorSelect.val(), 10) || null;
+        let vendorParts = vendorId
+            ? safeJsonArray($vendorSelect.find('option:selected').attr('data-parts')) : null;
+        let total = 0;
+        let withV = 0;
+        $partSelect.find('option').each(function () {
+            let id = parseInt($(this).val(), 10) || 0;
+            if (id === 0) return;   // placeholder
+            if (vendorParts && vendorParts.indexOf(id) === -1) return;
+            total++;
+            if (withVariants[id]) withV++;
+        });
+        return { total: total, withV: withV, vendor: !!vendorId };
+    }
+
+    // Hint under the Część picker: says the list is filtered (with the real
+    // numbers), offers "Pokaż wszystkie" / "Pokaż tylko części z wariantami",
+    // and warns when a part without a variant is selected. Hidden ONLY in
+    // add mode (no filtering there); in pick mode it always explains the
+    // filter — just the toggle goes away when the variant rule hides nothing.
+    function renderPartFilterHint() {
+        let $hint = $('#cxPartFilterHint');
+        let sp = $partSelect.data('selectpicker');
+        // Message of bootstrap-select's live search when nothing matches
+        // (<li class="no-results">). The plugin reads options.noneResultsText
+        // at search time; refresh() rebuilds `options` from the old object,
+        // so the value survives (the select has no data-none-results-text
+        // attribute that could override it). {0} = the typed term.
+        let setNoResults = function (msg) {
+            if (sp && sp.options) sp.options.noneResultsText = msg;
+        };
+        if (pickerMode === 'add') {
+            setNoResults('Brak wyników dla {0}');
+            $hint.hide();
+            return;
+        }
+        let st = partFilterStats();
+        let hiddenN = st.total - st.withV;
+        let fmt = function (n) { return n.toLocaleString('pl-PL'); };
+        // Only promise "Pokaż wszystkie" when the toggle is really there
+        // and would reveal something (hiddenN > 0); with a vendor selected
+        // the vendor cascade narrows the list as well — say so.
+        if (!showAllParts && hiddenN > 0) {
+            setNoResults(st.vendor
+                ? 'Brak wyników dla {0} \u2014 sprawdź dostawcę lub użyj „Pokaż wszystkie\u201d.'
+                : 'Brak wyników dla {0} wśród części z wariantem \u2014 użyj „Pokaż wszystkie\u201d.');
+        } else {
+            setNoResults(st.vendor
+                ? 'Brak wyników dla {0} \u2014 sprawdź wybranego dostawcę.'
+                : 'Brak wyników dla {0}');
+        }
+        let text;
+        let toggle = '';
+        if (hiddenN <= 0) {
+            // Variant rule hides nothing (in either state): keep the text, no toggle.
+            text = (st.vendor ? 'Części tego dostawcy z wariantem zamówieniowym: ' : 'Części z wariantem zamówieniowym: ') +
+                fmt(st.withV) + ' z ' + fmt(st.total) + '.';
+        } else if (showAllParts) {
+            text = (st.vendor ? 'Pokazano wszystkie części tego dostawcy (' : 'Pokazano wszystkie części (') +
+                fmt(st.total) + '), także bez wariantu zamówieniowego (' + fmt(hiddenN) + ').';
+            toggle = 'Pokaż tylko części z wariantami';
+        } else {
+            text = (st.vendor ? 'Części tego dostawcy z wariantem zamówieniowym: ' : 'Tylko części z wariantem zamówieniowym: ') +
+                fmt(st.withV) + ' z ' + fmt(st.total) + ' (ukryto ' + fmt(hiddenN) + ').';
+            toggle = 'Pokaż wszystkie (' + fmt(st.total) + ')';
+        }
+        $('#cxPartFilterText').text(text);
+        $('#cxPartFilterToggle').text(toggle).toggle(toggle !== '');
+        $hint.show();
     }
 
     function applyPartFilter() {
@@ -692,7 +797,10 @@
         $vendorSelect.find('option').each(function () {
             let id = parseInt($(this).val(), 10) || 0;
             if (id === 0) return;
-            let hide = !!(partId && vendorsIds.indexOf(id) === -1);
+            // A part without any variant ("Pokaż wszystkie") has no vendors
+            // to narrow by — leave the vendor list alone instead of
+            // emptying it.
+            let hide = !!(partId && vendorsIds.length > 0 && vendorsIds.indexOf(id) === -1);
             $(this).prop('hidden', hide);
         });
         refreshSelectpicker($vendorSelect);
@@ -793,6 +901,33 @@
         $cartQtyUnit.text(unit || 'szt.');
     }
 
+    // Live value of the line being edited in step 3: Ilość × Cena/szt.,
+    // currency from #cartCurrency. Shown as a small text under Cena/szt.
+    // Empty/invalid qty or an empty price → "—" (price is optional, empty
+    // must not read as 0); price 0 is valid. The calculation goes into the
+    // tooltip (title) of the text.
+    function renderLineTotal() {
+        let $box = $('#cartLineTotal');
+        let $val = $('#cartLineTotalValue');
+        let qty = parseFloat($cartQty.val());
+        let priceRaw = $.trim(String($cartPrice.val() == null ? '' : $cartPrice.val()));
+        let price = priceRaw === '' ? NaN : parseFloat(priceRaw);
+        if (isNaN(qty) || qty <= 0 || isNaN(price) || price < 0) {
+            $box.addClass('is-empty').removeAttr('title');
+            $val.text('\u2014');
+            return;
+        }
+        let money = function (n) {
+            return n.toLocaleString('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+        };
+        let cur = $cartCurrency.val() || '';
+        let unit = $.trim($cartQtyUnit.text());
+        let qtyTxt = qty.toLocaleString('pl-PL', { maximumFractionDigits: 4 });
+        $box.removeClass('is-empty')
+            .attr('title', qtyTxt + (unit ? ' ' + unit : '') + ' \u00d7 ' + money(price) + (cur ? ' ' + cur : ''));
+        $val.text(money(qty * price) + (cur ? ' ' + cur : ''));
+    }
+
     // Ilość/Cena/Waluta are editable only once a concrete variant is
     // selected; while ambiguous they're disabled and qty/price cleared.
     // The pack-size picker, the price/currency row, and the picker-row
@@ -866,6 +1001,7 @@
             renderVariantComment();
         }
         syncQtyPlaceholder();
+        renderLineTotal();   // qty/price were possibly reset above
         setCartStep();   // visibility of the steps follows the resolved state
     }
 
@@ -986,11 +1122,30 @@
             : '<button type="button" class="cx-mini-btn cx-var-shop cx-var-shop--missing" data-vendor-id="' + vp.vendor_id + '" title="Brak adresu sklepu — kliknij, aby dodać" aria-label="Dodaj adres sklepu dostawcy"><i class="bi bi-box-arrow-up-right"></i></button>';
     }
 
+    // Description of a part (list__parts.description), read from the part
+    // picker's option (data-subtext) — the single source, no extra payload.
+    // No partId → the currently selected part. Empty / unknown → ''.
+    function partDescription(partId) {
+        let id = partId || (parseInt($partSelect.val(), 10) || 0);
+        if (!id) return '';
+        let $opt = $partSelect.find('option[value="' + id + '"]');
+        if ($opt.length === 0) return '';
+        return $.trim($opt.attr('data-subtext') || '');
+    }
+
+    // Step 2: one description line above the variants table.
+    function renderPartDescription() {
+        let desc = pickerMode === 'add' ? '' : partDescription();
+        $('#variantsPartDescText').text(desc);
+        $('#variantsPartDesc').toggle(desc !== '');
+    }
+
     // Step 3 header: what exactly is being added.
     function renderPickedSummary() {
         let vp = selectedVpEntry();
         let $box = $('#pickedSummary');
         if (!vp) { $box.empty(); return; }
+        let desc = partDescription(vp.parts_id);
         let cur = vp.currency_code
             ? ' <span class="rx-badge rx-badge--cyan">' + escapeHtml(vp.currency_code) + '</span>' : '';
         let prodNo = (vp.producer_part_no && vp.producer_part_no !== vp.vendor_part_no)
@@ -1007,18 +1162,32 @@
             cell('Sklep', shopIconHtml(vp))
         );
         // Active docs of the chosen variant: badges + expandable details.
+        // Sits in one row (.cx-sum-row) with the description: Opis left,
+        // Aktywne dokumenty right (stacked on small screens, see CSS).
         let list = variantDocsList(vp.id);
         $box.append(
+            '<div class="cx-sum-row">' +
+            (desc !== ''
+                ? '<div class="cx-sum-item cx-sum-item--wide"><span class="cx-sum-label">Opis</span>' +
+                  '<span class="cx-sum-value cx-sum-value--text">' + escapeHtml(desc) + '</span></div>'
+                : '') +
             '<div class="cx-sum-docs' + (list && list.length > 0 ? ' has-docs' : '') + '">' +
             '<span class="cx-sum-label">Aktywne dokumenty</span>' +
             '<div class="cx-sum-docs-body">' + variantDocsBadgesHtml(vp) + '</div>' +
-            variantDocsDetailHtml(vp) +
+            '</div>' +
             '</div>'
         );
     }
 
     function renderVariantsTable() {
+        renderPartDescription();
+        renderPartFilterHint();   // part changed → counts follow
         let partId = parseInt($partSelect.val(), 10) || null;
+        // Table and the "no variant" message are mutually exclusive;
+        // default = table (the message is switched on below, only for
+        // a selected part without variants in pick mode).
+        $('#variantsScroll').show();
+        $('#variantsNoVariantMsg').hide();
         if (pickerMode === 'add' || !partId) {
             // (panel visibility is decided by setCartStep())
             $('#variantsBody').empty();
@@ -1035,6 +1204,17 @@
                 String(a.vendor_part_no || '').localeCompare(String(b.vendor_part_no || ''), 'pl');
         });
         $('#variantsLegend').toggle(!!vendorId);
+        if (vps.length === 0) {
+            // Pick mode + a part without any variant ("Pokaż wszystkie"):
+            // the message replaces the table inside the panel (it points at
+            // the main "Artykuł" button, which is the only CTA).
+            $('#variantsBody').empty();
+            $('#variantsScroll').hide();
+            $('#variantsNoVariantMsg').show();
+            $('#variantsLegend').hide();
+            $('#variantsCount').text(0);
+            return;
+        }
         // Active docs for every variant of this part: one request, cached.
         ensureVariantDocs(partId, vps.map(function (vp) { return vp.id; }));
         let selectedId = parseInt($vendorPartNoSelect.val(), 10) || lastResolvedVpId || null;
@@ -1068,11 +1248,6 @@
                 '<td><button type="button" class="btn btn-sm ' + (isSel ? 'btn-success' : 'btn-primary') + ' cx-var-pick" title="Przejdź do ilości i ceny">' +
                 (isSel ? '<i class="bi bi-check-lg"></i> Wybrano' : 'Wybierz') + '</button></td>' +
                 '</tr>';
-            // Expanded details: sub-row under the variant.
-            let detail = variantDocsDetailHtml(vp);
-            if (detail !== '') {
-                html += '<tr class="cx-var-docs-row"><td colspan="8">' + detail + '</td></tr>';
-            }
         });
         $('#variantsBody').html(html);
         $('#variantsCount').text(vps.length);
@@ -1360,22 +1535,35 @@
         let list = variantDocsList(vp.id);
         if (list === null) return '<span class="cx-docs-loading">Ładowanie…</span>';
         if (list.length === 0) return '<span class="text-muted">\u2014</span>';
-        let open = !!docsOpen[vp.id];
         let html = '<div class="cx-doc-list">';
         list.slice(0, 4).forEach(function (d) { html += docMiniChipHtml(d); });
         html += '</div><div class="cx-docs-actions">';
         if (list.length > 4) {
             html += '<button type="button" class="cx-docs-more cx-docs-toggle-btn" data-vp-id="' + vp.id + '" title="Pokaż wszystkie dokumenty">+' + (list.length - 4) + '</button>';
         }
-        html += '<button type="button" class="rx-link-btn cx-docs-toggle-btn" data-vp-id="' + vp.id + '" aria-expanded="' + (open ? 'true' : 'false') + '">' +
-            (open ? 'ukryj szczegóły' : 'szczegóły') + '</button></div>';
+        html += '<button type="button" class="rx-link-btn cx-docs-toggle-btn" data-vp-id="' + vp.id + '" aria-haspopup="dialog">' +
+            'szczegóły</button></div>';
         return html;
     }
 
-    // Detail table for an expanded variant ('' when closed / no docs).
-    function variantDocsDetailHtml(vp) {
-        let list = variantDocsList(vp.id);
-        return (docsOpen[vp.id] && list && list.length > 0) ? docsDetailTableHtml(list) : '';
+    // "szczegóły" / "+N": all docs of one variant in #docsModal (the same
+    // detail table as the Koszyk rows). The context line says which variant.
+    function openDocsModal(vpId) {
+        let vp = getVpById(vpId);
+        let list = variantDocsList(vpId);
+        if (!vp || !list || list.length === 0) return;
+        let ctx = [];
+        if (vp.part_name) ctx.push(vp.part_name);
+        if (vp.vendor_name) ctx.push(vp.vendor_name);
+        let nos = vp.vendor_part_no || '';
+        if (vp.producer_part_no && vp.producer_part_no !== vp.vendor_part_no) {
+            nos += (nos ? ' / ' : '') + vp.producer_part_no;
+        }
+        if (nos) ctx.push(nos);
+        $('#docsModalContext').text(ctx.join(' · '));
+        $('#docsModalCount').text(list.length);
+        $('#docsModalBody').html(docsDetailTableHtml(list));
+        $('#docsModal').modal('show');
     }
 
     // One request for all variants of the part; cached per part. A response
@@ -1842,6 +2030,7 @@ $cartQty.val('');
         $cartPackages.val('').removeClass('packages-uneven');
         state.lastDerived = null;
         state.lastEdited = null;
+        renderLineTotal();          // qty + price cleared → "—"
         $partSelect.val('');
         refreshSelectpicker($partSelect);
         applyPartFilter();          // part cleared → restore full vendor list
@@ -2019,12 +2208,36 @@ $cartQty.val('');
             $cartCurrency.selectpicker('val', defCur);
             refreshSelectpicker($cartCurrency);
         } catch (e) { /* unknown code → silent no-op */ }
+        renderLineTotal();   // programmatic change doesn't fire `change`
     }
+
+    // „Pokaż wszystkie" / „Pokaż tylko części z wariantami" under Część.
+    // Re-applies the one filter; turning it back ON may drop a selected
+    // part without a variant — then run the normal part `change` flow.
+    $('#cxPartFilterToggle').on('click', function () {
+        let before = $partSelect.val() || '';
+        showAllParts = !showAllParts;
+        applyVendorFilter();
+        if (($partSelect.val() || '') !== before) {
+            $partSelect.trigger('change');
+        }
+    });
 
     $vendorSelect.on('change', function () {
         applyVendorFilter();
         refreshVendorPartRow();   // also syncs the vendor tab (see its first line)
         preselectVendorCurrency();
+    });
+
+    // The button shows "name  description" on one line (ellipsis, see
+    // cart-ui.css) — put the full text in the button's tooltip. Runs after
+    // every (re)render of the picker, incl. programmatic .val() + refresh.
+    $partSelect.on('rendered.bs.select', function () {
+        let $btn = $partSelect.parent().find('> button.dropdown-toggle');
+        let $opt = $partSelect.find('option:selected');
+        let desc = partDescription();
+        if (!$btn.length || !$opt.length || desc === '') return;
+        $btn.attr('title', ($opt.attr('data-name') || $.trim($opt.text())) + ' — ' + desc);
     });
 
     $partSelect.on('change', function () {
@@ -2108,15 +2321,13 @@ $cartQty.val('');
     });
 
     // "szczegóły" / "+N" in the Aktywne dokumenty cell (table and step-3
-    // summary): expand/collapse the details; nothing else happens.
+    // summary): open the documents of that variant in #docsModal.
     $('#variantsBody, #pickedSummary').on('click', '.cx-docs-toggle-btn', function (e) {
         e.preventDefault();
         e.stopPropagation();
         let vpId = parseInt($(this).attr('data-vp-id'), 10);
         if (!vpId) return;
-        docsOpen[vpId] = !docsOpen[vpId];
-        renderVariantsTable();
-        if (cartStep === 'details') renderPickedSummary();
+        openDocsModal(vpId);
     });
 
     // Only the row's "Wybierz" button selects (a plain row click does
@@ -2265,7 +2476,12 @@ $cartQty.val('');
         state.lastDerived = { packages: pkgs, pack: pack };
         state.lastEdited = $cartPackages;
         applyEvenWarning($cartPackages, qty, pack);
+        renderLineTotal();   // Ilość was re-derived
     });
+
+    // Cena / Waluta → only the live line value follows (no other logic).
+    $cartPrice.on('input', renderLineTotal);
+    $cartCurrency.on('change', renderLineTotal);
 
     // Cart pack-size stepper: − cycles down, + cycles up, the trailing
     // + icon opens an inline edit box for adding a new tier on the fly.
@@ -2319,6 +2535,7 @@ $cartQty.val('');
         }
         // Re-evaluate the warning on whichever field was last-edited.
         applyEvenWarning(state.lastEdited, qty, state.pickedPackSize);
+        renderLineTotal();   // the stepper may have re-derived Ilość
     }
 
     $cartPackSizePrev.on('click', function () {
@@ -2537,6 +2754,7 @@ $cartQty.val('');
     // lastEdited = $cartQty tells the even-warning helper which field
     // should carry the uneven class.
     $cartQty.on('input', function () {
+        renderLineTotal();
         let pack = selectedPickedPackSize();
         let qty = parseFloat($(this).val());
         if (pack === null || isNaN(qty) || qty < 0) {
@@ -3167,6 +3385,7 @@ $cartQty.val('');
     // pre-init is swallowed, leaving the vp picker's menu stale.
     $(function () {
         loadSavedCart();
+        applyVendorFilter();   // Część: only parts with any variant (pick mode)
         applyPickerToTabs(true);   // picker vendor → its tab (or temp tab); else first real tab
         renderCart();
         refreshVendorPartRow();

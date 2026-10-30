@@ -264,6 +264,30 @@
 .cx-page .cx-picker-btn:focus,
 .cx-page .bootstrap-select .cx-picker-btn:focus { outline: none !important; box-shadow: var(--rx-ring); border-color: #80bdff; }
 .cx-page .bootstrap-select.show > .cx-picker-btn { border-color: #80bdff; box-shadow: var(--rx-ring); }
+/* Część: opis wybranej części jest w przycisku obok nazwy (data-show-subtext).
+   Wysokość zostaje stała (siatka z Dostawcą się nie rozjeżdża) — nazwa
+   zostaje w całości, długi opis ucina się wielokropkiem; pełny tekst jest
+   w tooltipie przycisku i w kroku 2/3. */
+.cx-page #partCell .cx-picker-btn .filter-option-inner-inner {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* Podpowiedź pod Częścią o filtrze listy: tekst + przycisk-link w jednej
+   linii (zawija się na wąskim ekranie). */
+.cx-page .cx-partfilter-toggle {
+    display: inline; padding: 0; margin-left: .25rem; border: 0; background: none;
+    font: inherit; color: var(--rx-accent-ink, var(--rx-accent)); font-weight: 600;
+    text-decoration: underline; text-underline-offset: 2px; cursor: pointer;
+}
+.cx-page .cx-partfilter-toggle:hover { text-decoration: none; }
+.cx-page .cx-partfilter-toggle:focus-visible { outline: 2px solid var(--rx-accent); outline-offset: 2px; border-radius: 2px; }
+/* bootstrap-select 1.13 ustawia .no-results { white-space: nowrap } — przy
+   dłuższym komunikacie (wskazówka o filtrze) wiersz był ucinany. Menu jest
+   przeniesione do #partCell (data-container), więc reguła ma zasięg tej
+   kolumny; #partCell daje przewagę nad regułami wtyczki. Tło #f5f5f5 zostaje. */
+.cx-page #partCell .no-results { white-space: normal; overflow-wrap: break-word; }
+.cx-page #partCell .cx-picker-btn .filter-option-inner-inner small {
+    font-size: .8rem; color: var(--rx-muted);
+}
 .cx-page .bootstrap-select .dropdown-menu {
     border-color: var(--rx-line);
     border-radius: .4rem;
@@ -422,10 +446,16 @@
     border-radius: 999px; padding: 0 .5rem; font-size: .74rem; font-weight: 700; line-height: 1.5;
 }
 .cx-page .cx-docs-more:hover { background: #ffe9a8; }
-.cx-page .cx-var-docs-row > td { background: #fffdf5; padding: .6rem .9rem; border-top: 0; }
-.cx-page .cx-sum-docs { flex: 1 1 100%; border-radius: .4rem; padding: .45rem .6rem; }
+.cx-page .cx-sum-docs { flex: 3 1 0; min-width: 0; border-radius: .4rem; padding: .45rem .6rem; }
 .cx-page .cx-sum-docs-body { margin-top: .2rem; }
-.cx-page .cx-sum-docs > .cx-docs-table { margin-top: .5rem; background: #fff; }
+/* Modal „Aktywne dokumenty": nagłówek z kontekstem wariantu; ciało przewija
+   się przy długiej liście (BS4 nie ma modal-dialog-scrollable). Tabela
+   przewija się poziomo zamiast być przycinana (.cx-docs-table ma
+   overflow: hidden). */
+.cx-page .cx-docs-modal-head { min-width: 0; }
+.cx-page .cx-docs-modal-ctx { margin-top: .2rem; font-size: .84rem; color: var(--rx-muted); overflow-wrap: anywhere; }
+.cx-page #docsModal .modal-body { max-height: 65vh; overflow-y: auto; }
+.cx-page #docsModal .cx-docs-table { overflow-x: auto; background: #fff; }
 .cx-page .cx-docs-empty { margin: .8rem 0 0; font-size: .88rem; color: var(--rx-muted); }
 .cx-page .cx-docs-table { border: 1px solid var(--rx-line); border-radius: .4rem; overflow: hidden; font-size: .86rem; }
 .cx-page .cx-docs-table thead th { padding: .45rem .75rem; }
@@ -751,6 +781,41 @@
 .cx-page .cx-sum-label { font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: var(--rx-muted); }
 .cx-page .cx-sum-value { font-weight: 600; color: var(--rx-ink); overflow-wrap: anywhere; }
 .cx-page .cx-sum-value .cx-var-sub { font-weight: 400; }
+/* Opis części: pełna szerokość, zwykła waga, zawija się. */
+/* Opis (lewo) + Aktywne dokumenty (prawo) w jednym rzędzie: 2 : 3.
+   Poniżej lg układają się jedno pod drugim. Sam blok dokumentów (brak
+   opisu) zajmuje cały rząd. */
+.cx-page .cx-sum-row {
+    flex: 1 1 100%; min-width: 0;
+    display: flex; align-items: flex-start; gap: .6rem 1.75rem;
+}
+.cx-page .cx-sum-item--wide { flex: 2 1 0; min-width: 0; }
+@media (max-width: 991.98px) {
+    .cx-page .cx-sum-row { flex-direction: column; align-items: stretch; }
+    .cx-page .cx-sum-item--wide,
+    .cx-page .cx-sum-docs { flex: 0 0 auto; }
+}
+.cx-page .cx-sum-value--text { font-weight: 400; font-size: .88rem; line-height: 1.4; }
+
+/* Opis wybranej części nad tabelą wariantów (krok 2). */
+.cx-page .cx-partdesc {
+    display: flex; align-items: baseline; gap: .6rem;
+    margin: 0 0 .65rem; padding: 0 .1rem;
+    font-size: .88rem; line-height: 1.4; color: var(--rx-ink);
+}
+.cx-page .cx-partdesc-label {
+    flex: none; font-size: .72rem; text-transform: uppercase;
+    letter-spacing: .04em; color: var(--rx-muted);
+}
+.cx-page .cx-partdesc-text { min-width: 0; overflow-wrap: anywhere; }
+
+/* Wartość pozycji (krok 3): mały tekst pod polem Cena/szt. (Ilość × Cena).
+   Nowa linia tylko, gdy kolumna jest za wąska — kwota nie łamie się w środku. */
+.cx-page .cx-linetotal { display: flex; flex-wrap: wrap; gap: 0 .3rem; font-size: .82rem; }
+.cx-page .cx-linetotal-label,
+.cx-page .cx-linetotal-value { white-space: nowrap; }
+.cx-page .cx-linetotal-value { font-weight: 600; color: var(--rx-ink); font-variant-numeric: tabular-nums; }
+.cx-page .cx-linetotal.is-empty .cx-linetotal-value { font-weight: 400; color: var(--rx-faint); }
 
 /* Wskaźnik kroków (mały, na górze panelu). */
 .cx-page .cx-steps {
@@ -797,6 +862,16 @@
 .cx-page .cx-variants-scroll .rx-table { font-size: .86rem; min-width: 760px; }
 .cx-page .cx-variants-scroll .rx-table thead th { position: sticky; top: 0; z-index: 1; white-space: nowrap; }
 .cx-page .cx-variants-scroll .rx-table td { vertical-align: middle; }
+/* Część bez wariantu: komunikat zamiast tabeli (ostrzegawczy, nie błąd) —
+   ten sam bursztyn co blok „Aktywne dokumenty". */
+.cx-page .cx-var-none {
+    margin: 0; padding: .85rem 1rem;
+    display: flex; align-items: baseline; gap: .55rem;
+    font-size: .92rem; line-height: 1.4; color: var(--cx-warn-ink);
+    background: #fff8e1; border: 1px solid #ecd48a; border-radius: .4rem;
+    box-shadow: inset 3px 0 0 #f0ad00;
+}
+.cx-page .cx-var-none .bi { flex: none; }
 .cx-page .cx-var-row { transition: background-color .12s ease; }   /* wybór tylko przyciskiem „Wybierz" */
 .cx-page .cx-var-row:hover { background: var(--rx-hover); }
 .cx-page .cx-var-row.is-suggested { box-shadow: inset 4px 0 0 #9cc3f5; background: #f7faff; }

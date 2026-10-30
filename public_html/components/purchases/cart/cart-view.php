@@ -311,7 +311,7 @@ $baseUrl = 'http://' . BASEURL;
                 <div class="cx-field cx-sm-6" id="partCell">
                     <label class="cx-label" for="partSelect">Część</label>
                     <div class="cx-with-btn"><div class="cx-grow flex-grow-1">
-                    <select id="partSelect" class="selectpicker form-control" data-live-search="true" data-width="100%" data-container="#partCell" data-style="cx-picker-btn" title="Wybierz część...">
+                    <select id="partSelect" class="selectpicker form-control" data-live-search="true" data-width="100%" data-container="#partCell" data-style="cx-picker-btn" data-show-subtext="true" title="Wybierz część...">
                         <?php foreach ($partsWithVendors as $p): ?>
                             <option value="<?= (int)$p['id'] ?>"
                                     data-name="<?= htmlspecialchars($p['name']) ?>"
@@ -330,6 +330,14 @@ $baseUrl = 'http://' . BASEURL;
                             aria-label="Szukaj numeru u dostawcy w całym katalogu">
                         <i class="bi bi-search"></i>
                     </button>
+                    </div>
+                    <!-- Podpowiedź o filtrze listy (tylko części z wariantem
+                         zamówieniowym) + przełącznik; treść i liczby ustawia
+                         renderPartFilterHint() w cart-view.js. Ukryta w trybie
+                         „Artykuł". -->
+                    <div id="cxPartFilterHint" class="cx-hint cx-partfilter" style="display:none" role="status" aria-live="polite">
+                        <span id="cxPartFilterText"></span>
+                        <button type="button" id="cxPartFilterToggle" class="cx-partfilter-toggle"></button>
                     </div>
                 </div>
                 </div><!-- /#pickersStep -->
@@ -353,7 +361,19 @@ $baseUrl = 'http://' . BASEURL;
                         <span class="cx-legend" id="variantsLegend" style="display:none"><i class="cx-legend-dot" aria-hidden="true"></i> inny dostawca</span>
                         <span class="cx-variants-hint">Otwórz sklepy, porównaj ceny, potem kliknij wiersz.</span>
                     </div>
-                    <div class="cx-variants-scroll">
+                    <!-- Opis wybranej części (ten sam dla wszystkich wierszy);
+                         wypełnia renderVariantsTable(), puste → ukryte. -->
+                    <p id="variantsPartDesc" class="cx-partdesc" style="display:none">
+                        <span class="cx-partdesc-label">Opis</span>
+                        <span class="cx-partdesc-text" id="variantsPartDescText"></span>
+                    </p>
+                    <!-- Część bez wariantu (tryb „Pokaż wszystkie"): komunikat
+                         zamiast tabeli; przełącza go renderVariantsTable(). -->
+                    <p id="variantsNoVariantMsg" class="cx-var-none" style="display:none" role="status">
+                        <i class="bi bi-exclamation-triangle" aria-hidden="true"></i>
+                        Ta część nie ma wariantu zamówieniowego &mdash; dodaj go przyciskiem „Artykuł”.
+                    </p>
+                    <div class="cx-variants-scroll" id="variantsScroll">
                         <table class="table rx-table mb-0">
                             <thead>
                                 <tr>
@@ -460,6 +480,13 @@ $baseUrl = 'http://' . BASEURL;
                     <div class="cx-field cx-xs-6 cx-md-3 cx-xl-2" id="cartPriceWrap">
                         <label class="cx-label" for="cartPrice">Cena/szt.</label>
                         <input type="number" id="cartPrice" class="form-control" min="0" step="0.0001" placeholder="opcjonalna">
+                        <!-- Wartość pozycji na żywo (Ilość × Cena/szt., waluta z
+                             #cartCurrency) — wypełnia renderLineTotal(); „—",
+                             gdy brak ilości albo ceny. Tooltip = działanie. -->
+                        <div id="cartLineTotal" class="cx-hint cx-linetotal is-empty" role="status" aria-live="polite">
+                            <span class="cx-linetotal-label">Wartość:</span>
+                            <span class="cx-linetotal-value" id="cartLineTotalValue">&mdash;</span>
+                        </div>
                     </div>
                     <div class="cx-field cx-xs-6 cx-md-3 cx-xl-2" id="cartCurrencyWrap">
                         <label class="cx-label" for="cartCurrency">Waluta</label>
@@ -491,6 +518,7 @@ $baseUrl = 'http://' . BASEURL;
                     </div>
                 </div>
                     </div><!-- /.cx-fields--inner -->
+
                 </section><!-- /#pickVariantRow -->
 
                 <!-- Tryb „Artykuł": nowy wariant dostawcy do katalogu. -->
@@ -680,6 +708,27 @@ $baseUrl = 'http://' . BASEURL;
                 <div class="modal-footer">
                     <button type="button" class="btn rx-btn-quiet" data-dismiss="modal">Anuluj</button>
                     <button type="button" class="btn btn-danger" id="cartConfirmOk">Potwierdź</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== Modal: aktywne dokumenty wybranego wariantu =====
+         Otwiera go „szczegóły" / „+N" w kroku 2 (tabela wariantów) i w
+         kroku 3 (podsumowanie); treść wstawia openDocsModal() w cart-view.js. -->
+    <div class="modal fade cx-modal" id="docsModal" tabindex="-1" role="dialog" aria-labelledby="docsModalTitle" aria-hidden="true">
+        <div class="modal-dialog modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div class="cx-docs-modal-head">
+                        <h5 class="modal-title" id="docsModalTitle"><i class="bi bi-file-earmark-text"></i> Aktywne dokumenty <span class="rx-count" id="docsModalCount">0</span></h5>
+                        <div class="cx-docs-modal-ctx" id="docsModalContext"></div>
+                    </div>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Zamknij"><span>&times;</span></button>
+                </div>
+                <div class="modal-body" id="docsModalBody"></div>
+                <div class="modal-footer">
+                    <button type="button" class="btn rx-btn-quiet" data-dismiss="modal">Zamknij</button>
                 </div>
             </div>
         </div>
