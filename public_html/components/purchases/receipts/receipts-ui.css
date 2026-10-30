@@ -28,7 +28,10 @@
     --rx-ctl-h: calc(1.5em + .5rem + 2px); /* = .form-control-sm */
 
     max-width: 1480px;
-    margin: 0 auto;
+    /* margin-top: odstęp od górnego menu (navbar). Strony, które nie
+       używają .rx-page (kreator wysyłki, formularz przyjęcia, szablony
+       wiadomości), mają ten sam odstęp z klasą `mt-3` na kontenerze. */
+    margin: 1rem auto 0;
     padding: 0 1rem 3rem;
     color: var(--rx-ink);
 }
@@ -1129,7 +1132,7 @@ a.rx-timeline-doc { color: var(--rx-accent-ink); }
     .rx-no-print,
     .rx-crumbs,
     body > div[style*="position: absolute"] { display: none !important; }
-    .rx-page { max-width: none; padding: 0; }
+    .rx-page { max-width: none; padding: 0; margin-top: 0; }
     .rx-panel { box-shadow: none; border-color: #bbb; }
     .rx-detail-grid { display: block; }
     .rx-related { margin-top: 1rem; }
