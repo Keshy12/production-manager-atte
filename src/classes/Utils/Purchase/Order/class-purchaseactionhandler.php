@@ -783,6 +783,10 @@ class PurchaseActionHandler {
      *     kolumnę); brak klucza → zachowaj istniejący komentarz
      *   - `quantity` — gdy podane: numeryczne i `> 0`
      *   - `quantity_unit_id` — gdy podane: dodatni int
+     *   - `expected_delivery_date` — gdy podane: 'Y-m-d' (termin dostawy
+     *     TEJ pozycji) albo pusty string (wyczyść termin). Brak klucza =
+     *     nie ruszaj terminu zapisanego w bazie. Dotyczy wyłącznie PO —
+     *     pozycja RFQ nie ma terminu dostawy.
      *   - pozycja musi należeć do `$poId` (walidacja ownership —
      *     `LogicException`, żeby UI nie dało się oszukać cudzym id)
      *   - KAŻDA pozycja zamówienia musi mieć cenę > 0 po zastosowaniu
@@ -807,7 +811,8 @@ class PurchaseActionHandler {
      * @param array       $items             lista map per pozycja (pusta = bez aktualizacji pozycji):
      *                                          ['item_id' => int, 'unit_price' => ?float, 'currency' => ?string, 'comment' => ?string,
      *                                           'quantity' => ?float,         // null = keep existing
-     *                                           'quantity_unit_id' => ?int]   // null = keep existing
+     *                                           'quantity_unit_id' => ?int,    // null = keep existing
+     *                                           'expected_delivery_date' => ?string] // 'Y-m-d' | '' = clear | absent = keep
      * @param string|null $vendorPoNumber    numer PO u dostawcy (max 64 zn.); null/empty → kolumna bez zmian
      * @param string|null $confirmedAt       'Y-m-d H:i:s' lub null/empty → NOW()
      * @return bool
@@ -905,6 +910,20 @@ class PurchaseActionHandler {
                     );
                 }
             }
+            // expected_delivery_date: opcjonalne; gdy podane — 'Y-m-d' albo
+            // pusty string (= wyczyść termin pozycji). Brak klucza = nie
+            // ruszaj terminu zapisanego w bazie.
+            if (array_key_exists('expected_delivery_date', $it) && $it['expected_delivery_date'] !== null) {
+                $etaRaw = trim((string)$it['expected_delivery_date']);
+                if ($etaRaw !== '') {
+                    $etaD = \DateTime::createFromFormat('Y-m-d', $etaRaw);
+                    if ($etaD === false || $etaD->format('Y-m-d') !== $etaRaw) {
+                        throw new \InvalidArgumentException(
+                            "Pozycja #{$idx} ({$itemId}): data dostawy musi mieć format RRRR-MM-DD."
+                        );
+                    }
+                }
+            }
         }
 
         // Ceny: KAŻDA pozycja zamówienia musi mieć cenę > 0. Puste pole
@@ -913,6 +932,12 @@ class PurchaseActionHandler {
         // ceny → brak potwierdzenia). Sprawdzamy
         // wszystkie pozycje zamówienia (także te pominięte w formularzu).
         $this->assertPoItemsHavePrice($itemRepo, $poId, $items);
+
+        // Terminy dostawy: żadna pozycja nie może mieć daty w przeszłości
+        // (w UI wiersz dostaje wtedy flagę „po terminie"). Pusta data =
+        // brak terminu dla pozycji = OK. Sprawdzamy wszystkie pozycje
+        // zamówienia, także te pominięte w formularzu.
+        $this->assertPoItemsHaveFutureDeliveryDate($itemRepo, $poId, $items);
 
         $MsaDB->db->beginTransaction();
         try {
@@ -972,6 +997,18 @@ class PurchaseActionHandler {
                     $comment,
                     $existing->pickedPackSize
                 );
+
+                // Termin dostawy TEJ pozycji. Klucz obecny w formularzu =
+                // operator go ustawił (albo wyczyścił pustym polem);
+                // brak klucza = nie ruszaj tego, co jest w bazie.
+                // Zapisywany OSOBNYM UPDATE'em, bo `update()` świadomie
+                // nie dotyka tej kolumny (jest też wołany przez
+                // inline-edytor pozycji na stronie edycji).
+                if (array_key_exists('expected_delivery_date', $it)) {
+                    $etaRaw = $it['expected_delivery_date'];
+                    $eta = ($etaRaw === null) ? null : trim((string)$etaRaw);
+                    $itemRepo->setExpectedDeliveryDate($existing->id, $eta);
+                }
             }
 
             // Numer PO u dostawcy — tylko gdy podano (puste/null = kolumna
@@ -1075,6 +1112,96 @@ class PurchaseActionHandler {
         throw new \InvalidArgumentException(
             "Zamówienie ma {$count} {$noun} — {$verb} przed potwierdzeniem: "
             . implode(', ', $missing) . '.'
+        );
+    }
+
+    /**
+     * Kontrola terminów dostawy pozycji zamówienia. Data dostawy
+     * (`purchase__order_item.expected_delivery_date`) nie może być
+     * w przeszłości — w UI taki wiersz dostaje flagę „PO TERMINIE"
+     * i blokuje potwierdzenie zamówienia.
+     *
+     * Pusta data = brak własnego terminu dla pozycji = OK (UI pokazuje
+     * wtedy domyślną datę z nagłówka zamówienia).
+     *
+     * `$items` to pozycje z formularza (format jak w `confirmPoWithPrices`:
+     * ['item_id' => int, 'expected_delivery_date' => ?string]). Brak klucza
+     * = termin zapisany w bazie.
+     *
+     * @param PurchaseOrderItemRepository $itemRepo
+     * @param int                          $poId
+     * @param array                        $items
+     * @throws \InvalidArgumentException gdy któraś pozycja ma datę w przeszłości
+     */
+    private function assertPoItemsHaveFutureDeliveryDate(
+        PurchaseOrderItemRepository $itemRepo,
+        int $poId,
+        array $items
+    ): void {
+        // Daty z formularza: item_id => data (tylko jawne wartości).
+        $datesFromForm = [];
+        foreach ($items as $it) {
+            if (!is_array($it)) {
+                continue;
+            }
+            $itemId = (int)($it['item_id'] ?? 0);
+            if ($itemId <= 0) {
+                continue;
+            }
+            if (!array_key_exists('expected_delivery_date', $it)) {
+                continue;   // brak klucza = zachowaj termin z bazy
+            }
+            $raw = trim((string)($it['expected_delivery_date'] ?? ''));
+            $datesFromForm[$itemId] = ($raw === '') ? null : $raw;
+        }
+
+        $today = date('Y-m-d');
+
+        // Pozycje zamówienia w kolejności dokumentu (getByPo: ORDER BY id).
+        $past      = [];
+        $position  = 0;
+        foreach ($itemRepo->getByPo($poId) as $poItem) {
+            $position++;
+            $itemId = (int)$poItem->id;
+            if (array_key_exists($itemId, $datesFromForm)) {
+                $date = $datesFromForm[$itemId];
+            } else {
+                $date = $poItem->expectedDeliveryDate;
+            }
+            if ($date === null || trim((string)$date) === '') {
+                continue;   // brak terminu = OK
+            }
+            if (trim((string)$date) >= $today) {
+                continue;   // dziś lub później = OK
+            }
+            $label = trim((string)($poItem->vendorPartNo ?? ''));
+            if ($label === '') {
+                $label = trim((string)($poItem->partName ?? ''));
+            }
+            $suffix = ($label !== '') ? (', ' . $label) : '';
+            $past[] = 'poz. ' . $position . ' (ID ' . $itemId . $suffix . ')';
+        }
+
+        if (empty($past)) {
+            return;
+        }
+
+        $count = count($past);
+        if ($count === 1) {
+            $noun = 'pozycję z terminem dostawy w przeszłości';
+            $verb = 'popraw termin';
+        } else {
+            // Polska liczba mnoga: 2–4 → "pozycje" (oprócz 12–14), reszta
+            // → "pozycji".
+            $mod10  = $count % 10;
+            $mod100 = $count % 100;
+            $twoToFour = ($mod10 >= 2 && $mod10 <= 4) && !($mod100 >= 12 && $mod100 <= 14);
+            $noun = $twoToFour ? 'pozycje z terminem dostawy w przeszłości' : 'pozycji z terminem dostawy w przeszłości';
+            $verb = 'popraw terminy';
+        }
+        throw new \InvalidArgumentException(
+            "Zamówienie ma {$count} {$noun} — {$verb} przed potwierdzeniem: "
+            . implode(', ', $past) . '.'
         );
     }
 
@@ -1291,7 +1418,7 @@ class PurchaseActionHandler {
         // because the natural next step from in_progress is to actually
         // book the items — that's the entire point of the state.
         if (!in_array($po->state, ['confirmed','partially_received','in_progress'], true)) {
-            throw new \LogicException("Zamówienie musi być potwierdzone, w trakcie przyjęcia lub częściowo odebrane, aby przyjąć towar.");
+            throw new \LogicException("Zamówienie musi być potwierdzone, częściowo przyjęte lub częściowo odebrane, aby przyjąć towar.");
         }
 
         // 2. Load PO items; build id-indexed map for ownership + remaining math.
@@ -1521,7 +1648,7 @@ class PurchaseActionHandler {
     }
 
     /**
-     * Zamyka częściowo dostarczone / „w trakcie przyjęcia" zamówienie (PO)
+     * Zamyka częściowo dostarczone / „częściowo przyjęte" zamówienie (PO)
      * jako w pełni odebrane (stan `received`). Obsługiwany scenariusz:
      * dostawca dostarczył mniej niż zamówiono i nie dostarczy reszty (np.
      * brak w magazynie, koniec serii, anulacja pozycji) — operator chce
@@ -1559,7 +1686,7 @@ class PurchaseActionHandler {
         }
         if (!in_array($po->state, ['in_progress', 'partially_received'], true)) {
             throw new \LogicException(
-                "Zamówienie jest w stanie '{$po->state}'. Zamknięcie jako odebrane jest możliwe tylko ze stanu „w trakcie przyjęcia\" lub „częściowo odebrane\"."
+                "Zamówienie jest w stanie '{$po->state}'. Zamknięcie jako odebrane jest możliwe tylko ze stanu „częściowo przyjęte\" lub „częściowo odebrane\"."
             );
         }
 
@@ -1659,7 +1786,7 @@ class PurchaseActionHandler {
         }
         if (!in_array($po->state, ['confirmed', 'in_progress', 'partially_received'], true)) {
             throw new \LogicException(
-                "Zamówienie jest w stanie '{$po->state}'. Zamknięcie z tej strony jest możliwe tylko dla zamówień potwierdzonych, w trakcie przyjęcia lub częściowo odebranych."
+                "Zamówienie jest w stanie '{$po->state}'. Zamknięcie z tej strony jest możliwe tylko dla zamówień potwierdzonych, częściowo przyjęte lub częściowo odebranych."
             );
         }
 
@@ -1715,7 +1842,7 @@ class PurchaseActionHandler {
      *   - state: the PO state after this call ('in_progress' or its
      *     pre-existing value if the transition was skipped)
      *   - stateLabel: Polish label for the state (currently hardcoded
-     *     to "W trakcie przyjęcia" for the new state — if more states
+     *     to "Częściowo przyjęte" for the new state — if more states
      *     arrive, lift this to a shared map).
      *   - wasUpdated: true if an existing draft was updated, false if a
      *     new one was inserted. Frontend can use this to choose between
@@ -1849,7 +1976,7 @@ class PurchaseActionHandler {
             return [
                 'receiptId'  => (int)$draftId,
                 'state'      => $newState,
-                'stateLabel' => 'W trakcie przyjęcia',
+                'stateLabel' => 'Częściowo przyjęte',
                 'wasUpdated' => $wasUpdated,
             ];
         } catch (\Throwable $e) {

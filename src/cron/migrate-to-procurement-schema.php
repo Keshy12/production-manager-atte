@@ -282,6 +282,7 @@ CREATE TABLE `purchase__order_item` (
   `quantity_received` decimal(30,10) NOT NULL DEFAULT 0.0000000000,
   `comment` text DEFAULT NULL,
   `picked_pack_size` decimal(30,10) DEFAULT NULL,
+  `expected_delivery_date` date DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `idx_poi_po` (`po_id`),
   KEY `fk_poi_vp` (`vendor_part_id`),
@@ -364,6 +365,14 @@ $columnAdds = [
     'purchase__order' => [
         'pdf_generated_at' => "ADD COLUMN `pdf_generated_at` DATETIME DEFAULT NULL AFTER `updated_at`",
         'pdf_path'         => "ADD COLUMN `pdf_path` VARCHAR(255) DEFAULT NULL AFTER `pdf_generated_at`",
+    ],
+    // Termin dostawy per pozycja zamówienia (NULL = brak własnego
+    // terminu; UI pokazuje wtedy datę z nagłówka zamówienia). Dodane
+    // razem z src/cron/migrate-po-item-expected-delivery-date.php —
+    // ten sam ALTER, wykonywany tu przy ponownym uruchomieniu tej
+    // migracji (idempotentny: kolumna dodana tylko raz).
+    'purchase__order_item' => [
+        'expected_delivery_date' => "ADD COLUMN `expected_delivery_date` DATE DEFAULT NULL AFTER `picked_pack_size`",
     ],
     // list__vendor.default_currency is handled by the state-aware
     // conversion block below, not by $columnAdds, because the target

@@ -55,6 +55,19 @@
  *                                     (= zachowaj istniejącą)
  *     items[..][quantity_unit_id] int             > 0; puste → null
  *                                     (= zachowaj istniejącą)
+ *     items[..][expected_delivery_date] string|empty
+ *                                     OPCJONALNE i nieobowiązkowe:
+ *                                     termin dostawy TEJ pozycji w formacie
+ *                                     'Y-m-d' (inny format → błąd 400-ish
+ *                                     w JSON). Pusta wartość = wyczyść
+ *                                     termin (kolumna → NULL). Brak klucza
+ *                                     = "nie ruszaj terminu zapisanego
+ *                                     w bazie" (handler sprawdza
+ *                                     array_key_exists). Strona odpowiedzi
+ *                                     wysyła to pole dla każdej pozycji
+ *                                     PO; domyślną wartość (data z
+ *                                     nagłówka zamówienia = lead time
+ *                                     dostawcy) podstawia już w polu.
  *
  *   jQuery $.ajax({ data: { items: [...] } }) emituje form-encoding
  *   `items[0][item_id]=…`, PHP parsuje to do $_POST['items'][0]['item_id']
@@ -284,6 +297,28 @@ if (isset($_POST['items']) && is_array($_POST['items']) && !empty($_POST['items'
             }
         }
 
+        // expected_delivery_date: termin dostawy TEJ pozycji. Format
+        // 'Y-m-d' albo pusty string (= wyczyść termin pozycji). Brak
+        // klucza = nie ruszaj terminu zapisanego w bazie.
+        // Walidację formatu robi endpoint (jest właścicielem danych z
+        // formularza); handler waliduje defensywnie po raz drugi.
+        $etaProvided = array_key_exists('expected_delivery_date', $raw);
+        $itemEta = null;
+        if ($etaProvided && $raw['expected_delivery_date'] !== null) {
+            $etaRaw = trim((string)$raw['expected_delivery_date']);
+            if ($etaRaw !== '') {
+                $etaD = \DateTime::createFromFormat('Y-m-d', $etaRaw);
+                if ($etaD === false || $etaD->format('Y-m-d') !== $etaRaw) {
+                    echo json_encode([
+                        'success' => false,
+                        'error'   => "Pozycja #{$idx} ({$itemId}): data dostawy musi mieć format RRRR-MM-DD.",
+                    ]);
+                    exit;
+                }
+                $itemEta = $etaD->format('Y-m-d');
+            }
+        }
+
         // Uwaga do pozycji dokumentu: klucz 'comment' dokładamy TYLKO wtedy,
         // gdy klient go faktycznie wysłał. Brak klucza = "nie ruszaj
         // zapisanej uwagi" (handler: array_key_exists('comment', …));
@@ -298,6 +333,10 @@ if (isset($_POST['items']) && is_array($_POST['items']) && !empty($_POST['items'
             'quantity'         => $itemQty,         // null = keep existing
             'quantity_unit_id' => $itemUnitId,      // null = keep existing
         ];
+        if ($etaProvided) {
+            // null = wyczyść termin tej pozycji (kolumna → NULL).
+            $itemRow['expected_delivery_date'] = $itemEta;
+        }
         if (array_key_exists('comment', $raw)) {
             $cmt = trim((string)$raw['comment']);
             $itemRow['comment'] = $cmt === '' ? null : $cmt;   // null = wyczyść kolumnę

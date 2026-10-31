@@ -20,6 +20,7 @@ class PurchaseOrderItemRepository {
                        i.currency,
                        i.quantity_received AS quantityReceived,
                        i.picked_pack_size AS pickedPackSize,
+                       i.expected_delivery_date AS expectedDeliveryDate,
                        i.comment,
                        v.name  AS vendorName,
                        p.name  AS producerName,
@@ -83,6 +84,11 @@ class PurchaseOrderItemRepository {
         if ($pickedPackSize !== null && $pickedPackSize <= 0) {
             throw new \InvalidArgumentException("PurchaseOrderItem pickedPackSize must be > 0 when provided.");
         }
+        // UWAGA: `update()` NIE rusza `expected_delivery_date` — termin
+        // dostawy pozycji zmienia się osobnym wywołaniem
+        // setExpectedDeliveryDate(). Dzięki temu inline-edytowanie
+        // pozycji na stronie edycji dokumentu (document-item-update.php)
+        // nie kasuje daty wybranej przy potwierdzeniu odpowiedzi.
         return $MsaDB->update(
             'purchase__order_item',
             [
@@ -97,6 +103,43 @@ class PurchaseOrderItemRepository {
             'id',
             $id
         );
+    }
+
+    /**
+     * Ustawia (lub czyści — null/'') termin dostawy TEJ pozycji.
+     * Zwraca znormalizowaną wartość 'Y-m-d' (albo null), która trafiła
+     * do bazy.
+     *
+     * Osobna metoda (zamiast pola w update()), bo `update()` jest
+     * wołany przez inline-edytor pozycji na stronie edycji dokumentu —
+     * tam data dostawy nie jest edytowana i nie może zostać przypadkiem
+     * nadpisana.
+     *
+     * @param int         $id
+     * @param string|null $date  'Y-m-d' albo null/'' (= wyczyść)
+     * @return string|null
+     */
+    public function setExpectedDeliveryDate(int $id, ?string $date): ?string {
+        $date = self::normaliseDate($date);
+        $MsaDB = $this->MsaDB;
+        $MsaDB->update('purchase__order_item', ['expected_delivery_date' => $date], 'id', $id);
+        return $date;
+    }
+
+    /**
+     * 'Y-m-d' → 'Y-m-d'; null/'' → null (wyczyść kolumnę).
+     * Inny format → \InvalidArgumentException (komunikat po polsku —
+     * trafia wprost do operatora przez endpoint AJAX).
+     */
+    private static function normaliseDate(?string $value): ?string {
+        if ($value === null) return null;
+        $value = trim($value);
+        if ($value === '') return null;
+        $d = \DateTime::createFromFormat('Y-m-d', $value);
+        if ($d === false || $d->format('Y-m-d') !== $value) {
+            throw new \InvalidArgumentException("Data dostawy musi być w formacie RRRR-MM-DD.");
+        }
+        return $d->format('Y-m-d');
     }
 
     public function delete(int $id): bool {

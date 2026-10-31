@@ -393,6 +393,7 @@ CREATE TABLE `purchase__order_item` (
   `quantity_received` decimal(30,10) NOT NULL DEFAULT 0.0000000000,
   `comment` text DEFAULT NULL,
   `picked_pack_size` decimal(30,10) DEFAULT NULL,
+  `expected_delivery_date` date DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `idx_poi_po` (`po_id`),
   KEY `fk_poi_vp` (`vendor_part_id`),
@@ -550,6 +551,7 @@ $expectedColumns = [
         ['quantity_received', 'decimal(30,10)',  'NO'],
         ['comment',           'text',            'YES'],
         ['picked_pack_size',  'decimal(30,10)',  'YES'],
+        ['expected_delivery_date', 'date',       'YES'],
     ],
     'purchase__order_receipt' => [
         ['id',             'int(11)',      'NO'],

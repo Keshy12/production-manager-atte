@@ -38,6 +38,7 @@ Read these documents in order to ramp up efficiently:
 | [MODULES.md](./code/MODULES.md) | Each module's purpose, responsibilities, and key files | Sixth — when working on a specific feature area |
 | [CLASSES.md](./code/CLASSES.md) | Domain classes (Api, DB, Utils, etc.) — purpose and usage | Seventh — when writing business logic |
 | [procurement/PLAN.md](./procurement/PLAN.md) | **Procurement module** — vendor / producer / RFQ / PO / receipt domain, schema, class structure, P1–P6 changelog, deferred items | When working on the procurement domain (master data or transaction flow) |
+| [procurement/PO_ITEM_DELIVERY_DATE.md](./procurement/PO_ITEM_DELIVERY_DATE.md) | Per-line delivery dates on a PO (`purchase__order_item.expected_delivery_date`) — schema change, migration script, UI behaviour | When touching PO delivery dates / the respond page |
 | [INTEGRATIONS.md](./operations/INTEGRATIONS.md) | Google Sheets export/import, FlowPin data ingestion | Eighth — when working on external integrations |
 | [CRON.md](./operations/CRON.md) | All scheduled jobs (6 historic scripts) + reference to one-shot procurement tooling (`migrate-to-procurement-schema`, `seed-component-procurement-from-gsheet`); what each does | Ninth — before modifying or adding cron jobs |
 | [STACK.md](./reference/STACK.md) | PHP 8.0+, MySQL 5.7+, required extensions, tooling | Tenth — environment setup and dependency questions |

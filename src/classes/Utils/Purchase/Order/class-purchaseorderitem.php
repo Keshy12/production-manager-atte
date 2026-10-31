@@ -13,6 +13,7 @@ class PurchaseOrderItem {
     public string $currency;
     public float $quantityReceived;
     public ?float $pickedPackSize;
+    public ?string $expectedDeliveryDate;
     public ?string $comment;
     public ?string $vendorName;
     public ?string $producerName;
@@ -33,6 +34,11 @@ class PurchaseOrderItem {
         $this->quantityReceived = (float)($row['quantityReceived'] ?? 0);
         $this->pickedPackSize = isset($row['pickedPackSize']) && $row['pickedPackSize'] !== null
             ? (float)$row['pickedPackSize']
+            : null;
+        // Termin dostawy TEJ pozycji. NULL = pozycja nie ma własnego
+        // terminu (UI wtedy pokazuje domyślną datę z nagłówka PO).
+        $this->expectedDeliveryDate = isset($row['expectedDeliveryDate']) && $row['expectedDeliveryDate'] !== null && $row['expectedDeliveryDate'] !== ''
+            ? (string)$row['expectedDeliveryDate']
             : null;
         $this->comment = $row['comment'] ?? null;
         $this->vendorName = $row['vendorName'] ?? null;

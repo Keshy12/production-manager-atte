@@ -41,6 +41,7 @@
  */
 use Atte\DB\MsaDB;
 use Atte\Utils\Purchase\Master\CurrencyRepository;
+use Atte\Utils\Purchase\Master\VendorRepository;
 use Atte\Utils\Purchase\Order\RFQRepository;
 use Atte\Utils\Purchase\Order\RFQItemRepository;
 use Atte\Utils\Purchase\Order\PurchaseOrderRepository;
@@ -101,6 +102,84 @@ if ($doc->state !== 'sent') {
 }
 
 $items = $isPo ? $itemRepo->getByPo($id) : $itemRepo->getByRfq($id);
+
+// ── Domyślna data dostawy dla pozycji PO ─────────────────────────────
+// Terminy dostawy są per pozycja, ale operator wybiera je zwykle
+// jednym ruchem dla całego zamówienia. Domyślna wartość pola daty
+// bierze się (kolejność — pierwsza trafiona wygrywa):
+//   1) data zapisana w wierszu pozycji (purchase__order_item.expected_delivery_date),
+//   2) data nagłówka zamówienia (purchase__order.expected_delivery_date)
+//      — to, co operator wybrał przy wysyłce; domyślnie wyliczana
+//      z lead time dostawcy (data wysyłki + lead_time_days),
+//   3) lead time dostawcy policzony od daty wysyłki (gdy nagłówek daty
+//      nie ma — np. zamówienie wysłane przed dodaniem lead time),
+//   4) brak — pole daty zostaje puste, operator wpisuje datę ręcznie.
+// Punkt (2)/(3) to dokładnie „previously selected lead time" z kroku 3
+// wizarda wysyłki (documents-send.js → leadTimeDefaultYmd()).
+$poDefaultEta = '';
+if ($isPo) {
+    $poDefaultEta = trim((string)($doc->expectedDeliveryDate ?? ''));
+    if ($poDefaultEta === '') {
+        $vendor    = (new VendorRepository($MsaDB))->getById((int)$doc->vendorId);
+        $leadDays  = ($vendor !== null && $vendor->leadTimeDays !== null) ? (int)$vendor->leadTimeDays : 0;
+        if ($leadDays > 0) {
+            // Baza datą wysyłki; gdy brak (PO jeszcze nie wysłane) — dziś.
+            $sentRaw = trim((string)($doc->sentAt ?? ''));
+            $baseYmd = ($sentRaw !== '') ? substr($sentRaw, 0, 10) : date('Y-m-d');
+            $baseDt  = \DateTime::createFromFormat('Y-m-d', $baseYmd);
+            if ($baseDt !== false) {
+                $baseDt->modify('+' . $leadDays . ' days');
+                $poDefaultEta = $baseDt->format('Y-m-d');
+            }
+        }
+    }
+}
+
+// Data wysłki zamówienia (Y-m-d) — dolna granica terminu dostawy.
+// Dostawa nie może być wypisana przed wysyłką zamówienia, więc przyciski
+// „−1 dzień" / „−1 tydzień" nie schodzą poniżej tej daty (to samo
+// ograniczenie co w kroku 3 wizarda wysyłki, gdzie bazą jest data
+// wysyłki).
+$poSentDate = '';
+if ($isPo) {
+    $sentRaw = trim((string)($doc->sentAt ?? ''));
+    if ($sentRaw !== '') {
+        $sentDt = \DateTime::createFromFormat('Y-m-d', substr($sentRaw, 0, 10));
+        if ($sentDt !== false) {
+            $poSentDate = $sentDt->format('Y-m-d');
+        }
+    }
+}
+
+// Przyciski szybkiego wyboru daty — ten sam zestaw co w kroku 3 wizarda
+// wysyłki (documents-send.js → send-exp-quick), tylko bez ±1 miesiąc.
+// Kolejność: kroki wstecz (−1 tydzień, −1 dzień) → kroki naprzód
+// (+1 dzień, +1 tydzień) → „Dziś" (skok bezwzględny, na końcu).
+// Na stałe widoczny jest TYLKO glif: pojedynczy chevron = dzień,
+// podwójny = tydzień, w lewo = wcześniej, w prawo = później.
+// Nazwa akcji pojawia się dopiero przy najechaniu (dymek CSS
+// z `data-label`), więc pasek nie zaśmieca wiersza.
+// $scope: 'row' (jedna pozycja) albo 'all' (wszystkie pozycje naraz).
+$quickButtonsHtml = function (string $scope): string {
+    $btns = [
+        // [dni, ikona, ton, nazwa akcji (dymek), aria-label]
+        [-7, 'bi-chevron-double-left',  'dx-eta-quick--minus', '1 tydzień wcześniej', 'Data dostawy 1 tydzień wcześniej'],
+        [-1, 'bi-chevron-left',         'dx-eta-quick--minus', '1 dzień wcześniej',   'Data dostawy 1 dzień wcześniej'],
+        [1,  'bi-chevron-right',        'dx-eta-quick--plus',  '1 dzień później',    'Data dostawy 1 dzień później'],
+        [7,  'bi-chevron-double-right', 'dx-eta-quick--plus',  '1 tydzień później',  'Data dostawy 1 tydzień później'],
+        [0,  'bi-calendar-check',       'dx-eta-quick--today', 'Dzisiaj',             'Ustaw dzisiejszą datę dostawy'],
+    ];
+    $label = ($scope === 'all') ? 'Szybki wybór daty dla wszystkich pozycji' : 'Szybki wybór daty dostawy';
+    $html  = '<span class="dx-eta-quick" role="group" aria-label="' . htmlspecialchars($label, ENT_QUOTES) . '">';
+    foreach ($btns as $b) {
+        $html .= '<button type="button" class="btn btn-sm dx-eta-quick-btn ' . $b[2] . '"'
+               . ' data-days="' . (int)$b[0] . '"'
+               . ' data-label="' . htmlspecialchars($b[3], ENT_QUOTES) . '"'
+               . ' aria-label="' . htmlspecialchars($b[4], ENT_QUOTES) . '">'
+               . '<i class="bi ' . $b[1] . '" aria-hidden="true"></i></button>';
+    }
+    return $html . '</span>';
+};
 
 // Aktywne waluty do pickera. Bez getActiveEnsuring() — nie mamy tu
 // vendor-default flow, a każda pozycja ma już currency zapisaną w
@@ -287,8 +366,54 @@ $itemCount        = count($items);
 <?php else: ?>
     <form id="respondForm" novalidate
           data-respond-type="<?= htmlspecialchars($type, ENT_QUOTES) ?>"
-          data-respond-id="<?= (int)$doc->id ?>">
+          data-respond-id="<?= (int)$doc->id ?>"
+          data-eta-min="<?= htmlspecialchars($poSentDate, ENT_QUOTES) ?>">
         <input type="hidden" name="id" value="<?= (int)$doc->id ?>">
+
+        <!-- ===== Dane odpowiedzi ===== -->
+        <!-- Panel jest PRZED listą pozycji: operator najpierw podaje dane
+             odpowiedzi (numer u dostawcy / data potwierdzenia), potem
+             uzupełnia ceny i terminy dostawy w pozycjach. -->
+        <section class="rx-panel mb-3">
+            <div class="rx-panel-head">
+                <h2 class="rx-panel-title"><i class="bi bi-card-text"></i> Dane odpowiedzi</h2>
+            </div>
+            <div class="dx-respond-fields">
+                <?php if ($isPo): ?>
+                <div class="dx-respond-field">
+                    <label for="vendor_po_number" class="dx-respond-label">Numer zamówienia u dostawcy</label>
+                    <input type="text" id="vendor_po_number" name="vendor_po_number" maxlength="64"
+                           class="form-control form-control-sm"
+                           value="<?= htmlspecialchars($doc->vendorPoNumber ?? '', ENT_QUOTES) ?>"
+                           placeholder="np. ZAM/2026/114">
+                    <small class="dx-respond-help">Numer nadany zamówieniu przez dostawcę — pozostaw puste, aby nie zmieniać.</small>
+                </div>
+                <div class="dx-respond-field">
+                    <label for="confirmed_at" class="dx-respond-label">Data potwierdzenia</label>
+                    <input type="datetime-local" id="confirmed_at" name="confirmed_at" step="60"
+                           class="form-control form-control-sm"
+                           value="<?= htmlspecialchars($confirmedAtDefault, ENT_QUOTES) ?>">
+                    <small class="dx-respond-help">Domyślnie bieżąca data i godzina. Możesz cofnąć.</small>
+                </div>
+                <?php else: ?>
+                <div class="dx-respond-field">
+                    <label for="vendor_reference" class="dx-respond-label">Numer Oferty u dostawcy</label>
+                    <input type="text" id="vendor_reference" name="vendor_reference" maxlength="128"
+                           class="form-control form-control-sm"
+                           value="<?= htmlspecialchars($doc->vendorReference ?? '', ENT_QUOTES) ?>"
+                           placeholder="np. OF/2026/114">
+                    <small class="dx-respond-help">Numer oferty nadany przez dostawcę do jego odpowiedzi — używany w dalszej korespondencji.</small>
+                </div>
+                <div class="dx-respond-field">
+                    <label for="responded_at" class="dx-respond-label">Data odpowiedzi</label>
+                    <input type="date" id="responded_at" name="responded_at"
+                           class="form-control form-control-sm"
+                           value="<?= htmlspecialchars($respondedAtDefault) ?>">
+                    <small class="dx-respond-help">Domyślnie dzisiejsza. Możesz cofnąć.</small>
+                </div>
+                <?php endif; ?>
+            </div>
+        </section>
 
         <!-- ===== Pozycje odpowiedzi ===== -->
         <section class="rx-panel mb-3" id="respondItemsPanel">
@@ -298,6 +423,20 @@ $itemCount        = count($items);
                     <span class="rx-count"><?= $itemCount ?></span>
                 </h2>
                 <div class="dx-respond-tools rx-no-print">
+                    <?php if ($isPo): ?>
+                    <!-- Termin dostawy dla wszystkich pozycji naraz. Ustaw
+                         datę albo użyj przycisków szybkiego wyboru — trafia
+                         do każdego wiersza (potem możesz poprawić
+                         pojedyncze pozycje). -->
+                    <span class="dx-respond-etaall">
+                        <label for="respondEtaAll" class="dx-respond-label">Dostawa dla wszystkich</label>
+                        <input type="date" id="respondEtaAll" class="form-control form-control-sm js-eta-all"
+                               value="<?= htmlspecialchars($poDefaultEta, ENT_QUOTES) ?>"
+                               title="Zapisz datę — trafi do wszystkich pozycji"
+                               aria-label="Data dostawy dla wszystkich pozycji">
+                        <?= $quickButtonsHtml('all') ?>
+                    </span>
+                    <?php endif; ?>
                     <button type="button" class="btn btn-sm rx-btn-quiet" id="respondFillAllBtn">
                         <i class="bi bi-arrow-clockwise"></i> <?= $isPo ? 'Przywróć zamówione ilości' : 'Przepisz ilości z zapytania' ?>
                     </button>
@@ -327,10 +466,13 @@ $itemCount        = count($items);
                  Ilość i Waluta są domyślnie tylko do odczytu — klik/Enter
                  otwiera edytor w tym samym miejscu. Prawdziwe pola formularza
                  (name="items[…]") ZAWSZE zostają w DOM (chowa je tylko CSS). -->
-            <div class="dx-lines" id="respondLines" role="list">
+            <div class="dx-lines<?= $isPo ? ' dx-lines--po' : '' ?>" id="respondLines" role="list">
                 <div class="dx-lines-head" aria-hidden="true">
                     <span>Część</span>
-                    <span class="is-r">Ilość</span>
+                    <?php if ($isPo): ?>
+                        <span>Dostawa</span>
+                    <?php endif; ?>
+                    <span class="is-r is-qty">Ilość</span>
                     <span>Cena</span>
                     <span class="is-r">Wartość</span>
                 </div>
@@ -374,6 +516,17 @@ $itemCount        = count($items);
 
                     $curCode = !empty($it->currency) ? (string)$it->currency : 'PLN';
 
+                    // Termin dostawy TEJ pozycji (PO). Zapisany w wierszu ma
+                    // pierwszeństwo; gdy pusty — pole pokazuje domyślną datę
+                    // (nagłówek zamówienia / lead time dostawcy).
+                    $rowEta   = $isPo ? trim((string)($it->expectedDeliveryDate ?? '')) : '';
+                    $etaValue = $rowEta !== '' ? $rowEta : $poDefaultEta;
+                    // Termin w przeszłości — flaga „po terminie" (jak flaga
+                    // „brak ceny"). Liczone po stronie serwera, żeby wiersz
+                    // nie „przeskakiwał" po załadowaniu strony; JS przełącza
+                    // flagę przy zmianie daty.
+                    $etaIsPast = ($isPo && $etaValue !== '' && $etaValue < date('Y-m-d'));
+
                     if ($isPo) {
                         $placeholder = $hasPrice ? 'bez zmian' : 'brak ceny — do uzupełnienia';
                         // Pozycja PO bez ceny (NULL albo 0) nie miała ceny —
@@ -389,6 +542,11 @@ $itemCount        = count($items);
                     if ($isUnpriced) {
                         $rowClass .= $isPo ? ' is-noprice' : ' is-unpriced';
                     }
+                    // Termin dostawy w przeszłości — flaga „po terminie"
+                    // obok flagi „brak ceny" (ten sam wzorzec co is-noprice).
+                    if ($etaIsPast) {
+                        $rowClass .= ' is-etapast';
+                    }
 
                     // Tekst widoku tylko do odczytu (JS odświeża go przy każdej zmianie).
                     $qtyViewText = $fmtQty($askedQty) . ($unitName !== '' ? $nbsp . $unitName : '');
@@ -399,7 +557,9 @@ $itemCount        = count($items);
                      data-orig-price="<?= htmlspecialchars($origPrice, ENT_QUOTES) ?>"
                      data-pack="<?= $hasPack ? htmlspecialchars((string)$pack, ENT_QUOTES) : '' ?>"
                      data-asked-qty="<?= htmlspecialchars($askedQtyStr, ENT_QUOTES) ?>"
-                     data-asked-unit="<?= htmlspecialchars($unitName, ENT_QUOTES) ?>">
+                     data-asked-unit="<?= htmlspecialchars($unitName, ENT_QUOTES) ?>"
+                     data-orig-eta="<?= htmlspecialchars($rowEta, ENT_QUOTES) ?>"
+                     data-eta-default="<?= htmlspecialchars($poDefaultEta, ENT_QUOTES) ?>">
 
                     <!-- Tożsamość. Domyślnie (zwinięte):
                          linia 1 = numer dostawcy (nagłówek) + etykieta ceny,
@@ -411,6 +571,9 @@ $itemCount        = count($items);
                         <div class="dx-headrow">
                             <span class="dx-headline" title="<?= htmlspecialchars($headTitle, ENT_QUOTES) ?>"><?= htmlspecialchars($headTxt) ?></span>
                             <span class="dx-respond-flag js-flag"><?= $isPo ? 'brak ceny' : 'niewyceniona' ?></span>
+                            <?php if ($isPo): ?>
+                                <span class="dx-eta-flag">po terminie</span>
+                            <?php endif; ?>
                         </div>
 
                         <!-- Nasza nazwa · producent + przycisk rozwijający opis części. -->
@@ -460,6 +623,25 @@ $itemCount        = count($items);
                     </div>
 
                     
+                    <!-- Termin dostawy TEJ pozycji (tylko PO). Pole jest
+                         otwarte od razu — to data, którą operator koryguje
+                         najczęściej. Puste = brak własnego terminu dla tej
+                         pozycji (baza: NULL). Pod polem: przyciski szybkiego
+                         wyboru (Dziś / ±1 dzień / ±1 tydzień) i podpowiedź
+                         „za 3 tygodnie" — to samo, co w kroku 3 wizarda
+                         wysyłki, tylko w wersji ikonicznej (wąska kolumna). -->
+                    <?php if ($isPo): ?>
+                    <div class="dx-line-eta" data-label="Dostawa">
+                        <input type="date" class="form-control form-control-sm js-eta"
+                               name="items[<?= $iid ?>][expected_delivery_date]"
+                               value="<?= htmlspecialchars($etaValue, ENT_QUOTES) ?>"
+                               aria-label="Oczekiwana data dostawy"
+                               title="Oczekiwana data dostawy tej pozycji">
+                        <?= $quickButtonsHtml('row') ?>
+                        <span class="dx-eta-hint js-eta-hint" aria-live="polite"></span>
+                    </div>
+                    <?php endif; ?>
+
                     <!-- Ilość: odczyt (domyślnie) / edytor: ilość + opakowania -->
                     <div class="dx-line-qty" data-label="Ilość">
                         <div class="dx-respond-cell" data-cell="qty">
@@ -559,48 +741,6 @@ $itemCount        = count($items);
 
                     </div>
                 <?php endforeach; ?>
-            </div>
-        </section>
-
-        <!-- ===== Dane odpowiedzi ===== -->
-        <section class="rx-panel mb-3">
-            <div class="rx-panel-head">
-                <h2 class="rx-panel-title"><i class="bi bi-card-text"></i> Dane odpowiedzi</h2>
-            </div>
-            <div class="dx-respond-fields">
-                <?php if ($isPo): ?>
-                <div class="dx-respond-field">
-                    <label for="vendor_po_number" class="dx-respond-label">Numer zamówienia u dostawcy</label>
-                    <input type="text" id="vendor_po_number" name="vendor_po_number" maxlength="64"
-                           class="form-control form-control-sm"
-                           value="<?= htmlspecialchars($doc->vendorPoNumber ?? '', ENT_QUOTES) ?>"
-                           placeholder="np. ZAM/2026/114">
-                    <small class="dx-respond-help">Numer nadany zamówieniu przez dostawcę — pozostaw puste, aby nie zmieniać.</small>
-                </div>
-                <div class="dx-respond-field">
-                    <label for="confirmed_at" class="dx-respond-label">Data potwierdzenia</label>
-                    <input type="datetime-local" id="confirmed_at" name="confirmed_at" step="60"
-                           class="form-control form-control-sm"
-                           value="<?= htmlspecialchars($confirmedAtDefault, ENT_QUOTES) ?>">
-                    <small class="dx-respond-help">Domyślnie bieżąca data i godzina. Możesz cofnąć.</small>
-                </div>
-                <?php else: ?>
-                <div class="dx-respond-field">
-                    <label for="vendor_reference" class="dx-respond-label">Numer Oferty u dostawcy</label>
-                    <input type="text" id="vendor_reference" name="vendor_reference" maxlength="128"
-                           class="form-control form-control-sm"
-                           value="<?= htmlspecialchars($doc->vendorReference ?? '', ENT_QUOTES) ?>"
-                           placeholder="np. OF/2026/114">
-                    <small class="dx-respond-help">Numer oferty nadany przez dostawcę do jego odpowiedzi — używany w dalszej korespondencji.</small>
-                </div>
-                <div class="dx-respond-field">
-                    <label for="responded_at" class="dx-respond-label">Data odpowiedzi</label>
-                    <input type="date" id="responded_at" name="responded_at"
-                           class="form-control form-control-sm"
-                           value="<?= htmlspecialchars($respondedAtDefault) ?>">
-                    <small class="dx-respond-help">Domyślnie dzisiejsza. Możesz cofnąć.</small>
-                </div>
-                <?php endif; ?>
             </div>
         </section>
     </form>

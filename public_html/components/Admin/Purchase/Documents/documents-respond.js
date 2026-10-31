@@ -73,7 +73,76 @@ $(function () {
     const $barChanged   = $('#respondBarChanged');
     const $summary      = $('#respondSummary');
     const $hint         = $('#respondHint');
+    // PO: pole „Dostawa dla wszystkich" w nagłówku panelu pozycji.
+    // RFQ go nie ma (termin dostawy dotyczy tylko zamówień).
+    const $etaAll      = $form.find('.js-eta-all');
     const TOTAL_ROWS    = $rows.length;
+
+    // ----- Daty: pomocnicze -------------------------------------------
+    // 'Y-m-d' i operacje na dniach. Liczymy różnice w UTC, żeby zmiana
+    // czasu letniego nie przesuwała dnia o jeden (jak w documents-send.js).
+    function pad2(n) { return String(n).padStart(2, '0'); }
+
+    function ymdFromDate(dt) {
+        return dt.getFullYear() + '-' + pad2(dt.getMonth() + 1) + '-' + pad2(dt.getDate());
+    }
+
+    function todayYmd() {
+        return ymdFromDate(new Date());
+    }
+
+    function addDaysYmd(ymd, days) {
+        const p = String(ymd).split('-');
+        return ymdFromDate(new Date(
+            parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10) + days
+        ));
+    }
+
+    function diffDaysYmd(fromYmd, toYmd) {
+        const f = String(fromYmd).substring(0, 10).split('-');
+        const t = String(toYmd).substring(0, 10).split('-');
+        const a = Date.UTC(parseInt(f[0], 10), parseInt(f[1], 10) - 1, parseInt(f[2], 10));
+        const b = Date.UTC(parseInt(t[0], 10), parseInt(t[1], 10) - 1, parseInt(t[2], 10));
+        return Math.round((b - a) / 86400000);
+    }
+
+    // Polska liczba mnoga: 1 dzień / 2 dni / 5 dni; 1 tydzień / 2 tygodnie / 5 tygodni.
+    function plPlural(n, one, few, many) {
+        const mod10 = n % 10;
+        const mod100 = n % 100;
+        if (n === 1) { return one; }
+        if (mod10 >= 2 && mod10 <= 4 && !(mod100 >= 12 && mod100 <= 14)) { return few; }
+        return many;
+    }
+    function plUnit(n, one, few, many) {
+        return n + ' ' + plPlural(n, one, few, many);
+    }
+
+    // "3 tygodnie 2 dni" / "10 dni" — na potrzeby podpowiedzi pod datą.
+    function humanizeDays(days) {
+        const abs = Math.abs(days);
+        const weeks = Math.floor(abs / 7);
+        const rest = abs % 7;
+        const parts = [];
+        if (weeks > 0) { parts.push(plUnit(weeks, 'tydzień', 'tygodnie', 'tygodni')); }
+        if (rest > 0) { parts.push(plUnit(rest, 'dzień', 'dni', 'dni')); }
+        if (parts.length === 0) { return plUnit(abs, 'dzień', 'dni', 'dni'); }
+        return parts.join(' ');
+    }
+
+    // Podpowiedź pod datą dostawy: „dzisiaj", „jutro", „za 3 tygodnie",
+    // „5 dni temu". Baza to dziś — operator odpowiada dziś, więc data
+    // w przeszłości oznacza termin przeszły (pisanyemy spokojnie, szaro).
+    function relativeEtaHint(ymd) {
+        if (!ymd) { return ''; }
+        const n = diffDaysYmd(todayYmd(), ymd);
+        if (isNaN(n)) { return ''; }
+        if (n === 0) { return 'dzisiaj'; }
+        if (n === 1) { return 'jutro'; }
+        if (n === -1) { return 'wczoraj'; }
+        if (n > 0) { return 'za ' + humanizeDays(n); }
+        return humanizeDays(n) + ' temu';
+    }
 
     // ----- Parsowanie / formatowanie -----
 
@@ -143,6 +212,8 @@ $(function () {
             $qty:     $row.find('.js-qty'),
             $packs:   $row.find('.js-packs'),
             $price:   $row.find('.js-price'),
+            // Termin dostawy pozycji (tylko PO; dla RFQ pusty zbiór).
+            $eta:     $row.find('.js-eta'),
             // UWAGA: tylko <select> — bootstrap-select kopiuje klasy selecta
             // (także .js-currency) na swój wrapper i kontener menu, a .val()
             // na <div> zwraca ''.
@@ -160,7 +231,12 @@ $(function () {
             origQty:     parseNum($row.find('.js-qty').val()),
             // null = brak ceny w bazie (RFQ niewyceniona; PO bez ustawionej ceny).
             origPrice:   origPriceS === '' ? null : parseNum(origPriceS),
-            origCur:     String($row.find('select.js-currency').val() || '')
+            origCur:     String($row.find('select.js-currency').val() || ''),
+            // Termin dostawy: `origEta` = data zapisana w wierszu pozycji
+            // ('' = brak), `etaDefault` = data domyślna wyliczona po stronie
+            // serwera (nagłówek zamówienia / lead time dostawcy).
+            origEta:     String($row.attr('data-orig-eta') || ''),
+            etaDefault:  String($row.attr('data-eta-default') || '')
         };
         return r;
     }).get();
@@ -210,6 +286,11 @@ $(function () {
         let changedCount = 0;
         let unpricedCount = 0;
         let pricedCount = 0;
+        let pastCount = 0;
+        // Pierwszy wiersz z błędem — do odnośnika „Przejdź do wiersza"
+        // w pasku akcji (hint), który jest zawsze widoczny.
+        let firstNoPriceRow = null;
+        let firstPastRow = null;
 
         rows.forEach(function (r) {
             const qty     = parseNum(r.$qty.val());
@@ -232,13 +313,42 @@ $(function () {
                 priceChanged = Math.abs(priceIn - r.origPrice) > EPS;
             }
             const curChanged = (cur !== r.origCur);
-            const rowChanged = qtyChanged || priceChanged || curChanged;
+
+            // Termin dostawy pozycji (PO). Pole jest wypełnione wartością
+            // domyślną (data z nagłówka zamówienia / lead time dostawcy),
+            // więc "bez zmian" porównujemy z tą samą wartością — inaczej
+            // licznik zmian podskakiwałby na starcie (każda pozycja miałaby
+            // datę, a w bazie jest NULL).
+            const etaVal   = String(r.$eta.val() || '');
+            const etaOrig  = (r.origEta !== '') ? r.origEta : r.etaDefault;
+            const etaChanged = (etaVal !== etaOrig);
+
+            const rowChanged = qtyChanged || priceChanged || curChanged || etaChanged;
             if (rowChanged) { changedCount++; }
 
             // Wskaźniki zmian na samych polach.
             r.$qty.toggleClass('is-dirty', qtyChanged);
             r.$price.toggleClass('is-dirty', priceChanged);
+            r.$eta.toggleClass('is-dirty', etaChanged);
             r.$cur.closest('.dx-respond-cur').toggleClass('is-dirty', curChanged);
+
+            // Podpowiedź względna pod datą dostawy (PO) — „za 3 tygodnie",
+            // „dzisiaj", „5 dni temu". Dzięki niej ikony szybkiego wyboru
+            // są czytelne bez rozwijania tooltipów.
+            if (IS_PO) {
+                const $etaHint = r.$row.find('.js-eta-hint');
+                if ($etaHint.length > 0) {
+                    $etaHint.text(relativeEtaHint(etaVal));
+                }
+                // Flaga „po terminie" (obok „brak ceny") — termin w
+                // przeszłości. Puste pole = brak terminu = brak flagi.
+                const isPast = (etaVal !== '') && (etaVal < todayYmd());
+                r.$row.toggleClass('is-etapast', isPast);
+                if (isPast) {
+                    pastCount++;
+                    if (firstPastRow === null) { firstPastRow = r; }
+                }
+            }
 
             // Widoki tylko do odczytu: tekst + wyróżnienie, gdy różni się od bazy.
             const qtyBad = (qty === null || qty <= 0);
@@ -265,6 +375,7 @@ $(function () {
             // Pozycja bez ceny: RFQ — brak ceny; PO — cena <= 0.
             const noPrice = IS_PO ? (eff === null || eff <= 0) : (eff === null);
             if (noPrice) { unpricedCount++; } else { pricedCount++; }
+            if (IS_PO && noPrice && firstNoPriceRow === null) { firstNoPriceRow = r; }
             r.$row.toggleClass('is-changed', rowChanged);
             if (IS_PO) {
                 r.$row.toggleClass('is-noprice', noPrice);
@@ -297,7 +408,7 @@ $(function () {
                     const keepPrice = (r.origPrice === null) ? 0 : r.origPrice;
                     $keep.text(keepPrice > 0
                         ? ('zostanie ' + formatPrice(keepPrice))
-                        : 'brak ceny — uzupełnij')
+                        : 'brak ceny')
                         .toggleClass('is-warn', keepPrice <= 0)
                         .prop('hidden', false);
                 } else {
@@ -332,6 +443,21 @@ $(function () {
             }
         });
 
+        // PO: pole „Dostawa dla wszystkich" pokazuje termin, gdy WSZYSTKIE
+        // pozycje mają tę samą datę. Gdy pozycje się różnią, zostaje
+        // ostatnio wpisana wartość (pole służy do zapisu „dla wszystkich").
+        if (IS_PO && $etaAll.length) {
+            let first = null;
+            let allSame = true;
+            rows.forEach(function (r) {
+                const v = String(r.$eta.val() || '');
+                if (first === null) { first = v; } else if (v !== first) { allSame = false; }
+            });
+            if (allSame && first !== null && String($etaAll.val() || '') !== first) {
+                $etaAll.val(first);
+            }
+        }
+
         // Panel: sumy z "było" i różnicą; pasek akcji: wersja zwarta.
         $totals.html(totalsHtml(now, was, false));
         $barTotals.html(totalsHtml(now, was, true));
@@ -346,11 +472,21 @@ $(function () {
             + pricedCount + ' z ' + TOTAL_ROWS + ' pozycji');
 
         if (unpricedCount > 0) {
-            $hint.text(IS_PO
-                ? ('Uzupełnij cenę w ' + unpricedCount + ' '
-                    + (unpricedCount === 1 ? 'pozycji' : 'pozycjach')
-                    + ' — bez ceny nie potwierdzisz zamówienia.')
-                : ('Pozostawienie pustej ceny oznacza pozycję niewycenioną (' + unpricedCount + ').'));
+            $hint.html(
+                (IS_PO
+                    ? ('Uzupełnij cenę w ' + unpricedCount + ' '
+                        + (unpricedCount === 1 ? 'pozycji' : 'pozycjach')
+                        + ' — bez ceny nie potwierdzisz zamówienia.')
+                    : ('Pozostawienie pustej ceny oznacza pozycję niewycenioną (' + unpricedCount + ').'))
+                + (firstNoPriceRow ? jumpLink(firstNoPriceRow, 'price') : '')
+            );
+        } else if (pastCount > 0) {
+            $hint.html(
+                'Popraw termin dostawy w ' + pastCount + ' '
+                + (pastCount === 1 ? 'pozycji' : 'pozycjach')
+                + ' — data w przeszłości blokuje potwierdzenie.'
+                + (firstPastRow ? jumpLink(firstPastRow, 'eta') : '')
+            );
         } else if (changedCount === 0) {
             $hint.text('Nic nie zmieniono — zapis zatwierdzi dotychczasowe wartości.');
         } else {
@@ -404,6 +540,8 @@ $(function () {
     // Cena: na żywo przy pisaniu; waluta: przy zmianie wyboru
     // (bootstrap-select odpala natywne `change` na <select>).
     $form.on('input change', '.js-price', recalc);
+    // Termin dostawy pozycji (PO): licznik zmian i akcent pola.
+    $form.on('input change', '.js-eta', recalc);
     $form.on('change changed.bs.select', 'select.js-currency', recalc);
 
     // Enter w polu ceny nie wysyła całego formularza (zapis tylko przyciskiem).
@@ -646,6 +784,53 @@ $(function () {
     });
 
     // ----- Akcje zbiorcze -----
+    // ----- Szybki wybór daty (Dziś / ±1 dzień / ±1 tydzień) ---------
+    // Ten sam zestaw co w kroku 3 wizarda wysyłki (documents-send.js →
+    // send-exp-quick), tylko bez ±1 miesiąc:
+    //   „Dziś"       → dzisiejsza data,
+    //   „±1 dzień"   → bieżąca wartość pola ± 1 dzień,
+    //   „±1 tydzień" → bieżąca wartość pola ± 7 dni.
+    // Puste pole → punktem wyjścia jest dziś. Data nie schodzi poniżej
+    // daty wysłki zamówienia (data-eta-min) — dostawa przed wysyłką nie
+    // ma sensu. Przyciski w wierszu dotyczą tej jednej pozycji; te przy
+    // polu „Dostawa dla wszystkich" — wszystkich pozycji naraz.
+    function applyQuickEta($field, days) {
+        if ($field.length === 0) { return; }
+        const today = todayYmd();
+        let next;
+        if (days === 0) {
+            next = today;
+        } else {
+            const cur = String($field.val() || '') || today;
+            next = addDaysYmd(cur, days);
+        }
+        const minYmd = String($form.attr('data-eta-min') || '');
+        if (minYmd !== '' && next < minYmd) { next = minYmd; }
+        // 'change' wywołuje recalc() oraz — dla pola zbiorczego — rozkład
+        // daty na wszystkie wiersze.
+        $field.val(next).trigger('change');
+    }
+
+    $form.on('click', '.dx-eta-quick-btn', function () {
+        const $btn = $(this);
+        const days = parseInt($btn.attr('data-days'), 10);
+        const $scope = $btn.closest('.dx-line-eta');
+        if ($scope.length > 0) {
+            applyQuickEta($scope.find('.js-eta'), days);
+            return;
+        }
+        applyQuickEta($form.find('.js-eta-all'), days);
+    });
+
+    // PO: termin dostawy dla wszystkich pozycji naraz. Zmiana daty w
+    // tym polu przepisuje ją do każdego wiersza — operator poprawia
+    // potem pojedyncze pozycje, które mają inny termin.
+    $etaAll.on('change', function () {
+        const v = String($(this).val() || '');
+        $rows.find('.js-eta').val(v);
+        recalc();
+    });
+
     $('#respondFillAllBtn').on('click', function () {
         $rows.each(function () {
             const $row = $(this);
@@ -666,6 +851,74 @@ $(function () {
     // ----- Pierwsze renderowanie -----
     $rows.each(function () { recalcPacksFromQty($(this)); });
     recalc();
+
+    // ----- Blokada zapisu: komunikat + skok do wiersza -------------------
+    // Komunikat o blokadzie siedzi u góry strony (#alertContainer), więc
+    // NIE przewijamy automatycznie do wiersza z błędem — komunikat musi
+    // być widoczny od razu (tak jak w koszyku). Zamiast tego zostawiamy
+    // w nim odnośnik: jedno kliknięcie przewija do wiersza i stawia
+    // w nim fokus.
+    // Odnośnik „Przejdź do wiersza". `field` mówi, KTÓRE pole w wierszu
+    // ma dostać fokus — w wierszu kolumna „Dostawa" (data) stoi przed
+    // kolumną „Cena", więc samo „pierwsze pole" w rzędzie byłoby
+    // zawsze datą, a nie brakującą ceną.
+    function jumpLink(row, field) {
+        const id = String(row.$row.attr('data-item-id') || '');
+        if (id === '') { return ''; }
+        return ' <a href="#" class="dx-respond-jump" data-jump-item="' + id + '"'
+            + ' data-jump-field="' + (field === 'eta' ? 'eta' : 'price') + '">Przejdź do wiersza</a>';
+    }
+
+    // Fokus bez przewijania strony (przeglądarki, które to wspierają).
+    function focusNoScroll($field) {
+        if (!$field || $field.length === 0) { return; }
+        const el = $field[0];
+        if (!el || typeof el.focus !== 'function') { return; }
+        try { el.focus({ preventScroll: true }); }
+        catch (e) { /* starsza przeglądarka — fokus normalny */ }
+    }
+
+    // UWAGA: kontener alertu (#alertContainer) leży POZA formularzem, więc
+    // nasłuch musi być na dokumencie, nie na $form.
+    $(document).on('click', '.dx-respond-jump', function (e) {
+        e.preventDefault();
+        const id = String($(this).attr('data-jump-item') || '');
+        const field = String($(this).attr('data-jump-field') || 'price');
+        let $row = null;
+        rows.forEach(function (r) {
+            if ($row === null && String(r.$row.attr('data-item-id')) === id) { $row = r.$row; }
+        });
+        if ($row === null) { return; }
+        const row = $row[0];
+        if (typeof row.scrollIntoView === 'function') {
+            row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        }
+        // Fokus na polu, które trzeba poprawić: cena (brak ceny) albo
+        // data (termin w przeszłości).
+        const $target = (field === 'eta') ? $row.find('.js-eta') : $row.find('.js-price');
+        focusNoScroll($target.first());
+    });
+
+    // ----- Komunikat blokady: przemijająca plakietka ------------------
+    // Alert na tej stronie jest "plakietką" u góry okna (position: fixed
+    // w documents-respond-ui.css) i znika sam po ~2,5 s — ma tylko
+    // zwrócić uwagę. STAŁA informacja o blokadzie jest w pasku akcji
+    // na dole (hint), wraz z odnośnikiem do wiersza.
+    // Auto-hide dotyczy tylko alertów ostrzegawczych (.alert-warning) —
+    // błędy (.alert-danger) i potwierdzenia (.alert-success) zostają.
+    const $alertBox = $('#alertContainer');
+    if ($alertBox.length > 0 && typeof MutationObserver !== 'undefined') {
+        let hideTimer = null;
+        const observer = new MutationObserver(function () {
+            if (hideTimer !== null) { clearTimeout(hideTimer); hideTimer = null; }
+            const $warn = $alertBox.find('.alert-warning');
+            if ($warn.length === 0) { return; }
+            hideTimer = setTimeout(function () {
+                $warn.fadeOut(250, function () { $warn.remove(); });
+            }, 2500);
+        });
+        observer.observe($alertBox[0], { childList: true });
+    }
 
     // ----- Zapis -----
     $form.on('submit', function (e) {
@@ -708,19 +961,35 @@ $(function () {
                 setAlert(
                     'Uzupełnij cenę w ' + noPriceRows.length + ' '
                     + (noPriceRows.length === 1 ? 'pozycji' : 'pozycjach')
-                    + ' — zamówienia bez cen nie można potwierdzić.',
+                    + ' — zamówienia bez cen nie można potwierdzić.'
+                    + jumpLink(noPriceRows[0], 'price'),
                     'warning'
                 );
                 // Fokus na pierwszym polu ceny bez ceny: pole jest zawsze
-                // widoczne (nie jest ukryte w edytorze komórki).
-                const $price = noPriceRows[0].$price;
-                const el = $price[0];
-                if (el) {
-                    $price.trigger('focus');
-                    if (typeof el.scrollIntoView === 'function') {
-                        el.scrollIntoView({ block: 'center', behavior: 'smooth' });
-                    }
-                }
+                // widoczne (nie jest ukryte w edytorze komórki). Fokus BEZ
+                // przewijania — komunikat o blokadzie leży u góry strony
+                // (#alertContainer) i musi zostać widoczny. Do wiersza
+                // prowadzi odnośnik w komunikacie.
+                focusNoScroll(noPriceRows[0].$price);
+                return;
+            }
+
+            // PO: termin dostawy w przeszłości (flaga „PO TERMINIE")
+            // też blokuje potwierdzenie — dostawa nie może być wczoraj.
+            // Puste pole = brak terminu dla pozycji = OK.
+            const pastRows = rows.filter(function (r) {
+                const v = String(r.$eta.val() || '');
+                return v !== '' && v < todayYmd();
+            });
+            if (pastRows.length > 0) {
+                setAlert(
+                    'Popraw termin dostawy w ' + pastRows.length + ' '
+                    + (pastRows.length === 1 ? 'pozycji' : 'pozycjach')
+                    + ' — data w przeszłości blokuje potwierdzenie zamówienia.'
+                    + jumpLink(pastRows[0], 'eta'),
+                    'warning'
+                );
+                focusNoScroll(pastRows[0].$eta);
                 return;
             }
         }

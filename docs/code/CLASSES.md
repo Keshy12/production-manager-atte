@@ -443,7 +443,7 @@ Vendor / producer / RFQ / PO / receipt domain — added in v1.6 (`feature/compon
 **File:** `src/classes/Utils/Purchase/Order/class-purchaseorderitem.php` — PO line item.
 
 - Constructor: `__construct(array $row)`.
-- Public typed properties: `id`, `poId`, `vendorPartId`, `quantity`, `quantityUnitId`, `unitPrice` (nullable — NULL means "cena nieustalona"), `currency`, `quantityReceived`, `pickedPackSize` (nullable), `comment`.
+- Public typed properties: `id`, `poId`, `vendorPartId`, `quantity`, `quantityUnitId`, `unitPrice` (nullable — NULL means "cena nieustalona"), `currency`, `quantityReceived`, `pickedPackSize` (nullable), `expectedDeliveryDate` (nullable — the delivery date of THIS line; NULL means "brak własnego terminu", the UI then shows the PO header date / vendor lead time), `comment`.
 - No methods — pure data; `quantityReceived` is updated by `PurchaseActionHandler::createReceipt()`.
 
 #### PurchaseOrderItemRepository
@@ -451,7 +451,9 @@ Vendor / producer / RFQ / PO / receipt domain — added in v1.6 (`feature/compon
 
 - `getById`, `getByPo(int $poId): array` — main lookup.
 - `create(int $poId, int $vendorPartId, float $quantity, int $quantityUnitId, ?float $unitPrice = null, string $currency = 'PLN', ?string $comment = null, ?float $pickedPackSize = null): int` / `update(int $id, ..., ?float $unitPrice, ?float $pickedPackSize = null): bool` — `unitPrice` is nullable (NULL = "cena nieustalona"; `0` is a legal price and is not converted to NULL). `pickedPackSize` (last param) is the operator-chosen pack size (nullable, must be > 0 when provided). `delete(int $id)`.
-- `buildSelectJoin()` selects `i.picked_pack_size AS pickedPackSize` so hydrated `PurchaseOrderItem` entities carry the picked-pack value.
+- `buildSelectJoin()` selects `i.picked_pack_size AS pickedPackSize` and `i.expected_delivery_date AS expectedDeliveryDate` so hydrated `PurchaseOrderItem` entities carry both.
+- `setExpectedDeliveryDate(int $id, ?string $date): ?string` — sets (or clears, with null/'') the per-line delivery date; validates `Y-m-d` and returns the stored value. Deliberately a **separate method** from `update()`: `update()` is also called by the inline line editor on the document edit page (`document-item-update.php`), which must not wipe the delivery date chosen at response time.
+- `update()` does NOT touch `expected_delivery_date` (see above).
 
 **Used by:** `PurchaseActionHandler::createReceipt()`, `addItem()`.
 

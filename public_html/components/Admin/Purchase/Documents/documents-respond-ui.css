@@ -55,6 +55,14 @@
 .dx-respond-tools { display: flex; flex-wrap: wrap; gap: .4rem; }
 .dx-respond-tools .btn { white-space: nowrap; }
 
+/* PO: pole „Dostawa dla wszystkich" (termin dla każdej pozycji naraz)
+   plus pasek przycisków szybkiego wyboru. Żeby nie rozpychało nagłówka
+   panelu, cała grupa jest jednym elementem flex, który może się złamać. */
+.dx-respond-etaall { display: inline-flex; flex-wrap: wrap; align-items: center; gap: .35rem .4rem; }
+.dx-respond-etaall .dx-respond-label { margin-bottom: 0; }
+.dx-respond-etaall .form-control { width: 9.5rem; }
+.dx-respond-etaall .dx-eta-quick { margin-top: 0; }
+
 
 /* ---- Podsumowanie nad listą ----------------------------------------- */
 
@@ -139,10 +147,25 @@
 /* ---- Lista pozycji --------------------------------------------------- */
 
 /* Kolumny prawej strefy: Ilość · Cena (+ waluta) · Wartość. Lewa kolumna
-   (tożsamość) bierze całą resztę. Szerokości liczą się razem z paddingiem. */
+   (tożsamość) bierze całą resztę. Szerokości liczą się razem z paddingiem.
+   PO dokłada kolumnę „Dostawa" (termin dostawy per pozycja) — idzie
+   zaraz za tożsamością, więc liczby zostają zwarte w jednym bloku.
+
+   PO ma pięć kolumn tylko tam, gdzie jest na to miejsce: kontener
+   `w-75` ma maks. 1140px (→ 855px treści) do 1399px i 1320px
+   (→ 990px treści) od 1400px. Piąta kolumna mieści się dopiero w tym
+   drugim wariancie — poniżej 1400px termin dostawy ląduje w swoim
+   wierszu pod tożsamością (patrz media query niżej). */
 .dx-lines {
     --dx-cols: minmax(0, 1fr) 10rem 13rem 9rem;
     --dx-gap: 1.25rem;
+}
+/* PO: tożsamość · Dostawa · Ilość · Cena · Wartość. Kolumna „Dostawa"
+   musi mieścić pole daty (ok. 8rem) i pasek przycisków szybkiego
+   wyboru pod nim (5 glifów × 1.55rem + odstępy ≈ 8.6rem). */
+.dx-lines--po {
+    --dx-cols: minmax(0, 1fr) 9.5rem 9.5rem 11rem 8rem;
+    --dx-gap: .9rem;
 }
 .dx-lines-head,
 .dx-line {
@@ -163,8 +186,10 @@
     color: var(--rx-muted);
 }
 .dx-lines-head .is-r { text-align: right; }
-/* Ilość ma w widoku padding .55rem — nagłówek siedzi w tej samej osi. */
-.dx-lines-head span:nth-child(2) { padding-right: .55rem; }
+/* Ilość ma w widoku padding .55rem — nagłówek siedzi w tej samej osi.
+   Klasa .is-qty (zamiast nth-child), bo w wariancie PO kolumna Ilość
+   jest trzecią, a nie drugą. */
+.dx-lines-head .is-qty { padding-right: .55rem; }
 
 .dx-line {
     position: relative;
@@ -285,6 +310,179 @@
 .dx-line-qty,
 .dx-line-price,
 .dx-line-value { min-width: 0; }
+
+/* Termin dostawy pozycji (tylko PO) — otwarte pole daty, wysokością
+   równe z resztą pierwszego rzędu (2.4rem), żeby kolumna „Dostawa"
+   trzymała linię z polami ilości i ceny. */
+.dx-line-eta { min-width: 0; }
+.dx-respond .dx-line-eta .js-eta {
+    height: 2.4rem;
+    border-color: #cfd8e3;
+    background: #fff;
+    font-size: .9rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--rx-ink);
+}
+.dx-respond .dx-line-eta .js-eta:focus {
+    border-color: #80bdff;
+    box-shadow: var(--rx-ring);
+}
+.dx-respond .dx-line-eta .js-eta.is-dirty { border-color: var(--rx-accent); }
+
+/* Szybki wybór daty — ten sam zestaw co w kroku 3 wizarda wysyłki
+   (Dziś / ±1 dzień / ±1 tydzień), ale w wersji ikonicznej: kolumna
+   „Dostawa" jest wąska, a podpowiedź pod datą („za 3 tygodnie")
+   mówi, gdzie operator jest.
+   Kolejność: « (tydzień wstecz) · ‹ (dzień wstecz) · › (dzień naprzód)
+   · » (tydzień naprzód) · 🗓 (dzisiaj).
+   Na stałe widać TYLKO glif — pojedynczy chevron = dzień, podwójny =
+   tydzień, w lewo = wcześniej, w prawo = później. Nazwa akcji pojawia
+   się dopiero przy najechaniu (dymek z `data-label`), więc pasek nie
+   zaśmieca wiersza. Kolor niesie kierunek — minus = wcześniej
+   (czerwony), plus = później (zielony), „Dziś" = neutralny. */
+.dx-eta-quick { display: flex; gap: .2rem; margin-top: .3rem; }
+.dx-eta-quick-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.55rem;
+    height: 1.55rem;
+    padding: 0;
+    border: 1px solid var(--rx-line);
+    border-radius: .25rem;
+    background: #fff;
+    color: var(--rx-ink-2);
+    line-height: 1;
+    transition: background-color .12s ease, color .12s ease, border-color .12s ease;
+}
+.dx-eta-quick-btn .bi { font-size: .74rem; }
+.dx-eta-quick-btn:hover,
+.dx-eta-quick-btn:focus {
+    outline: none;
+    box-shadow: var(--rx-ring);
+    background: var(--rx-accent-soft);
+    border-color: #c9dcf7;
+    color: var(--rx-accent-ink);
+}
+.dx-eta-quick--plus  { color: #1e7e34; border-color: #9fd3ae; }
+.dx-eta-quick--plus:hover,
+.dx-eta-quick--plus:focus {
+    background: #e6f4ea;
+    border-color: #28a745;
+    color: #155724;
+}
+.dx-eta-quick--minus { color: #b02a37; border-color: #e6b3b8; }
+.dx-eta-quick--minus:hover,
+.dx-eta-quick--minus:focus {
+    background: #fdecee;
+    border-color: #dc3545;
+    color: #8a1f2b;
+}
+
+/* Dymek z nazwą akcji — pojawia się tylko przy najechaniu (albo przy
+   fokusie klawiaturą). Pozycjonowany nad przyciskiem; panel ma
+   overflow: hidden, ale dymek leży w jego wnętrzu, więc nie ucina się. */
+.dx-eta-quick-btn::after {
+    content: attr(data-label);
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    z-index: 30;
+    /* width: max-content — bez tego dymek skurczałby się do szerokości
+       przycisku (25px) i tekst byłby ucięty. */
+    width: max-content;
+    max-width: 14rem;
+    transform: translateX(-50%) translateY(3px);
+    padding: .22rem .45rem;
+    border-radius: .25rem;
+    background: #1d2733;
+    color: #fff;
+    font-size: .7rem;
+    font-weight: 600;
+    line-height: 1.3;
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity .12s ease, transform .12s ease;
+}
+.dx-eta-quick-btn:hover::after,
+.dx-eta-quick-btn:focus-visible::after {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(-50%) translateY(0);
+}
+
+/* Odnośnik „Przejdź do wiersza" w komunikacie o blokadzie zapisu —
+   strona NIE przewijamy sama (komunikat ma zostać widoczny), więc to
+   kliknięcie prowadzi operatora do wiersza z błędem. */
+.dx-respond .dx-respond-jump {
+    color: inherit;
+    font-weight: 700;
+    text-decoration: underline;
+    white-space: nowrap;
+}
+.dx-respond .dx-respond-jump:hover,
+.dx-respond .dx-respond-jump:focus {
+    color: inherit;
+    text-decoration: underline;
+    opacity: .85;
+}
+
+/* Alert na tej stronie to przemijająca "plakietka" u góry okna: wyskakuje
+   przy blokadzie zapisu i znika po ~2,5 s (JS). Stała informacja o
+   blokadzie i odnośnik do wiersza są w pasku akcji na dole strony.
+   position: fixed (nie sticky — sticky nie wraca, gdy strona jest już
+   przewinięta, a blokada właśnie zdarza się po przewinięciu). */
+.dx-respond #alertContainer {
+    position: fixed;
+    top: 1rem;
+    left: 50%;
+    z-index: 40;
+    width: min(34rem, calc(100% - 2rem));
+    transform: translateX(-50%);
+    pointer-events: none;
+}
+.dx-respond #alertContainer .alert {
+    pointer-events: auto;
+    margin: 0;
+    border-radius: var(--rx-radius);
+    box-shadow: 0 .35rem 1.1rem rgba(16, 24, 40, .22);
+}
+
+/* Podpowiedź względna pod datą: „dzisiaj", „za 3 tygodnie", „5 dni temu". */
+.dx-eta-hint {
+    display: block;
+    margin-top: .2rem;
+    font-size: .74rem;
+    line-height: 1.3;
+    color: var(--rx-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.dx-eta-hint:empty { display: none; }
+
+/* Flaga „po terminie" — termin dostawy w przeszłości. Siedzi obok flagi
+   „brak ceny" (w tym samym rzędzie co numer części) i wygląda tak samo:
+   bursztynowa pigułka. Widoczna tylko dla wiersza z klasą .is-etapast. */
+.dx-eta-flag {
+    display: none;
+    padding: .1rem .5rem;
+    border-radius: 999px;
+    background: #fff3d4;
+    color: #775300;
+    font-size: .66rem;
+    font-weight: 700;
+    line-height: 1.35;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    align-self: center;
+}
+.dx-line.is-etapast .dx-eta-flag { display: inline-block; }
 
 /* Wspólny reset przycisków-widoków (Ilość, Waluta). */
 .dx-respond-view {
@@ -634,11 +832,54 @@
 /* Poniżej 1200 px (przy w-75 strona ma wtedy < 53rem) cztery kolumny
    prawej strefy zabrałyby tożsamości całe miejsce, więc pozycja składa
    się w trzy rzędy: tożsamość / Ilość · Cena · Wartość / uwagi do artykułu.
-   Nic nie przewija się poziomo. */
+   Nic nie przewija się poziomo.
+
+   PO: piąta kolumna „Dostawa" wypada już wcześniej — kontener `w-75`
+   ma maks. 1140px do 1399px (→ 855px treści), a pięć kolumn potrzebuje
+   ok. 40rem na same stałe szerokości. Dlatego PO trzyma pełną siatkę
+   pięciu kolumn dopiero od 1400px (kontener 1320px → 990px treści),
+   a poniżej termin dostawy zajmuje własny wiersz pod tożsamością. */
 
 .dx-line-qty::before,
 .dx-line-price::before,
-.dx-line-value::before { display: none; }
+.dx-line-value::before,
+.dx-line-eta::before { display: none; }
+
+/* PO: 1200–1399px — termin dostawy w osobnym wierszu, liczby w trzech
+   kolumnach (jak wariant mobilny). Nagłówek siatki jest ukryty, bo
+   nie opisuje już układu kolumn. */
+@media (min-width: 1200px) and (max-width: 1399.98px) {
+    .dx-lines--po .dx-lines-head { display: none; }
+    .dx-lines--po .dx-line {
+        grid-template-columns: minmax(7.5rem, .9fr) minmax(12rem, 1.5fr) minmax(7rem, .9fr);
+        column-gap: 1rem;
+        row-gap: .75rem;
+    }
+    .dx-lines--po .dx-line-id { grid-column: 1 / -1; grid-row: 1; }
+    .dx-lines--po .dx-line-eta {
+        grid-column: 1 / -1;
+        grid-row: 2;
+        max-width: 13rem;
+    }
+    .dx-lines--po .dx-line-eta::before,
+    .dx-lines--po .dx-line-qty::before,
+    .dx-lines--po .dx-line-price::before,
+    .dx-lines--po .dx-line-value::before {
+        content: attr(data-label);
+        display: block;
+        margin-bottom: .3rem;
+        font-size: .66rem;
+        font-weight: 700;
+        letter-spacing: .07em;
+        text-transform: uppercase;
+        color: var(--rx-muted);
+    }
+    .dx-lines--po .dx-line-qty::before,
+    .dx-lines--po .dx-line-value::before { text-align: right; }
+    .dx-lines--po .dx-line-qty   { grid-row: 3; grid-column: 1; }
+    .dx-lines--po .dx-line-price { grid-row: 3; grid-column: 2; }
+    .dx-lines--po .dx-line-value { grid-row: 3; grid-column: 3; }
+}
 
 @media (max-width: 1199.98px) {
     .dx-lines-head { display: none; }
@@ -651,7 +892,8 @@
     .dx-line-qty, .dx-line-price, .dx-line-value { grid-row: 2; }
     .dx-line-qty::before,
     .dx-line-price::before,
-    .dx-line-value::before {
+    .dx-line-value::before,
+    .dx-line-eta::before {
         content: attr(data-label);
         display: block;
         margin-bottom: .3rem;
@@ -663,6 +905,18 @@
     }
     .dx-line-qty::before, .dx-line-value::before { text-align: right; }
     .dx-respond-qty-sub { flex-wrap: wrap; }
+
+    /* PO: termin dostawy dostaje własny wiersz pod tożsamością —
+       data nie mieści się w wąskiej kolumnie liczb. */
+    .dx-lines--po .dx-line-id { grid-row: 1; }
+    .dx-lines--po .dx-line-eta {
+        grid-column: 1 / -1;
+        grid-row: 2;
+        max-width: 13rem;
+    }
+    .dx-lines--po .dx-line-qty   { grid-row: 3; grid-column: 1; }
+    .dx-lines--po .dx-line-price { grid-row: 3; grid-column: 2; }
+    .dx-lines--po .dx-line-value { grid-row: 3; grid-column: 3; }
 }
 
 @media (max-width: 575.98px) {
@@ -675,4 +929,18 @@
     .dx-respond-fields { grid-template-columns: minmax(0, 1fr); padding: 1rem; }
     .dx-respond-actionbar { padding: .65rem .9rem; }
     .dx-respond-bar-actions { width: 100%; justify-content: flex-end; }
+
+    /* PO: termin dostawy przed liczbami (pełna szerokość). */
+    .dx-lines--po .dx-line-id { grid-row: 1; grid-column: 1 / -1; }
+    .dx-lines--po .dx-line-eta {
+        grid-column: 1 / -1;
+        grid-row: 2;
+        max-width: none;
+    }
+    .dx-lines--po .dx-line-qty { grid-row: 3; grid-column: 1; }
+    .dx-lines--po .dx-line-value { grid-row: 3; grid-column: 2; }
+    .dx-lines--po .dx-line-price { grid-row: 4; grid-column: 1 / -1; }
+    .dx-respond-etaall { width: 100%; flex-wrap: wrap; }
+    .dx-respond-etaall .dx-respond-label { width: 100%; }
+    .dx-respond-etaall .form-control { width: 100%; }
 }

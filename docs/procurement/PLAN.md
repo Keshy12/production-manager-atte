@@ -359,6 +359,7 @@ CREATE TABLE `purchase__order_item` (
   `unit_price`          DECIMAL(30,10) DEFAULT NULL,   -- negotiated price per unit; NULL = "cena nieustalona"
   `currency`            VARCHAR(8) NOT NULL DEFAULT 'PLN',
   `quantity_received`   DECIMAL(30,10) NOT NULL DEFAULT 0,
+  `expected_delivery_date` DATE DEFAULT NULL,          -- delivery date of THIS line; NULL = brak własnego terminu
   `comment`             TEXT,
   PRIMARY KEY (`id`),
   KEY `po_id` (`po_id`),
@@ -373,6 +374,12 @@ CREATE TABLE `purchase__order_item` (
 > `purchase__rfq_item.unit_price` above. A price (> 0) is required on every
 > line only at the moment the PO is confirmed (`sent → confirmed`); a stored
 > `0` stays `0` and is never converted to NULL.
+>
+> `purchase__order_item.expected_delivery_date` is the delivery date of a
+> single line (P9). NULL = "brak własnego terminu" — the UI then defaults
+> the field to the order-wide date from `purchase__order.expected_delivery_date`
+> (the vendor lead time applied at send time). See
+> [PO_ITEM_DELIVERY_DATE.md](./PO_ITEM_DELIVERY_DATE.md).
 
 ### 4.4 Receipts
 
