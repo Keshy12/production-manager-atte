@@ -353,10 +353,8 @@ $baseUrl = 'http://' . BASEURL;
                      dostawców) i wybierz jeden. Pełna szerokość siatki, tuż
                      pod Dostawcą/Częścią. Tylko tryb „wybór", gdy wybrano
                      część (renderVariantsTable() w cart-view.js). -->
-                <section id="variantsPanel" class="cx-variants" style="display:none" aria-labelledby="variantsTitle">
+                <section id="variantsPanel" class="cx-variants" style="display:none" aria-label="Wybierz wariant">
                     <div class="cx-variants-head">
-                        <span class="cx-step">2</span>
-                        <h3 class="cx-variants-title" id="variantsTitle">Wybierz wariant</h3>
                         <span class="rx-count" id="variantsCount">0</span>
                         <span class="cx-legend" id="variantsLegend" style="display:none"><i class="cx-legend-dot" aria-hidden="true"></i> inny dostawca</span>
                         <span class="cx-variants-hint">Otwórz sklepy, porównaj ceny, potem kliknij wiersz.</span>
