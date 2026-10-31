@@ -1133,11 +1133,24 @@
         return $.trim($opt.attr('data-subtext') || '');
     }
 
-    // Step 2: one description line above the variants table.
+    // Part name (list__parts.name), read from the part picker's option
+    // (data-name) — same source as partDescription(). No partId → the
+    // currently selected part. Empty / unknown → ''.
+    function partName(partId) {
+        let id = partId || (parseInt($partSelect.val(), 10) || 0);
+        if (!id) return '';
+        let $opt = $partSelect.find('option[value="' + id + '"]');
+        if ($opt.length === 0) return '';
+        return $.trim($opt.attr('data-name') || '');
+    }
+
+    // Step 2: the part's name with its description, above the variants table.
     function renderPartDescription() {
         let desc = pickerMode === 'add' ? '' : partDescription();
+        let name = pickerMode === 'add' ? '' : partName();
+        $('#variantsPartName').text(name);
         $('#variantsPartDescText').text(desc);
-        $('#variantsPartDesc').toggle(desc !== '');
+        $('#variantsPartDesc').toggle(desc !== '' || name !== '');
     }
 
     // Step 3 header: what exactly is being added.

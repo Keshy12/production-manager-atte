@@ -361,11 +361,19 @@ $baseUrl = 'http://' . BASEURL;
                         <span class="cx-legend" id="variantsLegend" style="display:none"><i class="cx-legend-dot" aria-hidden="true"></i> inny dostawca</span>
                         <span class="cx-variants-hint">Otwórz sklepy, porównaj ceny, potem kliknij wiersz.</span>
                     </div>
-                    <!-- Opis wybranej części (ten sam dla wszystkich wierszy);
-                         wypełnia renderVariantsTable(), puste → ukryte. -->
+                    <!-- Nazwa i opis wybranej części (ten sam dla wszystkich
+                         wierszy); wypełnia renderPartDescription() w
+                         cart-view.js. Każdy wiersz ma prefiks-etykietę,
+                         tak jak wiersze w kroku 3. -->
                     <p id="variantsPartDesc" class="cx-partdesc" style="display:none">
-                        <span class="cx-partdesc-label">Opis</span>
-                        <span class="cx-partdesc-text" id="variantsPartDescText"></span>
+                        <span class="cx-partdesc-line">
+                            <span class="cx-partdesc-label">Nazwa</span>
+                            <span class="cx-partdesc-name" id="variantsPartName"></span>
+                        </span>
+                        <span class="cx-partdesc-line">
+                            <span class="cx-partdesc-label">Opis</span>
+                            <span class="cx-partdesc-text" id="variantsPartDescText"></span>
+                        </span>
                     </p>
                     <!-- Część bez wariantu (tryb „Pokaż wszystkie"): komunikat
                          zamiast tabeli; przełącza go renderVariantsTable(). -->
