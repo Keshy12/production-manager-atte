@@ -1709,6 +1709,15 @@
             tabs.push({ key: tempVendor.id, label: tempVendor.name, count: 0, temp: true });
         }
         tabs.sort(compareVendorTabs);   // the temp tab is just another tab
+        // The "+" tab is always last and is not a vendor: clicking it
+        // clears the Dostawca picker so the next picked vendor gets a
+        // brand-new cart tab of its own.
+        let addTabHtml = '<button type="button" role="tab" class="nav-link cx-vtab cx-vtab--add"' +
+            ' id="cartTabAdd" data-vendor="" aria-selected="false" tabindex="0"' +
+            ' title="Nowa zakładka — wyczyść dostawcę i wybierz innego"' +
+            ' aria-label="Nowa zakładka koszyka">' +
+            '<i class="bi bi-plus-lg" aria-hidden="true"></i>' +
+            '</button>';
         $cartTabs.html(tabs.map(function (t, i) {
             let on = t.key === activeCartVendor;
             // No active tab → keep the first one focusable (roving tabindex).
@@ -1719,7 +1728,7 @@
                 ' title="' + (t.temp ? 'Dostawca wybrany w selektorze — jeszcze bez pozycji w koszyku' : 'Pokaż pozycje tego dostawcy i wybierz go w selektorze') + '">' +
                 '<span class="cx-vtab-name">' + escapeHtml(t.label) + '</span> <span class="rx-count">' + t.count + '</span>' +
                 '</button>';
-        }).join(''));
+        }).join('') + addTabHtml);
         if (activeCartVendor === null) {
             $cartBody.removeAttr('aria-labelledby');
         } else {
@@ -3095,11 +3104,30 @@ $cartQty.val('');
         } catch (err) { /* cosmetic only */ }
     }
 
+    // Focus + open the Dostawca picker so the operator can type a vendor
+    // name right away (live-search takes the focus when the menu opens).
+    // The toggle runs in a timeout: the click that led here must finish
+    // propagating first, otherwise bootstrap-select's own outside-click
+    // handler closes the menu we just opened.
+    function focusVendorPicker() {
+        setTimeout(function () {
+            try {
+                if (typeof $vendorSelect.selectpicker === 'function') {
+                    $vendorSelect.selectpicker('toggle');
+                    return;
+                }
+            } catch (e) { /* fall back to the plain focus below */ }
+            $vendorSelect.trigger('focus');
+        }, 0);
+    }
+
     // Vendor switcher. A tab shows that vendor's group and runs the picker
     // flow (selectVendorInPicker, incl. currency preselect). A stale temp
     // empty tab of another vendor is dropped. Blocked while a row is being
     // edited — re-rendering would throw the edit away.
     $cartTabs.on('click', '.cx-vtab', function () {
+        // The "+" tab is an action, not a vendor — it has its own listener.
+        if ($(this).hasClass('cx-vtab--add')) return;
         if (isEditingCartRow()) {
             setAlert('Dokończ lub anuluj trwającą edycję w koszyku, zanim przełączysz dostawcę.', 'warning');
             return;
@@ -3111,6 +3139,22 @@ $cartQty.val('');
         if (activeCartVendor !== key) { activeCartVendor = key; changed = true; }
         if (changed) { renderCart(); }
         selectVendorInPicker(parseInt(key, 10) || null);
+    });
+
+    // "+" — starts a NEW cart tab: clears the Dostawca picker so the next
+    // vendor the user picks gets a tab of its own (the picker → tab sync
+    // then creates an empty temp tab for it). Same "don't lose the open
+    // edit" guard as the vendor tabs.
+    $cartTabs.on('click', '.cx-vtab--add', function () {
+        if (isEditingCartRow()) {
+            setAlert('Dokończ lub anuluj trwającą edycję w koszyku, zanim zaczniesz nową zakładkę.', 'warning');
+            return;
+        }
+        $vendorSelect.val('');
+        refreshSelectpicker($vendorSelect);
+        $vendorSelect.trigger('change');   // → picker → tab sync: no active tab
+        setCartStep('select');             // back to the pickers (Dostawca, Część)
+        focusVendorPicker();               // ready for the new vendor
     });
 
     // Arrow keys / Home / End move focus between tabs; Enter/Space activate.

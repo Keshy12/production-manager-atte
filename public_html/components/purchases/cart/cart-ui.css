@@ -534,6 +534,35 @@
 .cx-page .cx-vtab--temp .cx-vtab-name { font-style: italic; }
 .cx-page .cx-vtab--temp .rx-count { background: transparent; border: 1px dashed var(--rx-faint); color: var(--rx-muted); }
 
+/* "+" — nowa zakładka koszyka (nowy dostawca). Zawsze ostatnia w pasku,
+   tuż za zakładkami dostawców — nie jest dostawcą: klik czyści selektor
+   Dostawca, więc następny wybrany dostawca dostaje własną, pustą
+   zakładkę. */
+.cx-page .cx-vtabs .cx-vtab--add {
+    padding: .45rem .8rem;
+    font-size: 1rem;
+    line-height: 1;
+    color: var(--rx-accent);
+}
+/* „+" bez szarego tła i z przerywaną ramką — wygląda jak puste miejsce
+   na nową kartkę, nie jak zakładka dostawcy. */
+.cx-page .cx-vtabs .cx-vtab--add {
+    background-color: transparent;
+    border-style: dashed dashed solid;
+    border-top-color: var(--rx-faint);
+    border-left-color: var(--rx-faint);
+    border-right-color: var(--rx-faint);
+}
+.cx-page .cx-vtabs .cx-vtab--add:hover,
+.cx-page .cx-vtabs .cx-vtab--add:focus {
+    background-color: var(--rx-accent-soft);
+    color: var(--rx-accent-ink);
+    border-top-color: var(--rx-accent);
+    border-left-color: var(--rx-accent);
+    border-right-color: var(--rx-accent);
+    border-bottom-color: var(--rx-accent);
+}
+
 /* Pusty koszyk — .rx-empty z receipts-ui.css, tylko mniej wysoki. */
 .cx-page .cx-empty .rx-empty { padding: 2.25rem 1.5rem; }
 
