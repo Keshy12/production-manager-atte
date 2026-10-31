@@ -161,9 +161,9 @@ include __DIR__ . '/close-po-modal.php';
                             data-container="#queueStatesCell">
                         <option value="sent">Wysłane (czeka na potwierdzenie)</option>
                         <option value="confirmed">Potwierdzone</option>
-                        <!-- „W trakcie przyjęcia" = operator kliknął Akceptuję
+                        <!-- „Częściowo przyjęte" = operator kliknął Akceptuję
                              w formularzu, ale nie zapisał jeszcze pozycji. -->
-                        <option value="in_progress">W trakcie przyjęcia</option>
+                        <option value="in_progress">Częściowo przyjęte</option>
                         <option value="partially_received">Częściowo odebrane</option>
                     </select>
                 </div>

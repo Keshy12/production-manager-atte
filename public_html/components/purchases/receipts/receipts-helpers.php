@@ -88,7 +88,7 @@ if (!function_exists('rx_e')) {
             'sent'               => ['Wysłane',             'violet'],
             'responded'          => ['Odpowiedź',           'cyan'],
             'confirmed'          => ['Potwierdzone',        'blue'],
-            'in_progress'        => ['W trakcie przyjęcia', 'cyan'],
+            'in_progress'        => ['Częściowo przyjęte',  'cyan'],
             'partially_received' => ['Częściowo odebrane',  'amber'],
             'received'           => ['Odebrane',            'green'],
             'cancelled'          => ['Anulowane',           'red'],

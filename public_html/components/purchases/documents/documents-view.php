@@ -36,7 +36,7 @@
  *       PO wysłane                    → Potwierdź odpowiedź (strona
  *                                       /admin/purchase/documents/respond?id=N&type=po)
  *       PO potwierdzone               → Potwierdź odbiór (formularz przyjęcia)
- *       PO w trakcie przyjęcia        → Dokończ przyjęcie
+ *       PO częściowo przyjęte        → Dokończ przyjęcie
  *       PO częściowo odebrane         → Przyjmij towar
  *     Wiersz terminalny (bez pozycji w menu) dostaje zwykły link,
  *     bez careta.
@@ -166,10 +166,10 @@ $baseUrl = 'http://' . BASEURL;
                 </span>
             </button>
             <button type="button" class="rx-stat dx-stat--in_progress" data-stat="in_progress" aria-pressed="false"
-                    title="W trakcie przyjęcia — odbiór towaru rozpoczęty, towar jeszcze nie w całości odebrany">
+                    title="Częściowo przyjęte — odbiór towaru rozpoczęty, towar jeszcze nie w całości odebrany">
                 <span class="rx-stat-value" data-stat-value>–</span>
                 <span class="dx-stat-foot">
-                    <span class="rx-stat-label">W trakcie przyjęcia</span>
+                    <span class="rx-stat-label">Częściowo przyjęte</span>
                     <span class="dx-stat-tag dx-stat-tag--po">PO</span>
                 </span>
             </button>
@@ -263,7 +263,7 @@ $baseUrl = 'http://' . BASEURL;
                 </optgroup>
                 <optgroup label="Tylko zamówienia (PO)">
                     <option value="confirmed">Potwierdzone</option>
-                    <option value="in_progress">W trakcie przyjęcia</option>
+                    <option value="in_progress">Częściowo przyjęte</option>
                     <option value="partially_received">Częściowo odebrane</option>
                     <option value="received">Odebrane</option>
                 </optgroup>

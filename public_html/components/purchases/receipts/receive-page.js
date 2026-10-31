@@ -113,7 +113,7 @@ $(document).ready(function() {
     function stateBadgeLabel(state) {
         return ({
             draft: 'Szkic', sent: 'Wysłane', responded: 'Odpowiedź',
-            confirmed: 'Potwierdzone', in_progress: 'W trakcie przyjęcia',
+            confirmed: 'Potwierdzone', in_progress: 'Częściowo przyjęte',
             partially_received: 'Częściowo odebrane',
             received: 'Odebrane', cancelled: 'Anulowane'
         })[state] || state;

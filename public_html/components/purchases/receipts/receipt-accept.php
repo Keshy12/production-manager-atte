@@ -32,7 +32,7 @@
  *
  * Response on success:
  *   {success: true, receipt_id: int, po_state: 'in_progress',
- *    po_state_label: 'W trakcie przyjęcia', was_updated: bool}
+ *    po_state_label: 'Częściowo przyjęte', was_updated: bool}
  *
  *   - was_updated: true if an existing draft was updated (operator hit
  *     Akceptuję again on an in_progress PO with new metadata),

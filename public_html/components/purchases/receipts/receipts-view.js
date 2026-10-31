@@ -36,7 +36,7 @@ $(document).ready(function () {
         sent:               { label: 'Wysłane',             tone: 'violet' },
         responded:          { label: 'Odpowiedź',           tone: 'cyan' },
         confirmed:          { label: 'Potwierdzone',        tone: 'blue' },
-        in_progress:        { label: 'W trakcie przyjęcia', tone: 'cyan' },
+        in_progress:        { label: 'Częściowo przyjęte',  tone: 'cyan' },
         partially_received: { label: 'Częściowo odebrane',  tone: 'amber' },
         received:           { label: 'Odebrane',            tone: 'green' },
         cancelled:          { label: 'Anulowane',           tone: 'red' }

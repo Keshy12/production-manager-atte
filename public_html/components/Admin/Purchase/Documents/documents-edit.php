@@ -214,7 +214,7 @@ $stateBadgeLabel = $type === 'po' ? [
     'draft'              => 'szkic',
     'sent'               => 'wysłane',
     'confirmed'          => 'potwierdzone',
-    'in_progress'        => 'w trakcie przyjęcia',
+    'in_progress'        => 'częściowo przyjęte',
     'partially_received' => 'częściowo odebrane',
     'received'           => 'odebrane',
     'cancelled'          => 'anulowane',
@@ -991,7 +991,7 @@ function formatPrice($v) {
         // Przypadek nieedytowalny NIE dostaje już przypisu u dołu. Był
         // czystym szumem dla operatora: stan dokumentu i tak widać na
         // plakietce w nagłówku, brak ołówków przy pozycjach mówi o
-        // read-only tak samo wyraźnie, a dla PO w trakcie przyjęcia
+        // read-only tak samo wyraźnie, a dla PO częściowo przyjętego
         // (partially_received / in_progress) tekst „pozycje są tylko do
         // odczytu" był mylący — dokument jest w trakcie, nie zablokowany.
         // Uwagi o edycji inline zostają tylko tam, gdzie faktycznie można.

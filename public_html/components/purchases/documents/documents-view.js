@@ -47,7 +47,7 @@ $(document).ready(function () {
         responded:          { label: 'Odpowiedź',           tone: 'cyan' },
         converted:          { label: 'Skonwertowane na PO', tone: 'green' },
         confirmed:          { label: 'Potwierdzone',        tone: 'blue' },
-        in_progress:        { label: 'W trakcie przyjęcia', tone: 'cyan' },
+        in_progress:        { label: 'Częściowo przyjęte',  tone: 'cyan' },
         partially_received: { label: 'Częściowo odebrane',  tone: 'amber' },
         received:           { label: 'Odebrane',            tone: 'green' },
         cancelled:          { label: 'Anulowane',           tone: 'red' }
@@ -64,7 +64,7 @@ $(document).ready(function () {
             draft:              'do wysłania',
             sent:               'czeka na odpowiedź',
             confirmed:          'czeka na odbiór',
-            in_progress:        'przyjęcie rozpoczęte',
+            in_progress:        'przyjęcie w toku',
             partially_received: 'czeka na resztę towaru'
         }
     };
@@ -324,7 +324,7 @@ $(document).ready(function () {
     // kafelka dodaje jego statusy do filtra, wyłączenie je zdejmuje.
     // Wybór z pozostałych kafelków nietknięty.
 
-    // Statusy kafelka (kafelek „W trakcie przyjęcia" obejmuje dwa:
+    // Statusy kafelka (kafelek „Częściowo przyjęte" obejmuje dwa:
     // in_progress + partially_received).
     function tileStates(key) {
         return STAT_STATES[key] || [];
