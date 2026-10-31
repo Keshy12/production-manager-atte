@@ -497,12 +497,34 @@
     scrollbar-width: thin;
     -webkit-overflow-scrolling: touch;
 }
+/* Zakładki jako osobne „kartki": lekkie szare tło, zaokrąglone tylko górne
+   rogi, cienka ramka z boków i od góry. Dolna krawędź (2 px, kolor z
+   .rx-tabs: przezroczysta / hover / akcent) zostaje nietknięta — tło jej nie
+   zasłania, bo malowane jest pod ramką. */
 .cx-page .cx-vtabs .nav-link {
     flex: 0 0 auto;
     margin-bottom: 0;
     white-space: nowrap;
     font-size: .92rem;
+    border-style: solid;
+    border-width: 1px 1px 2px;
+    border-top-color: var(--rx-line-soft);
+    border-left-color: var(--rx-line-soft);
+    border-right-color: var(--rx-line-soft);
+    border-radius: .45rem .45rem 0 0;
+    background-color: var(--rx-canvas);
+    background-clip: padding-box;
+    transition: color .15s ease, border-color .15s ease, background-color .15s ease;
 }
+.cx-page .cx-vtabs .nav-link:hover { background-color: var(--rx-line-soft); }
+.cx-page .cx-vtabs .nav-link.active {
+    background-color: var(--rx-accent-soft);
+    border-top-color: var(--rx-line);
+    border-left-color: var(--rx-line);
+    border-right-color: var(--rx-line);
+}
+/* Licznik na szarym tle nieco ciemniejszy, żeby się nie zlewał. */
+.cx-page .cx-vtab:not(.active):not(.cx-vtab--temp) .rx-count { background: var(--rx-line); }
 .cx-page .cx-vtab-name {
     max-width: 15rem;
     overflow: hidden;
