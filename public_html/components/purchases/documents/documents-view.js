@@ -454,7 +454,7 @@ $(document).ready(function () {
             // Znacznik typu (RFQ/PO) kopiujemy z kafelka — mini-karta ma
             // wyglądać jak pełna, tylko mniejsza.
             const $tag = $tile.find('.dx-stat-tag').first();
-            const tagHtml = $tag.length ? $tag.outerHTML() : '';
+            const tagHtml = $tag.length ? $tag[0].outerHTML : '';
             const value = hiddenStatCounts[key];
             return '<div class="rx-stat dx-stat--' + key + '" data-stat="' + key + '">'
                  + '<span class="rx-stat-value" data-stat-value>'
