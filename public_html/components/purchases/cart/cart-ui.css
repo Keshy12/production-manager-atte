@@ -966,8 +966,21 @@
     white-space: nowrap; vertical-align: bottom; color: var(--rx-muted);
 }
 .cx-page .cx-var-cmt { color: #4a5562; font-weight: 400; }
-/* Kolumna Sklep: lewy odstęp i linia oddzielają ją od „Uwag". */
-.cx-page .cx-var-shop-cell, .cx-page .cx-col-shop { white-space: nowrap; border-left: 1px solid var(--rx-line); padding-left: .9rem; }
+/* Kolumna Sklep (pierwsza): link sklepu + przycisk wyboru obok siebie, wąska,
+   linia oddzielająca po prawej. Komórka zostaje table-cell (nie flex), by nie
+   zepsuć układu wiersza — odstęp robi margines między dziećmi. */
+.cx-page .cx-var-shop-cell, .cx-page .cx-col-shop {
+    white-space: nowrap; width: 1%;
+    border-right: 1px solid var(--rx-line);
+}
+.cx-page .cx-var-shop-cell > * { vertical-align: middle; }
+.cx-page .cx-var-shop-cell > * + * { margin-left: .3rem; }
+/* Przycisk wyboru (sama ikona): kwadrat o wysokości .cx-mini-btn. */
+.cx-page .cx-var-pick {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 1.75rem; height: 1.75rem; padding: 0;
+    font-size: .8rem; line-height: 1;
+}
 .cx-page .cx-var-shop { color: var(--rx-accent-ink); text-decoration: none; }
 .cx-page a.cx-var-shop:hover { color: var(--rx-accent); text-decoration: none; }
 .cx-page .cx-var-shop--missing { color: var(--rx-faint); border-style: dashed; }

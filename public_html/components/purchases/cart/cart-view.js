@@ -1251,15 +1251,21 @@
             // Sole variant, nothing chosen yet: just pre-highlight it.
             let isSuggested = !isSel && selectedId === null && vps.length === 1;
             html += '<tr class="cx-var-row' + (isSel ? ' is-selected' : '') + (isSuggested ? ' is-suggested' : '') + (isOther ? ' is-other-vendor' : '') + '" data-vp-id="' + vp.id + '">' +
+                // Sklep + wybór wariantu w jednej, pierwszej kolumnie (lewa).
+                // Przycisk zawsze z ikoną „check": niebieski, dopóki ten wariant
+                // nie jest wybrany; zielony, gdy już jest (btn-success).
+                '<td class="cx-var-shop-cell">' + shop +
+                    '<button type="button" class="btn btn-sm ' + (isSel ? 'btn-success' : 'btn-primary') + ' cx-var-pick"' +
+                    ' title="' + (isSel ? 'Wybrany wariant — przejdź do ilości i ceny' : 'Przejdź do ilości i ceny') + '"' +
+                    ' aria-label="' + (isSel ? 'Wybrany wariant' : 'Wybierz wariant') + '">' +
+                    '<i class="bi bi-check-lg" aria-hidden="true"></i>' +
+                    '</button></td>' +
                 '<td>' + escapeHtml(vp.vendor_name) + cur + '</td>' +
                 '<td><div>' + escapeHtml(vp.vendor_part_no) + '</div>' + prodNo + '</td>' +
                 '<td>' + (vp.producer_name ? escapeHtml(vp.producer_name) : '—') + '</td>' +
                 '<td class="text-nowrap">' + jm + '</td>' +
                 '<td>' + cmtCell + '</td>' +
                 '<td class="cx-var-docs-cell' + (hasDocs ? ' has-docs' : '') + '">' + variantDocsBadgesHtml(vp) + '</td>' +
-                '<td class="cx-var-shop-cell">' + shop + '</td>' +
-                '<td><button type="button" class="btn btn-sm ' + (isSel ? 'btn-success' : 'btn-primary') + ' cx-var-pick" title="Przejdź do ilości i ceny">' +
-                (isSel ? '<i class="bi bi-check-lg"></i> Wybrano' : 'Wybierz') + '</button></td>' +
                 '</tr>';
         });
         $('#variantsBody').html(html);
@@ -2360,7 +2366,7 @@ $cartQty.val('');
         openDocsModal(vpId);
     });
 
-    // Only the row's "Wybierz" button selects (a plain row click does
+    // Only the row's pick button selects (a plain row click does
     // nothing). It reuses the search-modal hand-off (pickVp →
     // refreshVendorPartRow(id) + step 3), then does what a user vendor
     // change does (default currency).

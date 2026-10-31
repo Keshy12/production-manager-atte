@@ -385,14 +385,13 @@ $baseUrl = 'http://' . BASEURL;
                         <table class="table rx-table mb-0">
                             <thead>
                                 <tr>
+                                    <th class="cx-col-shop">Sklep <span class="sr-only">i wybór wariantu</span></th>
                                     <th>Dostawca</th>
                                     <th>Nr u dostawcy / Nr producenta</th>
                                     <th>Producent</th>
                                     <th>JM / opakowania</th>
                                     <th>Uwagi do artykułu</th>
                                     <th>Aktywne dokumenty</th>
-                                    <th class="cx-col-shop">Sklep</th>
-                                    <th><span class="sr-only">Akcja</span></th>
                                 </tr>
                             </thead>
                             <tbody id="variantsBody"></tbody>
