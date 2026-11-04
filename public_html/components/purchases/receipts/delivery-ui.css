@@ -690,7 +690,6 @@ a.dv-alloc-po { text-decoration: none; }
 .dv-dd-sep { display: inline-block; margin: 0 .55rem; font-weight: 400; color: var(--rx-faint); opacity: .85; }
 .dv-dd-sub { grid-column: 1; font-size: .74rem; color: var(--rx-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dv-dd-desc { grid-column: 1; font-size: .72rem; line-height: 1.3; color: var(--rx-faint, var(--rx-muted)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dv-art-desc { margin-top: .3rem; padding-left: .15rem; font-size: .76rem; line-height: 1.35; color: var(--rx-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* min-width: 0 na komórce „Artykuł": bez tego element gridu ma minimalną
    szerokość = najszersza treść (np. długi numer w polu), a kolumna
    rozpycha siatkę (jak .dv-entry-mag z powodu nazw magazynów). */
@@ -703,8 +702,30 @@ a.dv-alloc-po { text-decoration: none; }
 
 .dv-entry-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .25rem 1rem; margin-top: .45rem; min-height: 1.2rem; }
 .dv-entry-hint { font-size: .74rem; color: var(--rx-muted); }
-.dv-entry-hint.is-onpo { color: #1b6e30; font-weight: 600; }
-.dv-entry-hint.is-nopo { color: #5b3a9e; font-weight: 600; }
+.dv-entry-hint.has-panel { flex: 1 1 100%; min-width: 0; }
+
+/* Panel informacji o wybranym artykule: opis części + zamówienia. */
+.dv-info { padding: .35rem .6rem; background: var(--rx-canvas); border: 1px solid var(--rx-line-soft); border-radius: 6px; }
+.dv-info-desc { font-size: .74rem; line-height: 1.3; color: var(--rx-muted); margin-bottom: .25rem;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.dv-info-head { font-size: .74rem; font-weight: 700; }
+.is-onpo .dv-info-head { color: var(--rx-muted); }
+.is-onpo .dv-info-head i { color: var(--dv-green); }
+.is-nopo .dv-info { border-left: 3px solid #5b3a9e; }
+.is-nopo .dv-info-head { color: #5b3a9e; }
+.dv-info-list { margin-top: .2rem; max-height: 6.2rem; overflow-y: auto; }
+.dv-info-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: .1rem 1.2rem; align-items: baseline;
+    padding: .12rem 0; border-top: 1px solid var(--rx-line-soft); font-size: .78rem; font-variant-numeric: tabular-nums; }
+.dv-info-row:first-child { border-top: 0; }
+.dv-info-po { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dv-info-qty { text-align: right; min-width: 6.5rem; }
+.dv-info-price { text-align: right; min-width: 7rem; color: var(--rx-muted); }
+.dv-info-count { margin-left: .35rem; font-size: .68rem; font-weight: 400; color: var(--rx-faint); }
+@media (max-width: 575.98px) {
+    .dv-info-row { grid-template-columns: minmax(0, 1fr) auto; }
+    .dv-info-po { grid-column: 1 / -1; }
+    .dv-info-qty, .dv-info-price { text-align: left; min-width: 0; }
+}
 .dv-entry-error { font-size: .8rem; font-weight: 600; color: #b21f2d; }
 
 /* ---- Panel zamówień po prawej --------------------------------------- */

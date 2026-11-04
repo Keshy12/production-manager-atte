@@ -1521,7 +1521,7 @@ $(document).ready(function () {
     }
 
     // Nazwa dostawcy bieżącego przyjęcia: ze stanu dostawy, a zapasowo z
-    // tekstu wybranej opcji w #dvVendor. '' = nie uda się ustalić.
+    // tekstu wybranej opcji w #dvVendor. '' = nie udało się ustalić.
     function currentVendorName() {
         const d = S.state && S.state.delivery;
         if (d && d.vendor_name) return String(d.vendor_name);
@@ -1632,21 +1632,11 @@ $(document).ready(function () {
         });
     }
 
-    // Opis części pod polem artykułu — widoczny tylko przy wybranym artykule
-    // i tylko gdy opis nie jest pusty (wstawiany jako tekst).
-    function setArtDesc(desc) {
-        const d = $.trim(desc || '');
-        const $d = $('#dvArtDesc');
-        if (d === '') { $d.addClass('d-none').text('').removeAttr('title'); return; }
-        $d.removeClass('d-none').text(d).attr('title', d);
-    }
-
     function pickPart(r) {
         S.picked = r;
         if (r.unit) S.unitByVp[r.vendor_part_id] = r.unit;
         $art.val((r.vendor_part_no || '') + ' — ' + (r.part_name || ''));
         $('.dv-art-wrap').addClass('is-picked');
-        setArtDesc(r.part_description);
         $('#dvArtClear').removeClass('d-none');
         ddClose();
         const p = r.suggested_price;
@@ -1660,29 +1650,64 @@ $(document).ready(function () {
     function unpick() {
         S.picked = null;
         $('.dv-art-wrap').removeClass('is-picked');
-        setArtDesc('');
         $('#dvArtClear').addClass('d-none');
         updateEntryHint();
     }
 
     function updateEntryHint() {
         const $h = $('#dvEntryHint');
-        $h.removeClass('is-onpo is-nopo');
+        $h.removeClass('is-onpo is-nopo has-panel');
         if (!S.picked) {
             $h.html('<kbd>Tab</kbd> przechodzi dalej · <kbd>Enter</kbd> w polu ceny zapisuje pozycję · <kbd>↓</kbd><kbd>↑</kbd> wybierają z listy');
             return;
         }
+        // Opis części (jedyne miejsce, w którym jest rysowany) — tylko gdy niepusty.
+        const desc = $.trim(S.picked.part_description || '');
+        const descHtml = desc !== ''
+            ? '<div class="dv-info-desc" title="' + esc(desc) + '">' + esc(desc) + '</div>' : '';
+
         const items = itemsForPart(S.picked.vendor_part_id);
         if (items.length === 0) {
-            $h.addClass('is-nopo').html('<i class="bi bi-question-circle"></i> Brak na otwartych zamówieniach — pozycja trafi jako nadwyżka (wymaga komentarza).');
+            $h.addClass('is-nopo has-panel').html('<div class="dv-info">' + descHtml
+                + '<div class="dv-info-head"><i class="bi bi-question-circle"></i> Brak na otwartych zamówieniach — pozycja trafi jako nadwyżka (wymaga komentarza).</div>'
+                + '</div>');
             return;
         }
+
+        // Scalanie pozycji tego samego zamówienia w jeden wiersz.
         const taken = allocatedByItem(S.state, S.editLineId);
-        $h.addClass('is-onpo').html('<i class="bi bi-check2-circle"></i> Na zamówieniach: ' + items.map(function (it) {
-            const left = it.remaining - (taken[it.po_item_id] || 0);
-            return esc(it.po_number || ('#' + it.po_id)) + ' · ' + esc(fmtQty(left)) + (it.unit_price !== null && it.unit_price !== undefined && it.unit_price !== ''
-                ? ' po ' + esc(fmtPrice(it.unit_price)) : '');
-        }).join('  |  '));
+        const fallbackUnit = S.unitByVp[S.picked.vendor_part_id] || '';
+        const groups = {};
+        const order = [];
+        items.forEach(function (it) {
+            const key = it.po_number || ('#' + it.po_id);
+            if (!groups[key]) { groups[key] = { po: key, qty: 0, count: 0, prices: [], cur: [], unit: '' }; order.push(key); }
+            const g = groups[key];
+            g.qty += Math.max(0, num(it.remaining) - (taken[it.po_item_id] || 0));
+            g.count++;
+            if (!g.unit && it.unit) g.unit = it.unit;
+            if (it.unit_price !== null && it.unit_price !== undefined && it.unit_price !== '' && !isNaN(parseFloat(it.unit_price))) {
+                const p = fmtPrice(it.unit_price);
+                if (g.prices.indexOf(p) === -1) g.prices.push(p);
+                if (it.currency && g.cur.indexOf(it.currency) === -1) g.cur.push(it.currency);
+            }
+        });
+        order.sort(function (a, b) { return a.localeCompare(b, 'pl', { numeric: true }); });
+
+        const rows = order.map(function (key) {
+            const g = groups[key];
+            const unit = g.unit || fallbackUnit;
+            const priceTxt = g.prices.join(' / ') + (g.prices.length && g.cur.length ? ' ' + g.cur.join('/') : '');
+            return '<div class="dv-info-row">'
+                + '<span class="dv-info-po">' + esc(g.po)
+                +   (g.count > 1 ? ' <span class="dv-info-count">' + g.count + ' poz.</span>' : '') + '</span>'
+                + '<span class="dv-info-qty">' + esc(fmtQty(g.qty)) + (unit ? ' ' + esc(unit) : '') + '</span>'
+                + '<span class="dv-info-price">' + esc(priceTxt) + '</span>'
+                + '</div>';
+        });
+        $h.addClass('is-onpo has-panel').html('<div class="dv-info">' + descHtml
+            + '<div class="dv-info-head"><i class="bi bi-check2-circle"></i> Na zamówieniach</div>'
+            + '<div class="dv-info-list">' + rows.join('') + '</div></div>');
     }
 
     function entryError(msg) {
@@ -1783,7 +1808,6 @@ $(document).ready(function () {
         $price.val('');
         fillEntryMag('');
         $('.dv-art-wrap').removeClass('is-picked');
-        setArtDesc('');
         $('#dvArtClear').addClass('d-none');
         $('#dvEntry').removeClass('is-editing');
         $('#dvEntryTag').text('Nowa pozycja');
@@ -1808,7 +1832,6 @@ $(document).ready(function () {
         };
         $art.val((l.vendor_part_no || '') + ' — ' + (l.part_name || ''));
         $('.dv-art-wrap').addClass('is-picked');
-        setArtDesc(l.part_description);
         $('#dvArtClear').removeClass('d-none');
         $qty.val(inputNum(l.quantity));
         $price.val(l.unit_price === null || l.unit_price === undefined ? '' : inputNum(l.unit_price));
