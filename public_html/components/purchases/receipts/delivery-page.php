@@ -304,8 +304,8 @@ $e = static function ($v): string { return htmlspecialchars((string)$v, ENT_QUOT
                                autocomplete="off" placeholder="0,00">
                     </div>
                     <!-- Magazyn pozycji: selectpicker z wyszukiwarką, taki sam jak
-                         „Magazyn docelowy" w nagłówku. Pusty wybór = magazyn domyślny
-                         dostawy (bez nadpisania); opcje wypełnia JS (fillEntryMag).
+                         „Magazyn docelowy" w nagłówku. Wybrany jest domyślnie magazyn
+                         domyślny dostawy (zapis bez nadpisania); opcje wypełnia JS (fillEntryMag).
                          Kolejność Tab: artykuł → ilość → cena → magazyn → Dodaj/Zapisz
                          → Anuluj; Enter zapisuje pozycję w polu ceny (w pickerze Enter
                          należy do bootstrap-select). data-container wskazuje komórkę

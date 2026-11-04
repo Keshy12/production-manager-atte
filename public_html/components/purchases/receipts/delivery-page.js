@@ -51,6 +51,7 @@ $(document).ready(function () {
         unitByVp: {},
         picked: null,           // wybrany artykuł w wierszu wpisywania
         editLineId: 0,
+        entryMagDefault: '',    // magazyn domyślny dostawy użyty przy ostatnim wypełnieniu pickera pozycji
         entryBusy: false,
         creating: null,
         docAttempted: false,    // operator kliknął „Zapisz dokument dostawcy" przy brakach
@@ -173,15 +174,16 @@ $(document).ready(function () {
         return '';
     }
 
-    // Opcje magazynu z pustą pierwszą opcją (= bez nadpisania, magazyn domyślny).
-    // `orphanName`: nazwa magazynu pozycji, którego nie ma już na liście
+    // Opcje magazynu: same prawdziwe magazyny, bez pustej opcji „domyślny" —
+    // magazyn domyślny dostawy jest po prostu zaznaczoną opcją (`selectedId`).
+    // Zaznaczona opcja ZAWSZE niesie atrybut `selected`: bootstrap-select
+    // (data-title) dokłada na początku własną pustą opcję „placeholder"
+    // i zaznacza ją, o ile żadna opcja nie ma tego atrybutu. Gdy `selectedId`
+    // jest puste (dostawa bez magazynu domyślnego), zostaje sam placeholder.
+    // `orphanName`: nazwa zaznaczonego magazynu, którego nie ma już na liście
     // aktywnych — dostaje własną opcję, żeby zapis nie zgubił go po cichu.
-    function magOptionsHtml(selectedId, defaultLabel, orphanName) {
-        // Pusta opcja dostaje `selected`, gdy nic innego nie jest wybrane:
-        // bootstrap-select (data-title) dokłada na początku własną pustą opcję
-        // „placeholder" i zaznacza ją, o ile żadna opcja nie ma atrybutu
-        // `selected` — bez tego „Domyślny: …" nigdy nie byłby widoczny.
-        let html = '<option value=""' + (hasMag(selectedId) ? '' : ' selected') + '>' + esc(defaultLabel) + '</option>';
+    function magOptionsHtml(selectedId, orphanName) {
+        let html = '';
         let found = false;
         MAGAZINES.forEach(function (m) {
             const sel = hasMag(selectedId) && String(selectedId) === String(m.id);
@@ -797,6 +799,8 @@ $(document).ready(function () {
     });
     $magazine.on('changed.bs.select', function () {
         refreshDocGate();
+        // Picker pozycji podąża za magazynem domyślnym dostawy.
+        fillEntryMag();
         if (S.mute) return;
         scheduleHeaderSave(true);
     });
@@ -1536,30 +1540,68 @@ $(document).ready(function () {
         return !!(act && cell && cell.contains(act));
     }
 
-    // Lista magazynów w pasku wpisywania (selectpicker z wyszukiwarką). Pusta
-    // opcja = bez nadpisania (pozycja dziedziczy magazyn domyślny dostawy) —
-    // jej etykieta niesie nazwę tego domyślnego. `selected` (tekst z .val()
-    // albo liczba z JSON-a; '' = domyślny) – gdy pominięty, zostaje bieżący
-    // wybór operatora.
+    // Magazyn domyślny dostawy jako tekst ('' = dostawa go nie ma). Bierzemy
+    // wartość z pola „Magazyn docelowy" (bieżący wybór, także jeszcze nie
+    // zapisany), a w razie braku — z ostatniego stanu serwera. Id „0" jest
+    // prawidłowe, dlatego wszędzie hasMag(), nigdy sprawdzenie prawdziwości.
+    function currentDefaultMag() {
+        const hv = $magazine.val();
+        if (hasMag(hv)) return String(hv);
+        const d = S.state && S.state.delivery;
+        return (d && hasMag(d.default_sub_magazine_id)) ? String(d.default_sub_magazine_id) : '';
+    }
+
+    // Magazyn pozycji do zapisu: '' = pozycja dziedziczy magazyn domyślny
+    // dostawy (w bazie NULL — idzie za zmianą „Magazynu docelowego"),
+    // inna wartość = konkretny magazyn (nadpisanie). Wybór równy domyślnemu
+    // NIE staje się nadpisaniem.
+    function entryMagParam() {
+        const v = $entryMag.val();
+        if (!hasMag(v)) return '';
+        return String(v) === currentDefaultMag() ? '' : String(v);
+    }
+
+    // Lista magazynów w pasku wpisywania (selectpicker z wyszukiwarką).
+    // Zaznaczony jest zawsze prawdziwy magazyn: domyślny dostawy dla nowej
+    // pozycji i pozycji dziedziczącej, własny dla pozycji z nadpisaniem.
+    // `selected` (tekst z .val() albo liczba z JSON-a): '' = magazyn domyślny
+    // dostawy, inna wartość = ten magazyn. Gdy pominięty, zostaje bieżący wybór
+    // operatora — a jeśli był nim dotychczasowy magazyn domyślny, picker idzie
+    // za nowym domyślnym.
     function fillEntryMag(selected) {
         // Przerysowanie z serwera nie może wytrącić operatora, który właśnie
         // wybiera magazyn lub wpisuje frazę w wyszukiwarkę — wtedy nic nie
         // ruszamy (przebudowa zgasiłaby listę i skasowała wpisaną frazę).
         // Jawne ustawienie (reset / edycja pozycji) przebudowuje zawsze.
         if (selected === undefined && entryMagBusy()) return;
-        const cur = (selected === undefined) ? $entryMag.val() : selected;
-        const hv = $magazine.val();
-        const dn = hasMag(hv) ? magName(hv) : defaultMagName(S.state);
-        const label = dn !== '' ? ('Domyślny: ' + dn) : 'Domyślny z dokumentu';
+        const def = currentDefaultMag();
+        let pick;
+        if (selected === undefined) {
+            const cur = $entryMag.val();
+            pick = (!hasMag(cur) || String(cur) === S.entryMagDefault) ? def : String(cur);
+        } else {
+            pick = hasMag(selected) ? String(selected) : def;
+        }
+        S.entryMagDefault = def;
+
+        // Nazwa dla magazynu spoza listy aktywnych: własny magazyn edytowanej
+        // pozycji albo (praktycznie niemożliwy) nieaktywny magazyn domyślny.
         const ln = S.editLineId ? findLine(S.editLineId) : null;
+        let orphanName = '';
+        if (ln && hasMag(ln.sub_magazine_id) && String(ln.sub_magazine_id) === pick) {
+            orphanName = ln.sub_magazine_name || '';
+        } else if (pick === def) {
+            orphanName = defaultMagName(S.state);
+        }
+
         // Wybór niesie atrybut `selected` w opcjach (magOptionsHtml) — dzięki
-        // temu id 0 i pusta opcja „Domyślny" są zaznaczone zaraz po refresh.
-        $entryMag.html(magOptionsHtml(magParam(cur), label, ln ? ln.sub_magazine_name : ''));
+        // temu także id 0 jest zaznaczone zaraz po refresh.
+        $entryMag.html(magOptionsHtml(pick, orphanName));
         if (hasPicker()) {
             S.mute++;
             try { $entryMag.selectpicker('refresh'); } finally { S.mute--; }
         }
-        setPickerVal($entryMag, magParam(cur));
+        setPickerVal($entryMag, pick);
     }
 
     function resetEntry() {
@@ -1596,9 +1638,10 @@ $(document).ready(function () {
         $('#dvArtClear').removeClass('d-none');
         $qty.val(inputNum(l.quantity));
         $price.val(l.unit_price === null || l.unit_price === undefined ? '' : inputNum(l.unit_price));
-        // Magazyn: nadpisanie pozycji (w tym 0) albo pusty wybór „Domyślny: …",
-        // gdy pozycja dziedziczy — dzięki temu zwykła poprawka ilości/ceny nie
-        // zamienia po cichu odziedziczonego magazynu w nadpisanie.
+        // Magazyn: nadpisanie pozycji (w tym 0) albo magazyn domyślny dostawy,
+        // gdy pozycja dziedziczy — zapis wyśle wtedy '' (entryMagParam), więc
+        // zwykła poprawka ilości/ceny nie zamienia odziedziczonego magazynu
+        // w nadpisanie.
         fillEntryMag(hasMag(l.sub_magazine_id) ? String(l.sub_magazine_id) : '');
         $('#dvEntry').addClass('is-editing');
         $('#dvEntryTag').text('Edycja pozycji ' + l.line_no);
@@ -1737,8 +1780,8 @@ $(document).ready(function () {
                 quantity: qty,
                 unit_price: price,
                 // '' = bez nadpisania (magazyn domyślny dostawy → NULL),
-                // liczba (także "0") = konkretny magazyn.
-                sub_magazine_id: magParam($entryMag.val())
+                // liczba (także "0") różna od domyślnej = konkretny magazyn.
+                sub_magazine_id: entryMagParam()
             };
             if (editId) {
                 const ex = findLine(editId);
