@@ -121,10 +121,10 @@ if ($type === 'po') {
 $allowedEdit = in_array($doc->state, PurchaseActionHandler::allowedEditStates($type), true);
 
 // "Wyślij dokument" / "Wyślij ponownie" / "Oznacz odpowiedź" /
-// "Potwierdź odpowiedź" / "Potwierdź odbiór" — jeden button w
+// "Potwierdź odpowiedź" / "Przyjmij dostawę" — jeden button w
 // prawym górnym rogu headera, obok "Wróć". Mapa stanów: draft →
 // Wyślij dokument; PO sent → Potwierdź odpowiedź (dedykowana strona
-// odpowiedzi); PO confirmed → Potwierdź odbiór (formularz przyjęcia);
+// odpowiedzi); PO confirmed → Przyjmij dostawę (przyjęcie wg faktury);
 // RFQ sent → Oznacz odpowiedź; RFQ responded → Wyślij ponownie;
 // inne stany → brak buttona.
 //
@@ -164,10 +164,10 @@ if ($type === 'rfq') {
     } elseif ($doc->state === 'confirmed') {
         // confirmed → dostawca potwierdził, czas przyjąć towar.
         // Ten krok jest OSOBNY od potwierdzenia odpowiedzi: prowadzi
-        // do formularza przyjęcia, a stan `in_progress` ustawia dopiero
-        // krok "Akceptuję" w tym formularzu. 'action' === 'receive-po'
-        // renderuje <a> do /purchase/receipts/receive.
-        $sendButton = ['label' => 'Potwierdź odbiór', 'icon' => 'bi-check2-square', 'action' => 'receive-po'];
+        // do strony przyjęcia dostawy (wg faktury / WZ) z dostawcą
+        // tego zamówienia wstępnie wybranym. 'action' === 'receive-po'
+        // renderuje <a> do /purchase/receipts/new?vendor_id=N.
+        $sendButton = ['label' => 'Przyjmij dostawę', 'icon' => 'bi-check2-square', 'action' => 'receive-po'];
     }
     // PO `in_progress` / `partially_received` nie mają już przycisku
     // wysyłki — mają własny blok akcji przyjęcia towaru (niżej).
@@ -298,9 +298,9 @@ function formatPrice($v) {
                     `confirmed`. Operator NIE jest przenoszony do
                     formularza przyjęcia — to osobny, późniejszy krok.
 
-                    PO w stanie `confirmed` → "Potwierdź odbiór" prowadzi do
-                    formularza przyjęcia towaru, więc 'action' === 'receive-po'
-                    renderuje <a> do /purchase/receipts/receive.
+                    PO w stanie `confirmed` → "Przyjmij dostawę" prowadzi do
+                    strony przyjęcia dostawy, więc 'action' === 'receive-po'
+                    renderuje <a> do /purchase/receipts/new?vendor_id=N.
 
                     RFQ w stanie `sent` → "Oznacz odpowiedź" prowadzi do
                     documents-respond.php, więc 'action' === 'respond-rfq'
@@ -398,7 +398,7 @@ function formatPrice($v) {
                     <?php endif; ?>
                     <?php if ($sendButton !== null): ?>
                         <?php if (($sendButton['action'] ?? '') === 'receive-po'): ?>
-                            <a href="<?= 'http://' . BASEURL . '/purchase/receipts/receive?po_id=' . (int)$doc->id ?>"
+                            <a href="<?= 'http://' . BASEURL . '/purchase/receipts/new?vendor_id=' . (int)$doc->vendorId ?>"
                                class="btn btn-primary btn-sm">
                                 <i class="bi <?= htmlspecialchars($sendButton['icon']) ?>"></i>
                                 <?= htmlspecialchars($sendButton['label']) ?>
@@ -427,29 +427,18 @@ function formatPrice($v) {
                         <!--
                             Przyjęcie towaru: dostępne dla PO w stanie
                             `in_progress` oraz `partially_received`.
-                            Klik prowadzi do /purchase/receipts/receive?po_id=N, gdzie
-                            operator wpisuje faktycznie dostarczone ilości per pozycja.
-                            Receive handler (PurchaseActionHandler::createReceipt)
-                            akceptuje oba te stany.
+                            Klik prowadzi do /purchase/receipts/new?vendor_id=N —
+                            strony przyjęcia dostawy wg faktury / WZ z dostawcą
+                            tego zamówienia wstępnie wybranym.
 
                             Stan `confirmed` NIE jest tu — ma własny, główny
-                            przycisk "Potwierdź odbiór" w nagłówku (patrz
-                            $sendButton), żeby nie dublować akcji.
-
-                            Etykieta zależy od stanu: `in_progress` → "Dokończ
-                            przyjęcie" (operator już zaczął odbiór), a
-                            `partially_received` → "Przyjmij towar" (częściowa
-                            dostawa, trzeba dokończyć). Ta sama etykieta
-                            widnieje w kolejce /purchase/receipts.
+                            przycisk w nagłówku (patrz $sendButton), żeby nie
+                            dublować akcji. Stan `in_progress` nie jest już
+                            produkowany; zostaje tolerowany dla starych danych.
                         -->
-                        <?php
-                            $receiveLabel = $doc->state === 'in_progress'
-                                ? 'Dokończ przyjęcie'
-                                : 'Przyjmij towar';
-                        ?>
-                        <a href="http://<?= BASEURL ?>/purchase/receipts/receive?po_id=<?= (int)$doc->id ?>"
+                        <a href="http://<?= BASEURL ?>/purchase/receipts/new?vendor_id=<?= (int)$doc->vendorId ?>"
                            class="btn btn-success btn-sm">
-                            <i class="bi bi-box-arrow-in-down"></i> <?= htmlspecialchars($receiveLabel, ENT_QUOTES) ?>
+                            <i class="bi bi-box-arrow-in-down"></i> Przyjmij dostawę
                         </a>
                     <?php endif; ?>
                     <?php if ($type === 'rfq' && $doc->state === 'responded'): ?>

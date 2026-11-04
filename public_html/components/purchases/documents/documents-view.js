@@ -880,13 +880,9 @@ $(document).ready(function () {
     }
 
     // Następne kroki dokumentu (Wyślij / Oznacz odpowiedź / Potwierdź
-    // odpowiedź / Potwierdź odbiór / Dokończ przyjęcie / Przyjmij towar)
-    // NIE są już osobnymi przyciskami obok Edytuj.
-    // Stoją w menu pod caretem split-buttona edycji — patrz
-    // actionMenuItemsHtml() poniżej. To samo z logistycznymi (Potwierdź
-    // odbiór / Dokończ przyjęcie / Przyjmij towar), które wcześniej na
-    // tej liście nie pojawiały się, a których brak był powodem długiej
-    // kolumny Akcji.
+    // odpowiedź / Przyjmij dostawę) NIE są już osobnymi przyciskami obok
+    // Edytuj. Stoją w menu pod caretem split-buttona edycji — patrz
+    // actionMenuItemsHtml() poniżej.
 
     // Przycisk zamknięcia — współdzielony z kolejką /purchase/receipts
     // (patrz receipts-view.js → queueRowHtml). Stoi pierwszy w komórce
@@ -984,9 +980,8 @@ $(document).ready(function () {
     // więc caller ukrywa caret i zostaje zwykły link Edytuj.
     //
     // Konwencje data-* dla każdej pozycji:
-    //   - Wyślij / Oznacz odpowiedź / Potwierdź odbiór / Dokończ
-    //     przyjęcie / Przyjmij towar → zwykły <a href>; router je
-    //     obsługuje po stronie serwera.
+    //   - Wyślij / Oznacz odpowiedź / Przyjmij dostawę → zwykły <a href>;
+    //     router je obsługuje po stronie serwera.
     //   - Potwierdź odpowiedź (PO `sent`) → zwykły <a href> do
     //     dedykowanej strony odpowiedzi
     //     /admin/purchase/documents/respond?id=N&type=po (ten sam
@@ -1005,7 +1000,7 @@ $(document).ready(function () {
 // Odcienie rozróżniają RODZAJ akcji, nie kopiują klasy przycisku
 // ze strony edycji: „Potwierdź odpowiedź" i „Utwórz zamówienie" są
 // zielone (kończą etap / zakładają nowy), „Wyślij", „Oznacz odpowiedź",
-// „Potwierdź odbiór", „Dokończ przyjęcie" i „Przyjmij towar" niebieskie
+// „Przyjmij dostawę" niebieskie
 // (kierują operatora dalej). Mapping ustalony wprost przez operatora
 // — nie „wygląda jak na edycji".
             items.push('<a class="dropdown-item rx-action-primary" href="' + url + '">'
@@ -1021,20 +1016,13 @@ $(document).ready(function () {
             items.push('<a class="dropdown-item rx-action-success" href="' + url + '">'
                 + '<i class="bi bi-reply"></i> Potwierdź odpowiedź</a>');
         }
-        if (d.type === 'po' && d.state === 'confirmed') {
-            const url = esc(appUrl('/purchase/receipts/receive?po_id=' + id));
+        // Jedna akcja „Przyjmij dostawę" dla wszystkich stanów przyjmowalnych
+        // (in_progress nie jest już produkowany — tolerowany dla starych danych).
+        if (d.type === 'po' && (d.state === 'confirmed' || d.state === 'in_progress'
+                || d.state === 'partially_received')) {
+            const url = esc(appUrl('/purchase/receipts/new?vendor_id=' + parseInt(d.vendor_id, 10)));
             items.push('<a class="dropdown-item rx-action-primary" href="' + url + '">'
-                + '<i class="bi bi-check2-square"></i> Potwierdź odbiór</a>');
-        }
-        if (d.type === 'po' && d.state === 'in_progress') {
-            const url = esc(appUrl('/purchase/receipts/receive?po_id=' + id));
-            items.push('<a class="dropdown-item rx-action-primary" href="' + url + '">'
-                + '<i class="bi bi-box-arrow-in-down"></i> Dokończ przyjęcie</a>');
-        }
-        if (d.type === 'po' && d.state === 'partially_received') {
-            const url = esc(appUrl('/purchase/receipts/receive?po_id=' + id));
-            items.push('<a class="dropdown-item rx-action-primary" href="' + url + '">'
-                + '<i class="bi bi-box-arrow-in-down"></i> Przyjmij towar</a>');
+                + '<i class="bi bi-box-arrow-in-down"></i> Przyjmij dostawę</a>');
         }
         if (d.type === 'rfq' && d.state === 'responded') {
             // CTA otwiera #rfqConvertModal (współdzielony z header CTA

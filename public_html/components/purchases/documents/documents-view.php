@@ -35,22 +35,21 @@
  *       RFQ wysłane                   → Oznacz odpowiedź
  *       PO wysłane                    → Potwierdź odpowiedź (strona
  *                                       /admin/purchase/documents/respond?id=N&type=po)
- *       PO potwierdzone               → Potwierdź odbiór (formularz przyjęcia)
- *       PO częściowo przyjęte        → Dokończ przyjęcie
- *       PO częściowo odebrane         → Przyjmij towar
+ *       PO potwierdzone / częściowo
+ *       odebrane                      → Przyjmij dostawę
+ *                                       (/purchase/receipts/new?vendor_id=N)
  *     Wiersz terminalny (bez pozycji w menu) dostaje zwykły link,
  *     bez careta.
  *
  * Świadomie BEZ samodzielnych przycisków obok siebie — kosz + split
  * Edytuj/Podgląd, nic więcej.
  *
- * Przepływ PO jest trzykrokowy i każdy krok jest niezależnie
- * osiągalny:
+ * Przepływ PO:
  *   sent → „Potwierdź odpowiedź" (dedykowana strona odpowiedzi) → confirmed
- *   confirmed → „Potwierdź odbiór" (formularz przyjęcia) → in_progress
- *   in_progress → „Dokończ przyjęcie" → partially_received / received
- * Strona potwierdzenia odpowiedzi NIE przenosi operatora do formularza
- * przyjęcia — to osobny, późniejszy krok.
+ *   confirmed → „Przyjmij dostawę" (przyjęcie wg faktury / WZ)
+ *     → partially_received / received
+ * (stan in_progress nie jest już produkowany). Strona potwierdzenia
+ * odpowiedzi NIE przenosi operatora do przyjęcia — to osobny, późniejszy krok.
  *
  * Domyślny zakres dat: ostatnie 90 dni — widoczny w pasku (przycisk
  * „90 dni" zaznaczony) i w linijce podsumowania.

@@ -471,6 +471,30 @@ Idempotent. Vendors that are already inactive are reported as `skipped (already 
 
 ---
 
+## Job 9 — `migrate-purchase-delivery-schema.php`
+
+**File:** `src/cron/migrate-purchase-delivery-schema.php`
+
+### Purpose
+One-shot, idempotent CLI migration for the invoice-driven goods reception (`docs/procurement/RECEIPT_INVOICE_FLOW_PLAN.md`, Phase 1). Not a recurring job — run once per environment after deploying the new code.
+
+### Usage
+- `php src/cron/migrate-purchase-delivery-schema.php` — apply.
+- `php src/cron/migrate-purchase-delivery-schema.php --dry-run` — print every step that would run, write nothing.
+- Pre-flight: refuses to run unless the connected DB is `atte_ms`. Does not require `config-google-sheets.php` (no session in CLI). No lock file.
+
+### What it does
+1. Creates `purchase__delivery`, `purchase__delivery_line`, `purchase__delivery_allocation` (strict FK order).
+2. Adds `purchase__order_receipt.delivery_id` and `purchase__order_receipt_item.delivery_allocation_id` (column + index + FK `ON DELETE SET NULL`), each probed via `information_schema` first.
+3. Seeds `ref__transfer_group_types` slug `purchase_delivery` (template `Przyjęcie dostawy {grn} — {vendor}`).
+4. **Legacy cleanup** in ONE transaction, counts printed: (a) deletes "draft" receipts (`purchase__order_receipt` rows with zero items, left by the retired `acceptReceiptMetadata()` step); (b) re-derives POs stuck in `in_progress` — with receipt items → `received` when `SUM(quantity_received) >= SUM(quantity)` else `partially_received`; without receipt items → `confirmed`. The `in_progress` ENUM value is kept.
+5. Prints a verification summary (tables, FKs, columns, seed row).
+
+### Re-run safety
+Every object is probed before creation; a second run changes nothing (the cleanup finds no rows). Schema details: `docs/data/DATABASE.md` §4j.
+
+---
+
 ## Quick Reference Table
 
 | Job | Lock file | DB writes | Google Sheets | Unique behaviour |
@@ -483,6 +507,7 @@ Idempotent. Vendors that are already inactive are reported as `skipped (already 
 | `bom-flat-sku-gs-upload` | `bom_flat_sku_gs_upload.lock` | — | `ds_php_bom_flat_sku` (spreadsheet 2) | Recursive BOM flatten, 3-level source path |
 | `import-procurement-history-from-gsheet` | `procurement_history_import.lock` | `purchase__*`, `list__vendor.default_currency`, `purchase__number_counter` | — (read-only) | One-shot historical migration; safe re-run |
 | `deactivate-empty-vendors` | *(none)* | `list__vendor.isActive`, `list__vendor.comment` | — | One-shot catalogue clean-up; dry-run by default; never overwrites a comment |
+| `migrate-purchase-delivery-schema` | *(none)* | `purchase__delivery*`, `purchase__order_receipt(_item)`, `ref__transfer_group_types`, `purchase__order.state` (legacy cleanup) | — | One-shot, idempotent, `--dry-run`; schema for invoice-driven reception + legacy `in_progress` cleanup |
 
 **Spreadsheet IDs:**
 - (1) `1rV1rbLXDdsOxT49sgJNm1Aicldg8ZvBdQo9yaX314QI` — used by `warehouse-data-gs-upload`

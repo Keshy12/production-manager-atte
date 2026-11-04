@@ -1,16 +1,22 @@
 // Przyjęcia towaru — /purchase/receipts (lista).
 //
-// Dwie zakładki:
+// Trzy zakładki:
 //   „Do przyjęcia"     — kolejka z receipts-queue.php (POST), render tutaj,
-//   „Historia przyjęć" — wiersze renderuje PHP, tu tylko filtr + paginacja.
+//                        pogrupowana wg dostawcy; jeden przycisk
+//                        „Przyjmij dostawę" na dostawcę,
+//   „Robocze"          — szkice przyjęć (delivery-list.php?state=draft),
+//   „Historia przyjęć" — zatwierdzone dostawy (delivery-list.php?state=posted)
+//                        + starsze przyjęcia wg zamówień (receipts-history.php,
+//                        legacy_only=1, paginacja po stronie serwera).
 //
 // Nawigacja (konwencja z cart-view.js → docEditUrl()):
-//   window.location.origin + ROOT_DIR + '/purchase/receipts/receive?po_id=N'
+//   window.location.origin + ROOT_DIR + '/purchase/receipts/new?vendor_id=N'
+//   window.location.origin + ROOT_DIR + '/purchase/receipts/new?delivery_id=N'
 //   window.location.origin + ROOT_DIR + '/purchase/receipts/view?id=N'
 // ROOT_DIR pochodzi z header.js (np. "/atte_ms_new") — 'http://' + ROOT_DIR
 // dałoby martwy link http:///atte_ms_new/…
 //
-// Zakładka historii ma hash #historia (strona szczegółów linkuje
+// Zakładki mają hashe #robocze i #historia (strona szczegółów linkuje
 // z powrotem właśnie tam).
 //
 // Po zapisie przyjęcia receive-page.js przekierowuje tu z
@@ -28,6 +34,8 @@ $(document).ready(function () {
 
     const HISTORY_PER_PAGE = 25;
     const HISTORY_HASH = '#historia';
+    const DRAFTS_HASH = '#robocze';
+    const DELIVERIES_PAGE = 25;
     const READY_STATES = ['confirmed', 'in_progress', 'partially_received'];
 
     // Ta sama mapa co rx_state_meta() w receipts-helpers.php.
@@ -40,16 +48,6 @@ $(document).ready(function () {
         partially_received: { label: 'Częściowo odebrane',  tone: 'amber' },
         received:           { label: 'Odebrane',            tone: 'green' },
         cancelled:          { label: 'Anulowane',           tone: 'red' }
-    };
-
-    // Grupy kolejki wg terminu dostawy. Serwer sortuje po dacie rosnąco
-    // (puste na końcu), więc grupy wychodzą w tej kolejności same.
-    const QUEUE_GROUPS = {
-        overdue: 'Po terminie',
-        today:   'Dostawa dzisiaj',
-        week:    'W ciągu 7 dni',
-        later:   'Później',
-        nodate:  'Bez terminu dostawy'
     };
 
     // =====================================================================
@@ -135,9 +133,53 @@ $(document).ready(function () {
         return a.every(function (x) { return b.indexOf(x) !== -1; });
     }
 
-    function receiveUrl(poId) {
+    // Przyjęcie dostawy wg faktury / WZ (delivery-page.php).
+    function newDeliveryUrl(vendorId) {
+        return window.location.origin + ROOT_DIR + '/purchase/receipts/new'
+            + (vendorId ? '?vendor_id=' + encodeURIComponent(vendorId) : '');
+    }
+
+    function deliveryUrl(id) {
         return window.location.origin + ROOT_DIR
-            + '/purchase/receipts/receive?po_id=' + encodeURIComponent(poId);
+            + '/purchase/receipts/new?delivery_id=' + encodeURIComponent(id);
+    }
+
+    // Endpointy delivery-*.php: POST (konwencja .htaccess). Zwraca Promise
+    // z odpowiedzią; błąd = Error z polskim komunikatem.
+    function fetchJson(endpoint, data) {
+        return new Promise(function (resolve, reject) {
+            $.ajax({ url: ajaxBase + endpoint, type: 'POST', data: data || {}, dataType: 'json' })
+                .done(function (r) {
+                    if (!r || !r.success) { reject(new Error((r && r.error) || 'Operacja nie powiodła się.')); return; }
+                    resolve(r);
+                })
+                .fail(function (xhr, status) {
+                    reject(new Error((xhr && xhr.responseJSON && xhr.responseJSON.error)
+                        || 'Błąd komunikacji z serwerem (' + ((xhr && xhr.status) || status) + ').'));
+                });
+        });
+    }
+
+    // „PO/1, PO/2" albo ['PO/1','PO/2'] → tablica numerów.
+    function poList(v) {
+        if (Array.isArray(v)) return v.filter(function (x) { return x !== null && x !== ''; });
+        return String(v == null ? '' : v).split(',').map(function (x) { return x.trim(); }).filter(Boolean);
+    }
+
+    function poChipsHtml(v) {
+        const list = poList(v);
+        if (list.length === 0) return '<span class="text-muted">—</span>';
+        return '<div class="dv-pochips">' + list.map(function (n) {
+            return '<span class="dv-pochip">' + esc(n) + '</span>';
+        }).join('') + '</div>';
+    }
+
+    function docCellHtml(d) {
+        const type = d.document_type === 'wz' ? 'WZ' : 'FV';
+        const nr = d.vendor_document_number
+            ? '<span class="dv-docno">' + esc(d.vendor_document_number) + '</span>'
+            : '<span class="dv-docno dv-docno--none">bez numeru</span>';
+        return '<span class="dv-type">' + type + '</span>' + nr;
     }
 
     function detailUrl(id) {
@@ -200,6 +242,9 @@ $(document).ready(function () {
     // tekście wiersza — „Dostawca" dopasowuje dokładną nazwę.
     let queueData = [];
 
+    // vendor_id => liczba szkiców (z zakładki „Robocze") — chip w nagłówku grupy.
+    let draftsByVendor = {};
+
     function daysOverdue(p) {
         return (p.daysOverdue === null || p.daysOverdue === undefined)
             ? null : parseInt(p.daysOverdue, 10);
@@ -221,7 +266,6 @@ $(document).ready(function () {
         for (let i = 0; i < 4; i++) {
             html += '<div class="rx-qrow rx-skel-row" aria-hidden="true">'
                   + '<div><span class="rx-skel" style="width:70%"></span><span class="rx-skel rx-skel--sm" style="width:45%"></span></div>'
-                  + '<div><span class="rx-skel" style="width:80%"></span></div>'
                   + '<div><span class="rx-skel" style="width:60%"></span><span class="rx-skel rx-skel--sm" style="width:40%"></span></div>'
                   + '<div><span class="rx-skel" style="width:90%"></span><span class="rx-skel rx-skel--bar"></span></div>'
                   + '<div><span class="rx-skel rx-skel--pill"></span></div>'
@@ -345,23 +389,75 @@ $(document).ready(function () {
             return;
         }
 
-        let html = '';
-        let lastGroup = null;
+        // Grupowanie wg dostawcy. Kolejność grup = kolejność pierwszego
+        // wiersza danego dostawcy (serwer sortuje po terminie dostawy, więc
+        // na górze lądują ci, którzy mają coś najpilniejszego).
+        const groups = [];
+        const byKey = {};
         queueData.forEach(function (p, idx) {
-            const g = queueGroup(p);
-            if (g !== lastGroup) {
-                html += '<div class="rx-qgroup is-' + g + '" data-group="' + g + '">'
-                      + '<span class="rx-dot" aria-hidden="true"></span>'
-                      + esc(QUEUE_GROUPS[g])
-                      + ' <span class="rx-qgroup-count"></span>'
-                      + '</div>';
-                lastGroup = g;
+            const key = (p.vendorId ? 'v' + p.vendorId : 'n:' + (p.vendorName || ''));
+            if (!byKey[key]) {
+                byKey[key] = { key: key, vendorId: p.vendorId || 0, vendorName: p.vendorName || '—', rows: [] };
+                groups.push(byKey[key]);
             }
-            html += queueRowHtml(p, idx, g);
+            byKey[key].rows.push({ p: p, idx: idx });
+        });
+
+        let html = '';
+        groups.forEach(function (g, gi) {
+            g.index = gi;
+            html += vendorHeadHtml(g);
+            g.rows.forEach(function (r) {
+                html += queueRowHtml(r.p, r.idx, queueGroup(r.p), gi);
+            });
         });
         $queueBody.html(html);
         showQueueList();
         applyQueueFilters();
+    }
+
+    // Nagłówek grupy dostawcy: nazwa, podsumowanie, szkice i JEDEN
+    // przycisk akcji „Przyjmij dostawę".
+    function vendorHeadHtml(g) {
+        let ready = 0, openLines = 0, overdue = 0, waiting = 0;
+        g.rows.forEach(function (r) {
+            const p = r.p;
+            if (p.canReceive === false) { waiting++; return; }
+            ready++;
+            openLines += Math.max(0, (parseInt(p.lineCount, 10) || 0) - (parseInt(p.linesFullyReceived, 10) || 0));
+            const od = daysOverdue(p);
+            if (od !== null && od > 0) overdue++;
+        });
+
+        const initials = String(g.vendorName || '?').replace(/[^A-Za-zĄĆĘŁŃÓŚŹŻąćęłńóśźż0-9 ]/g, '').trim()
+            .split(/\s+/).slice(0, 2).map(function (w) { return w.substring(0, 1); }).join('').toUpperCase() || '?';
+
+        const meta = [];
+        if (ready > 0) {
+            meta.push('<strong>' + ready + '</strong> ' + plural(ready, 'zamówienie', 'zamówienia', 'zamówień')
+                + ' do przyjęcia · <strong>' + openLines + '</strong> ' + plural(openLines, 'otwarta pozycja', 'otwarte pozycje', 'otwartych pozycji'));
+        }
+        if (overdue > 0) meta.push('<span class="text-danger font-weight-bold">' + overdue + ' po terminie</span>');
+        if (waiting > 0) meta.push(waiting + ' czeka na potwierdzenie dostawcy');
+
+        const drafts = draftsByVendor[g.vendorId] || 0;
+        const chips = drafts > 0
+            ? '<a class="dv-vchip js-goto-drafts" href="' + DRAFTS_HASH + '" title="Przejdź do roboczych przyjęć">'
+              + '<i class="bi bi-pencil-square"></i> ' + drafts + ' ' + plural(drafts, 'robocze', 'robocze', 'roboczych') + '</a>'
+            : '';
+
+        const action = (ready > 0 && g.vendorId)
+            ? '<a class="btn btn-primary btn-sm" href="' + escAttr(newDeliveryUrl(g.vendorId)) + '">'
+              + '<i class="bi bi-box-arrow-in-down"></i> Przyjmij dostawę</a>'
+            : '<span class="dv-vwait">' + (waiting > 0 ? 'czeka na potwierdzenie' : 'brak zamówień do przyjęcia') + '</span>';
+
+        return '<div class="dv-vhead" data-vg="' + g.index + '">'
+             + '<span class="dv-vmark" aria-hidden="true">' + esc(initials) + '</span>'
+             + '<div class="dv-vmain"><div class="dv-vname">' + esc(g.vendorName) + '</div>'
+             +   '<div class="dv-vmeta">' + meta.join(' · ') + '</div></div>'
+             + '<div class="dv-vchips">' + chips + '</div>'
+             + '<div class="dv-vgo">' + action + '</div>'
+             + '</div>';
     }
 
     // ---- komórki wiersza ------------------------------------------------
@@ -436,26 +532,21 @@ $(document).ready(function () {
     // Klasy kolorów są współdzielone z documents-view.js (actionMenuItemsHtml)
     // — ich definicja siedzi w receipts-ui.css, który obie strony wczytują,
     // więc odcień nie może się rozjechać między listami.
+    //
+    // Przyjmowanie towaru NIE jest już akcją wiersza zamówienia — robi się
+    // to z nagłówka dostawcy („Przyjmij dostawę", nagłówek grupy), więc dla
+    // zamówień gotowych do przyjęcia menu jest puste (zostaje sam link
+    // Edytuj). Menu zostaje tylko dla `sent` („Potwierdź odpowiedź").
     function queueActionMenuHtml(p, poId, poLabel) {
         if (p.canReceive === false) {
             return '<a class="dropdown-item rx-action-success"'
                 + ' href="' + escAttr(respondPoUrl(poId)) + '">'
                 + '<i class="bi bi-reply"></i> Potwierdź odpowiedź</a>';
         }
-        let label = 'Przyjmij towar';
-        let icon  = 'bi-box-arrow-in-down';
-        if (p.state === 'confirmed') {
-            label = 'Potwierdź odbiór';
-            icon  = 'bi-check2-square';
-        } else if (p.state === 'in_progress') {
-            label = 'Dokończ przyjęcie';
-        }
-        return '<a class="dropdown-item rx-action-primary"'
-             + ' href="' + escAttr(receiveUrl(poId)) + '">'
-             + '<i class="bi ' + icon + '"></i> ' + label + '</a>';
+        return '';
     }
 
-    function queueRowHtml(p, idx, group) {
+    function queueRowHtml(p, idx, group, vg) {
         const poId  = parseInt(p.poId, 10);
         // canReceive === false tylko dla `sent` (czeka na odpowiedź
         // dostawcy). Taki wiersz nie prowadzi do formularza — akcję niesie
@@ -549,10 +640,8 @@ $(document).ready(function () {
                          + '</div>';
 
         return '<div class="rx-qrow queue-row is-' + group + (canRx ? '' : ' queue-row-pending') + '"'
-             +   ' data-po-id="' + poId + '" data-idx="' + idx + '" data-group="' + group + '">'
+             +   ' data-po-id="' + poId + '" data-idx="' + idx + '" data-group="' + group + '" data-vg="' + vg + '">'
              + '<div class="rx-qcell rx-qcell--po">' + numberCell + '</div>'
-             + '<div class="rx-qcell rx-qcell--vendor"><span class="rx-cell-label">Dostawca</span>'
-             +   '<span class="rx-vendor">' + esc(p.vendorName || '—') + '</span></div>'
              + '<div class="rx-qcell rx-qcell--delivery"><span class="rx-cell-label">Dostawa</span>' + deliveryCellHtml(p) + '</div>'
              + '<div class="rx-qcell rx-qcell--progress"><span class="rx-cell-label">Postęp</span>' + progressCellHtml(p) + '</div>'
              + '<div class="rx-qcell rx-qcell--status">' + stateCell + '</div>'
@@ -621,16 +710,15 @@ $(document).ready(function () {
             $row.toggleClass('d-none', !hit);
             if (hit) {
                 shown++;
-                const g = $row.attr('data-group');
+                const g = $row.attr('data-vg');
                 perGroup[g] = (perGroup[g] || 0) + 1;
             }
         });
 
-        // Nagłówek grupy znika razem z ostatnim widocznym wierszem.
-        $queueBody.find('.rx-qgroup').each(function () {
-            const n = perGroup[$(this).attr('data-group')] || 0;
-            $(this).toggleClass('d-none', n === 0)
-                .find('.rx-qgroup-count').text(n);
+        // Nagłówek dostawcy znika razem z ostatnim widocznym wierszem.
+        $queueBody.find('.dv-vhead').each(function () {
+            const n = perGroup[$(this).attr('data-vg')] || 0;
+            $(this).toggleClass('d-none', n === 0);
         });
 
         if (shown === 0) {
@@ -656,7 +744,7 @@ $(document).ready(function () {
         }
         if (shown === total) {
             $el.html('<strong>' + total + '</strong> ' + plural(total, 'zamówienie', 'zamówienia', 'zamówień')
-                + ' w kolejce · kliknij wiersz, aby przyjąć towar');
+                + ' w kolejce · towar przyjmujesz przyciskiem „Przyjmij dostawę" przy dostawcy');
             return;
         }
         $el.html('<i class="bi bi-funnel-fill"></i> Pokazano <strong>' + shown + '</strong> z <strong>'
@@ -742,7 +830,10 @@ $(document).ready(function () {
         return {
             search:    String($historySearch.val() || '').trim(),
             date_from: String($dateFrom.val() || ''),
-            date_to:   String($dateTo.val() || '')
+            date_to:   String($dateTo.val() || ''),
+            // Dostawy (purchase__delivery) mają własną tabelę powyżej —
+            // tu zostają tylko przyjęcia sprzed dostaw.
+            legacy_only: 1
         };
     }
 
@@ -926,8 +1017,8 @@ $(document).ready(function () {
                 + '<i class="bi bi-arrow-clockwise"></i> Spróbuj ponownie</button>'
         ));
         $historyPager.empty();
-        $('#historyCountBadge').text(0);
-        $('#historyFilterSummary').text('');
+        historyTotal = 0;
+        updateHistoryBadge();
     }
 
     function renderHistoryPage(r) {
@@ -952,14 +1043,14 @@ $(document).ready(function () {
             } else {
                 $empty.removeClass('d-none').html(emptyStateHtml(
                     'bi-archive', '',
-                    'Brak zarejestrowanych przyjęć',
-                    'Przyjęcia pojawią się tutaj po zapisaniu pierwszej dostawy '
-                        + 'z zakładki „Do przyjęcia".'
+                    'Brak starszych przyjęć',
+                    'Przyjęcia zapisane przed wprowadzeniem dostaw wg faktur pojawiają się tutaj.'
                 ));
             }
             $historyPager.empty();
-            $('#historyCountBadge').text(0);
-            $('#historyFilterSummary').text('');
+            // Bez filtrów i bez starszych przyjęć panel byłby pustym szumem.
+            $('#legacyPanel').toggleClass('d-none', !historyFiltersActive());
+            updateHistoryBadge();
             syncHistoryFilterUi(String($dateFrom.val() || ''), String($dateTo.val() || ''));
             maybeHighlightSavedReceipt();
             return;
@@ -970,27 +1061,241 @@ $(document).ready(function () {
         $historyBody.html(html);
         $('#receiptsTableWrap').removeClass('d-none');
         $('#receiptsEmptyAlert').addClass('d-none');
+        $('#legacyPanel').removeClass('d-none');
 
-        $('#historyCountBadge').text(historyTotal);
         renderHistoryPagination(historyTotal);
-        updateHistorySummary(historyTotal);
+        updateHistoryBadge();
         syncHistoryFilterUi(String($dateFrom.val() || ''), String($dateTo.val() || ''));
 
         maybeHighlightSavedReceipt();
     }
 
-    function updateHistorySummary(total) {
+    // Licznik zakładki i linijka podsumowania łączą oba źródła:
+    // dostawy wg faktur + starsze przyjęcia wg zamówień.
+    function updateHistoryBadge() {
+        const nd = deliveriesFiltered.length;
+        $('#historyCountBadge').text(nd + historyTotal);
+        $('#legacySecInfo').text(historyTotal > 0 ? '· ' + historyTotal : '');
+
         const $el = $('#historyFilterSummary');
-        if (historyTotal === 0) { $el.text(''); return; }
-        if (!historyFiltersActive()) {
-            $el.html('<strong>' + historyTotal + '</strong> '
-                + plural(historyTotal, 'przyjęcie', 'przyjęcia', 'przyjęć')
-                + ' · od najnowszych');
+        if (nd + historyTotal === 0) { $el.text(''); return; }
+        const parts = [];
+        parts.push('<strong>' + nd + '</strong> ' + plural(nd, 'dostawa', 'dostawy', 'dostaw'));
+        if (historyTotal > 0) {
+            parts.push('<strong>' + historyTotal + '</strong> ' + plural(historyTotal, 'starsze przyjęcie', 'starsze przyjęcia', 'starszych przyjęć'));
+        }
+        $el.html((historyFiltersActive() ? '<i class="bi bi-funnel-fill"></i> Znaleziono ' : '') + parts.join(' · ') + ' · od najnowszych');
+    }
+
+    // ---- dostawy zatwierdzone (delivery-list.php?state=posted) ----------
+
+    let deliveriesAll       = [];
+    let deliveriesFiltered  = [];
+    let deliveriesShown     = DELIVERIES_PAGE;
+    let deliveriesLoaded    = false;
+    let deliveriesLoading   = false;
+
+    function deliveryDay(d) {
+        return String(d.received_at || d.posted_at || '').substring(0, 10);
+    }
+
+    function filterDeliveries() {
+        const q = String($historySearch.val() || '').trim().toLowerCase();
+        const from = String($dateFrom.val() || '');
+        const to = String($dateTo.val() || '');
+        deliveriesFiltered = deliveriesAll.filter(function (d) {
+            const day = deliveryDay(d);
+            if (from !== '' && day < from) return false;
+            if (to !== '' && day > to) return false;
+            if (q !== '') {
+                const hay = [d.grn_number, d.vendor_document_number, d.vendor_name, poList(d.po_numbers).join(' '), d.created_by_name]
+                    .map(function (x) { return String(x == null ? '' : x); }).join(' ').toLowerCase();
+                if (hay.indexOf(q) === -1) return false;
+            }
+            return true;
+        });
+        deliveriesFiltered.sort(function (a, b) {
+            const ka = String(a.received_at || a.posted_at || '') + String(1e9 + (parseInt(a.id, 10) || 0));
+            const kb = String(b.received_at || b.posted_at || '') + String(1e9 + (parseInt(b.id, 10) || 0));
+            return ka < kb ? 1 : (ka > kb ? -1 : 0);
+        });
+    }
+
+    function deliveryRowHtml(d) {
+        const full = d.received_at || d.posted_at || '';
+        const rel = hxRelativeDay(full);
+        const time = hxFmtTime(full);
+        const sub = (rel + (rel && time ? ', ' : '') + time).trim();
+        const person = d.created_by_name || '';
+        const cancelled = d.state === 'cancelled';
+        return '<tr class="receipt-row dv-row-click' + (cancelled ? ' dv-row-cancelled' : '') + '" data-delivery-id="' + parseInt(d.id, 10) + '">'
+             + '<td><div class="dv-docno">' + (d.grn_number ? esc(d.grn_number) : '<span class="dv-docno--none">bez numeru</span>') + '</div>'
+             +   '<div class="rx-sub">ID ' + parseInt(d.id, 10) + (cancelled ? ' · <span class="text-danger font-weight-bold">anulowane</span>' : '') + '</div></td>'
+             + '<td>' + docCellHtml(d) + '</td>'
+             + '<td class="text-nowrap"><div class="rx-date-main">' + esc(fmtDate(full)) + '</div>'
+             +   '<div class="rx-sub">' + (sub !== '' ? esc(sub) : '&nbsp;') + '</div></td>'
+             + '<td class="rx-vendor">' + esc(d.vendor_name || '—') + '</td>'
+             + '<td class="d-none d-md-table-cell">' + poChipsHtml(d.po_numbers) + '</td>'
+             + '<td class="rx-num"><span class="rx-pill">' + (parseInt(d.line_count, 10) || 0) + '</span></td>'
+             + '<td class="d-none d-lg-table-cell"><span class="rx-person"><span class="rx-avatar" aria-hidden="true">'
+             +   esc(hxInitials(person)) + '</span>' + esc(person || '—') + '</span></td>'
+             + '<td class="text-right text-nowrap"><a class="btn btn-sm rx-btn-quiet" href="' + escAttr(deliveryUrl(d.id)) + '">'
+             +   'Otwórz <i class="bi bi-chevron-right rx-go"></i></a></td>'
+             + '</tr>';
+    }
+
+    function renderDeliveries() {
+        filterDeliveries();
+        const $status = $('#deliveriesStatus');
+        const $wrap = $('#deliveriesTableWrap');
+        $('#deliveriesSecInfo').text(deliveriesFiltered.length > 0 ? '· ' + deliveriesFiltered.length : '');
+
+        if (deliveriesFiltered.length === 0) {
+            $wrap.addClass('d-none');
+            $status.removeClass('d-none').html(historyFiltersActive()
+                ? emptyStateHtml('bi-funnel', '', 'Brak dostaw dla wybranych filtrów',
+                    'Zmień wyszukiwaną frazę lub zakres dat.',
+                    '<button type="button" class="btn btn-sm rx-btn-quiet js-clear-history-filters"><i class="bi bi-x-circle"></i> Wyczyść filtry</button>')
+                : emptyStateHtml('bi-truck', '', 'Brak zatwierdzonych dostaw',
+                    'Dostawy pojawią się tu po zatwierdzeniu pierwszego przyjęcia wg faktury lub WZ.',
+                    '<a class="btn btn-sm btn-primary" href="' + escAttr(newDeliveryUrl(0)) + '"><i class="bi bi-plus-lg"></i> Nowe przyjęcie</a>'));
+            updateHistoryBadge();
             return;
         }
-        $el.html('<i class="bi bi-funnel-fill"></i> Znaleziono <strong>' + total + '</strong> z <strong>'
-            + historyTotal + '</strong> ' + plural(historyTotal, 'przyjęcia', 'przyjęć', 'przyjęć'));
+        $status.addClass('d-none').empty();
+        $wrap.removeClass('d-none');
+        let html = '';
+        deliveriesFiltered.slice(0, deliveriesShown).forEach(function (d) { html += deliveryRowHtml(d); });
+        $('#deliveriesBody').html(html);
+        $('#deliveriesMore').toggleClass('d-none', deliveriesFiltered.length <= deliveriesShown);
+        updateHistoryBadge();
     }
+
+    function loadDeliveries() {
+        if (deliveriesLoading) return Promise.resolve();
+        deliveriesLoading = true;
+        $('#deliveriesStatus').removeClass('d-none').html(
+            '<div class="text-center text-muted py-4"><span class="spinner-border spinner-border-sm align-middle"></span>'
+            + '<span class="ml-2 align-middle">Ładowanie dostaw…</span></div>');
+        return fetchJson('delivery-list.php', { state: 'posted' }).then(function (r) {
+            deliveriesAll = r.deliveries || [];
+            deliveriesLoaded = true;
+            deliveriesShown = DELIVERIES_PAGE;
+            renderDeliveries();
+        }).catch(function (err) {
+            deliveriesAll = [];
+            $('#deliveriesTableWrap').addClass('d-none');
+            $('#deliveriesStatus').removeClass('d-none').html(emptyStateHtml(
+                'bi-exclamation-octagon', 'danger', 'Nie udało się wczytać dostaw', err.message,
+                '<button type="button" class="btn btn-sm btn-primary js-deliveries-retry"><i class="bi bi-arrow-clockwise"></i> Spróbuj ponownie</button>'));
+        }).then(function () { deliveriesLoading = false; });
+    }
+
+    $(document).on('click', '.js-deliveries-retry', loadDeliveries);
+    $('#deliveriesMoreBtn').on('click', function () {
+        deliveriesShown += DELIVERIES_PAGE;
+        renderDeliveries();
+    });
+    $(document).on('click', '#deliveriesTable tbody tr.dv-row-click', function (e) {
+        if ($(e.target).closest('a, button').length) return;
+        followRowLink(e, deliveryUrl(parseInt($(this).attr('data-delivery-id'), 10)));
+    });
+
+    // Filtry historii działają na obu tabelach.
+    function reloadHistory() {
+        historyPage = 1;
+        deliveriesShown = DELIVERIES_PAGE;
+        if (deliveriesLoaded) renderDeliveries();
+        loadHistoryPage(1);
+    }
+
+    // ---- szkice (delivery-list.php?state=draft) --------------------------
+
+    let draftsData = [];
+
+    function renderDrafts() {
+        const $status = $('#draftsStatus');
+        const $wrap = $('#draftsTableWrap');
+        $('#draftsCountBadge').text(draftsData.length);
+        draftsByVendor = {};
+        draftsData.forEach(function (d) {
+            const k = parseInt(d.vendor_id, 10);
+            draftsByVendor[k] = (draftsByVendor[k] || 0) + 1;
+        });
+        if (queueData.length) renderQueue();
+
+        if (draftsData.length === 0) {
+            $('#draftsBody').empty();
+            $wrap.addClass('d-none');
+            $('#draftsSummary').text('Nie masz rozpoczętych przyjęć.');
+            $status.removeClass('d-none').html(emptyStateHtml(
+                'bi-pencil-square', '', 'Brak roboczych przyjęć',
+                'Szkic zapisuje się sam, gdy zaczniesz wpisywać dostawę — możesz do niego wrócić z tego miejsca.',
+                '<a class="btn btn-sm btn-primary" href="' + escAttr(newDeliveryUrl(0)) + '"><i class="bi bi-plus-lg"></i> Nowe przyjęcie</a>'));
+            return;
+        }
+        $status.addClass('d-none').empty();
+        $wrap.removeClass('d-none');
+        $('#draftsSummary').html('<strong>' + draftsData.length + '</strong> '
+            + plural(draftsData.length, 'szkic', 'szkice', 'szkiców') + ' · najnowsze na górze');
+
+        let html = '';
+        draftsData.forEach(function (d) {
+            const person = d.created_by_name || '';
+            const created = d.created_at || '';
+            html += '<tr data-delivery-id="' + parseInt(d.id, 10) + '">'
+                  + '<td>' + docCellHtml(d) + '<div class="rx-sub">ID ' + parseInt(d.id, 10)
+                  +   (created ? ' · założono ' + esc(fmtDate(created)) + (hxFmtTime(created) ? ' ' + esc(hxFmtTime(created)) : '') : '') + '</div></td>'
+                  + '<td class="rx-vendor">' + esc(d.vendor_name || '—') + '</td>'
+                  + '<td>' + poChipsHtml(d.po_numbers) + '</td>'
+                  + '<td class="rx-num"><span class="rx-pill' + ((parseInt(d.line_count, 10) || 0) === 0 ? ' rx-pill--empty' : '') + '">'
+                  +   (parseInt(d.line_count, 10) || 0) + '</span></td>'
+                  + '<td class="d-none d-lg-table-cell"><span class="rx-person"><span class="rx-avatar" aria-hidden="true">'
+                  +   esc(hxInitials(person)) + '</span>' + esc(person || '—') + '</span></td>'
+                  + '<td class="text-right text-nowrap">'
+                  +   '<div class="rx-action-cell">'
+                  +     '<button type="button" class="btn btn-sm btn-outline-danger rx-close-po-btn js-draft-discard" '
+                  +       'data-delivery-id="' + parseInt(d.id, 10) + '" title="Usuń szkic" aria-label="Usuń szkic"><i class="bi bi-trash"></i></button>'
+                  +     '<a class="btn btn-sm btn-primary" href="' + escAttr(deliveryUrl(d.id)) + '"><i class="bi bi-pencil-square"></i> Kontynuuj</a>'
+                  +   '</div></td>'
+                  + '</tr>';
+        });
+        $('#draftsBody').html(html);
+    }
+
+    function loadDrafts() {
+        return fetchJson('delivery-list.php', { state: 'draft' }).then(function (r) {
+            draftsData = r.deliveries || [];
+            renderDrafts();
+        }).catch(function (err) {
+            $('#draftsCountBadge').text('0');
+            $('#draftsSummary').text('Szkice niedostępne.');
+            $('#draftsTableWrap').addClass('d-none');
+            $('#draftsStatus').removeClass('d-none').html(emptyStateHtml(
+                'bi-exclamation-octagon', 'danger', 'Nie udało się wczytać szkiców', err.message,
+                '<button type="button" class="btn btn-sm btn-primary js-drafts-retry"><i class="bi bi-arrow-clockwise"></i> Spróbuj ponownie</button>'));
+        });
+    }
+
+    $(document).on('click', '.js-drafts-retry', loadDrafts);
+    $(document).on('click', '.js-draft-discard', function () {
+        const id = parseInt($(this).attr('data-delivery-id'), 10);
+        if (!id) return;
+        if (!window.confirm('Usunąć ten szkic przyjęcia razem z wpisanymi pozycjami? Nic nie zostało zaksięgowane.')) return;
+        const $b = $(this).prop('disabled', true);
+        fetchJson('delivery-discard.php', { delivery_id: id }).then(function () {
+            showAlert('<i class="bi bi-check-circle-fill"></i> Szkic został usunięty.', 'success');
+            return loadDrafts();
+        }).catch(function (err) {
+            $b.prop('disabled', false);
+            showAlert(esc(err.message), 'danger');
+        });
+    });
+
+    $(document).on('click', '.js-goto-drafts', function (e) {
+        e.preventDefault();
+        $('#draftsTabLink').tab('show');
+    });
 
     // Aktywny preset = „od" ustawione dokładnie na dziś minus N dni,
     // „do" puste.
@@ -1075,12 +1380,11 @@ $(document).ready(function () {
         $historySearch.val('');
         $dateFrom.val('');
         $dateTo.val('');
-        historyPage = 1;
-        loadHistoryPage(1);
+        reloadHistory();
     }
 
-    $historySearch.on('input', function () { historyPage = 1; loadHistoryPage(1); });
-    $dateFrom.add($dateTo).on('change', function () { historyPage = 1; loadHistoryPage(1); });
+    $historySearch.on('input', reloadHistory);
+    $dateFrom.add($dateTo).on('change', reloadHistory);
     $(document).on('click', '.js-clear-history-filters', clearHistoryFilters);
     $(document).on('click', '.js-history-retry', function () { loadHistoryPage(historyPage); });
 
@@ -1092,8 +1396,7 @@ $(document).ready(function () {
             $dateFrom.val(presetFrom(days === 0 ? 1 : days));
         }
         $dateTo.val('');
-        historyPage = 1;
-        loadHistoryPage(1);
+        reloadHistory();
     });
 
     // Klik w wiersz historii (poza linkami) → strona szczegółów przyjęcia.
@@ -1109,7 +1412,9 @@ $(document).ready(function () {
     // =====================================================================
 
     $('#receiptsTabs a[data-toggle="tab"]').on('shown.bs.tab', function (e) {
-        const hash = e.target.id === 'historyTabLink' ? HISTORY_HASH : '';
+        let hash = '';
+        if (e.target.id === 'historyTabLink') hash = HISTORY_HASH;
+        else if (e.target.id === 'draftsTabLink') hash = DRAFTS_HASH;
         if (window.history && window.history.replaceState) {
             window.history.replaceState(null, '', window.location.pathname + window.location.search + hash);
         }
@@ -1118,8 +1423,9 @@ $(document).ready(function () {
         // receipts-view.php — tbody ma tylko placeholder „Ładowanie…").
         // Dzięki temu wejście na /purchase/receipts nie ciągnie 9 MB
         // od razu, a tylko wtedy, gdy operator faktycznie zerka w historię.
-        if (e.target.id === 'historyTabLink' && !historyLoaded && !historyLoading) {
-            loadHistoryPage(historyPage);
+        if (e.target.id === 'historyTabLink') {
+            if (!deliveriesLoaded && !deliveriesLoading) loadDeliveries();
+            if (!historyLoaded && !historyLoading) loadHistoryPage(historyPage);
         }
     });
 
@@ -1146,8 +1452,14 @@ $(document).ready(function () {
 
     if (window.location.hash === HISTORY_HASH) {
         $('#historyTabLink').tab('show');
+    } else if (window.location.hash === DRAFTS_HASH) {
+        $('#draftsTabLink').tab('show');
     }
 
+    // Szkice ładują się od razu (mały zestaw): licznik zakładki i chipy
+    // „N robocze" w nagłówkach dostawców. Kolejka renderuje się ponownie
+    // po ich dojściu (renderDrafts).
+    loadDrafts();
     loadQueue();
     // Historia celowo NIE ładuje się tu — patrz hook `shown.bs.tab`
     // powyżej. Jeśli użytkownik wskoczył na stronę z #historia, hook

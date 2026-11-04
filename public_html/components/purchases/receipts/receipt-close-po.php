@@ -90,8 +90,7 @@ if (!in_array($rawTargetState, ['received', 'cancelled'], true)) {
 }
 $targetState = $rawTargetState;
 
-// user_id z sesji — ten sam wzorzec co receipt-accept.php i
-// receipt-create.php. Brak zalogowanego użytkownika → JSON, nie wyjątek.
+// user_id z sesji — ten sam wzorzec co pozostałe endpointy przyjęć. Brak zalogowanego użytkownika → JSON, nie wyjątek.
 $userId = (int)($_SESSION['user_id'] ?? 0);
 if ($userId <= 0) {
     echo json_encode(['success' => false, 'error' => 'Brak zalogowanego użytkownika.']);

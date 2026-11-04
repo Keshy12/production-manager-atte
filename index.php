@@ -255,16 +255,36 @@ switch ($request) {
         require $componentsDir . '/purchases/receipts/receipts-view.php';
         break;
     case 'purchase/receipts/receive':
-        // Standalone "Przyjęcie towaru" — wyodrębnione z receipts-view
-        // (osobna trasa zamiast panelu przełączanego d-none). Spina się
-        // z kolejką przez `?po_id=N` i wraca do /purchase/receipts po
-        // zapisie (z query stringiem niosącym info o sukcesie —
-        // receipts-view.js czyta je i wyświetla alert + podświetla nowy
-        // wiersz w historii). Konwencja mirroruje
-        // admin/purchase/documents/edit (id+type w URL).
+        // Dawna strona przyjęcia per-PO została wycofana (przyjęcie wg
+        // faktury / WZ: /purchase/receipts/new). Stare linki
+        // `?po_id=N` przekierowujemy na nową stronę z dostawcą tego
+        // zamówienia wstępnie wybranym; brak/nieprawidłowe po_id →
+        // sama nowa strona. requireAdmin() przed jakimkolwiek outputem.
         requireAdmin();
-        includeWithVariables($headerDir, array('title' => 'Przyjęcie towaru'));
-        require $componentsDir . '/purchases/receipts/receive-page.php';
+        $legacyPoId = (int)($_GET['po_id'] ?? 0);
+        $legacyVendorId = 0;
+        if ($legacyPoId > 0) {
+            try {
+                $legacyStmt = \Atte\DB\MsaDB::getInstance()->db->prepare(
+                    'SELECT vendor_id FROM purchase__order WHERE id = :id'
+                );
+                $legacyStmt->execute([':id' => $legacyPoId]);
+                $legacyVendorId = (int)$legacyStmt->fetchColumn();
+            } catch (\Throwable $e) {
+                $legacyVendorId = 0;
+            }
+        }
+        header('Location: http://' . BASEURL . '/purchase/receipts/new'
+            . ($legacyVendorId > 0 ? '?vendor_id=' . $legacyVendorId : ''));
+        exit;
+        break;
+    case 'purchase/receipts/new':
+        // Przyjęcie dostawy wg faktury / WZ (jeden dokument, wiele PO).
+        // ?delivery_id=N wznawia szkic albo pokazuje zaksięgowane
+        // przyjęcie (tylko odczyt); ?vendor_id=N wstępnie wybiera dostawcę.
+        requireAdmin();
+        includeWithVariables($headerDir, array('title' => 'Nowe przyjęcie dostawy'));
+        require $componentsDir . '/purchases/receipts/delivery-page.php';
         break;
     case 'purchase/receipts/view':
         // Szczegóły przyjęcia (GRN) — osobna strona zamiast dawnego

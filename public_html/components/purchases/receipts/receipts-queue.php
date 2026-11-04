@@ -58,6 +58,7 @@ try {
             po.vendor_po_number         AS vendorPoNumber,
             po.state,
             po.expected_delivery_date   AS expectedDeliveryDate,
+            po.vendor_id                AS vendorId,
             v.name                      AS vendorName,
             COUNT(poi.id)                                                            AS lineCount,
             SUM(CASE WHEN poi.quantity_received + 1e-6 >= poi.quantity THEN 1 ELSE 0 END) AS linesFullyReceived,
@@ -86,6 +87,7 @@ try {
             'poId'                 => (int)$r['poId'],
             'poNumber'             => $r['poNumber'],
             'vendorPoNumber'       => $r['vendorPoNumber'],
+            'vendorId'             => (int)$r['vendorId'],
             'vendorName'           => $r['vendorName'],
             'state'                => $state,
             // Akcja „Przyjmij towar" dostępna dla confirmed, partially_received

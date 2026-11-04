@@ -2,23 +2,17 @@
 /**
  * Współdzielony modal „Zamknij zamówienie" + opcjonalny „Anuluj zamówienie".
  *
- * Renderowany RAZ na stronie, na której może zostać otwarty. Dwa miejsca
- * wpinania w tej roli:
- *
- *   1. /purchase/receipts/receive — samodzielna strona formularza
- *      przyjęcia. Operator klika „Zamknij zamówienie" w pasku akcji
- *      (#receiveClosePoBtn), otwiera się modal z wyborem stanu
- *      wynikowego (received / cancelled).
- *
- *   2. /purchase/receipts — kolejka „Do przyjęcia". Operator klika
- *      mały przycisk-kosz w kolumnie Akcja. Dwie odmiany w zależności
- *      od stanu PO:
- *        - `sent` → otwiera prosty modal #receiveCancelPoModal
- *          (anulowanie przez documents/document-cancel-ajax.php),
- *        - `confirmed`/`in_progress`/`partially_received` → otwiera
- *          ten sam modal #receiveClosePoModal co formularz przyjęcia,
- *          a JS wywołuje receipts/receipt-close-po.php z wybranym
- *          stanem (received lub cancelled).
+ * Renderowany RAZ na stronie, na której może zostać otwarty. Jedyne
+ * miejsce wpinania: /purchase/receipts — kolejka „Do przyjęcia".
+ * Operator klika mały przycisk-kosz w kolumnie Akcja. Dwie odmiany w
+ * zależności od stanu PO:
+ *   - `sent` → otwiera prosty modal #receiveCancelPoModal
+ *     (anulowanie przez documents/document-cancel-ajax.php),
+ *   - `confirmed`/`in_progress`/`partially_received` → otwiera
+ *     modal #receiveClosePoModal, a JS wywołuje
+ *     receipts/receipt-close-po.php z wybranym stanem
+ *     (received lub cancelled).
+ * (Dawna strona /purchase/receipts/receive została wycofana.)
  *
  * UWAGA o cyklu życia: ten partial emituje DWA identyfikatory modali
  * (gdy dołączający ustawił $withCancel). Na stronie MOŻE istnieć co
@@ -31,11 +25,7 @@
  *   POST .../purchases/receipts/receipt-close-po.php        (close-with-choice)
  *   POST .../purchases/documents/document-cancel-ajax.php    (cancel-only)
  *
- * Style: `.receipt-close-*` — zdefiniowane w receipts-ui.css, bo ten
- * stylesheet jest ładowany zarówno na /purchase/receipts, jak i na
- * /purchase/receipts/receive. Snippet .receipt-actionbar.receipt-
- * step-locked #receiveClosePoBtn (re-enable przycisku w pasku akcji
- * formularza) zostaje w receipts.css, bo dotyczy tylko formularza.
+ * Style: `.receipt-close-*` — zdefiniowane w receipts-ui.css.
  *
  * Parametry:
  *   $withCancel  bool  (opcjonalny, domyślnie false) — gdy true,

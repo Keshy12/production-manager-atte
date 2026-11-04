@@ -15,7 +15,7 @@
  * sumy poniżej to wyłącznie arytmetyka do wyświetlenia.
  *
  * Nieprawidłowe / brakujące ?id albo nieistniejące przyjęcie → stan
- * błędu z linkiem powrotnym (bez przekierowania, jak receive-page.php).
+ * błędu z linkiem powrotnym (bez przekierowania).
  */
 
 use Atte\DB\MsaDB;
@@ -63,7 +63,7 @@ if ($id <= 0) {
         } else {
             // Zamówienie: bieżący stan + numer u dostawcy.
             $poStmt = $MsaDB->db->prepare(
-                "SELECT state, vendor_po_number AS vendorPoNumber,
+                "SELECT state, vendor_id AS vendorId, vendor_po_number AS vendorPoNumber,
                         expected_delivery_date AS expectedDeliveryDate
                    FROM `purchase__order` WHERE id = ?"
             );
@@ -181,8 +181,8 @@ foreach ($items as $it) {
 $itemCount = count($rows);
 
 // Numer dokumentu dostawcy siedzi w komentarzu jako pierwsza linijka
-// „Nr dok. dostawcy: …" (konwencja receipt-create.php / receipt-accept.php,
-// rozbijana tak samo w receipt-po-get.php).
+// „Nr dok. dostawcy: …" (dawna konwencja receipt-create.php / receipt-accept.php,
+// usuniętych; zostaje w historycznych wierszach).
 $vendorDocNumber = null;
 $commentBody     = $receipt ? $receipt->comment : null;
 $prefix          = 'Nr dok. dostawcy: ';
@@ -419,13 +419,13 @@ $canResume = $poState !== null && in_array($poState, ['confirmed', 'in_progress'
                     <div class="rx-empty-icon"><i class="bi bi-inbox"></i></div>
                     <div class="rx-empty-title">Ten dokument nie ma jeszcze pozycji</div>
                     <div class="rx-empty-text">
-                        Zapisano tylko nagłówek przyjęcia (krok „Akceptuję" w formularzu).
-                        Pozycje pojawią się po zapisaniu ilości.
+                        Zapisano tylko nagłówek przyjęcia (dawny krok „Akceptuję").
+                        Pozycje pojawią się po przyjęciu dostawy.
                     </div>
                     <?php if ($canResume): ?>
                         <a class="btn btn-sm btn-primary rx-no-print"
-                           href="<?= rx_e($baseUrl . '/purchase/receipts/receive?po_id=' . (int)$receipt->poId) ?>">
-                            <i class="bi bi-box-arrow-in-down"></i> Dokończ przyjęcie
+                           href="<?= rx_e($baseUrl . '/purchase/receipts/new?vendor_id=' . (int)($po['vendorId'] ?? 0)) ?>">
+                            <i class="bi bi-box-arrow-in-down"></i> Przyjmij dostawę
                         </a>
                     <?php endif; ?>
                 </div>

@@ -2,10 +2,18 @@
 /**
  * Przyjęcia towaru — /purchase/receipts.
  *
- * Lista w dwóch zakładkach:
- *   „Do przyjęcia"     — kolejka zamówień czekających na towar
- *                        (dane z receipts-queue.php, render w JS),
- *   „Historia przyjęć" — zapisane dokumenty GRN. Wiersze NIE są już
+ * Lista w trzech zakładkach:
+ *   „Do przyjęcia"     — kolejka zamówień czekających na towar,
+ *                        pogrupowana wg DOSTAWCY; jedna akcja na
+ *                        dostawcę: „Przyjmij dostawę"
+ *                        (/purchase/receipts/new?vendor_id=N —
+ *                        delivery-page.php). Dane z receipts-queue.php,
+ *   „Robocze"          — szkice przyjęć (delivery-list.php?state=draft),
+ *                        „Kontynuuj" wznawia je na stronie przyjęcia,
+ *   „Historia przyjęć" — zatwierdzone dostawy (delivery-list.php?
+ *                        state=posted) oraz, niżej, starsze przyjęcia
+ *                        „per zamówienie" bez dostawy (legacy).
+ *                        Wiersze legacy NIE są już
  *                        renderowane po stronie PHP — receipts-history.php
  *                        (AJAX) zwraca jedną stronę (25 wierszy), JS
  *                        dokłada kolejne po kliknięciu w pager. Przed
@@ -16,8 +24,8 @@
  *                        aktywacji zakładki.
  *
  * Nawigacja:
- *   - przyjęcie towaru: /purchase/receipts/receive?po_id=N
- *     (receive-page.php + receive-page.js),
+ *   - przyjęcie dostawy: /purchase/receipts/new[?vendor_id=N|?delivery_id=N]
+ *     (delivery-page.php + delivery-page.js),
  *   - szczegóły przyjęcia: /purchase/receipts/view?id=N
  *     (receipt-view.php — osobna strona, zastąpiła dawny modal),
  *   - potwierdzenie odpowiedzi dostawcy (PO w stanie `sent`):
@@ -64,8 +72,9 @@ include __DIR__ . '/close-po-modal.php';
 
 <link rel="stylesheet" href="<?= asset('public_html/components/purchases/cart/purchases.css') ?>">
 <link rel="stylesheet" href="<?= asset('public_html/components/purchases/receipts/receipts-ui.css') ?>">
+<link rel="stylesheet" href="<?= asset('public_html/components/purchases/receipts/delivery-ui.css') ?>">
 
-<div class="rx-page w-75" id="receiptsListView">
+<div class="rx-page w-75" id="receiptsListView" data-new-url="<?= htmlspecialchars('http://' . BASEURL . '/purchase/receipts/new', ENT_QUOTES) ?>">
 
     <!-- ===== Nagłówek strony + liczniki kolejki ===== -->
     <header class="rx-head">
@@ -73,9 +82,15 @@ include __DIR__ . '/close-po-modal.php';
             <div class="rx-eyebrow"><i class="bi bi-box-arrow-in-down"></i> Zamówienia komponentów</div>
             <h1 class="rx-title">Przyjęcia towaru</h1>
             <p class="rx-lead">
-                Zamówienia czekające na dostawę i historia przyjętych dokumentów.
-                Numer GRN nadawany jest automatycznie przy zapisie.
+                Dostawy przyjmujesz wg faktury lub WZ dostawcy — jedna dostawa może
+                obejmować kilka zamówień. Numer GRN nadawany jest automatycznie przy zatwierdzeniu.
             </p>
+            <div class="dv-actions-top">
+                <a class="btn btn-primary dv-new-btn" id="newDeliveryBtn"
+                   href="<?= htmlspecialchars('http://' . BASEURL . '/purchase/receipts/new', ENT_QUOTES) ?>">
+                    <i class="bi bi-plus-lg"></i> Nowe przyjęcie
+                </a>
+            </div>
         </div>
 
         <!-- Liczniki są jednocześnie skrótami do filtrów kolejki.
@@ -108,6 +123,13 @@ include __DIR__ . '/close-po-modal.php';
                href="#queuePane" role="tab" aria-controls="queuePane" aria-selected="true">
                 <i class="bi bi-inbox"></i> Do przyjęcia
                 <span class="rx-count" id="queueCountBadge">…</span>
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" id="draftsTabLink" data-toggle="tab"
+               href="#draftsPane" role="tab" aria-controls="draftsPane" aria-selected="false">
+                <i class="bi bi-pencil-square"></i> Robocze
+                <span class="rx-count" id="draftsCountBadge">…</span>
             </a>
         </li>
         <li class="nav-item">
@@ -192,21 +214,50 @@ include __DIR__ . '/close-po-modal.php';
             <div class="rx-panel">
                 <div id="queueStatus" aria-live="polite"></div>
 
-                <div id="queueTableWrap" class="d-none">
+                <div id="queueTableWrap" class="d-none dv-byvendor">
                     <div class="rx-qhead" aria-hidden="true">
                         <div>Zamówienie</div>
-                        <div>Dostawca</div>
                         <div>Dostawa</div>
                         <div>Postęp</div>
                         <div>Status</div>
                         <div class="text-right">Akcja</div>
                     </div>
-                    <div id="queueBody" class="rx-qlist"></div>
+                    <div id="queueBody" class="rx-qlist dv-qlist"></div>
                 </div>
             </div>
         </div>
 
-        <!-- ================= ZAKŁADKA 2: historia ================= -->
+        <!-- ================= ZAKŁADKA 2: robocze ================= -->
+        <div class="tab-pane fade" id="draftsPane" role="tabpanel" aria-labelledby="draftsTabLink">
+
+            <div class="rx-filterbar">
+                <span id="draftsSummary">Wczytywanie szkiców…</span>
+                <a class="btn btn-sm btn-primary dv-new-btn" href="<?= htmlspecialchars('http://' . BASEURL . '/purchase/receipts/new', ENT_QUOTES) ?>">
+                    <i class="bi bi-plus-lg"></i> Nowe przyjęcie
+                </a>
+            </div>
+
+            <div class="rx-panel">
+                <div id="draftsStatus" aria-live="polite"></div>
+                <div class="table-responsive d-none" id="draftsTableWrap">
+                    <table class="table rx-table mb-0" id="draftsTable">
+                        <thead>
+                        <tr>
+                            <th scope="col">Dokument dostawcy</th>
+                            <th scope="col">Dostawca</th>
+                            <th scope="col">Zamówienia</th>
+                            <th scope="col" class="text-right">Pozycje</th>
+                            <th scope="col" class="d-none d-lg-table-cell">Założył</th>
+                            <th scope="col" class="text-right"><span class="sr-only">Akcje</span></th>
+                        </tr>
+                        </thead>
+                        <tbody id="draftsBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= ZAKŁADKA 3: historia ================= -->
         <div class="tab-pane fade" id="historyPane" role="tabpanel" aria-labelledby="historyTabLink">
 
             <div class="rx-toolbar" role="search">
@@ -239,14 +290,42 @@ include __DIR__ . '/close-po-modal.php';
                 </button>
             </div>
 
-            <div class="rx-panel">
+            <!-- Zatwierdzone dostawy (jeden wiersz = jedna faktura / WZ). -->
+            <div class="rx-panel" id="deliveriesPanel">
+                <h2 class="dv-table-sec">Dostawy wg faktur / WZ <small id="deliveriesSecInfo"></small></h2>
+                <div id="deliveriesStatus" aria-live="polite"></div>
+                <div class="table-responsive d-none" id="deliveriesTableWrap">
+                    <table class="table rx-table mb-0" id="deliveriesTable">
+                        <thead>
+                        <tr>
+                            <th scope="col">GRN</th>
+                            <th scope="col">Dokument dostawcy</th>
+                            <th scope="col">Data przyjęcia</th>
+                            <th scope="col">Dostawca</th>
+                            <th scope="col" class="d-none d-md-table-cell">Zamówienia</th>
+                            <th scope="col" class="text-right">Pozycje</th>
+                            <th scope="col" class="d-none d-lg-table-cell">Przyjął</th>
+                            <th scope="col" class="text-right"><span class="sr-only">Akcje</span></th>
+                        </tr>
+                        </thead>
+                        <tbody id="deliveriesBody"></tbody>
+                    </table>
+                    <div class="dv-more d-none" id="deliveriesMore">
+                        <button type="button" class="btn btn-sm rx-btn-quiet" id="deliveriesMoreBtn">Pokaż więcej</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Starsze przyjęcia „per zamówienie" (bez dostawy) — dotychczasowa
+                 tabela z paginacją po stronie serwera. -->
+            <div class="rx-panel dv-legacy" id="legacyPanel">
+                <h2 class="dv-table-sec">Starsze przyjęcia — wg zamówień <small id="legacySecInfo"></small></h2>
                 <div id="receiptsEmptyAlert" class="d-none">
                     <div class="rx-empty">
                         <div class="rx-empty-icon"><i class="bi bi-archive"></i></div>
-                        <div class="rx-empty-title">Brak zarejestrowanych przyjęć</div>
+                        <div class="rx-empty-title">Brak starszych przyjęć</div>
                         <div class="rx-empty-text">
-                            Przyjęcia pojawią się tutaj po zapisaniu pierwszej dostawy
-                            z zakładki „Do przyjęcia".
+                            Przyjęcia zapisane przed wprowadzeniem dostaw wg faktur pojawiają się tutaj.
                         </div>
                     </div>
                 </div>

@@ -195,7 +195,7 @@ class OrderReceiptRepository {
         // Caller is expected to verify the parent PO state. We do one final guard
         // here so a fully-received PO can never lose its terminal-receipt trail.
         $stmt = $MsaDB->db->prepare(
-            "SELECT po.state
+            "SELECT po.state, r.delivery_id
              FROM `purchase__order_receipt` r
              JOIN `purchase__order` po ON r.po_id = po.id
              WHERE r.id = ?"
@@ -204,6 +204,13 @@ class OrderReceiptRepository {
         $row = $stmt->fetch(\PDO::FETCH_ASSOC);
         if ($row === false) {
             return false;
+        }
+        // Przyjęcie wygenerowane przez dostawę (faktura / WZ) jest jej rzutem
+        // na zamówienie — wycofuje się tylko cała dostawa.
+        if ($row['delivery_id'] !== null) {
+            throw new \LogicException(
+                "To przyjęcie należy do dostawy zbiorczej (faktura / WZ). Aby je wycofać, anuluj całą dostawę."
+            );
         }
         if ($row['state'] === 'received') {
             throw new \LogicException("Cannot delete a receipt once the PO has been fully received");

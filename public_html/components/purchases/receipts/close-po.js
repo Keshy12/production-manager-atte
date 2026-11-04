@@ -1,27 +1,13 @@
 // Współdzielona logika dla modali „Zamknij zamówienie" i „Anuluj zamówienie".
 //
-// Dwa wejścia korzystają z tego samego pliku:
-//
-//   1. /purchase/receipts/receive — przycisk #receiveClosePoBtn w pasku
-//      akcji formularza przyjęcia. JS na tej stronie robi tylko:
-//
-//          $('#receiveClosePoBtn').on('click', function () {
-//              window.ReceiptClosePo.open({
-//                  poId:          receiveState.poId,
-//                  poNumber:      receiveState.poNumber,
-//                  items:         receiveState.items,
-//                  orderedTotal:  ...,
-//                  receivedTotal: ...,
-//                  lineCount:     receiveState.items.length
-//              });
-//          });
-//
-//   2. /purchase/receipts — kolejka „Do przyjęcia". Delegowane handlery
-//      na $(document) reagują na data-action="close-po" i
-//      data-action="cancel-po" (patrz sekcja „Handler delegation" niżej).
-//      Kolejka nie zna pozycji per-PO, więc przy close-po wywołuje
-//      window.ReceiptClosePo.open() BEZ `items` — modal wtedy ukrywa
-//      sekcję z listą pozycji i pokazuje tylko numer + agregaty.
+// Wejście: /purchase/receipts — kolejka „Do przyjęcia". Delegowane
+// handlery na $(document) reagują na data-action="close-po" i
+// data-action="cancel-po" (patrz sekcja „Handler delegation" niżej).
+// Kolejka nie zna pozycji per-PO, więc przy close-po wywołuje
+// window.ReceiptClosePo.open() BEZ `items` — modal wtedy ukrywa
+// sekcję z listą pozycji i pokazuje tylko numer + agregaty.
+// (Dawna strona /purchase/receipts/receive została wycofana; przyjęcie
+// dostawy żyje w /purchase/receipts/new i zamyka PO własnym kodem.)
 //
 // Modal markup: close-po-modal.php (współdzielony partial).
 // Endpointy:   receipts/receipt-close-po.php        (close-with-choice)
@@ -29,7 +15,7 @@
 //
 // Konwencje: Bootstrap 4 jQuery API ($('#…').modal('show'/'hide')),
 // brak `var`, własne helpery esc/escAttr/fmtQty/pozycjeWord (identyczne
-// jak w receive-page.js / receipts-view.js, ale lokalne — moduł nie
+// jak w receipts-view.js, ale lokalne — moduł nie
 // zależy od innego skryptu na stronie).
 
 $(document).ready(function () {

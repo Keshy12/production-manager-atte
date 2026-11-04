@@ -8,6 +8,7 @@
  *   search     string — fragment nazwy/dokumentu/komentarza (LIKE)
  *   date_from  string — Y-m-d, filtr na DATE(received_at) >=
  *   date_to    string — Y-m-d, filtr na DATE(received_at) <=
+ *   legacy_only int   — 1 = tylko przyjęcia bez delivery_id (sprzed dostaw)
  *
  * Zasila zakładkę „Historia przyjęć" na /purchase/receipts. Poprzednio
  * cały ~9.5 MB HTML renderował się serwerowo dla 3 700+ wierszy;
@@ -59,7 +60,11 @@ try {
     $search   = trim((string)($_POST['search']    ?? ''));
     $dateFrom = trim((string)($_POST['date_from'] ?? ''));
     $dateTo   = trim((string)($_POST['date_to']   ?? ''));
-    $filtersActive = ($search !== '' || $dateFrom !== '' || $dateTo !== '');
+    // legacy_only=1 → tylko przyjęcia sprzed dostaw (bez delivery_id).
+    // Przyjęcia z dostaw (purchase__delivery) pokazuje osobna lista
+    // (delivery-list.php), więc tu nie mogą się dublować.
+    $legacyOnly = !empty($_POST['legacy_only']);
+    $filtersActive = ($search !== '' || $dateFrom !== '' || $dateTo !== '' || $legacyOnly);
 
     if (!$filtersActive) {
         $total    = $repo->countAll(true);
@@ -71,6 +76,9 @@ try {
         // po nazwie, ten sam zestaw parametrów w count i page.
         $clauses = ["po.state != 'cancelled'"];
         $params  = [];
+        if ($legacyOnly) {
+            $clauses[] = 'r.delivery_id IS NULL';
+        }
         if ($search !== '') {
             // Zbiór pól pokrywa „hay" liczone w receipts-view.js →
             // applyHistoryView() (doc number, PO number, vendor, przyjmujący,
