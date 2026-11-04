@@ -94,6 +94,8 @@ kbd.dv-k,
 .dv-input { border-color: var(--rx-line); color: var(--rx-ink); }
 .dv-input:focus { border-color: #80bdff; box-shadow: var(--rx-ring); }
 .dv-input:disabled, .dv-input[readonly] { background: #f3f5f8; color: var(--rx-ink-2); }
+/* Pole tylko do odczytu nie pokazuje „aktywnej" ramki po kliknięciu. */
+.dv-input[readonly]:focus { border-color: var(--rx-line); box-shadow: none; }
 .dv-input.is-invalid { border-color: #e5818b; background-image: none; box-shadow: 0 0 0 .15rem rgba(220, 53, 69, .12); }
 .dv-field.is-locked .rx-picker-btn { background: #f3f5f8; }
 .dv-hint { min-height: 1.05rem; margin-top: .25rem; font-size: .74rem; color: var(--rx-muted); line-height: 1.35; }
@@ -103,6 +105,11 @@ kbd.dv-k,
 
 .dv-seg { display: flex; width: 100%; height: calc(1.5em + .5rem + 2px); }
 .dv-seg button { flex: 1 1 0; }
+/* Zablokowany przełącznik typu dokumentu: wybór nadal czytelny, bez reakcji na najechanie. */
+.dv-seg.is-locked { background: #f3f5f8; }
+.dv-seg.is-locked button { cursor: default; }
+.dv-seg.is-locked button:hover:not(.is-active) { background: transparent; }
+.dv-seg.is-locked button.is-active { background: #5f7389; color: #fff; }
 
 /* ---- Pasek zapisu dokumentu (przed założeniem szkicu) ---------------- */
 
@@ -118,7 +125,14 @@ kbd.dv-k,
     border-bottom-left-radius: calc(var(--rx-radius) - 1px);
     border-bottom-right-radius: calc(var(--rx-radius) - 1px);
 }
-.dv-page.dv-pre-draft .dv-doc-foot { display: flex; }
+/* Widoczny, gdy przyjęcie jest szkicem (przed zapisem, w odczycie i w edycji);
+   dla zatwierdzonego / anulowanego zostaje ukryty. Klasa dv-mode-draft jest
+   w znaczniku od początku, a render() podmienia ją na dv-mode-posted /
+   dv-mode-cancelled. */
+.dv-page.dv-mode-draft .dv-doc-foot { display: flex; }
+/* Tryb edycji nagłówka — pasek w kolorze ostrzegawczym, żeby było widać, że pola są odblokowane. */
+.dv-doc-foot[data-mode="editing"] { background: var(--dv-amber-soft); border-top-color: #ecd9a3; }
+.dv-doc-foot[data-mode="editing"] .dv-doc-foot-msg { color: #6a4800; }
 
 .dv-doc-foot-msg { flex: 1 1 18rem; min-width: 0; font-size: .82rem; line-height: 1.4; color: var(--rx-muted); }
 .dv-doc-foot-msg .bi { margin-right: .35rem; }
@@ -352,7 +366,10 @@ a.dv-alloc-po { text-decoration: none; }
 
 .dv-entry-grid {
     display: grid;
-    grid-template-columns: minmax(12rem, 1fr) 7.5rem 9rem minmax(10rem, 14rem) auto;
+    /* Kolumna magazynu: min 9rem (picker ucina długą nazwę wielokropkiem),
+       max 14rem — razem z min-width: 0 na komórce i na .bootstrap-select
+       kolumna nie rozpycha się do najdłuższej nazwy magazynu. */
+    grid-template-columns: minmax(12rem, 1fr) 7.5rem 9rem minmax(9rem, 14rem) auto;
     gap: .6rem;
     align-items: end;
 }
@@ -363,10 +380,21 @@ a.dv-alloc-po { text-decoration: none; }
     .dv-entry-go { grid-column: 1 / -1; }
     .dv-entry-go .btn { width: 100%; }
 }
-/* Picker magazynu pozycji — zwykły custom-select wypełniający kolumnę;
-   min-width: 0, żeby długa nazwa magazynu nie rozpychała siatki. */
+/* Picker magazynu pozycji — selectpicker z wyszukiwarką (data-width="100%",
+   data-container="#dvEntryMagCell"). AGENTS.md: min-width: 0 na komórce
+   siatki ORAZ na .bootstrap-select, który tworzy wtyczka — inaczej minimalna
+   szerokość elementu siatki = najdłuższa nazwa magazynu i kolumna wyjeżdża
+   poza 100%. Przycisk dostaje od wtyczki wielokropek dla długiego tekstu. */
 .dv-entry-mag { min-width: 0; }
-.dv-entry-mag .dv-mag-select { width: 100%; min-width: 0; text-overflow: ellipsis; }
+.dv-entry-mag .bootstrap-select { display: block; width: 100%; min-width: 0; }
+.dv-entry-mag .bootstrap-select > .dropdown-toggle { width: 100%; }
+/* Wysokość i czcionka przycisku jak w pozostałych polach wiersza wpisywania. */
+.dv-entry-mag .rx-picker-btn { height: calc(1.5em + .9rem + 2px); font-size: .95rem; }
+/* Długie nazwy magazynów w liście zawijają się zamiast być ucinane. */
+.dv-entry-mag .dropdown-menu { min-width: 100%; }
+.dv-entry-mag .dropdown-menu .dropdown-item { white-space: normal; }
+/* Otwarta lista wyżej niż pasek akcji (.dv-bar, z-index 30). */
+.dv-entry.is-pick-open { z-index: 45; }
 .dv-entry .dv-input { height: calc(1.5em + .9rem + 2px); font-size: .95rem; }
 .dv-entry-go { display: flex; gap: .35rem; }
 .dv-entry-btn { height: calc(1.5em + .9rem + 2px); font-weight: 700; white-space: nowrap; }

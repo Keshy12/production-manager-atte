@@ -183,9 +183,14 @@ $e = static function ($v): string { return htmlspecialchars((string)$v, ENT_QUOT
             </div>
         </div>
 
-        <!-- Pasek zapisu dokumentu — tylko przed założeniem szkicu. Zapis tworzy
-             szkic (trafia na listę „Robocze"), a dopiero potem odblokowuje pozycje. -->
-        <div class="dv-doc-foot" id="dvDocFoot">
+        <!-- Pasek dokumentu — widoczny dla szkicu, ukryty dla zatwierdzonego /
+             anulowanego przyjęcia (patrz .dv-mode-draft w delivery-ui.css).
+             Jeden przycisk, trzy działania (delivery-page.js, headerMode()):
+               przed szkicem  „Zapisz dokument dostawcy" — zakłada szkic i odblokowuje pozycje,
+               szkic          „Edytuj dokument dostawcy" — włącza edycję zapisanego nagłówka,
+               edycja         „Zakończ edycję" — zapisuje zmiany i blokuje nagłówek.
+             Wznawiany szkic startuje ukryty (d-none), aż JS wczyta jego stan. -->
+        <div class="dv-doc-foot<?= $deliveryId > 0 ? ' d-none' : '' ?>" id="dvDocFoot" data-mode="new">
             <div class="dv-doc-foot-msg" id="dvDocSubmitMsg" role="status" aria-live="polite">
                 <i class="bi bi-info-circle"></i>
                 <span id="dvDocSubmitMsgText">Zapisanie dokumentu zakłada szkic przyjęcia i odblokowuje wpisywanie pozycji.</span>
@@ -281,12 +286,23 @@ $e = static function ($v): string { return htmlspecialchars((string)$v, ENT_QUOT
                         <input type="text" id="dvPrice" class="form-control dv-input text-right" inputmode="decimal"
                                autocomplete="off" placeholder="0,00">
                     </div>
-                    <!-- Magazyn pozycji: pusty wybór = magazyn domyślny dostawy (bez
-                         nadpisania). Kolejność Tab: artykuł → ilość → cena → magazyn →
-                         Dodaj/Zapisz → Anuluj; Enter w cenie lub magazynie zapisuje. -->
-                    <div class="dv-entry-mag">
+                    <!-- Magazyn pozycji: selectpicker z wyszukiwarką, taki sam jak
+                         „Magazyn docelowy" w nagłówku. Pusty wybór = magazyn domyślny
+                         dostawy (bez nadpisania); opcje wypełnia JS (fillEntryMag).
+                         Kolejność Tab: artykuł → ilość → cena → magazyn → Dodaj/Zapisz
+                         → Anuluj; Enter zapisuje pozycję w polu ceny (w pickerze Enter
+                         należy do bootstrap-select). data-container wskazuje komórkę
+                         #dvEntryMagCell (min-width: 0 w delivery-ui.css, AGENTS.md). -->
+                    <div class="dv-entry-mag" id="dvEntryMagCell">
                         <label class="dv-label" for="dvMag">Magazyn <span class="dv-label-sub">tej pozycji</span></label>
-                        <select id="dvMag" class="custom-select dv-input dv-mag-select" aria-label="Magazyn pozycji"></select>
+                        <select id="dvMag" class="selectpicker"
+                                data-live-search="true"
+                                data-live-search-placeholder="Szukaj magazynu"
+                                data-title="Magazyn pozycji…"
+                                data-style="rx-picker-btn"
+                                data-width="100%"
+                                data-container="#dvEntryMagCell"
+                                aria-label="Magazyn pozycji"></select>
                     </div>
                     <div class="dv-entry-go">
                         <button type="button" class="btn btn-primary dv-entry-btn" id="dvEntrySave">

@@ -55,6 +55,7 @@ $(document).ready(function () {
         creating: null,
         docAttempted: false,    // operator kliknął „Zapisz dokument dostawcy" przy brakach
         receivedTouched: false,
+        headerEdit: false,      // szkic istnieje: false = nagłówek zablokowany (odczyt), true = tryb edycji
         openNotes: {},          // line_id => true (rozwinięty wiersz komentarza)
         showAllBlockers: false,
         posting: false,
@@ -177,7 +178,11 @@ $(document).ready(function () {
     // `orphanName`: nazwa magazynu pozycji, którego nie ma już na liście
     // aktywnych — dostaje własną opcję, żeby zapis nie zgubił go po cichu.
     function magOptionsHtml(selectedId, defaultLabel, orphanName) {
-        let html = '<option value="">' + esc(defaultLabel) + '</option>';
+        // Pusta opcja dostaje `selected`, gdy nic innego nie jest wybrane:
+        // bootstrap-select (data-title) dokłada na początku własną pustą opcję
+        // „placeholder" i zaznacza ją, o ile żadna opcja nie ma atrybutu
+        // `selected` — bez tego „Domyślny: …" nigdy nie byłby widoczny.
+        let html = '<option value=""' + (hasMag(selectedId) ? '' : ' selected') + '>' + esc(defaultLabel) + '</option>';
         let found = false;
         MAGAZINES.forEach(function (m) {
             const sel = hasMag(selectedId) && String(selectedId) === String(m.id);
@@ -351,6 +356,36 @@ $(document).ready(function () {
         $el.closest('.dv-field').toggleClass('is-locked', disabled);
     }
 
+    // Tryb nagłówka dokumentu dostawcy:
+    //   new     — szkic jeszcze nie istnieje: pola edytowalne, przycisk zakłada szkic,
+    //   wait    — szkic istnieje, ale jego stan jeszcze nie dotarł z serwera,
+    //   locked  — szkic istnieje, nagłówek tylko do odczytu („Edytuj dokument dostawcy"),
+    //   editing — szkic istnieje, operator edytuje (autozapis, „Zakończ edycję"),
+    //   closed  — przyjęcie zatwierdzone / anulowane: tylko odczyt, bez przycisku.
+    function headerMode() {
+        if (!S.deliveryId) return 'new';
+        if (!S.state || !S.state.delivery) return 'wait';
+        if (S.state.delivery.state !== 'draft') return 'closed';
+        return S.headerEdit ? 'editing' : 'locked';
+    }
+
+    // Odczyt vs edycja pól nagłówka. Pola tekstowe i daty dostają `readonly`
+    // (zapisane wartości zostają czytelne); to, co nie ma stanu readonly —
+    // waluta, typ dokumentu, picker magazynu — dostaje `disabled`.
+    // Dostawca jest zablokowany ZAWSZE po założeniu szkicu (także w trybie
+    // edycji): zmiana dostawcy szkicu z pozycjami zepsułaby dopasowanie do PO.
+    function applyHeaderLock() {
+        const mode = headerMode();
+        const ro = (mode !== 'new' && mode !== 'editing');
+        $docNumber.add($docDate).add($recvAt).add($comment).prop('readOnly', ro);
+        $currency.prop('disabled', ro);
+        $('#dvDocType button').prop('disabled', ro);
+        $('#dvDocType').toggleClass('is-locked', ro);
+        setPickerDisabled($magazine, ro);
+        if (S.deliveryId) setPickerDisabled($vendor, true);
+        $('#dvHeaderCard').toggleClass('is-hdr-locked', ro).toggleClass('is-hdr-editing', mode === 'editing');
+    }
+
     function renderHeader(st, force) {
         const d = st.delivery;
         const editable = d.state === 'draft';
@@ -377,11 +412,8 @@ $(document).ready(function () {
             setPickerVal($vendor, d.vendor_id);
         }
 
-        // Tylko draft jest edytowalny.
-        $docNumber.add($docDate).add($recvAt).add($comment).add($currency).prop('disabled', !editable);
-        $('#dvDocType button').prop('disabled', !editable);
-        setPickerDisabled($magazine, !editable);
-        setPickerDisabled($vendor, true);
+        // Edytowalny jest tylko szkic w trybie edycji; reszta to odczyt.
+        applyHeaderLock();
 
         // Wskazówki „czego brakuje" pojawiają się, gdy są już pozycje.
         const lineCount = (st.lines || []).length;
@@ -435,28 +467,82 @@ $(document).ready(function () {
     // ---- autozapis nagłówka -------------------------------------------
 
     let headerTimer = null;
+    let headerInflight = null;   // zapis nagłówka w locie (Promise<boolean>)
+    let headerFailed = false;    // ostatni zapis nagłówka się nie udał
+    let headerFinishing = false; // trwa „Zakończ edycję"
 
+    // Autozapis działa tylko w trybie edycji. Zablokowany nagłówek (odczyt)
+    // nie zapisuje niczego — także przy blur / change na polach tylko do odczytu.
     function scheduleHeaderSave(immediate) {
-        if (!S.deliveryId) return;
+        if (headerMode() !== 'editing') return;
         clearTimeout(headerTimer);
         headerTimer = setTimeout(saveHeader, immediate ? 0 : 500);
     }
 
+    // Zapisuje oczekujące zmiany (timer) i czeka na zapis w locie — np. taki,
+    // który wystartował z blur tuż przed kliknięciem. Zwraca Promise<boolean>
+    // (false = zapis się nie udał; komunikat jest już pokazany).
     function flushHeader() {
-        if (headerTimer === null) return Promise.resolve();
-        clearTimeout(headerTimer);
-        headerTimer = null;
-        return saveHeader();
+        if (headerTimer !== null) {
+            clearTimeout(headerTimer);
+            headerTimer = null;
+            return saveHeader();
+        }
+        return headerInflight || Promise.resolve(true);
     }
 
     function saveHeader() {
         headerTimer = null;
-        if (!S.deliveryId || !S.state || S.state.delivery.state !== 'draft') return Promise.resolve();
+        if (!S.deliveryId || !S.state || S.state.delivery.state !== 'draft') return Promise.resolve(true);
         const payload = $.extend({ delivery_id: S.deliveryId }, readHeader());
         delete payload.vendor_id;
-        return write('delivery-header-save.php', payload).catch(function (err) {
+        const job = write('delivery-header-save.php', payload).then(function () {
+            headerFailed = false;
+            return true;
+        }, function (err) {
+            headerFailed = true;
             showError(err.message);
+            return false;
         });
+        headerInflight = job;
+        job.then(function () { if (headerInflight === job) headerInflight = null; });
+        return job;
+    }
+
+    // ---- tryb nagłówka: odczyt → edycja → odczyt ------------------------
+
+    function startHeaderEdit() {
+        if (headerMode() !== 'locked') return;
+        S.headerEdit = true;
+        applyHeaderLock();
+        refreshDocGate();
+        // Fokus na pierwszym edytowalnym polu (numer dokumentu), kursor na końcu.
+        $docNumber.trigger('focus');
+        try {
+            const n = $docNumber.val().length;
+            $docNumber[0].setSelectionRange(n, n);
+        } catch (e) { /* ignore */ }
+    }
+
+    // „Zakończ edycję": najpierw zapis oczekujących zmian. Przy błędzie
+    // zostajemy w trybie edycji (komunikat pokazuje saveHeader).
+    async function finishHeaderEdit() {
+        if (headerMode() !== 'editing' || headerFinishing) return;
+        headerFinishing = true;
+        $('#dvDocSubmit').prop('disabled', true);
+        try {
+            let ok = await flushHeader();
+            // Poprzedni zapis padł, a nic nowego nie czeka — ponów, żeby nie
+            // zablokować nagłówka z niezapisanymi wartościami w polach.
+            if (ok !== false && headerFailed) ok = await saveHeader();
+            if (ok === false) return;
+            S.headerEdit = false;
+            // Pola pokazują zapisany stan z serwera, już tylko do odczytu.
+            if (S.state) renderHeader(S.state, true);
+        } finally {
+            headerFinishing = false;
+            refreshDocGate();
+        }
     }
 
     // ---- zapis dokumentu dostawcy (założenie szkicu) -------------------
@@ -475,11 +561,54 @@ $(document).ready(function () {
         return miss;
     }
 
+    // Pasek pod dokumentem: komunikat + jeden przycisk, którego etykieta,
+    // ikona, kolor i działanie zależą od trybu nagłówka (patrz headerMode()
+    // i handler kliknięcia niżej).
+    function paintDocFoot(o) {
+        const $msg = $('#dvDocSubmitMsg');
+        $msg.toggleClass('is-error', !!o.error);
+        $msg.find('.bi').attr('class', o.msgIcon);
+        $('#dvDocSubmitMsgText').text(o.text);
+        $('#dvDocSubmitLabel').text(o.label);
+        $('#dvDocSubmit').prop('disabled', !!o.disabled)
+            .removeClass('btn-primary btn-outline-primary btn-success').addClass(o.btnClass)
+            .find('i').attr('class', o.btnIcon);
+    }
+
     function refreshDocGate() {
-        if (S.deliveryId) {
+        const mode = headerMode();
+        // Pasek jest widoczny dla szkicu (przed zapisem, w odczycie, w edycji);
+        // dla zatwierdzonego / anulowanego przyjęcia i do czasu wczytania
+        // wznawianego szkicu — ukryty.
+        $('#dvDocFoot').attr('data-mode', mode).toggleClass('d-none', mode === 'closed' || mode === 'wait');
+
+        if (mode !== 'new') {
             $('#dvVendorCell').removeClass('is-invalid');
+            if (mode === 'locked') {
+                paintDocFoot({
+                    text: 'Dokument zapisany — kliknij „Edytuj dokument dostawcy", aby go zmienić. Dostawcy po założeniu szkicu nie da się zmienić.',
+                    msgIcon: 'bi bi-lock',
+                    label: 'Edytuj dokument dostawcy', btnIcon: 'bi bi-pencil', btnClass: 'btn-outline-primary',
+                    disabled: false
+                });
+            } else if (mode === 'editing') {
+                paintDocFoot({
+                    text: 'Edycja dokumentu — zmiany zapisują się automatycznie. Gdy skończysz, kliknij „Zakończ edycję".',
+                    msgIcon: 'bi bi-pencil-square',
+                    label: 'Zakończ edycję', btnIcon: 'bi bi-check2', btnClass: 'btn-success',
+                    disabled: headerFinishing
+                });
+            } else {
+                // closed / wait: pasek ukryty, przycisk bez akcji.
+                paintDocFoot({
+                    text: '', msgIcon: 'bi bi-info-circle',
+                    label: 'Edytuj dokument dostawcy', btnIcon: 'bi bi-pencil', btnClass: 'btn-outline-primary',
+                    disabled: true
+                });
+            }
             return;
         }
+
         const miss = docGateMissing();
         const lack = {};
         miss.forEach(function (m) { lack[m.key] = true; });
@@ -489,10 +618,6 @@ $(document).ready(function () {
         $docNumber.toggleClass('is-invalid', showErr && !!lack.doc);
         $('#dvMagazineCell').toggleClass('is-invalid', showErr && !!lack.mag);
 
-        $('#dvDocSubmit').prop('disabled', miss.length > 0 || !!S.creating);
-
-        const $msg = $('#dvDocSubmitMsg');
-        const $ic = $msg.find('.bi');
         let text;
         let icon;
         if (miss.length === 0) {
@@ -502,9 +627,12 @@ $(document).ready(function () {
             text = 'Do zapisania brakuje: ' + miss.map(function (m) { return m.label; }).join(', ') + '.';
             icon = showErr ? 'bi bi-exclamation-triangle-fill' : 'bi bi-info-circle';
         }
-        $msg.toggleClass('is-error', showErr && miss.length > 0);
-        $ic.attr('class', icon);
-        $('#dvDocSubmitMsgText').text(text);
+        paintDocFoot({
+            text: text, msgIcon: icon, error: showErr && miss.length > 0,
+            label: S.creating ? 'Zapisywanie…' : 'Zapisz dokument dostawcy',
+            btnIcon: 'bi bi-save2', btnClass: 'btn-primary',
+            disabled: miss.length > 0 || !!S.creating
+        });
     }
 
     function submitDocument() {
@@ -532,12 +660,20 @@ $(document).ready(function () {
         }).catch(function (err) {
             showError(err.message);
         }).then(function () {
-            $('#dvDocSubmitLabel').text('Zapisz dokument dostawcy');
+            // Etykieta i działanie przycisku wynikają z trybu: po sukcesie
+            // to „Edytuj dokument dostawcy", po błędzie z powrotem „Zapisz…".
             refreshDocGate();
         });
     }
 
-    $('#dvDocSubmitWrap').on('click', submitDocument);
+    // Jeden przycisk, trzy działania — wg trybu nagłówka. Wrapper łapie też
+    // kliknięcie w wyłączony przycisk (przy brakach: potrząśnięcie + fokus).
+    $('#dvDocSubmitWrap').on('click', function () {
+        const mode = headerMode();
+        if (mode === 'new') submitDocument();
+        else if (mode === 'locked') startHeaderEdit();
+        else if (mode === 'editing') finishHeaderEdit();
+    });
 
     $docNumber.on('input', function () {
         refreshDocGate();
@@ -1282,23 +1418,46 @@ $(document).ready(function () {
         $e.removeClass('d-none').text(msg);
     }
 
-    // Lista magazynów w pasku wpisywania. Pusta opcja = bez nadpisania
-    // (pozycja dziedziczy magazyn domyślny dostawy) — jej etykieta niesie
-    // nazwę tego domyślnego. `selected` (tekst z .val() albo liczba z JSON-a;
-    // '' = domyślny) – gdy pominięty, zostaje bieżący wybór operatora.
+    // Czy operator właśnie korzysta z pickera magazynu pozycji? Fokus bywa:
+    //  - na ukrytym <select> (bez pickera),
+    //  - na przycisku pickera (wewnątrz .bootstrap-select),
+    //  - w polu wyszukiwania otwartej listy. Uwaga: przy data-container menu
+    //    (a z nim pole wyszukiwania) jest przenoszone do .bs-container w
+    //    #dvEntryMagCell — to RODZEŃSTWO .bootstrap-select, nie jego dziecko,
+    //    więc samo sprawdzenie .bootstrap-select nie wystarcza.
+    function entryMagBusy() {
+        const act = document.activeElement;
+        if (act && $entryMag.is(act)) return true;
+        const $wrap = $entryMag.closest('.bootstrap-select');
+        if ($wrap.length && ($wrap.hasClass('show') || (act && $wrap[0].contains(act)))) return true;
+        const cell = document.getElementById('dvEntryMagCell');
+        return !!(act && cell && cell.contains(act));
+    }
+
+    // Lista magazynów w pasku wpisywania (selectpicker z wyszukiwarką). Pusta
+    // opcja = bez nadpisania (pozycja dziedziczy magazyn domyślny dostawy) —
+    // jej etykieta niesie nazwę tego domyślnego. `selected` (tekst z .val()
+    // albo liczba z JSON-a; '' = domyślny) – gdy pominięty, zostaje bieżący
+    // wybór operatora.
     function fillEntryMag(selected) {
+        // Przerysowanie z serwera nie może wytrącić operatora, który właśnie
+        // wybiera magazyn lub wpisuje frazę w wyszukiwarkę — wtedy nic nie
+        // ruszamy (przebudowa zgasiłaby listę i skasowała wpisaną frazę).
+        // Jawne ustawienie (reset / edycja pozycji) przebudowuje zawsze.
+        if (selected === undefined && entryMagBusy()) return;
         const cur = (selected === undefined) ? $entryMag.val() : selected;
         const hv = $magazine.val();
         const dn = hasMag(hv) ? magName(hv) : defaultMagName(S.state);
         const label = dn !== '' ? ('Domyślny: ' + dn) : 'Domyślny z dokumentu';
-        // Przerysowanie z serwera nie może zabrać fokusu operatorowi, który
-        // właśnie wybiera magazyn — wtedy odświeżamy tylko etykietę pustej opcji.
-        if (selected === undefined && $entryMag.is(document.activeElement)) {
-            $entryMag.find('option:first').text(label);
-            return;
-        }
         const ln = S.editLineId ? findLine(S.editLineId) : null;
+        // Wybór niesie atrybut `selected` w opcjach (magOptionsHtml) — dzięki
+        // temu id 0 i pusta opcja „Domyślny" są zaznaczone zaraz po refresh.
         $entryMag.html(magOptionsHtml(magParam(cur), label, ln ? ln.sub_magazine_name : ''));
+        if (hasPicker()) {
+            S.mute++;
+            try { $entryMag.selectpicker('refresh'); } finally { S.mute--; }
+        }
+        setPickerVal($entryMag, magParam(cur));
     }
 
     function resetEntry() {
@@ -1415,12 +1574,14 @@ $(document).ready(function () {
         if (e.key === 'Enter') { e.preventDefault(); saveEntry(); }
         else if (e.key === 'Escape') { e.preventDefault(); resetEntry(); focusArt(); }
     });
-    // Magazyn pozycji jest po cenie: Enter zapisuje (jak w polu ceny),
-    // strzałki zmieniają wybór, Esc anuluje wpisywanie.
-    $entryMag.on('keydown', function (e) {
-        if (e.key === 'Enter') { e.preventDefault(); saveEntry(); }
-        else if (e.key === 'Escape') { e.preventDefault(); resetEntry(); focusArt(); }
-    });
+    // Magazyn pozycji to selectpicker z wyszukiwarką — klawiaturą rządzi sam
+    // bootstrap-select (Enter wybiera / otwiera listę, Esc ją zamyka), więc
+    // nie podpinamy tu własnego keydown. Zapis pozycji klawiaturą zostaje
+    // tam, gdzie był: Enter w polu ceny.
+    // Otwarta lista musi leżeć nad paskiem akcji (.dv-bar ma wyższy z-index
+    // niż wiersz wpisywania), inaczej przy otwarciu w dół zasłoni ją pasek.
+    $entryMag.on('show.bs.select', function () { $('#dvEntry').addClass('is-pick-open'); });
+    $entryMag.on('hidden.bs.select', function () { $('#dvEntry').removeClass('is-pick-open'); });
     $qty.add($price).on('focus', function () { this.select(); });
     $('#dvEntrySave').on('click', saveEntry);
     $('#dvEntryCancel').on('click', function () { resetEntry(); focusArt(); });
@@ -1849,6 +2010,8 @@ $(document).ready(function () {
         S.deliveryId = parseInt(st.delivery.id, 10) || S.deliveryId;
 
         const mode = st.delivery.state || 'draft';
+        // Edycja nagłówka ma sens tylko dla szkicu (zatwierdzenie / anulowanie ją kończy).
+        if (mode !== 'draft') S.headerEdit = false;
         $page.removeClass('dv-mode-draft dv-mode-posted dv-mode-cancelled dv-no-vendor').addClass('dv-mode-' + mode);
 
         renderHeader(st, !!forceHeader);
@@ -1879,6 +2042,9 @@ $(document).ready(function () {
         $page.addClass('dv-no-vendor');
         $('#dvEntry').addClass('d-none');
         $page.attr('data-booted', '0');
+        // Wznawiany szkic: nagłówek od razu tylko do odczytu (do czasu wczytania
+        // stanu); po wczytaniu render() zostawia go w trybie „zablokowany".
+        if (S.deliveryId) applyHeaderLock();
 
         const vendorsReq = call('delivery-vendors.php', {}).then(function (r) {
             buildVendorPicker(r.vendors || []);
