@@ -8,8 +8,8 @@
  *   Empty q → only parts that are on an open PO.
  * Response:
  *   {success:true, results:[{vendor_part_id, vendor_part_no,
- *     producer_part_no, part_name, producer_name, unit, on_open_po,
- *     open_remaining, suggested_price, suggested_currency}]}
+ *     producer_part_no, part_name, part_description, producer_name, unit,
+ *     on_open_po, open_remaining, suggested_price, suggested_currency}]}
  * Parts on open POs first, then by vendor_part_no; limit 30.
  * suggested_price/currency = price of the first matcher-ordered open PO
  * item for that part (null when none).
@@ -58,7 +58,8 @@ delivery_run(function ($MsaDB) use ($vendorId, $q) {
 
     $stmt = $db->prepare(
         "SELECT vp.id AS vendor_part_id, vp.vendor_part_no, vp.producer_part_no,
-                lp.name AS part_name, pr.name AS producer_name, u.name AS unit
+                lp.name AS part_name, lp.description AS part_description,
+                pr.name AS producer_name, u.name AS unit
            FROM `list__vendor_part` vp
            LEFT JOIN `list__parts` lp    ON vp.parts_id = lp.id
            LEFT JOIN `list__producer` pr ON vp.producer_id = pr.id
@@ -78,6 +79,7 @@ delivery_run(function ($MsaDB) use ($vendorId, $q) {
             'vendor_part_no'     => $r['vendor_part_no'],
             'producer_part_no'   => $r['producer_part_no'],
             'part_name'          => $r['part_name'],
+            'part_description'   => (string)($r['part_description'] ?? ''),
             'producer_name'      => $r['producer_name'],
             'unit'               => $r['unit'],
             'on_open_po'         => $isOpen,

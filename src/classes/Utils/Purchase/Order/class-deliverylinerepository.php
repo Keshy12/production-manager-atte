@@ -34,6 +34,7 @@ class DeliveryLineRepository {
                        vp.vendor_part_no AS vendorPartNo,
                        vp.producer_part_no AS producerPartNo,
                        lp.name AS partName,
+                       lp.description AS partDescription,
                        m.sub_magazine_name AS subMagazineName
                 FROM `purchase__delivery_line` l
                 LEFT JOIN `list__vendor_part` vp ON l.vendor_part_id = vp.id

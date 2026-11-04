@@ -2372,6 +2372,7 @@ class PurchaseActionHandler {
                 'vendor_part_no'           => $l->vendorPartNo,
                 'producer_part_no'         => $l->producerPartNo,
                 'part_name'                => $l->partName,
+                'part_description'         => $l->partDescription,
                 'quantity'                 => $l->quantity,
                 'unit_price'               => $l->unitPrice,
                 'sub_magazine_id'          => $l->subMagazineId,

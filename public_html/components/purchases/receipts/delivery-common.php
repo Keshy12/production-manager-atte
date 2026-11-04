@@ -132,12 +132,14 @@ function delivery_open_items(\PDO $db, int $vendorId): array {
     $stmt = $db->prepare(
         "SELECT i.id AS po_item_id, i.po_id, po.po_number, po.state AS po_state,
                 i.vendor_part_id, vp.vendor_part_no, vp.producer_part_no, lp.name AS part_name,
+                lp.description AS part_description, u.name AS unit,
                 i.quantity, i.quantity_received, i.unit_price, i.currency,
                 COALESCE(i.expected_delivery_date, po.expected_delivery_date) AS due_date
            FROM `purchase__order_item` i
            JOIN `purchase__order` po        ON i.po_id = po.id
            LEFT JOIN `list__vendor_part` vp ON i.vendor_part_id = vp.id
            LEFT JOIN `list__parts` lp       ON vp.parts_id = lp.id
+           LEFT JOIN `part__unit` u         ON vp.vendor_jm_id = u.id
           WHERE po.vendor_id = ? AND po.state IN ({$states})
             AND i.quantity - i.quantity_received > 0.000001
           ORDER BY (COALESCE(i.expected_delivery_date, po.expected_delivery_date) IS NULL) ASC,
@@ -160,6 +162,8 @@ function delivery_open_items(\PDO $db, int $vendorId): array {
             'vendor_part_no'   => $r['vendor_part_no'],
             'producer_part_no' => $r['producer_part_no'],
             'part_name'        => $r['part_name'],
+            'part_description' => (string)($r['part_description'] ?? ''),
+            'unit'             => $r['unit'] ?? null,
             'quantity'         => $qty,
             'quantity_received'=> $rec,
             'remaining'        => round($qty - $rec, 10),

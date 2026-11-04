@@ -8,8 +8,8 @@
  * Response:
  *   {success:true, items:[{po_item_id, po_id, po_number, po_state,
  *     vendor_part_id, vendor_part_no, producer_part_no, part_name,
- *     quantity, quantity_received, remaining, unit_price, currency,
- *     due_date}]}
+ *     part_description, unit, quantity, quantity_received, remaining,
+ *     unit_price, currency, due_date}]}
  */
 require_once __DIR__ . '/delivery-common.php';
 

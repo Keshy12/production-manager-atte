@@ -19,6 +19,7 @@ class DeliveryLine {
     public ?string $vendorPartNo;
     public ?string $producerPartNo;
     public ?string $partName;
+    public ?string $partDescription;
     public ?string $subMagazineName;
     /** @var DeliveryAllocation[] */
     public array $allocations = [];
@@ -39,6 +40,7 @@ class DeliveryLine {
         $this->vendorPartNo = $row['vendorPartNo'] ?? null;
         $this->producerPartNo = $row['producerPartNo'] ?? null;
         $this->partName = $row['partName'] ?? null;
+        $this->partDescription = $row['partDescription'] ?? null;
         $this->subMagazineName = $row['subMagazineName'] ?? null;
     }
 }
