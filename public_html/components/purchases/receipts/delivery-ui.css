@@ -60,23 +60,10 @@ kbd.dv-k,
     color: var(--rx-ink);
 }
 
-.dv-fields {
-    display: grid;
-    grid-template-columns: repeat(12, minmax(0, 1fr));
-    gap: .85rem 1.1rem;
-    padding: .65rem 1.25rem 1.25rem;
-}
+/* Formularz nagłówka lustrzany do podsumowania: .dv-fields-grid dzieli siatkę
+   z .dv-sum-grid (patrz niżej), .dv-fields-extra odpowiada .dv-sum-extra. */
+.dv-fields { padding: .5rem 1.25rem 1.1rem; }
 .dv-field { min-width: 0; }
-.dv-span-2 { grid-column: span 2; }
-.dv-span-3 { grid-column: span 3; }
-.dv-span-4 { grid-column: span 4; }
-@media (max-width: 1199.98px) {
-    .dv-span-2, .dv-span-3 { grid-column: span 4; }
-    .dv-span-4 { grid-column: span 6; }
-}
-@media (max-width: 767.98px) {
-    .dv-span-2, .dv-span-3, .dv-span-4 { grid-column: span 12; }
-}
 
 .dv-label {
     display: block;
@@ -142,7 +129,8 @@ kbd.dv-k,
      kol. 1 Dostawca / Nr dokumentu      kol. 2 Typ dokumentu / Waluta
      kol. 3 Data dokumentu / Data przyjęcia   kol. 4 Magazyn docelowy */
 .dv-summary { padding: .5rem 1.25rem 1.1rem; }
-.dv-sum-grid {
+.dv-sum-grid,
+.dv-fields-grid {
     display: grid;
     grid-template-columns: repeat(4, minmax(180px, 1fr));
     grid-template-rows: repeat(2, auto);
@@ -151,14 +139,21 @@ kbd.dv-k,
     max-width: 62rem;
 }
 .dv-sum-item { min-width: 0; }
-.dv-sum-item .dv-label {
+/* Etykiety formularza i podsumowania — identyczne. Globalne .dv-label zostaje
+   (używa go wiersz dodawania pozycji .dv-entry). */
+.dv-sum-item .dv-label,
+.dv-fields .dv-label {
     margin: 0 0 4px;
     font-size: .75rem;
     font-weight: 500;
     letter-spacing: .04em;
     line-height: 1.3;
+    text-transform: uppercase;
     color: var(--rx-muted);
 }
+/* Segment „Typ dokumentu": ta sama wysokość i rozmiar tekstu co pola. */
+.dv-fields .dv-seg { font-size: .875rem; height: var(--rx-ctl-h); }
+.dv-fields .dv-seg button { font-size: inherit; }
 /* Jeden styl wartości dla każdego pola. */
 .dv-sum-val {
     font-size: .92rem;
@@ -180,7 +175,8 @@ kbd.dv-k,
 }
 
 /* Ślad zatwierdzenia i komentarz — osobna siatka pod główną, z cienką linią. */
-.dv-sum-extra {
+.dv-sum-extra,
+.dv-fields-extra {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 20px 24px;
@@ -188,7 +184,8 @@ kbd.dv-k,
     padding-top: 16px;
     border-top: 1px solid var(--rx-line-soft);
 }
-.dv-sum-extra .dv-sum-item--wide { grid-column: 1 / -1; }
+.dv-sum-extra .dv-sum-item--wide,
+.dv-fields-extra .dv-field { grid-column: 1 / -1; }
 .dv-sum-comment {
     font-weight: 500;
     color: var(--rx-ink-2);
@@ -196,7 +193,8 @@ kbd.dv-k,
 }
 
 @media (max-width: 1199.98px) {
-    .dv-sum-grid {
+    .dv-sum-grid,
+    .dv-fields-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
         grid-template-rows: none;
         grid-auto-flow: row;
@@ -205,9 +203,9 @@ kbd.dv-k,
     }
 }
 @media (max-width: 767.98px) {
-    .dv-summary { padding: .5rem 1rem 1rem; }
-    .dv-sum-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
-    .dv-sum-extra { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+    .dv-summary, .dv-fields { padding: .5rem 1rem 1rem; }
+    .dv-sum-grid, .dv-fields-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+    .dv-sum-extra, .dv-fields-extra { grid-template-columns: minmax(0, 1fr); gap: 12px; }
 }
 /* Wczytywanie / błąd wczytania (wznawiany szkic, zanim przyjdzie stan). */
 .dv-summary-note {

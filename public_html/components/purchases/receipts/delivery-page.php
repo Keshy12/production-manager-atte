@@ -132,78 +132,87 @@ $e = static function ($v): string { return htmlspecialchars((string)$v, ENT_QUOT
         </div>
 
         <div class="dv-fields">
+            <!-- Siatka lustrzana do podsumowania (.dv-sum-grid): ta sama siatka CSS,
+                 kolejność w DOM kolumnowa — kol. 1 Dostawca / Nr dokumentu,
+                 kol. 2 Typ dokumentu / Waluta, kol. 3 Data dokumentu / Data przyjęcia,
+                 kol. 4 Magazyn docelowy. -->
+            <div class="dv-fields-grid">
 
-            <div class="dv-field dv-span-4" id="dvVendorCell">
-                <label class="dv-label" for="dvVendor">Dostawca <span class="dv-req" title="Wymagane">*</span></label>
-                <select id="dvVendor" class="selectpicker"
-                        data-live-search="true"
-                        data-title="Wybierz dostawcę…"
-                        data-style="rx-picker-btn"
-                        data-width="100%"
-                        data-container="#dvVendorCell"
-                        data-live-search-placeholder="Szukaj dostawcy"></select>
-                <div class="dv-hint" id="dvVendorHint"></div>
-            </div>
-
-            <div class="dv-field dv-span-2">
-                <span class="dv-label" id="dvDocTypeLabel">Typ dokumentu</span>
-                <div class="rx-seg dv-seg" role="group" aria-labelledby="dvDocTypeLabel" id="dvDocType">
-                    <button type="button" data-type="invoice" class="is-active" aria-pressed="true">Faktura</button>
-                    <button type="button" data-type="wz" aria-pressed="false">WZ</button>
+                <div class="dv-field" id="dvVendorCell">
+                    <label class="dv-label" for="dvVendor">Dostawca <span class="dv-req" title="Wymagane">*</span></label>
+                    <select id="dvVendor" class="selectpicker"
+                            data-live-search="true"
+                            data-title="Wybierz dostawcę…"
+                            data-style="rx-picker-btn"
+                            data-width="100%"
+                            data-container="#dvVendorCell"
+                            data-live-search-placeholder="Szukaj dostawcy"></select>
+                    <div class="dv-hint" id="dvVendorHint"></div>
                 </div>
+
+                <div class="dv-field">
+                    <label class="dv-label" for="dvDocNumber">Nr dokumentu <span class="dv-req" title="Wymagane">*</span></label>
+                    <input type="text" id="dvDocNumber" class="form-control form-control-sm dv-input"
+                           maxlength="100" autocomplete="off" placeholder="np. FV/123/2026"
+                           aria-describedby="dvDocNumberHint">
+                    <div class="dv-hint" id="dvDocNumberHint"></div>
+                </div>
+
+                <div class="dv-field">
+                    <span class="dv-label" id="dvDocTypeLabel">Typ dokumentu</span>
+                    <div class="rx-seg dv-seg" role="group" aria-labelledby="dvDocTypeLabel" id="dvDocType">
+                        <button type="button" data-type="invoice" class="is-active" aria-pressed="true">Faktura</button>
+                        <button type="button" data-type="wz" aria-pressed="false">WZ</button>
+                    </div>
+                </div>
+
+                <div class="dv-field">
+                    <label class="dv-label" for="dvCurrency">Waluta</label>
+                    <select id="dvCurrency" class="custom-select custom-select-sm dv-input">
+                        <option value="PLN">PLN</option>
+                        <option value="EUR">EUR</option>
+                        <option value="USD">USD</option>
+                        <option value="GBP">GBP</option>
+                        <option value="CZK">CZK</option>
+                        <option value="CHF">CHF</option>
+                    </select>
+                </div>
+
+                <div class="dv-field">
+                    <label class="dv-label" for="dvDocDate">Data dokumentu</label>
+                    <input type="date" id="dvDocDate" class="form-control form-control-sm dv-input"
+                           value="<?= $e(date('Y-m-d')) ?>">
+                </div>
+
+                <div class="dv-field">
+                    <label class="dv-label" for="dvReceivedAt">Data przyjęcia</label>
+                    <input type="date" id="dvReceivedAt" class="form-control form-control-sm dv-input"
+                           value="<?= $e(date('Y-m-d')) ?>">
+                </div>
+
+                <div class="dv-field" id="dvMagazineCell">
+                    <label class="dv-label" for="dvMagazine">Magazyn docelowy <span class="dv-req" title="Wymagane">*</span></label>
+                    <select id="dvMagazine" class="selectpicker"
+                            data-live-search="true"
+                            data-title="Wybierz magazyn…"
+                            data-style="rx-picker-btn"
+                            data-width="100%"
+                            data-container="#dvMagazineCell">
+                        <?php foreach ($magazines as $m): ?>
+                            <option value="<?= (int)$m['sub_magazine_id'] ?>"><?= $e($m['sub_magazine_name']) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <div class="dv-hint">Domyślny dla wszystkich pozycji; każdą można zmienić osobno.</div>
+                </div>
+
             </div>
 
-            <div class="dv-field dv-span-3">
-                <label class="dv-label" for="dvDocNumber">Nr dokumentu <span class="dv-req" title="Wymagane">*</span></label>
-                <input type="text" id="dvDocNumber" class="form-control form-control-sm dv-input"
-                       maxlength="100" autocomplete="off" placeholder="np. FV/123/2026"
-                       aria-describedby="dvDocNumberHint">
-                <div class="dv-hint" id="dvDocNumberHint"></div>
-            </div>
-
-            <div class="dv-field dv-span-3">
-                <label class="dv-label" for="dvDocDate">Data dokumentu</label>
-                <input type="date" id="dvDocDate" class="form-control form-control-sm dv-input"
-                       value="<?= $e(date('Y-m-d')) ?>">
-            </div>
-
-            <div class="dv-field dv-span-3">
-                <label class="dv-label" for="dvReceivedAt">Data przyjęcia</label>
-                <input type="date" id="dvReceivedAt" class="form-control form-control-sm dv-input"
-                       value="<?= $e(date('Y-m-d')) ?>">
-            </div>
-
-            <div class="dv-field dv-span-4" id="dvMagazineCell">
-                <label class="dv-label" for="dvMagazine">Magazyn docelowy <span class="dv-req" title="Wymagane">*</span></label>
-                <select id="dvMagazine" class="selectpicker"
-                        data-live-search="true"
-                        data-title="Wybierz magazyn…"
-                        data-style="rx-picker-btn"
-                        data-width="100%"
-                        data-container="#dvMagazineCell">
-                    <?php foreach ($magazines as $m): ?>
-                        <option value="<?= (int)$m['sub_magazine_id'] ?>"><?= $e($m['sub_magazine_name']) ?></option>
-                    <?php endforeach; ?>
-                </select>
-                <div class="dv-hint">Domyślny dla wszystkich pozycji; każdą można zmienić osobno.</div>
-            </div>
-
-            <div class="dv-field dv-span-2">
-                <label class="dv-label" for="dvCurrency">Waluta</label>
-                <select id="dvCurrency" class="custom-select custom-select-sm dv-input">
-                    <option value="PLN">PLN</option>
-                    <option value="EUR">EUR</option>
-                    <option value="USD">USD</option>
-                    <option value="GBP">GBP</option>
-                    <option value="CZK">CZK</option>
-                    <option value="CHF">CHF</option>
-                </select>
-            </div>
-
-            <div class="dv-field dv-span-3">
-                <label class="dv-label" for="dvComment">Komentarz do dostawy</label>
-                <input type="text" id="dvComment" class="form-control form-control-sm dv-input"
-                       maxlength="500" autocomplete="off" placeholder="Opcjonalnie">
+            <div class="dv-fields-extra">
+                <div class="dv-field">
+                    <label class="dv-label" for="dvComment">Komentarz do dostawy</label>
+                    <input type="text" id="dvComment" class="form-control form-control-sm dv-input"
+                           maxlength="500" autocomplete="off" placeholder="Opcjonalnie">
+                </div>
             </div>
         </div>
 
