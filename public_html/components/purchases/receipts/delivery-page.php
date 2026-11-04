@@ -156,7 +156,8 @@ $e = static function ($v): string { return htmlspecialchars((string)$v, ENT_QUOT
 
             <div class="dv-field dv-span-3">
                 <label class="dv-label" for="dvDocDate">Data dokumentu</label>
-                <input type="date" id="dvDocDate" class="form-control form-control-sm dv-input">
+                <input type="date" id="dvDocDate" class="form-control form-control-sm dv-input"
+                       value="<?= $e(date('Y-m-d')) ?>">
             </div>
 
             <div class="dv-field dv-span-3">

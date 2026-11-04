@@ -54,7 +54,6 @@ $(document).ready(function () {
         entryBusy: false,
         creating: null,
         docAttempted: false,    // operator kliknął „Zapisz dokument dostawcy" przy brakach
-        receivedTouched: false,
         headerEdit: false,      // szkic istnieje: false = nagłówek zablokowany (odczyt), true = tryb edycji
         openNotes: {},          // line_id => true (rozwinięty wiersz komentarza)
         showAllBlockers: false,
@@ -309,20 +308,29 @@ $(document).ready(function () {
         });
     }
 
+    // Dzisiejsza data (RRRR-MM-DD) tak, jak ją wyrenderował serwer w polu
+    // „Data przyjęcia" (atrybut value); zapasowo — data z przeglądarki.
+    const TODAY = $recvAt.prop('defaultValue') || (function () {
+        const t = new Date();
+        const p = function (n) { return (n < 10 ? '0' : '') + n; };
+        return t.getFullYear() + '-' + p(t.getMonth() + 1) + '-' + p(t.getDate());
+    })();
+
+    // Obie daty zawsze idą do serwera jako sama data (RRRR-MM-DD), bez godziny.
+    // Serwer zapisuje „Data przyjęcia" jako RRRR-MM-DD 00:00:00 i odrzuca wartość
+    // późniejszą niż teraz + 1 dzień — dopisanie bieżącej godziny uniemożliwiłoby
+    // wybór jutra. Dokładny moment zatwierdzenia trafia osobno do posted_at.
     function readHeader() {
-        const h = {
+        return {
             vendor_id: S.vendorId || '',
             document_type: docType(),
             vendor_document_number: $.trim($docNumber.val()),
             document_date: $docDate.val() || '',
+            received_at: $recvAt.val() || '',
             currency: $currency.val() || 'PLN',
             default_sub_magazine_id: magParam($magazine.val()),
             comment: $.trim($comment.val())
         };
-        if (S.receivedTouched || (S.state && S.state.delivery && S.state.delivery.received_at)) {
-            h.received_at = $recvAt.val() || '';
-        }
-        return h;
     }
 
     function ensureCurrencyOption(code) {
@@ -483,7 +491,10 @@ $(document).ready(function () {
         if (!dirty) {
             setField($docNumber, d.vendor_document_number || '', force);
             setField($docDate, d.document_date ? String(d.document_date).substring(0, 10) : '', force);
-            if (d.received_at) setField($recvAt, String(d.received_at).substring(0, 10), force);
+            // Zapisana data przyjęcia; szkic sprzed zmiany (received_at = NULL)
+            // pokazuje dzisiejszą datę zamiast pustego pola (zapisze się
+            // przy najbliższym zapisie nagłówka).
+            setField($recvAt, d.received_at ? String(d.received_at).substring(0, 10) : TODAY, force);
             setField($comment, d.comment || '', force);
             setDocType(d.document_type || 'invoice');
 
@@ -775,7 +786,11 @@ $(document).ready(function () {
     $comment.on('input', function () { scheduleHeaderSave(false); });
     $comment.on('blur', function () { scheduleHeaderSave(true); });
     $docDate.on('change', function () { scheduleHeaderSave(true); });
-    $recvAt.on('change', function () { S.receivedTouched = true; scheduleHeaderSave(true); });
+    $recvAt.on('change', function () {
+        // „Data przyjęcia" zawsze ma wartość — wyczyszczone pole wraca do dziś.
+        if ($recvAt.val() === '') $recvAt.val(TODAY);
+        scheduleHeaderSave(true);
+    });
     $currency.on('change', function () {
         $('#dvPriceCur').text($currency.val());
         scheduleHeaderSave(true);
@@ -1681,7 +1696,7 @@ $(document).ready(function () {
         const h = readHeader();
         const payload = {};
         Object.keys(h).forEach(function (k) {
-            if (h[k] !== '' && h[k] !== null && h[k] !== undefined && k !== 'received_at') payload[k] = h[k];
+            if (h[k] !== '' && h[k] !== null && h[k] !== undefined) payload[k] = h[k];
         });
         S.creating = write('delivery-create.php', payload, { noRender: true }).then(function (r) {
             S.deliveryId = parseInt(r.delivery_id, 10);
@@ -1692,9 +1707,6 @@ $(document).ready(function () {
             const st = stateOf(r);
             if (st) { render(st, true); return null; }
             return call('delivery-get.php', { delivery_id: S.deliveryId }).then(function (g) { render(stateOf(g) || g, true); });
-        }).then(function () {
-            if (S.receivedTouched) return saveHeader();
-            return null;
         }).then(function () { S.creating = null; }, function (err) { S.creating = null; throw err; });
         return S.creating;
     }
