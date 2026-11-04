@@ -492,6 +492,18 @@ $(document).ready(function () {
         $('#dvHeaderCard').toggleClass('is-hdr-locked', ro).toggleClass('is-hdr-editing', mode === 'editing');
     }
 
+    // Krok 1 jest aktywny → reszta strony przygaszona (ten sam stan co przed
+    // zapisem dokumentu dostawcy). Dwa tryby:
+    //   new     — szkicu jeszcze nie ma: dokument dostawcy nie zapisany,
+    //   editing — szkic jest, ale operator poprawia dokument dostawcy.
+    // W obu pozycje z faktury są zablokowane: w „new" nie ma jeszcze czego
+    // wpisywać, w „editing" — do czasu „Zakończ edycję".
+    function applyStepGate() {
+        const mode = headerMode();
+        $page.toggleClass('dv-pre-draft', mode === 'new');
+        $page.toggleClass('dv-editing', mode === 'editing');
+    }
+
     function renderHeader(st, force) {
         const d = st.delivery;
         const editable = d.state === 'draft';
@@ -624,6 +636,7 @@ $(document).ready(function () {
         if (headerMode() !== 'locked') return;
         S.headerEdit = true;
         applyHeaderLock();
+        applyStepGate();
         refreshDocGate();
         // Fokus na pierwszym edytowalnym polu (numer dokumentu), kursor na końcu.
         $docNumber.trigger('focus');
@@ -646,6 +659,9 @@ $(document).ready(function () {
             if (ok !== false && headerFailed) ok = await saveHeader();
             if (ok === false) return;
             S.headerEdit = false;
+            // Krok 1 zakończony → pozycje znów dostępne, reszta strony wraca
+            // do pełnej jasności.
+            applyStepGate();
             // Pola pokazują zapisany stan z serwera, już tylko do odczytu.
             if (S.state) renderHeader(S.state, true);
         } finally {
@@ -2174,8 +2190,9 @@ $(document).ready(function () {
     }
 
     function renderAll() {
-        // Tryb „dokument jeszcze nie zapisany": brak szkicu → brak pozycji.
-        $page.toggleClass('dv-pre-draft', !S.deliveryId);
+        // Krok 1 aktywny (dokument nie zapisany albo w edycji) → reszta strony
+        // przygaszona i zablokowana.
+        applyStepGate();
         renderLines();
         renderSide();
         renderBar(S.state);
@@ -2184,7 +2201,9 @@ $(document).ready(function () {
         const draftOk = !S.state || S.state.delivery.state === 'draft';
         // Wiersz wpisywania dopiero po założeniu szkicu (S.deliveryId).
         $('#dvEntry').toggleClass('d-none', !S.deliveryId || !S.vendorId || !draftOk);
-        $('#dvLinesNote').text(S.state && S.state.delivery.state === 'draft' ? 'Zmiany zapisują się na bieżąco.' : '');
+        $('#dvLinesNote').text(headerMode() === 'editing'
+            ? 'Dokument dostawcy w edycji — pozycje zablokowane.'
+            : (S.state && S.state.delivery.state === 'draft' ? 'Zmiany zapisują się na bieżąco.' : ''));
         fillEntryMag();
         if (S.picked) updateEntryHint();
     }

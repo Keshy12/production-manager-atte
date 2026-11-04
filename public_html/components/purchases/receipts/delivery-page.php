@@ -255,6 +255,20 @@ $e = static function ($v): string { return htmlspecialchars((string)$v, ENT_QUOT
                 </div>
             </div>
 
+            <!-- Dokument dostawcy w edycji → ten sam przygaszony stan co przed
+                 zapisem: pozycje czekają na „Zakończ edycję". -->
+            <div class="dv-gate dv-gate--edit" id="dvLinesGateEdit">
+                <div class="rx-empty">
+                    <div class="rx-empty-icon"><i class="bi bi-pencil-square"></i></div>
+                    <div class="rx-empty-title">Dokument dostawcy w edycji</div>
+                    <div class="rx-empty-text">
+                        Dopóki edytujesz dokument dostawcy, pozycje z faktury są
+                        zablokowane. Kliknij „Zakończ edycję", aby wrócić do
+                        wpisywania pozycji.
+                    </div>
+                </div>
+            </div>
+
             <div class="dv-table-wrap d-none" id="dvTableWrap">
                 <table class="table rx-table dv-table mb-0" id="dvLinesTable">
                     <thead>

@@ -185,6 +185,8 @@ kbd.dv-k,
     white-space: nowrap;
 }
 .dv-page.dv-pre-draft .dv-step { display: inline-block; }
+/* W edycji dokumentu dostawcy krok 1 znów jest aktywny. */
+.dv-page.dv-editing .dv-step { display: inline-block; }
 
 /* ---- Pasek zapisu dokumentu (przed założeniem szkicu) ---------------- */
 
@@ -252,19 +254,24 @@ kbd.dv-k,
 .dv-page.dv-no-vendor .dv-entry { display: none !important; }
 
 /* Dostawca wybrany, ale dokument dostawcy jeszcze nie zapisany (brak
-   szkicu): zamiast tabeli i wiersza wpisywania — komunikat. */
+   szkicu): zamiast tabeli i wiersza wpisywania — komunikat.
+   Ten sam stan wraca w trakcie edycji dokumentu (.dv-editing) — wtedy
+   komunikat mówi o edycji, a nie o zapisie. */
 .dv-gate { display: none; }
-.dv-page.dv-pre-draft:not(.dv-no-vendor) .dv-gate { display: block; }
+.dv-page.dv-pre-draft:not(.dv-no-vendor) .dv-gate:not(.dv-gate--edit) { display: block; }
+.dv-page.dv-editing .dv-gate--edit { display: block; }
 .dv-page.dv-pre-draft .dv-table-wrap,
-.dv-page.dv-pre-draft .dv-entry { display: none !important; }
+.dv-page.dv-pre-draft .dv-entry,
+.dv-page.dv-editing .dv-table-wrap,
+.dv-page.dv-editing .dv-entry { display: none !important; }
 .dv-gate .rx-empty { padding-top: 2.4rem; padding-bottom: 2.6rem; }
 .dv-gate .rx-empty-icon { background: var(--dv-amber-soft); color: var(--dv-amber); }
 
 /* ---- Przed zapisem dokumentu: reszta strony przygaszona ------------------
    Oko ma iść do formularza (krok 1). Przygaszamy to, czego jeszcze nie da się
    użyć: panel otwartych zamówień i pasek akcji (przezroczystość + odbarwienie).
-   Wszystko pod .dv-pre-draft — po założeniu szkicu (locked / editing / closed)
-   klasa znika, a razem z nią przygaszenie.
+   Klasa .dv-pre-draft — dokument dostawcy jeszcze nie zapisany; klasa
+   .dv-editing — dokument w edycji (ten sam stan przygaszenia).
    Panel zamówień zostaje przewijalny (bez pointer-events: none). Panel
    pozycji dostaje tylko przygaszoną ramkę i nagłówek; komunikat .dv-gate
    („Najpierw zapisz dokument dostawcy") jest wskazówką DO formularza,
@@ -274,17 +281,23 @@ kbd.dv-k,
 .dv-lines,
 .dv-lines > .rx-panel-head { transition: opacity .25s ease, filter .25s ease, background-color .25s ease; }
 .dv-page.dv-pre-draft .dv-side,
-.dv-page.dv-pre-draft .dv-bar {
+.dv-page.dv-pre-draft .dv-bar,
+.dv-page.dv-editing .dv-side,
+.dv-page.dv-editing .dv-bar {
     opacity: .45;
     filter: grayscale(1) saturate(0);
 }
 /* Pasek akcji nie ma nic do przewijania — przyciski i tak są jeszcze bezużyteczne. */
-.dv-page.dv-pre-draft .dv-bar-actions { pointer-events: none; }
-.dv-page.dv-pre-draft .dv-lines { background: var(--rx-canvas); border-style: dashed; }
-.dv-page.dv-pre-draft .dv-lines > .rx-panel-head { opacity: .5; filter: grayscale(1); }
+.dv-page.dv-pre-draft .dv-bar-actions,
+.dv-page.dv-editing .dv-bar-actions { pointer-events: none; }
+.dv-page.dv-pre-draft .dv-lines,
+.dv-page.dv-editing .dv-lines { background: var(--rx-canvas); border-style: dashed; }
+.dv-page.dv-pre-draft .dv-lines > .rx-panel-head,
+.dv-page.dv-editing .dv-lines > .rx-panel-head { opacity: .5; filter: grayscale(1); }
 
 /* Karta dokumentu jako bieżący krok: akcentowa ramka i delikatny obrys. */
-.dv-page.dv-pre-draft .dv-doc {
+.dv-page.dv-pre-draft .dv-doc,
+.dv-page.dv-editing .dv-doc {
     border-color: var(--rx-accent);
     box-shadow: 0 0 0 .2rem rgba(0, 123, 255, .12), 0 .5rem 1.4rem rgba(0, 123, 255, .08);
 }
