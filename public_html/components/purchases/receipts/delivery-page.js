@@ -1739,7 +1739,10 @@ $(document).ready(function () {
         const rows = order.map(function (key) {
             const g = groups[key];
             const unit = g.unit || fallbackUnit;
-            const priceTxt = g.prices.join(' / ') + (g.prices.length && g.cur.length ? ' ' + g.cur.join('/') : '');
+            // Cena jednostkowa PO z jawną jednostką: „0,0809 USD/szt".
+            const priceTxt = g.prices.join(' / ')
+                + (g.prices.length && g.cur.length ? ' ' + g.cur.join('/') : '')
+                + (g.prices.length && unit ? '/' + unit : '');
             return '<div class="dv-info-row">'
                 + '<span class="dv-info-po">' + esc(g.po)
                 +   (g.count > 1 ? ' <span class="dv-info-count">' + g.count + ' poz.</span>' : '') + '</span>'

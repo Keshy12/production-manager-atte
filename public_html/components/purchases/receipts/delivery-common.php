@@ -139,7 +139,10 @@ function delivery_open_items(\PDO $db, int $vendorId): array {
            JOIN `purchase__order` po        ON i.po_id = po.id
            LEFT JOIN `list__vendor_part` vp ON i.vendor_part_id = vp.id
            LEFT JOIN `list__parts` lp       ON vp.parts_id = lp.id
-           LEFT JOIN `part__unit` u         ON vp.vendor_jm_id = u.id
+           -- Jednostka PO (i.quantity_unit_id), nie jednostwa katalogowa części
+           -- (vp.vendor_jm_id): różnią się w ~67 pozycjach (np. gram vs szt),
+           -- a cena PO dotyczy właśnie jednostki pozycji zamówienia.
+           LEFT JOIN `part__unit` u         ON i.quantity_unit_id = u.id
           WHERE po.vendor_id = ? AND po.state IN ({$states})
             AND i.quantity - i.quantity_received > 0.000001
           ORDER BY (COALESCE(i.expected_delivery_date, po.expected_delivery_date) IS NULL) ASC,
