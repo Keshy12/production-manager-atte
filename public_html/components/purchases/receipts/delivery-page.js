@@ -1119,16 +1119,19 @@ $(document).ready(function () {
                 ? '<span class="' + (late ? 'is-late' : '') + '">' + (late ? 'po terminie ' : 'dostawa ') + esc(fmtDate(g.due)) + '</span>'
                 : 'bez terminu';
             // Grupa zwijana — domyślnie zamknięta; stan trzymamy w S.sideOpenPoIds,
-            // żeby przeżył przerysowanie panelu.
-            const isOpen = !!S.sideOpenPoIds[g.po_id];
+            // żeby przeżył przerysowanie panelu. Przy aktywnym filtrze zwijanie
+            // nie ma sensu — pokazujemy pozycje od razu (grupa jest wymuszona
+            // rozwinięta, przycisk zwijania nie jest wtedy renderowany).
+            const isOpen = filtered ? true : !!S.sideOpenPoIds[g.po_id];
             const bodyId = 'dvPoBody' + parseInt(g.po_id, 10);
             const countHtml = filtered
                 ? '<span class="dv-po-match" title="Pozycje pasujące do filtra">' + items.length + ' z ' + g.items.length + ' poz.</span> · '
                 : '';
-            html += '<div class="dv-po' + (g.touched ? ' is-touched' : '') + (isOpen ? ' is-open' : '') + '" data-po-id="' + parseInt(g.po_id, 10) + '">'
+            const toggleHtml = filtered ? '' : '<button type="button" class="dv-po-toggle" aria-expanded="' + (isOpen ? 'true' : 'false') + '" aria-controls="' + bodyId + '" title="Rozwiń / zwiń pozycje">'
+                  +     '<i class="bi bi-chevron-right dv-po-caret" aria-hidden="true"></i></button>';
+            html += '<div class="dv-po' + (g.touched ? ' is-touched' : '') + (isOpen ? ' is-open' : '') + (filtered ? ' is-forced' : '') + '" data-po-id="' + parseInt(g.po_id, 10) + '">'
                   + '<div class="dv-po-head">'
-                  +   '<button type="button" class="dv-po-toggle" aria-expanded="' + (isOpen ? 'true' : 'false') + '" aria-controls="' + bodyId + '" title="Rozwiń / zwiń pozycje">'
-                  +     '<i class="bi bi-chevron-right dv-po-caret" aria-hidden="true"></i></button>'
+                  +   toggleHtml
                   +   '<a class="dv-po-no" href="' + esc(poEditUrl(g.po_id)) + '" target="_blank" rel="noopener" title="Otwórz zamówienie">' + esc(g.po_number || ('#' + g.po_id)) + '</a>'
                   +   '<span class="dv-po-meta">' + countHtml + dueHtml
                   +     (g.touched ? ' · <span class="dv-po-hit" title="Pozycje tego zamówienia w tej dostawie">' + g.touched + '/' + g.items.length + '</span>' : '')
@@ -1186,6 +1189,8 @@ $(document).ready(function () {
     $('#dvSideBody').on('click', '.dv-po-head', function (e) {
         if ($(e.target).closest('a').length) return;
         const $po = $(this).closest('.dv-po');
+        // Przy aktywnym filtrze pozycje są wymuszenie rozwinięte — zwijanie wyłączone.
+        if ($po.hasClass('is-forced')) return;
         const id = parseInt($po.attr('data-po-id'), 10);
         const open = !$po.hasClass('is-open');
         $po.toggleClass('is-open', open);

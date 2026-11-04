@@ -762,6 +762,8 @@ a.dv-alloc-po { text-decoration: none; }
 .dv-po.is-touched .dv-po-head { background: var(--dv-green-soft); }
 /* Zwijana grupa zamówienia: nagłówek jest klikalny, treść domyślnie ukryta. */
 .dv-po-head { cursor: pointer; }
+/* Przy aktywnym filtrze pozycje są rozwinięte — nagłówek nie jest przełącznikiem. */
+.dv-po.is-forced .dv-po-head { cursor: default; }
 .dv-po-toggle { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 1.4rem; height: 1.4rem; margin: 0 .1rem 0 -.3rem; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--rx-muted); cursor: pointer; }
 .dv-po-toggle:hover { color: var(--rx-ink); background: var(--rx-line-soft); }
 .dv-po-toggle:focus-visible { outline: 2px solid var(--rx-accent-ink); outline-offset: 1px; }
