@@ -450,10 +450,10 @@ $(document).ready(function () {
             const stamp = fmtStamp(d.posted_at);
             const by = $.trim(d.posted_by_name == null ? '' : String(d.posted_by_name));
             html += sumItem('dv-span-3', 'Zatwierdzono',
-                stamp === '' && by === '' ? '' : esc(stamp) + (by !== '' ? '<span class="dv-sum-sub"> · ' + esc(by) + '</span>' : ''));
+                stamp === '' && by === '' ? '' : esc(stamp) + (by !== '' ? '<span class="dv-sum-sub"> · ' + esc(by) + '</span>' : ''), 'dv-sum-item--audit');
         } else if (d.state === 'cancelled' && $.trim(d.grn_number == null ? '' : String(d.grn_number)) !== '') {
             // Dla anulowanego znacznik GRN w nagłówku jest ukryty — numer pokazujemy tu.
-            html += sumItem('dv-span-3', 'Numer GRN', '<span class="dv-sum-doc">' + esc(d.grn_number) + '</span>');
+            html += sumItem('dv-span-3', 'Numer GRN', '<span class="dv-sum-doc">' + esc(d.grn_number) + '</span>', 'dv-sum-item--audit');
         }
 
         // Komentarz tylko, gdy coś w nim jest.
