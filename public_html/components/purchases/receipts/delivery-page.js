@@ -369,6 +369,86 @@ $(document).ready(function () {
         return S.headerEdit ? 'editing' : 'locked';
     }
 
+    // Data + godzina („04.11.2026 14:05"); sama data, gdy brak godziny.
+    function fmtStamp(iso) {
+        const m = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/.exec(String(iso || ''));
+        if (!m) return String(iso || '');
+        return m[3] + '.' + m[2] + '.' + m[1] + (m[4] !== undefined ? ' ' + m[4] + ':' + m[5] : '');
+    }
+
+    // Jedna pozycja podsumowania: etykieta + wartość. `html` to gotowy,
+    // już zabezpieczony znacznik wartości; pusta wartość = „—".
+    function sumItem(span, label, html, mod) {
+        const empty = (html === null || html === undefined || html === '');
+        return '<div class="dv-sum-item ' + span + (mod ? ' ' + mod : '') + '">'
+             +   '<div class="dv-label">' + esc(label) + '</div>'
+             +   '<div class="dv-sum-val">' + (empty ? '<span class="dv-sum-empty">—</span>' : html) + '</div>'
+             + '</div>';
+    }
+
+    // Tekst → znacznik wartości (pusty / same spacje → '' = „—").
+    function sumText(v) {
+        const t = $.trim(v == null ? '' : String(v));
+        return t === '' ? '' : esc(t);
+    }
+
+    // Podsumowanie zapisanego dokumentu dostawcy (tryb tylko do odczytu).
+    // Rysowane z ostatniego stanu serwera (S.state.delivery) — pokazuje to,
+    // co jest zapisane, a nie to, co wpisano w ukryty formularz. Woła je
+    // applyHeaderLock(), czyli przy każdej zmianie stanu i trybu nagłówka.
+    function renderSummary() {
+        const $sum = $('#dvSummary');
+        const st = S.state;
+        if (!st || !st.delivery) {
+            $sum.html('<div class="dv-summary-note">Wczytywanie dokumentu…</div>');
+            return;
+        }
+        const d = st.delivery;
+
+        // Typ dokumentu jako plakietka.
+        let typeHtml = '';
+        if (d.document_type === 'invoice') typeHtml = '<span class="rx-badge rx-badge--blue">Faktura</span>';
+        else if (d.document_type === 'wz') typeHtml = '<span class="rx-badge rx-badge--violet">WZ</span>';
+        else typeHtml = sumText(d.document_type);
+
+        // Magazyn domyślny: nazwa z serwera → lista magazynów → „#id".
+        // Magazyn „0" jest prawidłowy — defaultMagName() sprawdza go przez hasMag().
+        const mag = defaultMagName(st);
+
+        const docNo = $.trim(d.vendor_document_number == null ? '' : String(d.vendor_document_number));
+
+        let html = '';
+        html += sumItem('dv-span-4', 'Dostawca', sumText(d.vendor_name));
+        html += sumItem('dv-span-3', 'Nr dokumentu', docNo === '' ? '' : '<span class="dv-sum-doc">' + esc(docNo) + '</span>', 'dv-sum-item--key');
+        html += sumItem('dv-span-2', 'Typ dokumentu', typeHtml);
+        html += sumItem('dv-span-3', 'Data dokumentu', sumText(fmtDate(d.document_date)));
+        html += sumItem('dv-span-3', 'Data przyjęcia', sumText(fmtDate(d.received_at)));
+        html += sumItem('dv-span-4', 'Magazyn docelowy', mag === '' ? '' : '<i class="bi bi-box-seam dv-sum-ico"></i>' + esc(mag));
+        html += sumItem('dv-span-2', 'Waluta', sumText(d.currency));
+
+        if (d.state === 'posted') {
+            // GRN jest już w znaczniku #dvGrnTag w nagłówku karty — nie dublujemy.
+            const stamp = fmtStamp(d.posted_at);
+            const by = $.trim(d.posted_by_name == null ? '' : String(d.posted_by_name));
+            html += sumItem('dv-span-3', 'Zatwierdzono',
+                stamp === '' && by === '' ? '' : esc(stamp) + (by !== '' ? '<span class="dv-sum-sub"> · ' + esc(by) + '</span>' : ''));
+        } else if (d.state === 'cancelled' && $.trim(d.grn_number == null ? '' : String(d.grn_number)) !== '') {
+            // Dla anulowanego znacznik GRN w nagłówku jest ukryty — numer pokazujemy tu.
+            html += sumItem('dv-span-3', 'Numer GRN', '<span class="dv-sum-doc">' + esc(d.grn_number) + '</span>');
+        }
+
+        // Komentarz tylko, gdy coś w nim jest.
+        const comment = $.trim(d.comment == null ? '' : String(d.comment));
+        if (comment !== '') {
+            html += '<div class="dv-sum-item dv-sum-item--wide">'
+                  +   '<div class="dv-label">Komentarz</div>'
+                  +   '<div class="dv-sum-val dv-sum-comment">' + esc(comment) + '</div>'
+                  + '</div>';
+        }
+
+        $sum.html(html);
+    }
+
     // Odczyt vs edycja pól nagłówka. Pola tekstowe i daty dostają `readonly`
     // (zapisane wartości zostają czytelne); to, co nie ma stanu readonly —
     // waluta, typ dokumentu, picker magazynu — dostaje `disabled`.
@@ -377,6 +457,13 @@ $(document).ready(function () {
     function applyHeaderLock() {
         const mode = headerMode();
         const ro = (mode !== 'new' && mode !== 'editing');
+        // Dwie prezentacje nagłówka: formularz (new / editing) albo
+        // podsumowanie zapisanego dokumentu (locked / closed / wait).
+        // Formularz jest tylko ukrywany (CSS), nie usuwany — pola i pickery
+        // zachowują wartości, które renderHeader() wpisuje z tego samego stanu.
+        // Przełączenie musi nastąpić PRZED fokusem w startHeaderEdit().
+        $('#dvHeaderCard').toggleClass('is-hdr-summary', ro);
+        if (ro) renderSummary();
         $docNumber.add($docDate).add($recvAt).add($comment).prop('readOnly', ro);
         $currency.prop('disabled', ro);
         $('#dvDocType button').prop('disabled', ro);
@@ -2066,6 +2153,8 @@ $(document).ready(function () {
                 }).catch(function (err) {
                     showError(err.message);
                     $page.addClass('dv-no-vendor');
+                    // Podsumowanie nie zostanie już narysowane — nie zostawiamy „Wczytywanie…".
+                    $('#dvSummary').html('<div class="dv-summary-note is-error">Nie udało się wczytać dokumentu dostawcy.</div>');
                 });
             }
             const vid = parseInt($page.attr('data-vendor-id'), 10) || 0;

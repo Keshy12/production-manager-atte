@@ -111,6 +111,81 @@ kbd.dv-k,
 .dv-seg.is-locked button:hover:not(.is-active) { background: transparent; }
 .dv-seg.is-locked button.is-active { background: #5f7389; color: #fff; }
 
+/* ---- Dokument dostawcy: formularz albo podsumowanie ------------------
+   Karta ma dwie prezentacje tych samych danych. Formularz (.dv-fields) jest
+   w trybach „new" i „editing"; podsumowanie (.dv-summary) — gdy dokument jest
+   zapisany i zablokowany albo przyjęcie zatwierdzone / anulowane. Przełącza je
+   klasa .is-hdr-summary na #dvHeaderCard (delivery-page.js, applyHeaderLock()).
+   Formularz jest tylko ukrywany, nie usuwany — pola zachowują wartości. */
+
+.dv-doc .dv-summary { display: none; }
+.dv-doc.is-hdr-summary .dv-summary { display: grid; }
+.dv-doc.is-hdr-summary .dv-fields { display: none; }
+
+.dv-summary {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: 1.15rem 1.5rem;
+    padding: .9rem 1.25rem 1.4rem;
+}
+.dv-sum-item {
+    min-width: 0;
+    padding-top: .65rem;
+    border-top: 1px solid var(--rx-line-soft);
+}
+.dv-sum-item .dv-label { margin-bottom: .3rem; }
+.dv-sum-val {
+    font-size: .98rem;
+    font-weight: 600;
+    line-height: 1.35;
+    color: var(--rx-ink);
+    overflow-wrap: anywhere;
+}
+.dv-sum-empty { font-weight: 500; color: var(--rx-faint); }
+.dv-sum-sub { font-weight: 500; color: var(--rx-muted); }
+.dv-sum-ico { margin-right: .4rem; font-size: .9em; color: var(--rx-faint); }
+
+/* Numer dokumentu (i GRN) — wyróżnione: mono, większy, z akcentem na górze. */
+.dv-sum-item--key { border-top-color: var(--rx-accent); }
+.dv-sum-doc {
+    font-family: var(--dv-mono);
+    font-size: 1.15rem;
+    font-weight: 700;
+    letter-spacing: -.01em;
+    color: var(--rx-ink);
+}
+
+.dv-sum-item--wide { grid-column: 1 / -1; }
+.dv-sum-comment {
+    font-weight: 500;
+    color: var(--rx-ink-2);
+    white-space: pre-wrap;
+}
+
+/* Wczytywanie / błąd wczytania (wznawiany szkic, zanim przyjdzie stan). */
+.dv-summary-note {
+    grid-column: 1 / -1;
+    padding: .6rem 0 .2rem;
+    font-size: .9rem;
+    color: var(--rx-muted);
+}
+.dv-summary-note.is-error { color: #a71d2a; font-weight: 600; }
+
+/* Znacznik kroku — tylko przed zapisem dokumentu. */
+.dv-step {
+    display: none;
+    margin-left: .35rem;
+    padding: .12rem .55rem;
+    border-radius: 999px;
+    background: var(--rx-accent);
+    color: #fff;
+    font-size: .66rem;
+    font-weight: 800;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+.dv-page.dv-pre-draft .dv-step { display: inline-block; }
+
 /* ---- Pasek zapisu dokumentu (przed założeniem szkicu) ---------------- */
 
 .dv-doc-foot {
@@ -184,6 +259,38 @@ kbd.dv-k,
 .dv-page.dv-pre-draft .dv-entry { display: none !important; }
 .dv-gate .rx-empty { padding-top: 2.4rem; padding-bottom: 2.6rem; }
 .dv-gate .rx-empty-icon { background: var(--dv-amber-soft); color: var(--dv-amber); }
+
+/* ---- Przed zapisem dokumentu: reszta strony przygaszona ------------------
+   Oko ma iść do formularza (krok 1). Przygaszamy to, czego jeszcze nie da się
+   użyć: panel otwartych zamówień i pasek akcji (przezroczystość + odbarwienie).
+   Wszystko pod .dv-pre-draft — po założeniu szkicu (locked / editing / closed)
+   klasa znika, a razem z nią przygaszenie.
+   Panel zamówień zostaje przewijalny (bez pointer-events: none). Panel
+   pozycji dostaje tylko przygaszoną ramkę i nagłówek; komunikat .dv-gate
+   („Najpierw zapisz dokument dostawcy") jest wskazówką DO formularza,
+   więc zostaje w pełnym kontraście. */
+.dv-side,
+.dv-bar,
+.dv-lines,
+.dv-lines > .rx-panel-head { transition: opacity .25s ease, filter .25s ease, background-color .25s ease; }
+.dv-page.dv-pre-draft .dv-side,
+.dv-page.dv-pre-draft .dv-bar {
+    opacity: .45;
+    filter: grayscale(1) saturate(0);
+}
+/* Pasek akcji nie ma nic do przewijania — przyciski i tak są jeszcze bezużyteczne. */
+.dv-page.dv-pre-draft .dv-bar-actions { pointer-events: none; }
+.dv-page.dv-pre-draft .dv-lines { background: var(--rx-canvas); border-style: dashed; }
+.dv-page.dv-pre-draft .dv-lines > .rx-panel-head { opacity: .5; filter: grayscale(1); }
+
+/* Karta dokumentu jako bieżący krok: akcentowa ramka i delikatny obrys. */
+.dv-page.dv-pre-draft .dv-doc {
+    border-color: var(--rx-accent);
+    box-shadow: 0 0 0 .2rem rgba(0, 123, 255, .12), 0 .5rem 1.4rem rgba(0, 123, 255, .08);
+}
+@media (prefers-reduced-motion: reduce) {
+    .dv-side, .dv-bar, .dv-lines, .dv-lines > .rx-panel-head { transition: none; }
+}
 
 /* ---- Tabela pozycji ------------------------------------------------- */
 

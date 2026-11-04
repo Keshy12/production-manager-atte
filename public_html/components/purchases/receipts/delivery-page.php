@@ -102,10 +102,26 @@ $e = static function ($v): string { return htmlspecialchars((string)$v, ENT_QUOT
     <div id="alertContainer" class="rx-alerts"></div>
 
     <!-- ===== Dokument dostawcy (nagłówek) ===== -->
-    <section class="rx-panel rx-sheet dv-doc mb-3" id="dvHeaderCard">
+    <!-- Dwie prezentacje tych samych danych (przełącza je delivery-page.js,
+         applyHeaderLock(), klasą is-hdr-summary na karcie):
+           .dv-fields   — formularz; tryby „new" i „editing",
+           .dv-summary  — podsumowanie zapisanego dokumentu (tylko odczyt);
+                          tryby „locked" i „closed" (zatwierdzone / anulowane).
+         Podsumowanie JS rysuje ze STANU SERWERA (S.state.delivery), nie z pól.
+         Wznawiany szkic startuje od podsumowania („Wczytywanie…"), żeby
+         pusty formularz nie mignął przed wczytaniem stanu. -->
+    <section class="rx-panel rx-sheet dv-doc mb-3<?= $deliveryId > 0 ? ' is-hdr-summary' : '' ?>" id="dvHeaderCard">
         <div class="dv-doc-head">
-            <h2 class="rx-panel-title"><i class="bi bi-file-earmark-text"></i> Dokument dostawcy</h2>
+            <h2 class="rx-panel-title">
+                <i class="bi bi-file-earmark-text"></i> Dokument dostawcy
+                <!-- Znacznik kroku — widoczny tylko, dopóki dokument nie jest zapisany. -->
+                <span class="dv-step" id="dvStep">Krok 1 z 2</span>
+            </h2>
             <div class="dv-doc-grn d-none" id="dvGrnTag"></div>
+        </div>
+
+        <div class="dv-summary" id="dvSummary" aria-live="polite">
+            <div class="dv-summary-note">Wczytywanie dokumentu…</div>
         </div>
 
         <div class="dv-fields">
