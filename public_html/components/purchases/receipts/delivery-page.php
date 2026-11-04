@@ -239,6 +239,7 @@ $e = static function ($v): string { return htmlspecialchars((string)$v, ENT_QUOT
                     <tr>
                         <th scope="col" class="dv-c-no">#</th>
                         <th scope="col">Artykuł</th>
+                        <th scope="col" class="dv-c-mag">Magazyn</th>
                         <th scope="col" class="text-right dv-c-qty">Ilość</th>
                         <th scope="col" class="text-right dv-c-price">Cena</th>
                         <th scope="col">Przydział do zamówień</th>
@@ -279,6 +280,13 @@ $e = static function ($v): string { return htmlspecialchars((string)$v, ENT_QUOT
                         <label class="dv-label" for="dvPrice">Cena netto <span class="dv-label-sub" id="dvPriceCur">PLN</span></label>
                         <input type="text" id="dvPrice" class="form-control dv-input text-right" inputmode="decimal"
                                autocomplete="off" placeholder="0,00">
+                    </div>
+                    <!-- Magazyn pozycji: pusty wybór = magazyn domyślny dostawy (bez
+                         nadpisania). Kolejność Tab: artykuł → ilość → cena → magazyn →
+                         Dodaj/Zapisz → Anuluj; Enter w cenie lub magazynie zapisuje. -->
+                    <div class="dv-entry-mag">
+                        <label class="dv-label" for="dvMag">Magazyn <span class="dv-label-sub">tej pozycji</span></label>
+                        <select id="dvMag" class="custom-select dv-input dv-mag-select" aria-label="Magazyn pozycji"></select>
                     </div>
                     <div class="dv-entry-go">
                         <button type="button" class="btn btn-primary dv-entry-btn" id="dvEntrySave">

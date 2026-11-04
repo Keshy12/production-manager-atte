@@ -212,9 +212,30 @@ kbd.dv-k,
 .dv-price { font-weight: 600; }
 .dv-price--none { color: var(--rx-faint); font-weight: 500; }
 
-.dv-mag-select { flex: 0 0 13rem; width: 13rem; font-size: .8rem; border-color: var(--rx-line); }
 .dv-field.is-invalid .rx-picker-btn { border-color: #e5818b; box-shadow: 0 0 0 .15rem rgba(220, 53, 69, .12); }
-.dv-mag-select.is-override { border-color: var(--rx-accent); background-color: var(--rx-accent-soft); font-weight: 600; }
+
+/* Magazyn pozycji (kolumna „Magazyn"): efektywny magazyn każdej pozycji.
+   Odziedziczony domyślny = stonowany tekst; nadpisanie = plakietka w kolorze
+   akcentu; brak magazynu = ostrzegawcza plakietka. */
+.dv-table .dv-c-mag { width: 10.5rem; }
+.dv-mag { display: inline-flex; align-items: baseline; gap: .3rem; max-width: 100%; font-size: .8rem; line-height: 1.3; }
+.dv-mag .bi { flex-shrink: 0; font-size: .85em; }
+.dv-mag-name { min-width: 0; overflow-wrap: anywhere; }
+.dv-mag--def { color: var(--rx-muted); }
+.dv-mag--def .bi { color: var(--rx-faint); }
+.dv-mag--own,
+.dv-mag--none { padding: .1rem .55rem; border-radius: 999px; font-weight: 700; }
+.dv-mag--own { background: var(--rx-accent-soft); color: var(--rx-accent-ink); box-shadow: inset 0 0 0 1px rgba(0, 123, 255, .28); }
+.dv-mag--none { background: var(--dv-amber-soft); color: #775300; }
+
+/* Na wąskich ekranach kolumna „Magazyn" zwija się, a magazyn pokazuje się
+   pod nazwą artykułu. Wąsko = poniżej 992 px oraz 1200–1399 px (wtedy obok
+   tabeli jest panel zamówień i brakuje miejsca). */
+.dv-mag-inline { display: none; margin-top: .25rem; }
+@media (max-width: 991.98px), (min-width: 1200px) and (max-width: 1399.98px) {
+    .dv-table th.dv-c-mag, .dv-table td.dv-c-mag { display: none; }
+    .dv-mag-inline { display: block; }
+}
 
 /* Przydział. */
 .dv-allocs { display: flex; flex-direction: column; gap: .2rem; }
@@ -331,16 +352,21 @@ a.dv-alloc-po { text-decoration: none; }
 
 .dv-entry-grid {
     display: grid;
-    grid-template-columns: minmax(12rem, 1fr) 7.5rem 9rem auto;
+    grid-template-columns: minmax(12rem, 1fr) 7.5rem 9rem minmax(10rem, 14rem) auto;
     gap: .6rem;
     align-items: end;
 }
 @media (max-width: 767.98px) {
     .dv-entry-grid { grid-template-columns: 1fr 1fr; }
     .dv-entry-art { grid-column: 1 / -1; }
+    .dv-entry-mag { grid-column: 1 / -1; }
     .dv-entry-go { grid-column: 1 / -1; }
     .dv-entry-go .btn { width: 100%; }
 }
+/* Picker magazynu pozycji — zwykły custom-select wypełniający kolumnę;
+   min-width: 0, żeby długa nazwa magazynu nie rozpychała siatki. */
+.dv-entry-mag { min-width: 0; }
+.dv-entry-mag .dv-mag-select { width: 100%; min-width: 0; text-overflow: ellipsis; }
 .dv-entry .dv-input { height: calc(1.5em + .9rem + 2px); font-size: .95rem; }
 .dv-entry-go { display: flex; gap: .35rem; }
 .dv-entry-btn { height: calc(1.5em + .9rem + 2px); font-weight: 700; white-space: nowrap; }

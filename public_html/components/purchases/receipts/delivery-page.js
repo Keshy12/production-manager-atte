@@ -55,7 +55,7 @@ $(document).ready(function () {
         creating: null,
         docAttempted: false,    // operator kliknął „Zapisz dokument dostawcy" przy brakach
         receivedTouched: false,
-        openNotes: {},          // line_id => true (rozwinięty wiersz magazyn/komentarz)
+        openNotes: {},          // line_id => true (rozwinięty wiersz komentarza)
         showAllBlockers: false,
         posting: false,
         writeSeq: 0,
@@ -173,13 +173,30 @@ $(document).ready(function () {
         return '';
     }
 
-    function magOptionsHtml(selectedId, defaultLabel) {
+    // Opcje magazynu z pustą pierwszą opcją (= bez nadpisania, magazyn domyślny).
+    // `orphanName`: nazwa magazynu pozycji, którego nie ma już na liście
+    // aktywnych — dostaje własną opcję, żeby zapis nie zgubił go po cichu.
+    function magOptionsHtml(selectedId, defaultLabel, orphanName) {
         let html = '<option value="">' + esc(defaultLabel) + '</option>';
+        let found = false;
         MAGAZINES.forEach(function (m) {
-            html += '<option value="' + m.id + '"' + (String(selectedId) === String(m.id) ? ' selected' : '') + '>'
-                  + esc(m.name) + '</option>';
+            const sel = hasMag(selectedId) && String(selectedId) === String(m.id);
+            if (sel) found = true;
+            html += '<option value="' + m.id + '"' + (sel ? ' selected' : '') + '>' + esc(m.name) + '</option>';
         });
+        if (hasMag(selectedId) && !found) {
+            html += '<option value="' + esc(selectedId) + '" selected>'
+                  + esc(orphanName || ('Magazyn #' + selectedId)) + ' (nieaktywny)</option>';
+        }
         return html;
+    }
+
+    // Nazwa magazynu domyślnego dostawy (z nagłówka stanu); '' gdy brak.
+    function defaultMagName(st) {
+        const d = st && st.delivery;
+        if (!d) return '';
+        if (d.default_sub_magazine_name) return d.default_sub_magazine_name;
+        return hasMag(d.default_sub_magazine_id) ? (magName(d.default_sub_magazine_id) || ('#' + d.default_sub_magazine_id)) : '';
     }
 
     // Domyślny magazyn użytkownika, jeśli jest na liście aktywnych magazynów
@@ -920,14 +937,43 @@ $(document).ready(function () {
         return html;
     }
 
+    // Magazyn pozycji — zawsze pokazujemy EFEKTYWNY (nadpisanie pozycji albo,
+    // gdy go brak, magazyn domyślny dostawy). Nadpisanie jest wyróżnione
+    // (plakietka), odziedziczony domyślny jest stonowany. Id magazynu 0 jest
+    // prawidłowe — wszędzie hasMag(), nigdy sprawdzenie prawdziwości.
+    function lineMagHtml(l, st) {
+        const d = st.delivery;
+        const own = hasMag(l.sub_magazine_id);
+        const effId = hasMag(l.effective_sub_magazine_id)
+            ? l.effective_sub_magazine_id
+            : (own ? l.sub_magazine_id : d.default_sub_magazine_id);
+        let name;
+        if (own) {
+            name = l.sub_magazine_name || magName(l.sub_magazine_id) || ('#' + l.sub_magazine_id);
+        } else {
+            name = defaultMagName(st);
+            if (name === '' && hasMag(effId)) name = magName(effId) || ('#' + effId);
+        }
+        if (!hasMag(effId)) {
+            return '<span class="dv-mag dv-mag--none" title="Brak magazynu — ustaw magazyn docelowy w dokumencie albo dla tej pozycji.">'
+                 + '<i class="bi bi-exclamation-triangle-fill"></i> <span class="dv-mag-name">brak magazynu</span></span>';
+        }
+        if (own) {
+            return '<span class="dv-mag dv-mag--own" title="Magazyn ustawiony dla tej pozycji (inny niż domyślny dla dostawy)">'
+                 + '<i class="bi bi-box-seam"></i> <span class="dv-mag-name">' + esc(name) + '</span></span>';
+        }
+        return '<span class="dv-mag dv-mag--def" title="Magazyn domyślny dostawy">'
+             + '<i class="bi bi-box-seam"></i> <span class="dv-mag-name">' + esc(name) + '</span>'
+             + '<span class="sr-only"> (domyślny)</span></span>';
+    }
+
     function lineRowsHtml(l, st, ro) {
         const f = l.flags || {};
         const needComment = !!(f.surplus || f.not_on_po);
         const hasBlock = !!(f.currency_mismatch && f.currency_mismatch.length);
         const hasWarn = !!(f.price_mismatch || f.price_missing_on_po || f.duplicate_line);
         const commentTxt = l.comment || '';
-        const hasOverride = hasMag(l.sub_magazine_id);
-        const notesOpen = !ro && (S.openNotes[l.id] || needComment || commentTxt !== '' || hasOverride);
+        const notesOpen = !ro && (S.openNotes[l.id] || needComment || commentTxt !== '');
         const commentMissing = needComment && $.trim(commentTxt) === '';
         const classes = ['dv-line'];
         if (hasBlock) classes.push('has-block');
@@ -936,15 +982,19 @@ $(document).ready(function () {
         if (S.editLineId === l.id) classes.push('is-editing');
 
         const unit = S.unitByVp[l.vendor_part_id] ? '<span class="rx-unit">' + esc(S.unitByVp[l.vendor_part_id]) + '</span>' : '';
-        const mag = hasMag(l.sub_magazine_id) ? (l.sub_magazine_name || magName(l.sub_magazine_id)) : '';
+        const magHtml = lineMagHtml(l, st);
 
+        // Kolumna „Magazyn" znika na wąskich ekranach (patrz delivery-ui.css) —
+        // wtedy ten sam magazyn pokazuje się pod nazwą artykułu (.dv-mag-inline),
+        // więc nigdy nie ginie z widoku.
         let html = '<tr class="' + classes.join(' ') + '" data-line-id="' + l.id + '">'
                  + '<td class="dv-c-no">' + esc(l.line_no) + '</td>'
                  + '<td><span class="dv-art-no">' + esc(l.vendor_part_no || ('vp#' + l.vendor_part_id)) + '</span>'
                  +   (l.producer_part_no && l.producer_part_no !== l.vendor_part_no ? ' <span class="dv-art-sub">' + esc(l.producer_part_no) + '</span>' : '')
                  +   '<div class="dv-art-name">' + esc(l.part_name || '') + '</div>'
-                 +   (mag ? '<div class="dv-art-sub"><i class="bi bi-box-seam"></i> ' + esc(mag) + '</div>' : (ro && l.sub_magazine_name ? '<div class="dv-art-sub"><i class="bi bi-box-seam"></i> ' + esc(l.sub_magazine_name) + '</div>' : ''))
+                 +   '<div class="dv-mag-inline">' + magHtml + '</div>'
                  + '</td>'
+                 + '<td class="dv-c-mag">' + magHtml + '</td>'
                  + '<td class="dv-c-qty"><span class="dv-qty">' + esc(fmtQty(l.quantity)) + '</span>' + unit + '</td>'
                  + '<td class="dv-c-price">' + (l.unit_price === null || l.unit_price === undefined || l.unit_price === ''
                         ? '<span class="dv-price--none">—</span>'
@@ -954,28 +1004,21 @@ $(document).ready(function () {
         if (ro) {
             html += '<td class="dv-c-act"></td></tr>';
             if (commentTxt !== '') {
-                html += '<tr class="dv-note"><td></td><td colspan="5"><div class="dv-ro-note"><i class="bi bi-chat-left-text"></i> ' + esc(commentTxt) + '</div></td></tr>';
+                html += '<tr class="dv-note"><td></td><td colspan="6"><div class="dv-ro-note"><i class="bi bi-chat-left-text"></i> ' + esc(commentTxt) + '</div></td></tr>';
             }
             return html;
         }
 
         html += '<td class="dv-c-act"><div class="dv-actions">'
               + '<button type="button" class="dv-icon-btn js-line-alloc" data-line-id="' + l.id + '" title="Zmień przydział do zamówień" aria-label="Zmień przydział"><i class="bi bi-diagram-3"></i></button>'
-              + '<button type="button" class="dv-icon-btn js-line-notes' + (notesOpen ? ' is-on' : '') + (commentMissing ? ' dv-icon-btn--warn' : '') + '" data-line-id="' + l.id + '" title="Magazyn i komentarz" aria-label="Magazyn i komentarz"><i class="bi bi-chat-left-text"></i></button>'
-              + '<button type="button" class="dv-icon-btn js-line-edit" data-line-id="' + l.id + '" title="Popraw ilość / cenę / artykuł" aria-label="Edytuj"><i class="bi bi-pencil"></i></button>'
+              + '<button type="button" class="dv-icon-btn js-line-notes' + (notesOpen ? ' is-on' : '') + (commentMissing ? ' dv-icon-btn--warn' : '') + '" data-line-id="' + l.id + '" title="Komentarz" aria-label="Komentarz"><i class="bi bi-chat-left-text"></i></button>'
+              + '<button type="button" class="dv-icon-btn js-line-edit" data-line-id="' + l.id + '" title="Popraw ilość / cenę / artykuł / magazyn" aria-label="Edytuj"><i class="bi bi-pencil"></i></button>'
               + '<button type="button" class="dv-icon-btn dv-icon-btn--danger js-line-del" data-line-id="' + l.id + '" title="Usuń pozycję" aria-label="Usuń"><i class="bi bi-trash"></i></button>'
               + '</div></td></tr>';
 
         if (notesOpen) {
-            const defMagId = st.delivery.default_sub_magazine_id;
-            const defMag = st.delivery.default_sub_magazine_name
-                || (hasMag(defMagId) ? magName(defMagId) : '')
-                || 'brak';
-            html += '<tr class="dv-note' + (commentMissing ? ' is-required' : '') + '" data-line-id="' + l.id + '"><td></td><td colspan="5">'
+            html += '<tr class="dv-note' + (commentMissing ? ' is-required' : '') + '" data-line-id="' + l.id + '"><td></td><td colspan="6">'
                   + '<div class="dv-note-box">'
-                  +   '<select class="custom-select custom-select-sm dv-mag-select js-line-mag' + (hasOverride ? ' is-override' : '') + '" data-line-id="' + l.id + '" aria-label="Magazyn pozycji">'
-                  +     magOptionsHtml(magParam(l.sub_magazine_id), 'Magazyn domyślny: ' + defMag)
-                  +   '</select>'
                   +   '<i class="bi bi-chat-left-text"></i>'
                   +   '<input type="text" class="form-control form-control-sm dv-note-input js-line-comment" data-line-id="' + l.id + '" maxlength="500" '
                   +     'value="' + esc(commentTxt) + '" autocomplete="off" '
@@ -1067,10 +1110,6 @@ $(document).ready(function () {
             write('delivery-line-allocate.php', { delivery_id: S.deliveryId, line_id: id })
                 .catch(function (err) { showError(err.message); });
         })
-        .on('change', '.js-line-mag', function () {
-            const l = findLine(parseInt($(this).attr('data-line-id'), 10));
-            if (l) saveLineFields(l, { sub_magazine_id: magParam($(this).val()) });
-        })
         .on('change', '.js-line-comment', function () {
             const l = findLine(parseInt($(this).attr('data-line-id'), 10));
             if (!l) return;
@@ -1089,6 +1128,7 @@ $(document).ready(function () {
     const $art = $('#dvArt');
     const $qty = $('#dvQty');
     const $price = $('#dvPrice');
+    const $entryMag = $('#dvMag');
     const $dd = $('#dvArtList');
     let ddItems = [];
     let ddActive = -1;
@@ -1242,12 +1282,32 @@ $(document).ready(function () {
         $e.removeClass('d-none').text(msg);
     }
 
+    // Lista magazynów w pasku wpisywania. Pusta opcja = bez nadpisania
+    // (pozycja dziedziczy magazyn domyślny dostawy) — jej etykieta niesie
+    // nazwę tego domyślnego. `selected` (tekst z .val() albo liczba z JSON-a;
+    // '' = domyślny) – gdy pominięty, zostaje bieżący wybór operatora.
+    function fillEntryMag(selected) {
+        const cur = (selected === undefined) ? $entryMag.val() : selected;
+        const hv = $magazine.val();
+        const dn = hasMag(hv) ? magName(hv) : defaultMagName(S.state);
+        const label = dn !== '' ? ('Domyślny: ' + dn) : 'Domyślny z dokumentu';
+        // Przerysowanie z serwera nie może zabrać fokusu operatorowi, który
+        // właśnie wybiera magazyn — wtedy odświeżamy tylko etykietę pustej opcji.
+        if (selected === undefined && $entryMag.is(document.activeElement)) {
+            $entryMag.find('option:first').text(label);
+            return;
+        }
+        const ln = S.editLineId ? findLine(S.editLineId) : null;
+        $entryMag.html(magOptionsHtml(magParam(cur), label, ln ? ln.sub_magazine_name : ''));
+    }
+
     function resetEntry() {
         S.editLineId = 0;
         S.picked = null;
         $art.val('');
         $qty.val('');
         $price.val('');
+        fillEntryMag('');
         $('.dv-art-wrap').removeClass('is-picked');
         $('#dvArtClear').addClass('d-none');
         $('#dvEntry').removeClass('is-editing');
@@ -1275,6 +1335,10 @@ $(document).ready(function () {
         $('#dvArtClear').removeClass('d-none');
         $qty.val(inputNum(l.quantity));
         $price.val(l.unit_price === null || l.unit_price === undefined ? '' : inputNum(l.unit_price));
+        // Magazyn: nadpisanie pozycji (w tym 0) albo pusty wybór „Domyślny: …",
+        // gdy pozycja dziedziczy — dzięki temu zwykła poprawka ilości/ceny nie
+        // zamienia po cichu odziedziczonego magazynu w nadpisanie.
+        fillEntryMag(hasMag(l.sub_magazine_id) ? String(l.sub_magazine_id) : '');
         $('#dvEntry').addClass('is-editing');
         $('#dvEntryTag').text('Edycja pozycji ' + l.line_no);
         $('#dvEntrySaveLabel').text('Zapisz');
@@ -1351,6 +1415,12 @@ $(document).ready(function () {
         if (e.key === 'Enter') { e.preventDefault(); saveEntry(); }
         else if (e.key === 'Escape') { e.preventDefault(); resetEntry(); focusArt(); }
     });
+    // Magazyn pozycji jest po cenie: Enter zapisuje (jak w polu ceny),
+    // strzałki zmieniają wybór, Esc anuluje wpisywanie.
+    $entryMag.on('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); saveEntry(); }
+        else if (e.key === 'Escape') { e.preventDefault(); resetEntry(); focusArt(); }
+    });
     $qty.add($price).on('focus', function () { this.select(); });
     $('#dvEntrySave').on('click', saveEntry);
     $('#dvEntryCancel').on('click', function () { resetEntry(); focusArt(); });
@@ -1405,12 +1475,14 @@ $(document).ready(function () {
                 delivery_id: S.deliveryId,
                 vendor_part_id: S.picked.vendor_part_id,
                 quantity: qty,
-                unit_price: price
+                unit_price: price,
+                // '' = bez nadpisania (magazyn domyślny dostawy → NULL),
+                // liczba (także "0") = konkretny magazyn.
+                sub_magazine_id: magParam($entryMag.val())
             };
             if (editId) {
                 const ex = findLine(editId);
                 payload.line_id = editId;
-                payload.sub_magazine_id = magParam(ex ? ex.sub_magazine_id : '');
                 payload.comment = (ex && ex.comment) || '';
             }
             await write('delivery-line-save.php', payload);
@@ -1795,6 +1867,7 @@ $(document).ready(function () {
         // Wiersz wpisywania dopiero po założeniu szkicu (S.deliveryId).
         $('#dvEntry').toggleClass('d-none', !S.deliveryId || !S.vendorId || !draftOk);
         $('#dvLinesNote').text(S.state && S.state.delivery.state === 'draft' ? 'Zmiany zapisują się na bieżąco.' : '');
+        fillEntryMag();
         if (S.picked) updateEntryHint();
     }
 
