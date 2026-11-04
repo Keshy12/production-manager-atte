@@ -85,10 +85,13 @@ kbd.dv-k,
 .dv-input[readonly]:focus { border-color: var(--rx-line); box-shadow: none; }
 .dv-input.is-invalid { border-color: #e5818b; background-image: none; box-shadow: 0 0 0 .15rem rgba(220, 53, 69, .12); }
 .dv-field.is-locked .rx-picker-btn { background: #f3f5f8; }
+/* Picker dostawcy w trakcie wczytywania listy — klikanie w niego nic nie daje. */
+.dv-field.is-loading .rx-picker-btn { pointer-events: none; cursor: progress; }
 .dv-hint { min-height: 1.05rem; margin-top: .25rem; font-size: .74rem; color: var(--rx-muted); line-height: 1.35; }
 .dv-hint a { font-weight: 600; }
 .dv-hint .bi { margin-right: .15rem; }
 .dv-hint--warn { color: #8a5a00; }
+.dv-hint--info { color: var(--rx-accent-ink); }
 #dvVendorHint:empty { min-height: 0; margin-top: 0; }
 
 /* Liczba otwartych zamówień w liście dostawców (data-content w opcji):

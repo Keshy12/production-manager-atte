@@ -43,6 +43,7 @@ $(document).ready(function () {
     const S = {
         deliveryId: parseInt($page.attr('data-delivery-id'), 10) || 0,
         vendorId: 0,
+        vendorsLoaded: false,   // lista dostawców jeszcze nie przyszła z serwera
         state: null,            // ostatni pełny stan z serwera
         vendors: [],
         vendorMap: {},
@@ -507,7 +508,7 @@ $(document).ready(function () {
         $('#dvDocType button').prop('disabled', ro);
         $('#dvDocType').toggleClass('is-locked', ro);
         setPickerDisabled($magazine, ro);
-        if (S.deliveryId) setPickerDisabled($vendor, true);
+        applyVendorPickerState();
         $('#dvHeaderCard').toggleClass('is-hdr-locked', ro).toggleClass('is-hdr-editing', mode === 'editing');
     }
 
@@ -929,8 +930,29 @@ $(document).ready(function () {
         S.vendors = vendors;
         S.vendorMap = {};
         vendors.forEach(function (v) { S.vendorMap[v.id] = v; });
+        S.vendorsLoaded = true;
         renderVendorOptions($('#dvVendorOnlyOpen').prop('checked'));
+        // Lista już jest — można otwierać picker.
+        applyVendorPickerState();
     }
+
+    // Picker dostawcy: zablokowany, dopóki nie przyjdzie lista (delivery-vendors.php)
+    // — inaczej operator otwiera pustą listę. Po założeniu szkicu zablokowany
+    // jest zawsze (dostawcy nie zmieniamy).
+    function applyVendorPickerState() {
+        const loading = !S.vendorsLoaded;
+        setPickerDisabled($vendor, !!S.deliveryId || loading);
+        $('#dvVendorCell').toggleClass('is-loading', loading);
+    }
+
+    // bootstrap-select 1.13 ignoruje atrybut disabled i mimo to otwiera listę
+    // (a w środku rzuca wyjątek) — dlatego klik w przycisk łapiemy w fazie
+    // przechwytywania, zanim handler plugina zdąży zareagować.
+    $('#dvVendorCell')[0].addEventListener('click', function (e) {
+        if (S.vendorsLoaded) return;
+        e.preventDefault();
+        e.stopPropagation();
+    }, true);
 
     // Przełącznik „Tylko z otwartymi zamówieniami" — filtr samej listy, nic nie
     // zapisuje ani nie wysyła. Dotyczy tylko nowego przyjęcia (bez szkicu).
@@ -1038,6 +1060,11 @@ $(document).ready(function () {
         if (mode !== 'draft') { renderSideSummary(st); return; }
 
         $('#dvSideTitleText').text('Otwarte zamówienia');
+        // Licznik w nagłówku — ta sama liczba, co plakietka w pickerze dostawcy
+        // (open_po_count). Bez wybranego dostawcy licznika nie ma.
+        const vs = S.vendorMap[S.vendorId];
+        $('#dvSideCount').text(vs ? num(vs.open_po_count) : 0)
+            .toggleClass('d-none', !S.vendorId);
         const $body = $('#dvSideBody');
         if (!S.vendorId) {
             $body.html('<div class="dv-side-empty">Wybierz dostawcę, aby zobaczyć jego otwarte zamówienia.</div>');
@@ -1154,6 +1181,8 @@ $(document).ready(function () {
     function renderSideSummary(st) {
         $('#dvSideTitleText').text('Zamówienia w tej dostawie');
         const pos = (st && st.pos) || [];
+        // Licznik: w zatwierdzonym przyjęciu to liczba zamówień tej dostawy.
+        $('#dvSideCount').text(pos.length).removeClass('d-none');
         const $body = $('#dvSideBody');
         if (pos.length === 0) {
             $body.html('<div class="dv-side-empty">Brak powiązanych zamówień.</div>');
@@ -2294,9 +2323,15 @@ $(document).ready(function () {
         // stanu); po wczytaniu render() zostawia go w trybie „zablokowany".
         if (S.deliveryId) applyHeaderLock();
 
+        // Picker dostawcy czeka na listę (delivery-vendors.php) — w tym czasie
+        // jest zablokowany, a pod nim jest komunikat, że trwa wczytywanie.
+        $('#dvVendorHint').html('<span class="dv-hint--info"><i class="bi bi-hourglass-split"></i> Wczytywanie listy dostawców…</span>');
+
         const vendorsReq = call('delivery-vendors.php', {}).then(function (r) {
             buildVendorPicker(r.vendors || []);
         }).catch(function (err) {
+            // Picker zostaje zablokowany — bez listy nie da się wybrać dostawcy.
+            $('#dvVendorHint').html('<span class="dv-hint--warn"><i class="bi bi-exclamation-triangle-fill"></i> Nie udało się wczytać listy dostawców.</span>');
             showError('Nie udało się wczytać listy dostawców: ' + err.message);
         });
 

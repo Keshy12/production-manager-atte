@@ -138,9 +138,12 @@ $e = static function ($v): string { return htmlspecialchars((string)$v, ENT_QUOT
                  kol. 4 Magazyn docelowy. -->
             <div class="dv-fields-grid">
 
-                <div class="dv-field" id="dvVendorCell">
+                <div class="dv-field is-loading" id="dvVendorCell">
                     <label class="dv-label" for="dvVendor">Dostawca <span class="dv-req" title="Wymagane">*</span></label>
-                    <select id="dvVendor" class="selectpicker"
+                    <!-- Picker startuje zablokowany: lista dostawców przychodzi
+                         z delivery-vendors.php dopiero po wczytaniu strony.
+                         delivery-page.js odblokowuje go po renderVendorOptions(). -->
+                    <select id="dvVendor" class="selectpicker" disabled
                             data-live-search="true"
                             data-title="Wybierz dostawcę…"
                             data-style="rx-picker-btn"
@@ -381,7 +384,7 @@ $e = static function ($v): string { return htmlspecialchars((string)$v, ENT_QUOT
 
         <aside class="rx-panel dv-side" id="dvSide" aria-labelledby="dvSideTitle">
             <div class="rx-panel-head">
-                <h2 class="rx-panel-title" id="dvSideTitle"><i class="bi bi-bag-check"></i> <span id="dvSideTitleText">Otwarte zamówienia</span></h2>
+                <h2 class="rx-panel-title" id="dvSideTitle"><i class="bi bi-bag-check"></i> <span id="dvSideTitleText">Otwarte zamówienia</span> <span class="rx-count d-none" id="dvSideCount"></span></h2>
             </div>
             <div class="dv-side-search" id="dvSideSearchWrap">
                 <i class="bi bi-search" aria-hidden="true"></i>
