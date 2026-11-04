@@ -1520,6 +1520,28 @@ $(document).ready(function () {
         $art.attr('aria-expanded', 'false');
     }
 
+    // Nazwa dostawcy bieżącego przyjęcia: ze stanu dostawy, a zapasowo z
+    // tekstu wybranej opcji w #dvVendor. '' = nie uda się ustalić.
+    function currentVendorName() {
+        const d = S.state && S.state.delivery;
+        if (d && d.vendor_name) return String(d.vendor_name);
+        const sel = document.getElementById('dvVendor');
+        if (sel && sel.selectedIndex >= 0 && sel.value !== '') {
+            const opt = sel.options[sel.selectedIndex];
+            return opt ? String(opt.text || '') : '';
+        }
+        return '';
+    }
+
+    // Czy podana nazwa (np. producenta) to ten sam podmiot co dostawca?
+    // Porównanie po trimie, bez rozróżniania wielkości liter. Gdy nie znamy
+    // nazwy dostawcy lub nazwy do porównania — false (lepiej pokazać).
+    function sameAsVendor(name) {
+        const a = $.trim(name || '').toLowerCase();
+        const b = $.trim(currentVendorName()).toLowerCase();
+        return a !== '' && b !== '' && a === b;
+    }
+
     function ddOpen(items, head, q) {
         ddItems = items;
         ddActive = items.length ? 0 : -1;
@@ -1528,15 +1550,19 @@ $(document).ready(function () {
             html += '<div class="dv-dd-empty">Nie znaleziono artykułu w katalogu tego dostawcy.</div>';
         }
         items.forEach(function (r, i) {
+            // Druga linia z fragmentów łączonych dopiero, gdy są niepuste
+            // (producent równy dostawcy jest pomijany — bez wiszących kropek).
+            const subParts = [r.producer_part_no ? hl(r.producer_part_no, q) : '—'];
+            if (r.producer_name && !sameAsVendor(r.producer_name)) subParts.push(esc(r.producer_name));
+            if (r.suggested_price !== null && r.suggested_price !== undefined && r.suggested_price !== '') {
+                subParts.push(esc(fmtPrice(r.suggested_price)) + ' ' + esc(r.suggested_currency || ''));
+            }
             const side = r.on_open_po
                 ? '<span class="dv-dd-po" title="Pozostało na otwartych zamówieniach">na PO: ' + esc(fmtQty(r.open_remaining)) + '</span>'
                 : '<span class="dv-dd-nopo">brak w PO</span>';
             html += '<div class="dv-dd-item' + (i === 0 ? ' is-active' : '') + '" role="option" data-idx="' + i + '">'
-                  + '<div class="dv-dd-name">' + hl(r.vendor_part_no, q) + ' <span class="text-muted">·</span> ' + hl(r.part_name, q) + '</div>'
-                  + '<div class="dv-dd-sub">' + (r.producer_part_no ? hl(r.producer_part_no, q) : '—')
-                  +   (r.producer_name ? ' · ' + esc(r.producer_name) : '')
-                  +   (r.suggested_price !== null && r.suggested_price !== undefined && r.suggested_price !== ''
-                        ? ' · ' + esc(fmtPrice(r.suggested_price)) + ' ' + esc(r.suggested_currency || '') : '') + '</div>'
+                  + '<div class="dv-dd-name">' + hl(r.vendor_part_no, q) + '<span class="dv-dd-sep" aria-hidden="true">|</span>' + hl(r.part_name, q) + '</div>'
+                  + '<div class="dv-dd-sub">' + subParts.join(' · ') + '</div>'
                   + (r.part_description ? '<div class="dv-dd-desc" title="' + esc(r.part_description) + '">' + esc(r.part_description) + '</div>' : '')
                   + '<div class="dv-dd-side">' + side + '</div>'
                   + '</div>';

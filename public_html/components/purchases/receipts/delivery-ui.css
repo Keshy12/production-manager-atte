@@ -687,6 +687,7 @@ a.dv-alloc-po { text-decoration: none; }
 .dv-dd-item:first-child { border-top: 0; }
 .dv-dd-item.is-active, .dv-dd-item:hover { background: var(--rx-accent-soft); }
 .dv-dd-name { font-size: .84rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dv-dd-sep { display: inline-block; margin: 0 .55rem; font-weight: 400; color: var(--rx-faint); opacity: .85; }
 .dv-dd-sub { grid-column: 1; font-size: .74rem; color: var(--rx-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dv-dd-desc { grid-column: 1; font-size: .72rem; line-height: 1.3; color: var(--rx-faint, var(--rx-muted)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dv-art-desc { margin-top: .3rem; padding-left: .15rem; font-size: .76rem; line-height: 1.35; color: var(--rx-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
