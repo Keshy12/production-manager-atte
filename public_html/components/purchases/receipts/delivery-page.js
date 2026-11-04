@@ -348,9 +348,18 @@ $(document).ready(function () {
 
     // Programowa zmiana pickera nie może uruchamiać autozapisu
     // (bootstrap-select wysyła przy val() zdarzenia changed/change).
-    function setPickerVal($el, value) {
+    //
+    // `force` — przestawiamy wartość nawet, gdy już się zgadza. Potrzebne tam,
+    // gdzie podmieniamy listę opcji: bootstrap-select.render() szuka w swoich
+    // danych (main.data) pozycji opcji po jej `liIndex`, a `liIndex` nadaje
+    // dopiero buildData() — wywoływany PO render(). Przy podmianie opcji
+    // pierwsze render() (w refresh()) widzi więc opcje bez `liIndex`, nie buduje
+    // treści przycisku i pokazuje zamiast niego placeholder (data-title).
+    // Dopiero selectpicker('val', …) po odświeżeniu renderuje przycisk
+    // poprawnie — tak jak robi to „Magazyn docelowy" w nagłówku.
+    function setPickerVal($el, value, force) {
         const v = (value === null || value === undefined) ? '' : String(value);
-        if (String($el.val() == null ? '' : $el.val()) === v) return;
+        if (!force && String($el.val() == null ? '' : $el.val()) === v) return;
         S.mute++;
         try {
             if (hasPicker()) $el.selectpicker('val', v);
@@ -1601,7 +1610,11 @@ $(document).ready(function () {
             S.mute++;
             try { $entryMag.selectpicker('refresh'); } finally { S.mute--; }
         }
-        setPickerVal($entryMag, pick);
+        // `force` — refresh() renderuje przycisk, zanim buildData() nada opcjom
+        // `liIndex`, więc sam refresh pokazałby placeholder zamiast wybranego
+        // magazynu. selectpicker('val', …) po refresh renderuje przycisk
+        // poprawnie (tak jak „Magazyn docelowy" w nagłówku).
+        setPickerVal($entryMag, pick, true);
     }
 
     function resetEntry() {
