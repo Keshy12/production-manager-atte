@@ -760,6 +760,26 @@ a.dv-alloc-po { text-decoration: none; }
     border-bottom: 1px solid var(--rx-line-soft);
 }
 .dv-po.is-touched .dv-po-head { background: var(--dv-green-soft); }
+/* Zwijana grupa zamówienia: nagłówek jest klikalny, treść domyślnie ukryta. */
+.dv-po-head { cursor: pointer; }
+.dv-po-toggle { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 1.4rem; height: 1.4rem; margin: 0 .1rem 0 -.3rem; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--rx-muted); cursor: pointer; }
+.dv-po-toggle:hover { color: var(--rx-ink); background: var(--rx-line-soft); }
+.dv-po-toggle:focus-visible { outline: 2px solid var(--rx-accent-ink); outline-offset: 1px; }
+.dv-po-caret { font-size: .78rem; transition: transform .15s ease; }
+.dv-po.is-open .dv-po-caret { transform: rotate(90deg); }
+.dv-po-head .dv-po-no { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dv-po-head .dv-po-meta { margin-left: auto; }
+.dv-po-body { display: none; }
+.dv-po.is-open .dv-po-body { display: block; }
+.dv-po-match { font-weight: 600; color: var(--rx-ink-2, var(--rx-muted)); }
+@media (prefers-reduced-motion: reduce) { .dv-po-caret { transition: none; } }
+/* Chip „Tylko: <artykuł> ×" nad listą zamówień. */
+.dv-side-chip { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: .35rem .85rem; background: var(--dv-green-soft); border-bottom: 1px solid var(--rx-line-soft); font-size: .76rem; color: var(--rx-muted); }
+.dv-side-chip-txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dv-side-chip-txt b { color: var(--rx-ink); font-family: var(--dv-mono); }
+.dv-side-chip-x { flex: 0 0 auto; width: 1.3rem; height: 1.3rem; padding: 0; border: 0; border-radius: 50%; background: rgba(0,0,0,.08); color: var(--rx-ink); line-height: 1; font-size: 1rem; cursor: pointer; }
+.dv-side-chip-x:hover { background: rgba(0,0,0,.18); }
+.dv-side-chip-x:focus-visible { outline: 2px solid var(--rx-accent-ink); outline-offset: 1px; }
 .dv-po-no { font-weight: 700; font-size: .88rem; color: var(--rx-ink); }
 a.dv-po-no:hover { color: var(--rx-accent-ink); }
 .dv-po-meta { font-size: .72rem; color: var(--rx-muted); white-space: nowrap; }

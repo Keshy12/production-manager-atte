@@ -49,6 +49,7 @@ $(document).ready(function () {
         vendorMap: {},
         openItems: [],          // otwarte pozycje PO wybranego dostawcy
         openLoadedFor: 0,
+        sideOpenPoIds: {},      // po_id => true (rozwinięta grupa w panelu „Otwarte zamówienia")
         unitByVp: {},
         picked: null,           // wybrany artykuł w wierszu wpisywania
         editLineId: 0,
@@ -1101,8 +1102,12 @@ $(document).ready(function () {
         let html = '';
         let shown = 0;
         const today = todayIso();
+        // Filtr po wybranej części (stan z S.picked) łączy się z filtrem tekstowym (AND).
+        const pickedVp = S.picked ? S.picked.vendor_part_id : null;
+        const filtered = !!q || pickedVp !== null;
         list.forEach(function (g) {
             const items = g.items.filter(function (it) {
+                if (pickedVp !== null && it.vendor_part_id !== pickedVp) return false;
                 if (!q) return true;
                 return (String(g.po_number || '') + ' ' + String(it.vendor_part_no || '') + ' ' + String(it.producer_part_no || '') + ' ' + String(it.part_name || ''))
                     .toLowerCase().indexOf(q) !== -1;
@@ -1113,13 +1118,23 @@ $(document).ready(function () {
             const dueHtml = g.due
                 ? '<span class="' + (late ? 'is-late' : '') + '">' + (late ? 'po terminie ' : 'dostawa ') + esc(fmtDate(g.due)) + '</span>'
                 : 'bez terminu';
-            html += '<div class="dv-po' + (g.touched ? ' is-touched' : '') + '">'
+            // Grupa zwijana — domyślnie zamknięta; stan trzymamy w S.sideOpenPoIds,
+            // żeby przeżył przerysowanie panelu.
+            const isOpen = !!S.sideOpenPoIds[g.po_id];
+            const bodyId = 'dvPoBody' + parseInt(g.po_id, 10);
+            const countHtml = filtered
+                ? '<span class="dv-po-match" title="Pozycje pasujące do filtra">' + items.length + ' z ' + g.items.length + ' poz.</span> · '
+                : '';
+            html += '<div class="dv-po' + (g.touched ? ' is-touched' : '') + (isOpen ? ' is-open' : '') + '" data-po-id="' + parseInt(g.po_id, 10) + '">'
                   + '<div class="dv-po-head">'
+                  +   '<button type="button" class="dv-po-toggle" aria-expanded="' + (isOpen ? 'true' : 'false') + '" aria-controls="' + bodyId + '" title="Rozwiń / zwiń pozycje">'
+                  +     '<i class="bi bi-chevron-right dv-po-caret" aria-hidden="true"></i></button>'
                   +   '<a class="dv-po-no" href="' + esc(poEditUrl(g.po_id)) + '" target="_blank" rel="noopener" title="Otwórz zamówienie">' + esc(g.po_number || ('#' + g.po_id)) + '</a>'
-                  +   '<span class="dv-po-meta">' + dueHtml
+                  +   '<span class="dv-po-meta">' + countHtml + dueHtml
                   +     (g.touched ? ' · <span class="dv-po-hit" title="Pozycje tego zamówienia w tej dostawie">' + g.touched + '/' + g.items.length + '</span>' : '')
                   +   '</span>'
-                  + '</div>';
+                  + '</div>'
+                  + '<div class="dv-po-body" id="' + bodyId + '">';
             items.forEach(function (it) {
                 const alloc = touched[it.po_item_id] || 0;
                 const after = Math.max(0, it.remaining - alloc);
@@ -1139,7 +1154,7 @@ $(document).ready(function () {
                       +   '<div class="dv-poi-name" title="' + esc(it.part_name || '') + '">' + esc(it.part_name || '') + '</div>'
                       + '</div>';
             });
-            html += '</div>';
+            html += '</div></div>';
         });
 
         // Ilości przyjmowane poza zamówieniami.
@@ -1155,10 +1170,33 @@ $(document).ready(function () {
         }
 
         if (shown === 0) html = '<div class="dv-side-empty">Brak wyników dla filtra.</div>' + html;
+        // Znacznik filtra po wybranej części; „×" czyści artykuł (jak przycisk przy polu).
+        if (pickedVp !== null) {
+            html = '<div class="dv-side-chip"><span class="dv-side-chip-txt" title="Panel pokazuje tylko wybrany artykuł">Tylko: <b>'
+                 + esc(S.picked.vendor_part_no || S.picked.part_name || '') + '</b></span>'
+                 + '<button type="button" class="dv-side-chip-x" aria-label="Wyczyść artykuł i pokaż wszystkie pozycje" title="Wyczyść artykuł">&times;</button></div>' + html;
+        }
         $('#dvSideBody').html(html);
     }
 
     $('#dvSideSearch').on('input', renderSide);
+
+    // Zwijanie/rozwijanie grupy zamówienia. Klik w sam link do PO (nowa karta)
+    // nie przełącza grupy; reszta nagłówka i przycisk — tak.
+    $('#dvSideBody').on('click', '.dv-po-head', function (e) {
+        if ($(e.target).closest('a').length) return;
+        const $po = $(this).closest('.dv-po');
+        const id = parseInt($po.attr('data-po-id'), 10);
+        const open = !$po.hasClass('is-open');
+        $po.toggleClass('is-open', open);
+        $po.find('.dv-po-toggle').attr('aria-expanded', open ? 'true' : 'false');
+        if (open) S.sideOpenPoIds[id] = true; else delete S.sideOpenPoIds[id];
+    });
+
+    $('#dvSideBody').on('click', '.dv-side-chip-x', function () {
+        resetEntry();
+        focusArt();
+    });
 
     $('#dvSideBody').on('click', '.dv-poi.is-clickable', function () {
         if (!S.state || S.state.delivery.state !== 'draft') return;
@@ -1171,6 +1209,7 @@ $(document).ready(function () {
             vendor_part_no: it.vendor_part_no,
             producer_part_no: it.producer_part_no,
             part_name: it.part_name,
+            part_description: it.part_description || '',
             suggested_price: it.unit_price,
             on_open_po: true
         });
@@ -1645,13 +1684,16 @@ $(document).ready(function () {
         }
         entryError('');
         updateEntryHint();
+        renderSide(); // panel „Otwarte zamówienia" filtruje się po wybranej części
     }
 
     function unpick() {
+        const had = !!S.picked;
         S.picked = null;
         $('.dv-art-wrap').removeClass('is-picked');
         $('#dvArtClear').addClass('d-none');
         updateEntryHint();
+        if (had) renderSide();
     }
 
     function updateEntryHint() {
@@ -1801,6 +1843,7 @@ $(document).ready(function () {
     }
 
     function resetEntry() {
+        const hadPicked = !!S.picked;
         S.editLineId = 0;
         S.picked = null;
         $art.val('');
@@ -1818,6 +1861,7 @@ $(document).ready(function () {
         ddClose();
         entryError('');
         updateEntryHint();
+        if (hadPicked) renderSide(); // zdjęcie filtra części z panelu
     }
 
     function startEdit(l) {
@@ -1847,6 +1891,7 @@ $(document).ready(function () {
         $('#dvEntryCancel').removeClass('d-none');
         $('#dvLinesBody tr.dv-line[data-line-id="' + l.id + '"]').addClass('is-editing');
         updateEntryHint();
+        renderSide(); // filtr części dla edytowanej pozycji
         $qty.trigger('focus').trigger('select');
     }
 
