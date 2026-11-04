@@ -869,80 +869,52 @@ $(document).ready(function () {
         }
     }
 
-    function buildVendorPicker(vendors) {
-        S.vendors = vendors;
-        S.vendorMap = {};
+    // Lista opcji dostawców. Liczba otwartych zamówień jest plakietką w treści
+    // pozycji listy (data-content — bootstrap-select wstawia go jako HTML),
+    // a tekst opcji zostaje samą nazwą, więc przycisk pickera i wyszukiwarka
+    // widzą czystą nazwę. `onlyOpen` ukrywa dostawców bez otwartych zamówień —
+    // z wyjątkiem aktualnie wybranego, żeby wartość pickera się nie zepsuła.
+    function renderVendorOptions(onlyOpen) {
+        const keep = String(S.vendorId || $vendor.val() || '');
         let withPo = '';
         let others = '';
-        vendors.forEach(function (v) {
-            S.vendorMap[v.id] = v;
-            const sub = num(v.open_po_count) > 0
-                ? (v.open_po_count + ' ' + plural(num(v.open_po_count), 'zamówienie', 'zamówienia', 'zamówień') + ' otwartych')
-                : 'brak otwartych';
-            const opt = '<option value="' + esc(v.id) + '" data-subtext="' + esc(sub) + '">' + esc(v.name) + '</option>';
-            if (num(v.open_po_count) > 0) withPo += opt; else others += opt;
+        (S.vendors || []).forEach(function (v) {
+            const n = num(v.open_po_count);
+            if (n > 0) {
+                const content = esc(v.name) + ' <span class="dv-opt-badge" title="' + esc(n + ' ' + plural(n, 'otwarte zamówienie', 'otwarte zamówienia', 'otwartych zamówień')) + '">' + n + '</span>';
+                withPo += '<option value="' + esc(v.id) + '" data-content="' + esc(content) + '">' + esc(v.name) + '</option>';
+            } else if (!onlyOpen || String(v.id) === keep) {
+                others += '<option value="' + esc(v.id) + '">' + esc(v.name) + '</option>';
+            }
         });
         let html = '';
         if (withPo) html += '<optgroup label="Z otwartymi zamówieniami">' + withPo + '</optgroup>';
         if (others) html += '<optgroup label="Pozostali dostawcy">' + others + '</optgroup>';
         $vendor.html(html);
         if (hasPicker()) $vendor.selectpicker('refresh');
+        // Odtwórz wybór (przebudowa opcji go zeruje); force — patrz setPickerVal().
+        if (hasPicker()) setPickerVal($vendor, keep, true); else $vendor.val(keep);
     }
 
-    // „10 otwartych zamówień" / „2 otwarte zamówienia" / „1 otwarte zamówienie".
-    function openPoLabel(n) {
-        return n + ' ' + plural(n, 'otwarte zamówienie', 'otwarte zamówienia', 'otwartych zamówień');
+    function buildVendorPicker(vendors) {
+        S.vendors = vendors;
+        S.vendorMap = {};
+        vendors.forEach(function (v) { S.vendorMap[v.id] = v; });
+        renderVendorOptions($('#dvVendorOnlyOpen').prop('checked'));
     }
 
-    // Nowe przyjęcie bez wybranego dostawcy: liczba otwartych zamówień każdego
-    // dostawcy widoczna od razu, jako małe plakietki pod pickerem. Klik = wybór
-    // dostawcy (to samo setVendor() co z listy). Maks. 6 + „+N więcej".
-    const VENDOR_CHIPS_MAX = 6;
-    // Plakietki mają własny pasek na całą szerokość (#dvVendorChips nad siatką
-    // pól), żeby nie rozpychały wąskiej komórki „Dostawca".
-    function renderVendorChips() {
-        const $h = $('#dvVendorChips');
-        const withPo = (S.vendors || []).filter(function (v) { return num(v.open_po_count) > 0; });
-        if (withPo.length === 0) {
-            if ((S.vendors || []).length === 0) { $h.empty(); return; }
-            $h.html('<span class="dv-hint--warn"><i class="bi bi-info-circle"></i> Brak dostawców z otwartymi zamówieniami — pozycje trafią jako nadwyżka.</span>');
-            return;
-        }
-        withPo.sort(function (a, b) {
-            return (num(b.open_po_count) - num(a.open_po_count)) || String(a.name).localeCompare(String(b.name), 'pl');
-        });
-        const shown = withPo.slice(0, VENDOR_CHIPS_MAX);
-        let html = '<div class="dv-vpos-lead">Wybierz dostawcę — otwarte zamówienia:</div><div class="dv-vpos">';
-        shown.forEach(function (v) {
-            const n = num(v.open_po_count);
-            const full = v.name + ' — ' + openPoLabel(n) + '. Wybierz tego dostawcę.';
-            html += '<button type="button" class="dv-vpo" data-vendor-id="' + esc(v.id) + '"'
-                  + ' title="' + esc(full) + '" aria-label="' + esc(full) + '">'
-                  + '<span class="dv-vpo-name">' + esc(v.name) + '</span>'
-                  + '<span class="dv-vpo-n">' + n + '</span></button>';
-        });
-        if (withPo.length > shown.length) {
-            const more = withPo.length - shown.length;
-            html += '<button type="button" class="dv-vpo dv-vpo--more" data-vendor-more="1"'
-                  + ' title="Pokaż pełną listę dostawców" aria-label="Pokaż pełną listę dostawców">+' + more + ' więcej</button>';
-        }
-        $h.html(html + '</div>');
-    }
-
-    $('#dvVendorChips').on('click', '.dv-vpo', function () {
+    // Przełącznik „Tylko z otwartymi zamówieniami" — filtr samej listy, nic nie
+    // zapisuje ani nie wysyła. Dotyczy tylko nowego przyjęcia (bez szkicu).
+    $('#dvVendorOnlyOpen').on('change', function () {
         if (S.deliveryId) return;
-        if ($(this).attr('data-vendor-more')) {
-            if (hasPicker()) $vendor.selectpicker('toggle');
-            return;
-        }
-        setVendor($(this).attr('data-vendor-id'), true);
+        renderVendorOptions(this.checked);
     });
 
     function updateVendorHint() {
         const v = S.vendorMap[S.vendorId];
         const $h = $('#dvVendorHint');
-        if (!v && !S.deliveryId) { $h.empty(); renderVendorChips(); return; }
-        $('#dvVendorChips').empty();
+        // Filtr listy ma sens tylko przy nowym przyjęciu; dla szkicu wyszarzony.
+        $('#dvVendorOnlyOpen').prop('disabled', !!S.deliveryId).closest('.dv-switch').toggleClass('is-disabled', !!S.deliveryId);
         if (!v || S.deliveryId) { $h.empty(); return; }
         const parts = [];
         if (num(v.open_po_count) === 0) {
@@ -2295,7 +2267,6 @@ $(document).ready(function () {
 
         const vendorsReq = call('delivery-vendors.php', {}).then(function (r) {
             buildVendorPicker(r.vendors || []);
-            updateVendorHint();   // plakietki z liczbą otwartych zamówień (nowe przyjęcie)
         }).catch(function (err) {
             showError('Nie udało się wczytać listy dostawców: ' + err.message);
         });
