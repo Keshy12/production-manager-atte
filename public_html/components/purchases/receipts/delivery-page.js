@@ -20,7 +20,13 @@ $(document).ready(function () {
     const LIST_URL = String($page.attr('data-list-url') || (window.location.origin + ROOT_DIR + '/purchase/receipts'));
     const EPS = 1e-6;
     const MAGAZINES = Array.isArray(window.DV_MAGAZINES) ? window.DV_MAGAZINES : [];
-    const LAST_MAG_KEY = 'dv_last_magazine';
+    // Domyślny magazyn zalogowanego (user.sub_magazine_id) z atrybutu strony.
+    // Pusty atrybut = brak domyślnego (NULL). Uwaga: „0" to PRAWIDŁOWY magazyn,
+    // więc trzymamy go jako tekst i nigdy nie sprawdzamy „prawdziwości".
+    const USER_MAGAZINE = (function () {
+        const raw = $page.attr('data-user-magazine-id');
+        return (raw === undefined || raw === null || raw === '') ? null : String(raw);
+    })();
 
     const PO_STATE = {
         confirmed:          { label: 'Potwierdzone',       tone: 'blue' },
@@ -47,6 +53,7 @@ $(document).ready(function () {
         editLineId: 0,
         entryBusy: false,
         creating: null,
+        docAttempted: false,    // operator kliknął „Zapisz dokument dostawcy" przy brakach
         receivedTouched: false,
         openNotes: {},          // line_id => true (rozwinięty wiersz magazyn/komentarz)
         showAllBlockers: false,
@@ -173,6 +180,16 @@ $(document).ready(function () {
                   + esc(m.name) + '</option>';
         });
         return html;
+    }
+
+    // Domyślny magazyn użytkownika, jeśli jest na liście aktywnych magazynów
+    // (i jako opcja w pickerze); w przeciwnym razie null → picker zostaje pusty.
+    function userDefaultMagazine() {
+        if (USER_MAGAZINE === null) return null;
+        const inList = MAGAZINES.some(function (m) { return String(m.id) === USER_MAGAZINE; });
+        if (!inList) return null;
+        const inPicker = $('#dvMagazine option').filter(function () { return String($(this).val()) === USER_MAGAZINE; }).length > 0;
+        return inPicker ? USER_MAGAZINE : null;
     }
 
     function hasPicker() { return typeof $.fn.selectpicker === 'function'; }
@@ -425,18 +442,95 @@ $(document).ready(function () {
         });
     }
 
-    function rememberMagazine(id) {
-        try { if (id) window.localStorage.setItem(LAST_MAG_KEY, String(id)); } catch (e) { /* tryb prywatny */ }
+    // ---- zapis dokumentu dostawcy (założenie szkicu) -------------------
+    //
+    // Dopóki szkic nie istnieje, nagłówek nie autozapisuje się i nie da się
+    // wpisywać pozycji. Przycisk „Zapisz dokument dostawcy" tworzy szkic
+    // (delivery-create.php) — wymaga dostawcy, numeru dokumentu i magazynu.
+
+    function docGateMissing() {
+        const miss = [];
+        if (!S.vendorId) miss.push({ key: 'vendor', label: 'dostawca' });
+        if ($.trim($docNumber.val()) === '') miss.push({ key: 'doc', label: 'numer dokumentu' });
+        const mv = $magazine.val();
+        // Magazyn „0" jest prawidłowy — pusty to tylko null / undefined / ''.
+        if (mv === null || mv === undefined || mv === '') miss.push({ key: 'mag', label: 'magazyn docelowy' });
+        return miss;
     }
 
-    $docNumber.on('input', function () { scheduleHeaderSave(false); });
-    $docNumber.on('blur', function () {
-        if (S.deliveryId) { scheduleHeaderSave(true); return; }
-        // Numer wpisany przed pierwszą pozycją → zakładamy szkic od razu,
-        // żeby operator mógł wrócić do niego z listy „Robocze".
-        if (S.vendorId && $.trim($docNumber.val()) !== '') {
-            ensureDraft().catch(function (err) { showError(err.message); });
+    function refreshDocGate() {
+        if (S.deliveryId) {
+            $('#dvVendorCell').removeClass('is-invalid');
+            return;
         }
+        const miss = docGateMissing();
+        const lack = {};
+        miss.forEach(function (m) { lack[m.key] = true; });
+        const showErr = S.docAttempted;
+
+        $('#dvVendorCell').toggleClass('is-invalid', showErr && !!lack.vendor);
+        $docNumber.toggleClass('is-invalid', showErr && !!lack.doc);
+        $('#dvMagazineCell').toggleClass('is-invalid', showErr && !!lack.mag);
+
+        $('#dvDocSubmit').prop('disabled', miss.length > 0 || !!S.creating);
+
+        const $msg = $('#dvDocSubmitMsg');
+        const $ic = $msg.find('.bi');
+        let text;
+        let icon;
+        if (miss.length === 0) {
+            text = 'Wszystko gotowe — zapisz dokument, aby odblokować wpisywanie pozycji.';
+            icon = 'bi bi-check2-circle';
+        } else {
+            text = 'Do zapisania brakuje: ' + miss.map(function (m) { return m.label; }).join(', ') + '.';
+            icon = showErr ? 'bi bi-exclamation-triangle-fill' : 'bi bi-info-circle';
+        }
+        $msg.toggleClass('is-error', showErr && miss.length > 0);
+        $ic.attr('class', icon);
+        $('#dvDocSubmitMsgText').text(text);
+    }
+
+    function submitDocument() {
+        if (S.deliveryId || S.creating) return;
+        S.docAttempted = true;
+        const miss = docGateMissing();
+        refreshDocGate();
+        if (miss.length) {
+            // Informacja zwrotna: potrząśnięcie przyciskiem + fokus na pierwszym braku.
+            const $w = $('#dvDocSubmitWrap').removeClass('is-shake');
+            void $w[0].offsetWidth; // restart animacji
+            $w.addClass('is-shake');
+            setTimeout(function () { $w.removeClass('is-shake'); }, 400);
+            const first = miss[0].key;
+            if (first === 'doc') $docNumber.trigger('focus');
+            else if (hasPicker()) (first === 'vendor' ? $vendor : $magazine).selectpicker('toggle');
+            return;
+        }
+
+        $('#dvDocSubmit').prop('disabled', true);
+        $('#dvDocSubmitLabel').text('Zapisywanie…');
+        ensureDraft().then(function () {
+            // Szkic istnieje → render() odsłonił wiersz wpisywania.
+            focusArt();
+        }).catch(function (err) {
+            showError(err.message);
+        }).then(function () {
+            $('#dvDocSubmitLabel').text('Zapisz dokument dostawcy');
+            refreshDocGate();
+        });
+    }
+
+    $('#dvDocSubmitWrap').on('click', submitDocument);
+
+    $docNumber.on('input', function () {
+        refreshDocGate();
+        scheduleHeaderSave(false);
+    });
+    $docNumber.on('blur', function () {
+        if (S.deliveryId) scheduleHeaderSave(true);
+    });
+    $docNumber.on('keydown', function (e) {
+        if (e.key === 'Enter' && !S.deliveryId) { e.preventDefault(); submitDocument(); }
     });
     $comment.on('input', function () { scheduleHeaderSave(false); });
     $comment.on('blur', function () { scheduleHeaderSave(true); });
@@ -447,8 +541,8 @@ $(document).ready(function () {
         scheduleHeaderSave(true);
     });
     $magazine.on('changed.bs.select', function () {
+        refreshDocGate();
         if (S.mute) return;
-        rememberMagazine($magazine.val());
         scheduleHeaderSave(true);
     });
     $('#dvDocType').on('click', 'button', function () {
@@ -651,8 +745,10 @@ $(document).ready(function () {
                 } else {
                     remHtml = '<b>' + esc(fmtQty(it.remaining)) + '</b>';
                 }
-                html += '<div class="dv-poi is-clickable' + (alloc > EPS ? ' is-touched' : '') + '" data-po-item-id="' + it.po_item_id + '" '
-                      + 'title="Kliknij, aby wpisać tę pozycję">'
+                // Wpisywanie pozycji z panelu działa dopiero po założeniu szkicu.
+                const clickable = !!S.deliveryId;
+                html += '<div class="dv-poi' + (clickable ? ' is-clickable' : '') + (alloc > EPS ? ' is-touched' : '') + '" data-po-item-id="' + it.po_item_id + '"'
+                      + (clickable ? ' title="Kliknij, aby wpisać tę pozycję"' : '') + '>'
                       +   '<div class="dv-poi-no">' + esc(it.vendor_part_no || '—') + '</div>'
                       +   '<div class="dv-poi-rem" title="pozostało przed → po tej dostawie">' + remHtml + '</div>'
                       +   '<div class="dv-poi-name" title="' + esc(it.part_name || '') + '">' + esc(it.part_name || '') + '</div>'
@@ -1506,7 +1602,7 @@ $(document).ready(function () {
 
         const canPost = !!(st && mode === 'draft' && sum.can_post && (sum.blockers || []).length === 0);
         $('#dvPostBtn').prop('disabled', !canPost || S.posting)
-            .attr('title', canPost ? '' : 'Usuń blokady wymienione nad paskiem.');
+            .attr('title', canPost ? '' : (S.deliveryId ? 'Usuń blokady wymienione nad paskiem.' : 'Najpierw zapisz dokument dostawcy.'));
         $('#dvDiscardBtn').prop('disabled', !S.deliveryId).toggleClass('d-none', !S.deliveryId);
         $('#dvCancelDeliveryBtn').toggleClass('d-none', mode !== 'posted');
         $('#dvBackBtn').toggleClass('d-none', mode === 'draft');
@@ -1688,11 +1784,16 @@ $(document).ready(function () {
     }
 
     function renderAll() {
+        // Tryb „dokument jeszcze nie zapisany": brak szkicu → brak pozycji.
+        $page.toggleClass('dv-pre-draft', !S.deliveryId);
         renderLines();
         renderSide();
         renderBar(S.state);
+        updateVendorHint();
+        refreshDocGate();
         const draftOk = !S.state || S.state.delivery.state === 'draft';
-        $('#dvEntry').toggleClass('d-none', !S.vendorId || !draftOk);
+        // Wiersz wpisywania dopiero po założeniu szkicu (S.deliveryId).
+        $('#dvEntry').toggleClass('d-none', !S.deliveryId || !S.vendorId || !draftOk);
         $('#dvLinesNote').text(S.state && S.state.delivery.state === 'draft' ? 'Zmiany zapisują się na bieżąco.' : '');
         if (S.picked) updateEntryHint();
     }
@@ -1729,11 +1830,12 @@ $(document).ready(function () {
                 });
             }
             const vid = parseInt($page.attr('data-vendor-id'), 10) || 0;
-            let magDefault = '';
-            try { magDefault = window.localStorage.getItem(LAST_MAG_KEY) || ''; } catch (e) { /* ignore */ }
-            if (magDefault && MAGAZINES.some(function (m) { return String(m.id) === magDefault; })) {
-                setPickerVal($magazine, magDefault);
-            }
+            // Nowe przyjęcie: magazyn docelowy = domyślny magazyn zalogowanego
+            // (user.sub_magazine_id). Brak / nieaktywny / spoza listy → pusty
+            // picker (jawnie czyszczony, by przeglądarka nie podstawiła
+            // pierwszej opcji). Wznowiony szkic nie przechodzi tędy — tam
+            // wygrywa zapisany magazyn z serwera.
+            setPickerVal($magazine, userDefaultMagazine());
             if (vid) {
                 if (!S.vendorMap[vid]) {
                     showError('Nie znaleziono dostawcy #' + vid + ' na liście.');

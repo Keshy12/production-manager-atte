@@ -104,6 +104,42 @@ kbd.dv-k,
 .dv-seg { display: flex; width: 100%; height: calc(1.5em + .5rem + 2px); }
 .dv-seg button { flex: 1 1 0; }
 
+/* ---- Pasek zapisu dokumentu (przed założeniem szkicu) ---------------- */
+
+.dv-doc-foot {
+    display: none;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: .6rem 1.25rem;
+    padding: .8rem 1.25rem;
+    border-top: 1px solid var(--rx-line);
+    background: var(--rx-canvas);
+    border-bottom-left-radius: calc(var(--rx-radius) - 1px);
+    border-bottom-right-radius: calc(var(--rx-radius) - 1px);
+}
+.dv-page.dv-pre-draft .dv-doc-foot { display: flex; }
+
+.dv-doc-foot-msg { flex: 1 1 18rem; min-width: 0; font-size: .82rem; line-height: 1.4; color: var(--rx-muted); }
+.dv-doc-foot-msg .bi { margin-right: .35rem; }
+.dv-doc-foot-msg.is-error { color: #a71d2a; font-weight: 600; }
+
+/* Wrapper łapie kliknięcie w wyłączony przycisk (pokazuje, czego brakuje). */
+.dv-doc-submit-wrap { display: inline-block; margin-left: auto; cursor: pointer; }
+.dv-doc-submit { padding-left: 1.4rem; padding-right: 1.4rem; font-weight: 700; white-space: nowrap; }
+.dv-doc-submit:disabled { opacity: .5; pointer-events: none; }
+.dv-doc-submit-wrap.is-shake { animation: dvShake .35s ease-in-out 1; }
+@keyframes dvShake {
+    0%, 100% { transform: translateX(0); }
+    25%      { transform: translateX(-4px); }
+    75%      { transform: translateX(4px); }
+}
+@media (prefers-reduced-motion: reduce) { .dv-doc-submit-wrap.is-shake { animation: none; } }
+@media (max-width: 575.98px) {
+    .dv-doc-submit-wrap { display: block; width: 100%; }
+    .dv-doc-submit { width: 100%; }
+}
+
 /* ---- Układ: pozycje + panel zamówień -------------------------------- */
 
 .dv-grid {
@@ -125,6 +161,15 @@ kbd.dv-k,
 .dv-page.dv-no-vendor .dv-lock { display: block; }
 .dv-page.dv-no-vendor .dv-table-wrap,
 .dv-page.dv-no-vendor .dv-entry { display: none !important; }
+
+/* Dostawca wybrany, ale dokument dostawcy jeszcze nie zapisany (brak
+   szkicu): zamiast tabeli i wiersza wpisywania — komunikat. */
+.dv-gate { display: none; }
+.dv-page.dv-pre-draft:not(.dv-no-vendor) .dv-gate { display: block; }
+.dv-page.dv-pre-draft .dv-table-wrap,
+.dv-page.dv-pre-draft .dv-entry { display: none !important; }
+.dv-gate .rx-empty { padding-top: 2.4rem; padding-bottom: 2.6rem; }
+.dv-gate .rx-empty-icon { background: var(--dv-amber-soft); color: var(--dv-amber); }
 
 /* ---- Tabela pozycji ------------------------------------------------- */
 

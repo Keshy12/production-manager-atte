@@ -19,6 +19,7 @@
  * ładuje JS.
  */
 use Atte\DB\MsaDB;
+use Atte\Utils\UserRepository;
 
 if(!isset($_SESSION['isAdmin']) || $_SESSION['isAdmin'] !== true) {
     header("Location: http://".BASEURL."/");
@@ -34,11 +35,27 @@ $magazines = $MsaDB->query(
       ORDER BY sub_magazine_name"
 );
 
-$currentUserStmt = $MsaDB->db->prepare(
-    "SELECT CONCAT(`name`, ' ', `surname`) FROM `user` WHERE `user_id` = ?"
-);
-$currentUserStmt->execute([(int)($_SESSION['user_id'] ?? 0)]);
-$currentUserName = (string)($currentUserStmt->fetchColumn() ?: ('#' . (int)($_SESSION['user_id'] ?? 0)));
+// Zalogowany: imię i nazwisko + jego domyślny magazyn (user.sub_magazine_id).
+// Uwaga: 0 to PRAWIDŁOWY magazyn („Produkcja - Cegielskiego"), a brak
+// domyślnego to NULL — dlatego rozróżniamy je tu i w JS (pusty atrybut = brak).
+// Jedno zapytanie (UserRepository) daje i nazwę, i domyślny magazyn.
+// getUserById() rzuca wyjątek dla nieistniejącego id (np. nieaktualna
+// sesja) — wtedy strona nie może się wywrócić: nazwa spada do „#id",
+// a picker magazynu zostaje pusty.
+$sessionUserId   = (int)($_SESSION['user_id'] ?? 0);
+$currentUser     = null;
+try {
+    $currentUser = (new UserRepository($MsaDB))->getUserById($sessionUserId);
+} catch (\Exception $ex) {
+    $currentUser = null;
+}
+$currentUserName = $currentUser
+    ? trim($currentUser->name . ' ' . $currentUser->surname)
+    : ('#' . $sessionUserId);
+// `?int`: null = brak domyślnego; 0 to PRAWIDŁOWY magazyn („Produkcja -
+// Cegielskiego"), więc tylko `!== null` — nigdy sprawdzenie prawdziwości.
+$defaultMagazineId = $currentUser ? $currentUser->subMagazineId : null;
+$userMagazineId    = $defaultMagazineId !== null ? (string)$defaultMagazineId : ''; // pusty atrybut = brak
 
 $deliveryId = max(0, (int)($_GET['delivery_id'] ?? 0));
 $vendorId   = max(0, (int)($_GET['vendor_id'] ?? 0));
@@ -51,11 +68,12 @@ $e = static function ($v): string { return htmlspecialchars((string)$v, ENT_QUOT
 <link rel="stylesheet" href="<?= $e(asset('public_html/components/purchases/receipts/receipts-ui.css')) ?>">
 <link rel="stylesheet" href="<?= $e(asset('public_html/components/purchases/receipts/delivery-ui.css')) ?>">
 
-<div class="rx-page dv-page dv-mode-draft" id="deliveryPage"
+<div class="rx-page dv-page dv-mode-draft<?= $deliveryId > 0 ? '' : ' dv-pre-draft' ?>" id="deliveryPage"
      data-delivery-id="<?= (int)$deliveryId ?>"
      data-vendor-id="<?= (int)$vendorId ?>"
      data-list-url="<?= $e($listUrl) ?>"
-     data-current-user="<?= $e($currentUserName) ?>">
+     data-current-user="<?= $e($currentUserName) ?>"
+     data-user-magazine-id="<?= $e($userMagazineId) ?>">
 
     <!-- ===== Okruszki + nagłówek ===== -->
     <nav aria-label="Ścieżka">
@@ -71,12 +89,12 @@ $e = static function ($v): string { return htmlspecialchars((string)$v, ENT_QUOT
             <div class="rx-eyebrow" id="dvEyebrow"><i class="bi bi-receipt"></i> Przyjęcie wg faktury / WZ</div>
             <h1 class="rx-title" id="dvTitle">Nowe przyjęcie dostawy</h1>
             <p class="rx-lead" id="dvLead">
-                Wpisuj pozycje w kolejności z dokumentu dostawcy — każda od razu
-                dopasowuje się do otwartych zamówień tego dostawcy.
+                Najpierw uzupełnij dokument dostawcy i zapisz go — dopiero wtedy
+                odblokuje się wpisywanie pozycji z faktury.
             </p>
         </div>
         <div class="dv-head-side">
-            <span class="rx-badge rx-badge--blue" id="dvStateBadge">Szkic</span>
+            <span class="rx-badge<?= $deliveryId > 0 ? ' rx-badge--blue' : '' ?>" id="dvStateBadge"><?= $deliveryId > 0 ? 'Szkic' : 'Nie zapisano' ?></span>
             <span class="dv-savestate" id="dvSaveState" aria-live="polite"></span>
         </div>
     </header>
@@ -113,9 +131,10 @@ $e = static function ($v): string { return htmlspecialchars((string)$v, ENT_QUOT
             </div>
 
             <div class="dv-field dv-span-3">
-                <label class="dv-label" for="dvDocNumber">Nr dokumentu <span class="dv-req" title="Wymagane do zatwierdzenia">*</span></label>
+                <label class="dv-label" for="dvDocNumber">Nr dokumentu <span class="dv-req" title="Wymagane">*</span></label>
                 <input type="text" id="dvDocNumber" class="form-control form-control-sm dv-input"
-                       maxlength="100" autocomplete="off" placeholder="np. FV/123/2026">
+                       maxlength="100" autocomplete="off" placeholder="np. FV/123/2026"
+                       aria-describedby="dvDocNumberHint">
                 <div class="dv-hint" id="dvDocNumberHint"></div>
             </div>
 
@@ -163,6 +182,20 @@ $e = static function ($v): string { return htmlspecialchars((string)$v, ENT_QUOT
                        maxlength="500" autocomplete="off" placeholder="Opcjonalnie">
             </div>
         </div>
+
+        <!-- Pasek zapisu dokumentu — tylko przed założeniem szkicu. Zapis tworzy
+             szkic (trafia na listę „Robocze"), a dopiero potem odblokowuje pozycje. -->
+        <div class="dv-doc-foot" id="dvDocFoot">
+            <div class="dv-doc-foot-msg" id="dvDocSubmitMsg" role="status" aria-live="polite">
+                <i class="bi bi-info-circle"></i>
+                <span id="dvDocSubmitMsgText">Zapisanie dokumentu zakłada szkic przyjęcia i odblokowuje wpisywanie pozycji.</span>
+            </div>
+            <span class="dv-doc-submit-wrap" id="dvDocSubmitWrap">
+                <button type="button" class="btn btn-primary dv-doc-submit" id="dvDocSubmit" disabled>
+                    <i class="bi bi-save2"></i> <span id="dvDocSubmitLabel">Zapisz dokument dostawcy</span>
+                </button>
+            </span>
+        </div>
     </section>
 
     <!-- ===== Pozycje + otwarte zamówienia ===== -->
@@ -182,7 +215,20 @@ $e = static function ($v): string { return htmlspecialchars((string)$v, ENT_QUOT
                     <div class="rx-empty-icon"><i class="bi bi-truck"></i></div>
                     <div class="rx-empty-title">Zacznij od wyboru dostawcy</div>
                     <div class="rx-empty-text">
-                        Po wybraniu dostawcy pokażemy jego otwarte zamówienia i pozwolimy wpisywać pozycje z faktury.
+                        Po wybraniu dostawcy pokażemy jego otwarte zamówienia. Pozycje z faktury wpiszesz po zapisaniu dokumentu dostawcy.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dokument dostawcy jeszcze nie zapisany → pozycji nie wpisujemy. -->
+            <div class="dv-gate" id="dvLinesGate">
+                <div class="rx-empty">
+                    <div class="rx-empty-icon"><i class="bi bi-file-earmark-check"></i></div>
+                    <div class="rx-empty-title">Najpierw zapisz dokument dostawcy</div>
+                    <div class="rx-empty-text">
+                        Uzupełnij numer dokumentu i magazyn docelowy, a potem użyj
+                        „Zapisz dokument dostawcy". Szkic trafi na listę „Robocze",
+                        a tutaj odblokuje się wpisywanie pozycji.
                     </div>
                 </div>
             </div>
@@ -284,7 +330,7 @@ $e = static function ($v): string { return htmlspecialchars((string)$v, ENT_QUOT
                 <a href="<?= $e($listUrl) ?>" class="btn rx-btn-quiet d-none" id="dvBackBtn">
                     <i class="bi bi-arrow-left"></i> Wróć do listy
                 </a>
-                <button type="button" class="btn btn-outline-danger" id="dvDiscardBtn">
+                <button type="button" class="btn btn-outline-danger d-none" id="dvDiscardBtn">
                     <i class="bi bi-trash"></i> Usuń szkic
                 </button>
                 <button type="button" class="btn btn-outline-danger d-none" id="dvCancelDeliveryBtn">
