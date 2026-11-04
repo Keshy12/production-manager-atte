@@ -881,7 +881,9 @@ $(document).ready(function () {
         (S.vendors || []).forEach(function (v) {
             const n = num(v.open_po_count);
             if (n > 0) {
-                const content = esc(v.name) + ' <span class="dv-opt-badge" title="' + esc(n + ' ' + plural(n, 'otwarte zamówienie', 'otwarte zamówienia', 'otwartych zamówień')) + '">' + n + '</span>';
+                // Plakietka: „10 zamówień" (liczba pogrubiona, słowo normalne).
+                const poWord = plural(n, 'zamówienie', 'zamówienia', 'zamówień');
+                const content = esc(v.name) + ' <span class="dv-opt-badge" title="' + esc(n + ' ' + plural(n, 'otwarte zamówienie', 'otwarte zamówienia', 'otwartych zamówień')) + '"><b>' + n + '</b> ' + esc(poWord) + '</span>';
                 withPo += '<option value="' + esc(v.id) + '" data-content="' + esc(content) + '">' + esc(v.name) + '</option>';
             } else if (!onlyOpen || String(v.id) === keep) {
                 others += '<option value="' + esc(v.id) + '">' + esc(v.name) + '</option>';

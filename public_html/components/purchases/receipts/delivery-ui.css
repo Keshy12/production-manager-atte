@@ -92,20 +92,21 @@ kbd.dv-k,
 #dvVendorHint:empty { min-height: 0; margin-top: 0; }
 
 /* Liczba otwartych zamówień w liście dostawców (data-content w opcji):
-   czytelna plakietka zamiast przygaszonego podtekstu. */
+   neutralna, szara plakietka zamiast przygaszonego podtekstu. */
 .dv-opt-badge {
     display: inline-block;
     margin-left: .4rem;
     padding: .05rem .45rem;
     border-radius: 999px;
-    background: var(--rx-accent-soft);
-    color: var(--rx-accent-ink);
+    background: var(--rx-line-soft);
+    color: var(--rx-ink-2);
     font-size: .8rem;
-    font-weight: 700;
+    font-weight: 500;
     line-height: 1.3;
 }
+.dv-opt-badge b { font-weight: 700; }
 .dropdown-item.active .dv-opt-badge,
-.dropdown-item:active .dv-opt-badge { background: #fff; color: var(--rx-accent-ink); }
+.dropdown-item:active .dv-opt-badge { background: #fff; color: var(--rx-ink-2); }
 
 /* Mały przełącznik pod pickerem dostawcy: prawdziwy checkbox (dostępny z
    klawiatury), tor i gałka rysowane na etykiecie. */

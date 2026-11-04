@@ -149,7 +149,7 @@ $e = static function ($v): string { return htmlspecialchars((string)$v, ENT_QUOT
                             data-container="#dvVendorCell"
                             data-live-search-placeholder="Szukaj dostawcy"></select>
                     <div class="dv-switch">
-                        <input type="checkbox" id="dvVendorOnlyOpen" class="dv-switch-input">
+                        <input type="checkbox" id="dvVendorOnlyOpen" class="dv-switch-input" checked>
                         <label for="dvVendorOnlyOpen" class="dv-switch-label">Tylko z otwartymi zamówieniami</label>
                     </div>
                     <div class="dv-hint" id="dvVendorHint"></div>
