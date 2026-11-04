@@ -92,19 +92,24 @@ kbd.dv-k,
 #dvVendorHint:empty { min-height: 0; margin-top: 0; }
 
 /* Liczba otwartych zamówień w liście dostawców (data-content w opcji):
-   neutralna, szara plakietka zamiast przygaszonego podtekstu. */
+   liczba w szarej plakietce, słowo „zamówień" obok — przygaszone. */
 .dv-opt-badge {
     display: inline-block;
     margin-left: .4rem;
-    padding: .05rem .45rem;
+    padding: .05rem .42rem;
     border-radius: 999px;
     background: var(--rx-line-soft);
     color: var(--rx-ink-2);
-    font-size: .8rem;
-    font-weight: 500;
-    line-height: 1.3;
+    font-size: .78rem;
+    font-weight: 700;
+    line-height: 1.35;
 }
-.dv-opt-badge b { font-weight: 700; }
+.dv-opt-unit {
+    margin-left: .28rem;
+    color: var(--rx-muted);
+    font-size: .78rem;
+    font-weight: 400;
+}
 .dropdown-item.active .dv-opt-badge,
 .dropdown-item:active .dv-opt-badge { background: #fff; color: var(--rx-ink-2); }
 
@@ -191,7 +196,9 @@ kbd.dv-k,
 .dv-sum-grid,
 .dv-fields-grid {
     display: grid;
-    grid-template-columns: repeat(4, minmax(180px, 1fr));
+    /* Pierwsza kolumna (Dostawca) szersza — nazwy dostawców są długie
+       i przycisk pickera ucina je. Reszta kolumn wąska, bo ich treść jest krótka. */
+    grid-template-columns: minmax(280px, 1.5fr) repeat(3, minmax(170px, 1fr));
     grid-template-rows: repeat(2, auto);
     grid-auto-flow: column;
     gap: 20px 24px;
