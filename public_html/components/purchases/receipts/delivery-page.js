@@ -889,9 +889,56 @@ $(document).ready(function () {
         if (hasPicker()) $vendor.selectpicker('refresh');
     }
 
+    // „10 otwartych zamówień" / „2 otwarte zamówienia" / „1 otwarte zamówienie".
+    function openPoLabel(n) {
+        return n + ' ' + plural(n, 'otwarte zamówienie', 'otwarte zamówienia', 'otwartych zamówień');
+    }
+
+    // Nowe przyjęcie bez wybranego dostawcy: liczba otwartych zamówień każdego
+    // dostawcy widoczna od razu, jako małe plakietki pod pickerem. Klik = wybór
+    // dostawcy (to samo setVendor() co z listy). Maks. 6 + „+N więcej".
+    const VENDOR_CHIPS_MAX = 6;
+    function renderVendorChips($h) {
+        const withPo = (S.vendors || []).filter(function (v) { return num(v.open_po_count) > 0; });
+        if (withPo.length === 0) {
+            if ((S.vendors || []).length === 0) { $h.empty(); return; }
+            $h.html('<span class="dv-hint--warn"><i class="bi bi-info-circle"></i> Brak dostawców z otwartymi zamówieniami — pozycje trafią jako nadwyżka.</span>');
+            return;
+        }
+        withPo.sort(function (a, b) {
+            return (num(b.open_po_count) - num(a.open_po_count)) || String(a.name).localeCompare(String(b.name), 'pl');
+        });
+        const shown = withPo.slice(0, VENDOR_CHIPS_MAX);
+        let html = '<div class="dv-vpos-lead">Wybierz dostawcę — otwarte zamówienia:</div><div class="dv-vpos">';
+        shown.forEach(function (v) {
+            const n = num(v.open_po_count);
+            const full = v.name + ' — ' + openPoLabel(n) + '. Wybierz tego dostawcę.';
+            html += '<button type="button" class="dv-vpo" data-vendor-id="' + esc(v.id) + '"'
+                  + ' title="' + esc(full) + '" aria-label="' + esc(full) + '">'
+                  + '<span class="dv-vpo-name">' + esc(v.name) + '</span>'
+                  + '<span class="dv-vpo-n">' + n + '</span></button>';
+        });
+        if (withPo.length > shown.length) {
+            const more = withPo.length - shown.length;
+            html += '<button type="button" class="dv-vpo dv-vpo--more" data-vendor-more="1"'
+                  + ' title="Pokaż pełną listę dostawców" aria-label="Pokaż pełną listę dostawców">+' + more + ' więcej</button>';
+        }
+        $h.html(html + '</div>');
+    }
+
+    $('#dvVendorHint').on('click', '.dv-vpo', function () {
+        if (S.deliveryId) return;
+        if ($(this).attr('data-vendor-more')) {
+            if (hasPicker()) $vendor.selectpicker('toggle');
+            return;
+        }
+        setVendor($(this).attr('data-vendor-id'), true);
+    });
+
     function updateVendorHint() {
         const v = S.vendorMap[S.vendorId];
         const $h = $('#dvVendorHint');
+        if (!v && !S.deliveryId) { renderVendorChips($h); return; }
         if (!v || S.deliveryId) { $h.empty(); return; }
         const parts = [];
         if (num(v.open_po_count) === 0) {
@@ -2244,6 +2291,7 @@ $(document).ready(function () {
 
         const vendorsReq = call('delivery-vendors.php', {}).then(function (r) {
             buildVendorPicker(r.vendors || []);
+            updateVendorHint();   // plakietki z liczbą otwartych zamówień (nowe przyjęcie)
         }).catch(function (err) {
             showError('Nie udało się wczytać listy dostawców: ' + err.message);
         });

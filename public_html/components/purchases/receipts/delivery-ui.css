@@ -90,6 +90,39 @@ kbd.dv-k,
 .dv-hint .bi { margin-right: .15rem; }
 .dv-hint--warn { color: #8a5a00; }
 
+/* Nowe przyjęcie, dostawca niewybrany: plakietki „dostawca + liczba otwartych
+   zamówień" pod pickerem. Klik wybiera dostawcę. Nazwa skrócona wielokropkiem
+   (kolumna jest wąska), liczba pogrubiona — to ona ma rzucać się w oczy. */
+.dv-vpos-lead { margin-bottom: .3rem; }
+.dv-vpos { display: flex; flex-wrap: wrap; gap: .3rem; }
+.dv-vpo {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    max-width: 100%;
+    padding: .15rem .45rem;
+    border: 1px solid var(--rx-line);
+    border-radius: 999px;
+    background: var(--rx-canvas);
+    color: var(--rx-ink-2);
+    font: inherit;
+    line-height: 1.35;
+    white-space: nowrap;
+    cursor: pointer;
+}
+.dv-vpo:hover { background: var(--rx-accent-soft); border-color: var(--rx-accent); }
+.dv-vpo:focus { outline: none; box-shadow: var(--rx-ring); }
+.dv-vpo-name {
+    min-width: 0;
+    max-width: 6.5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--rx-ink-2);
+}
+.dv-vpo-n { flex: 0 0 auto; font-weight: 700; color: var(--rx-ink); }
+.dv-vpo--more { color: var(--rx-accent-ink); font-weight: 600; }
+
 .dv-seg { display: flex; width: 100%; height: calc(1.5em + .5rem + 2px); }
 .dv-seg button { flex: 1 1 0; }
 /* Zablokowany przełącznik typu dokumentu: wybór nadal czytelny, bez reakcji na najechanie. */
