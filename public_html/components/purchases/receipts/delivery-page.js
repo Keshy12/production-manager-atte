@@ -440,10 +440,10 @@ $(document).ready(function () {
         html += sumItem('dv-span-4', 'Dostawca', sumText(d.vendor_name));
         html += sumItem('dv-span-3', 'Nr dokumentu', docNo === '' ? '' : '<span class="dv-sum-doc">' + esc(docNo) + '</span>', 'dv-sum-item--key');
         html += sumItem('dv-span-2', 'Typ dokumentu', typeHtml);
+        html += sumItem('dv-span-2', 'Waluta', sumText(d.currency));
         html += sumItem('dv-span-3', 'Data dokumentu', sumText(fmtDate(d.document_date)));
         html += sumItem('dv-span-3', 'Data przyjęcia', sumText(fmtDate(d.received_at)));
         html += sumItem('dv-span-4', 'Magazyn docelowy', mag === '' ? '' : '<i class="bi bi-box-seam dv-sum-ico"></i>' + esc(mag));
-        html += sumItem('dv-span-2', 'Waluta', sumText(d.currency));
 
         if (d.state === 'posted') {
             // GRN jest już w znaczniku #dvGrnTag w nagłówku karty — nie dublujemy.
