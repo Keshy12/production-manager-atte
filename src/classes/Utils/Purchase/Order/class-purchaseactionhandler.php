@@ -1967,12 +1967,21 @@ class PurchaseActionHandler {
             $out['currency'] = $cur;
         }
         if (array_key_exists('default_sub_magazine_id', $header)) {
-            $mag = (int)($header['default_sub_magazine_id'] ?? 0);
-            if ($mag > 0) {
+            // Magazyn 0 jest prawdziwym magazynem: null / '' = brak (NULL),
+            // każda liczba całkowita (także 0) = konkretny magazyn.
+            $rawMag = $header['default_sub_magazine_id'];
+            if (is_string($rawMag)) {
+                $rawMag = trim($rawMag);
+            }
+            if ($rawMag === null || $rawMag === '') {
+                $out['default_sub_magazine_id'] = null;
+            } else {
+                $mag = filter_var($rawMag, FILTER_VALIDATE_INT);
+                if ($mag === false) {
+                    throw new \InvalidArgumentException("Magazyn domyślny: nieprawidłowy identyfikator magazynu.");
+                }
                 $this->assertDeliveryMagazineActive($mag, 'Magazyn domyślny: ');
                 $out['default_sub_magazine_id'] = $mag;
-            } else {
-                $out['default_sub_magazine_id'] = null;
             }
         }
         if (array_key_exists('received_at', $header)) {
@@ -2016,9 +2025,8 @@ class PurchaseActionHandler {
             throw new \InvalidArgumentException("Cena nie może być ujemna.");
         }
 
-        if ($subMagazineId !== null && $subMagazineId <= 0) {
-            $subMagazineId = null;
-        }
+        // null = brak magazynu na pozycji (użyj domyślnego); 0 to prawdziwy
+        // magazyn, więc walidujemy każdą liczbę całkowitą.
         if ($subMagazineId !== null) {
             $this->assertDeliveryMagazineActive($subMagazineId);
         }

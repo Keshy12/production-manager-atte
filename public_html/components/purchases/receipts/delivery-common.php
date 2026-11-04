@@ -71,6 +71,26 @@ function delivery_int($value): int {
     return is_scalar($value) ? (int)$value : 0;
 }
 
+/**
+ * Int albo null — dla identyfikatorów, gdzie 0 jest PRAWDZIWĄ wartością
+ * (np. magazine__list.sub_magazine_id = 0 → „Produkcja - Cegielskiego”).
+ * Brak klucza / null / pusty ciąg → null („nie ustawiono”); liczba całkowita
+ * (w tym "0") → int. Tekst nienumeryczny kończy żądanie błędem JSON (HTTP 200),
+ * żeby nie zamienić go po cichu na magazyn 0.
+ */
+function delivery_int_or_null($value, string $label = 'Identyfikator'): ?int {
+    if ($value === null) return null;
+    if (is_int($value)) return $value;
+    if (!is_scalar($value)) return null;
+    $s = trim((string)$value);
+    if ($s === '') return null;
+    $i = filter_var($s, FILTER_VALIDATE_INT);
+    if ($i === false) {
+        delivery_json(['success' => false, 'error' => "{$label}: nieprawidłowa wartość."]);
+    }
+    return $i;
+}
+
 /** Trimmed string or null (also null for ''). */
 function delivery_str($value): ?string {
     if ($value === null || !is_scalar($value)) return null;

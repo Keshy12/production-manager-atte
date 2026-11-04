@@ -17,7 +17,8 @@ $deliveryId   = delivery_int($_POST['delivery_id'] ?? 0);
 $vendorPartId = delivery_int($_POST['vendor_part_id'] ?? 0);
 $quantity     = delivery_str($_POST['quantity'] ?? null);
 $unitPrice    = delivery_str($_POST['unit_price'] ?? null);
-$subMagazine  = delivery_int($_POST['sub_magazine_id'] ?? 0);
+// Magazyn 0 jest prawdziwym magazynem — pusty/brak = null, "0" = 0.
+$subMagazineId = delivery_int_or_null($_POST['sub_magazine_id'] ?? null, 'Magazyn');
 $comment      = delivery_str($_POST['comment'] ?? null);
 
 if ($lineId <= 0 && $deliveryId <= 0) {
@@ -29,7 +30,6 @@ if ($vendorPartId <= 0) {
 if ($quantity === null) {
     delivery_json(['success' => false, 'error' => 'Ilość: wartość jest wymagana.']);
 }
-$subMagazineId = $subMagazine > 0 ? $subMagazine : null;
 
 delivery_run(function ($MsaDB, $handler) use ($lineId, $deliveryId, $vendorPartId, $quantity, $unitPrice, $subMagazineId, $comment) {
     if ($lineId > 0) {
