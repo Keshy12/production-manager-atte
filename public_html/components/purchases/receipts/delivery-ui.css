@@ -1,4 +1,4 @@
-/* Przyjęcie dostawy wg faktury / WZ — /purchase/receipts/new
+﻿/* Przyjęcie dostawy wg faktury / WZ — /purchase/receipts/new
    oraz elementy listy /purchase/receipts związane z dostawami
    (grupy dostawców, szkice, historia dostaw).
 
@@ -119,23 +119,23 @@ kbd.dv-k,
    Formularz jest tylko ukrywany, nie usuwany — pola zachowują wartości. */
 
 .dv-doc .dv-summary { display: none; }
-.dv-doc.is-hdr-summary .dv-summary { display: grid; }
+.dv-doc.is-hdr-summary .dv-summary { display: flex; }
 .dv-doc.is-hdr-summary .dv-fields { display: none; }
 
 /* Zwarty pasek: etykieta i wartość w jednej linii, pola układają się w 1–2
-   wiersze (auto-fill), komentarz na całą szerokość pod spodem. */
+   wiersze (flex-wrap), komentarz na całą szerokość pod spodem. */
 .dv-summary {
-    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
-    gap: .35rem 1.25rem;
+    flex-wrap: wrap;
+    gap: .35rem 1.75rem;
     padding: .55rem 1.25rem .7rem;
 }
 .dv-summary .dv-sum-item {
-    grid-column: auto;               /* nadpisuje .dv-span-N z formularza */
     display: flex;
+    flex: 0 1 auto;                  /* pary trzymają się razem, bez rozciągania */
     align-items: baseline;
-    flex-wrap: wrap;
     gap: 0 .5rem;
     min-width: 0;
+    max-width: 100%;
 }
 .dv-sum-item .dv-label {
     flex: 0 0 auto;
@@ -144,7 +144,7 @@ kbd.dv-k,
     white-space: nowrap;
 }
 .dv-sum-val {
-    flex: 1 1 0;
+    flex: 0 1 auto;                  /* trzyma się etykiety, nie rośnie */
     min-width: 0;
     font-size: .92rem;
     font-weight: 600;
@@ -158,7 +158,6 @@ kbd.dv-k,
 
 /* Numer dokumentu (i GRN) — wyróżnione: mono, większy, z akcentem z lewej. */
 .dv-summary .dv-sum-item--key {
-    grid-column: span 2;
     padding-left: .6rem;
     border-left: 3px solid var(--rx-accent);
 }
@@ -171,7 +170,7 @@ kbd.dv-k,
 }
 
 .dv-summary .dv-sum-item--wide {
-    grid-column: 1 / -1;
+    flex: 0 0 100%;
     margin-top: .1rem;
     padding-top: .35rem;
     border-top: 1px solid var(--rx-line-soft);
@@ -184,13 +183,12 @@ kbd.dv-k,
 }
 
 @media (max-width: 767.98px) {
-    .dv-summary { grid-template-columns: minmax(0, 1fr); padding: .5rem 1rem .6rem; }
-    .dv-summary .dv-sum-item--key { grid-column: auto; }
+    .dv-summary { flex-direction: column; flex-wrap: nowrap; gap: .3rem; padding: .5rem 1rem .6rem; }
 }
 
 /* Wczytywanie / błąd wczytania (wznawiany szkic, zanim przyjdzie stan). */
 .dv-summary-note {
-    grid-column: 1 / -1;
+    flex: 0 0 100%;
     padding: .6rem 0 .2rem;
     font-size: .9rem;
     color: var(--rx-muted);
