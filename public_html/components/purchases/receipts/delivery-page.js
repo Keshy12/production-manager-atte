@@ -730,6 +730,9 @@ $(document).ready(function () {
             .toggleClass('d-none', mode === 'closed' || mode === 'wait' || mode === 'locked');
         $('#dvDocEditBtn').toggleClass('d-none', mode !== 'locked');
         $('#dvDocSaved').toggleClass('d-none', mode !== 'locked');
+        // „Wyczyść" ma sens tylko przed założeniem szkicu — wtedy formularz
+        // jest jeszcze nie zapisany i można go wyzerować bez straty.
+        $('#dvDocClear').toggleClass('d-none', mode !== 'new');
 
         if (mode !== 'new') {
             $('#dvVendorCell').removeClass('is-invalid');
@@ -779,6 +782,26 @@ $(document).ready(function () {
         });
     }
 
+    // Wyzerowanie formularza dokumentu dostawcy. Tylko przed założeniem
+    // szkicu (mode „new") — wtedy nic nie jest jeszcze zapisane, więc nie ma
+    // czego stracić. Kasuje wpisane pola i wraca do stanu początkowego:
+    // pusty dostawca, puste numery, dziś jako daty, PLN i magazyn domyślny.
+    function clearHeaderForm() {
+        if (S.deliveryId || S.creating) return;
+        // setVendor(0) czyści picker dostawcy, panel zamówień i wiersz dodawania.
+        setVendor(0, false);
+        $docNumber.val('');
+        $docDate.val(TODAY);
+        $recvAt.val(TODAY);
+        $comment.val('');
+        $currency.val('PLN');
+        $('#dvPriceCur').text('PLN');
+        setPickerVal($magazine, userDefaultMagazine(), true);
+        // Komunikat o brakach wraca do neutralnego (bez czerwonego błędu).
+        S.docAttempted = false;
+        refreshDocGate();
+    }
+
     function submitDocument() {
         if (S.deliveryId || S.creating) return;
         S.docAttempted = true;
@@ -821,6 +844,9 @@ $(document).ready(function () {
 
     // „Edytuj" w nagłówku karty — to samo działanie co dawny przycisk w stopce.
     $('#dvDocEditBtn').on('click', function () { startHeaderEdit(); });
+
+    // „Wyczyść" — zeruje formularz (tylko przed założeniem szkicu).
+    $('#dvDocClear').on('click', function () { clearHeaderForm(); });
 
     $docNumber.on('input', function () {
         refreshDocGate();

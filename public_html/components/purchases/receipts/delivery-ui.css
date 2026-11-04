@@ -198,11 +198,11 @@ kbd.dv-k,
     display: grid;
     /* Pierwsza kolumna (Dostawca) szersza — nazwy dostawców są długie
        i przycisk pickera ucina je. Reszta kolumn wąska, bo ich treść jest krótka. */
-    grid-template-columns: minmax(280px, 1.5fr) repeat(3, minmax(170px, 1fr));
+    grid-template-columns: minmax(320px, 2fr) repeat(3, minmax(160px, 1fr));
     grid-template-rows: repeat(2, auto);
     grid-auto-flow: column;
     gap: 20px 24px;
-    max-width: 62rem;
+    max-width: 64rem;
 }
 .dv-sum-item { min-width: 0; }
 /* Etykiety formularza i podsumowania — identyczne. Globalne .dv-label zostaje
@@ -331,6 +331,10 @@ kbd.dv-k,
 .dv-doc-submit-wrap { display: inline-block; margin-left: auto; cursor: pointer; }
 .dv-doc-submit { padding-left: 1.4rem; padding-right: 1.4rem; font-weight: 700; white-space: nowrap; }
 .dv-doc-submit:disabled { opacity: .5; pointer-events: none; }
+/* „Wyczyść" — cichy przycisk obok „Zapisz dokument dostawcy" (tylko nowe
+   przyjęcie: szkicu jeszcze nie ma, więc nie ma czego kasować). */
+.dv-doc-clear-wrap { display: inline-block; }
+.dv-doc-clear { white-space: nowrap; }
 /* Zapisany dokument: mała, cicha akcja „Edytuj" — przyciski „Zapisz" i „Zakończ edycję" zostają duże. */
 .dv-page .dv-doc-foot[data-mode="locked"] { display: none; }
 .dv-doc-submit-wrap.is-shake { animation: dvShake .35s ease-in-out 1; }
@@ -343,6 +347,8 @@ kbd.dv-k,
 @media (max-width: 575.98px) {
     .dv-doc-submit-wrap { display: block; width: 100%; }
     .dv-doc-submit { width: 100%; }
+    .dv-doc-clear-wrap { display: block; width: 100%; margin-bottom: .4rem; }
+    .dv-doc-clear { width: 100%; }
 }
 
 /* ---- Układ: pozycje + panel zamówień -------------------------------- */

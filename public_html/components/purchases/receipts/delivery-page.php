@@ -233,6 +233,11 @@ $e = static function ($v): string { return htmlspecialchars((string)$v, ENT_QUOT
                 <i class="bi bi-info-circle"></i>
                 <span id="dvDocSubmitMsgText">Zapisanie dokumentu zakłada szkic przyjęcia i odblokowuje wpisywanie pozycji.</span>
             </div>
+            <span class="dv-doc-clear-wrap">
+                <button type="button" class="btn rx-btn-quiet dv-doc-clear" id="dvDocClear">
+                    <i class="bi bi-x-circle"></i> <span>Wyczyść</span>
+                </button>
+            </span>
             <span class="dv-doc-submit-wrap" id="dvDocSubmitWrap">
                 <button type="button" class="btn btn-primary dv-doc-submit" id="dvDocSubmit" disabled>
                     <i class="bi bi-save2"></i> <span id="dvDocSubmitLabel">Zapisz dokument dostawcy</span>
