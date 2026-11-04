@@ -1537,6 +1537,7 @@ $(document).ready(function () {
                   +   (r.producer_name ? ' · ' + esc(r.producer_name) : '')
                   +   (r.suggested_price !== null && r.suggested_price !== undefined && r.suggested_price !== ''
                         ? ' · ' + esc(fmtPrice(r.suggested_price)) + ' ' + esc(r.suggested_currency || '') : '') + '</div>'
+                  + (r.part_description ? '<div class="dv-dd-desc" title="' + esc(r.part_description) + '">' + esc(r.part_description) + '</div>' : '')
                   + '<div class="dv-dd-side">' + side + '</div>'
                   + '</div>';
         });
@@ -1576,6 +1577,7 @@ $(document).ready(function () {
                 vendor_part_no: it.vendor_part_no,
                 producer_part_no: it.producer_part_no,
                 part_name: it.part_name,
+                part_description: it.part_description || '',
                 producer_name: '',
                 on_open_po: true,
                 open_remaining: it.remaining,
@@ -1604,11 +1606,21 @@ $(document).ready(function () {
         });
     }
 
+    // Opis części pod polem artykułu — widoczny tylko przy wybranym artykule
+    // i tylko gdy opis nie jest pusty (wstawiany jako tekst).
+    function setArtDesc(desc) {
+        const d = $.trim(desc || '');
+        const $d = $('#dvArtDesc');
+        if (d === '') { $d.addClass('d-none').text('').removeAttr('title'); return; }
+        $d.removeClass('d-none').text(d).attr('title', d);
+    }
+
     function pickPart(r) {
         S.picked = r;
         if (r.unit) S.unitByVp[r.vendor_part_id] = r.unit;
         $art.val((r.vendor_part_no || '') + ' — ' + (r.part_name || ''));
         $('.dv-art-wrap').addClass('is-picked');
+        setArtDesc(r.part_description);
         $('#dvArtClear').removeClass('d-none');
         ddClose();
         const p = r.suggested_price;
@@ -1622,6 +1634,7 @@ $(document).ready(function () {
     function unpick() {
         S.picked = null;
         $('.dv-art-wrap').removeClass('is-picked');
+        setArtDesc('');
         $('#dvArtClear').addClass('d-none');
         updateEntryHint();
     }
@@ -1744,6 +1757,7 @@ $(document).ready(function () {
         $price.val('');
         fillEntryMag('');
         $('.dv-art-wrap').removeClass('is-picked');
+        setArtDesc('');
         $('#dvArtClear').addClass('d-none');
         $('#dvEntry').removeClass('is-editing');
         $('#dvEntryTag').text('Nowa pozycja');
@@ -1763,10 +1777,12 @@ $(document).ready(function () {
             vendor_part_id: l.vendor_part_id,
             vendor_part_no: l.vendor_part_no,
             producer_part_no: l.producer_part_no,
-            part_name: l.part_name
+            part_name: l.part_name,
+            part_description: l.part_description || ''
         };
         $art.val((l.vendor_part_no || '') + ' — ' + (l.part_name || ''));
         $('.dv-art-wrap').addClass('is-picked');
+        setArtDesc(l.part_description);
         $('#dvArtClear').removeClass('d-none');
         $qty.val(inputNum(l.quantity));
         $price.val(l.unit_price === null || l.unit_price === undefined ? '' : inputNum(l.unit_price));

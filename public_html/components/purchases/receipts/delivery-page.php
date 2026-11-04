@@ -335,6 +335,7 @@ $e = static function ($v): string { return htmlspecialchars((string)$v, ENT_QUOT
                             </button>
                             <div class="dv-dd" id="dvArtList" role="listbox"></div>
                         </div>
+                        <div class="dv-art-desc d-none" id="dvArtDesc"></div>
                     </div>
                     <div class="dv-entry-qty">
                         <label class="dv-label" for="dvQty">Ilość</label>
