@@ -199,13 +199,13 @@ kbd.dv-k,
 .dv-sum-grid,
 .dv-fields-grid {
     display: grid;
-    /* Pierwsza kolumna (Dostawca) szersza — nazwy dostawców są długie
-       i przycisk pickera ucina je. Reszta kolumn wąska, bo ich treść jest krótka. */
-    grid-template-columns: minmax(320px, 2fr) repeat(3, minmax(160px, 1fr));
+    /* Siatka na całą szerokość karty (100% rodzica). Pierwsza kolumna
+       (Dostawca) szersza — nazwy dostawców są długie i przycisk pickera
+       je ucina; „Magazyn docelowy" też potrzebuje miejsca na nazwę. */
+    grid-template-columns: minmax(320px, 1.5fr) repeat(3, minmax(200px, 1fr));
     grid-template-rows: repeat(2, auto);
     grid-auto-flow: column;
     gap: 20px 24px;
-    max-width: 64rem;
 }
 .dv-sum-item { min-width: 0; }
 /* Etykiety formularza i podsumowania — identyczne. Globalne .dv-label zostaje

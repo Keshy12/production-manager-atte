@@ -2372,9 +2372,8 @@ $(document).ready(function () {
             return null;
         }).then(function () {
             $page.attr('data-booted', '1');
-            if (!S.deliveryId && !S.vendorId && hasPicker()) {
-                $vendor.selectpicker('toggle');
-            }
+            // Picker dostawcy NIE otwiera się sam — operator wybiera dostawcę
+            // sam, a lista i tak jest już wczytana i odblokowana.
         });
     }
 
