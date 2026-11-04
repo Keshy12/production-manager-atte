@@ -93,6 +93,8 @@ kbd.dv-k,
 /* Nowe przyjęcie, dostawca niewybrany: plakietki „dostawca + liczba otwartych
    zamówień" pod pickerem. Klik wybiera dostawcę. Nazwa skrócona wielokropkiem
    (kolumna jest wąska), liczba pogrubiona — to ona ma rzucać się w oczy. */
+.dv-fields-chips { font-size: .74rem; line-height: 1.35; color: var(--rx-muted); }
+.dv-fields-chips:not(:empty) { margin: 0 0 16px; }
 .dv-vpos-lead { margin-bottom: .3rem; }
 .dv-vpos { display: flex; flex-wrap: wrap; gap: .3rem; }
 .dv-vpo {
@@ -114,7 +116,7 @@ kbd.dv-k,
 .dv-vpo:focus { outline: none; box-shadow: var(--rx-ring); }
 .dv-vpo-name {
     min-width: 0;
-    max-width: 6.5rem;
+    max-width: 10rem;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

@@ -132,6 +132,7 @@ $e = static function ($v): string { return htmlspecialchars((string)$v, ENT_QUOT
         </div>
 
         <div class="dv-fields">
+            <div class="dv-fields-chips" id="dvVendorChips"></div>
             <!-- Siatka lustrzana do podsumowania (.dv-sum-grid): ta sama siatka CSS,
                  kolejność w DOM kolumnowa — kol. 1 Dostawca / Nr dokumentu,
                  kol. 2 Typ dokumentu / Waluta, kol. 3 Data dokumentu / Data przyjęcia,

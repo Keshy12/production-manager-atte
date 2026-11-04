@@ -898,7 +898,10 @@ $(document).ready(function () {
     // dostawcy widoczna od razu, jako małe plakietki pod pickerem. Klik = wybór
     // dostawcy (to samo setVendor() co z listy). Maks. 6 + „+N więcej".
     const VENDOR_CHIPS_MAX = 6;
-    function renderVendorChips($h) {
+    // Plakietki mają własny pasek na całą szerokość (#dvVendorChips nad siatką
+    // pól), żeby nie rozpychały wąskiej komórki „Dostawca".
+    function renderVendorChips() {
+        const $h = $('#dvVendorChips');
         const withPo = (S.vendors || []).filter(function (v) { return num(v.open_po_count) > 0; });
         if (withPo.length === 0) {
             if ((S.vendors || []).length === 0) { $h.empty(); return; }
@@ -926,7 +929,7 @@ $(document).ready(function () {
         $h.html(html + '</div>');
     }
 
-    $('#dvVendorHint').on('click', '.dv-vpo', function () {
+    $('#dvVendorChips').on('click', '.dv-vpo', function () {
         if (S.deliveryId) return;
         if ($(this).attr('data-vendor-more')) {
             if (hasPicker()) $vendor.selectpicker('toggle');
@@ -938,7 +941,8 @@ $(document).ready(function () {
     function updateVendorHint() {
         const v = S.vendorMap[S.vendorId];
         const $h = $('#dvVendorHint');
-        if (!v && !S.deliveryId) { renderVendorChips($h); return; }
+        if (!v && !S.deliveryId) { $h.empty(); renderVendorChips(); return; }
+        $('#dvVendorChips').empty();
         if (!v || S.deliveryId) { $h.empty(); return; }
         const parts = [];
         if (num(v.open_po_count) === 0) {
