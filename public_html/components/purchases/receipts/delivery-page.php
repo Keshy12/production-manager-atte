@@ -114,10 +114,17 @@ $e = static function ($v): string { return htmlspecialchars((string)$v, ENT_QUOT
         <div class="dv-doc-head">
             <h2 class="rx-panel-title">
                 <i class="bi bi-file-earmark-text"></i> Dokument dostawcy
+                <span class="dv-doc-num" id="dvDocNo"></span>
                 <!-- Znacznik kroku — widoczny tylko, dopóki dokument nie jest zapisany. -->
                 <span class="dv-step" id="dvStep">Krok 1 z 2</span>
             </h2>
-            <div class="dv-doc-grn d-none" id="dvGrnTag"></div>
+            <div class="dv-doc-side">
+                <span class="dv-doc-saved d-none" id="dvDocSaved"><i class="bi bi-check2-circle"></i> Zapisano</span>
+                <button type="button" class="btn btn-outline-secondary btn-sm dv-doc-edit d-none" id="dvDocEditBtn">
+                    <i class="bi bi-pencil"></i> Edytuj
+                </button>
+                <div class="dv-doc-grn d-none" id="dvGrnTag"></div>
+            </div>
         </div>
 
         <div class="dv-summary" id="dvSummary" aria-live="polite">

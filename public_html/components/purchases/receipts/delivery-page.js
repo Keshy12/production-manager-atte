@@ -397,10 +397,11 @@ $(document).ready(function () {
 
     // Jedna pozycja podsumowania: etykieta + wartość. `html` to gotowy,
     // już zabezpieczony znacznik wartości; pusta wartość = „—".
-    function sumItem(span, label, html, mod) {
+    // `labelExtra` — gotowy znacznik dopisany za etykietą (np. kłódka).
+    function sumItem(label, html, mod, labelExtra) {
         const empty = (html === null || html === undefined || html === '');
-        return '<div class="dv-sum-item ' + span + (mod ? ' ' + mod : '') + '">'
-             +   '<div class="dv-label">' + esc(label) + '</div>'
+        return '<div class="dv-sum-item' + (mod ? ' ' + mod : '') + '">'
+             +   '<div class="dv-label">' + esc(label) + (labelExtra || '') + '</div>'
              +   '<div class="dv-sum-val">' + (empty ? '<span class="dv-sum-empty">—</span>' : html) + '</div>'
              + '</div>';
     }
@@ -424,10 +425,10 @@ $(document).ready(function () {
         }
         const d = st.delivery;
 
-        // Typ dokumentu jako plakietka.
+        // Typ dokumentu jako zwykły tekst (taki sam jak pozostałe wartości).
         let typeHtml = '';
-        if (d.document_type === 'invoice') typeHtml = '<span class="rx-badge rx-badge--blue">Faktura</span>';
-        else if (d.document_type === 'wz') typeHtml = '<span class="rx-badge rx-badge--violet">WZ</span>';
+        if (d.document_type === 'invoice') typeHtml = 'Faktura';
+        else if (d.document_type === 'wz') typeHtml = 'WZ';
         else typeHtml = sumText(d.document_type);
 
         // Magazyn domyślny: nazwa z serwera → lista magazynów → „#id".
@@ -436,24 +437,38 @@ $(document).ready(function () {
 
         const docNo = $.trim(d.vendor_document_number == null ? '' : String(d.vendor_document_number));
 
-        let html = '';
-        html += sumItem('dv-span-4', 'Dostawca', sumText(d.vendor_name));
-        html += sumItem('dv-span-3', 'Nr dokumentu', docNo === '' ? '' : '<span class="dv-sum-doc">' + esc(docNo) + '</span>', 'dv-sum-item--key');
-        html += sumItem('dv-span-2', 'Typ dokumentu', typeHtml);
-        html += sumItem('dv-span-2', 'Waluta', sumText(d.currency));
-        html += sumItem('dv-span-3', 'Data dokumentu', sumText(fmtDate(d.document_date)));
-        html += sumItem('dv-span-3', 'Data przyjęcia', sumText(fmtDate(d.received_at)));
-        html += sumItem('dv-span-4', 'Magazyn docelowy', mag === '' ? '' : '<i class="bi bi-box-seam dv-sum-ico"></i>' + esc(mag));
+        // Numer dokumentu jako druga część tytułu karty („ · FV/123/2026").
+        $('#dvDocNo').text(docNo === '' ? '' : ' · ' + docNo);
 
+        // Tylko do wyświetlenia: „Produkcja - Cegielskiego" → „Produkcja – Cegielskiego".
+        const magShown = mag.replace(/ - /g, ' \u2013 ');
+
+        const lock = ' <i class="bi bi-lock dv-sum-lock" role="img"'
+                   + ' aria-label="Dostawcy nie można zmienić po utworzeniu szkicu."'
+                   + ' title="Dostawcy nie można zmienić po utworzeniu szkicu."></i>';
+
+        // Kolejność w DOM jest kolumnowa (siatka wypełnia kolumny w dół):
+        // kol. 1 Dostawca / Nr dokumentu, kol. 2 Typ / Waluta,
+        // kol. 3 Data dokumentu / Data przyjęcia, kol. 4 Magazyn.
+        let grid = '';
+        grid += sumItem('Dostawca', sumText(d.vendor_name), '', lock);
+        grid += sumItem('Nr dokumentu', docNo === '' ? '' : '<span class="dv-sum-doc">' + esc(docNo) + '</span>');
+        grid += sumItem('Typ dokumentu', typeHtml);
+        grid += sumItem('Waluta', sumText(d.currency));
+        grid += sumItem('Data dokumentu', sumText(fmtDate(d.document_date)));
+        grid += sumItem('Data przyjęcia', sumText(fmtDate(d.received_at)));
+        grid += sumItem('Magazyn docelowy', mag === '' ? '' : esc(magShown));
+
+        let html = '';
         if (d.state === 'posted') {
             // GRN jest już w znaczniku #dvGrnTag w nagłówku karty — nie dublujemy.
             const stamp = fmtStamp(d.posted_at);
             const by = $.trim(d.posted_by_name == null ? '' : String(d.posted_by_name));
-            html += sumItem('dv-span-3', 'Zatwierdzono',
+            html += sumItem('Zatwierdzono',
                 stamp === '' && by === '' ? '' : esc(stamp) + (by !== '' ? '<span class="dv-sum-sub"> · ' + esc(by) + '</span>' : ''), 'dv-sum-item--audit');
         } else if (d.state === 'cancelled' && $.trim(d.grn_number == null ? '' : String(d.grn_number)) !== '') {
             // Dla anulowanego znacznik GRN w nagłówku jest ukryty — numer pokazujemy tu.
-            html += sumItem('dv-span-3', 'Numer GRN', '<span class="dv-sum-doc">' + esc(d.grn_number) + '</span>', 'dv-sum-item--audit');
+            html += sumItem('Numer GRN', '<span class="dv-sum-doc">' + esc(d.grn_number) + '</span>', 'dv-sum-item--audit');
         }
 
         // Komentarz tylko, gdy coś w nim jest.
@@ -465,7 +480,9 @@ $(document).ready(function () {
                   + '</div>';
         }
 
-        $sum.html(html);
+        // Ślad zatwierdzenia i komentarz — osobny blok pod główną siatką.
+        $sum.html('<div class="dv-sum-grid">' + grid + '</div>'
+                + (html === '' ? '' : '<div class="dv-sum-extra">' + html + '</div>'));
     }
 
     // Odczyt vs edycja pól nagłówka. Pola tekstowe i daty dostają `readonly`
@@ -483,6 +500,8 @@ $(document).ready(function () {
         // Przełączenie musi nastąpić PRZED fokusem w startHeaderEdit().
         $('#dvHeaderCard').toggleClass('is-hdr-summary', ro);
         if (ro) renderSummary();
+        // Numer w tytule karty — tylko przy podsumowaniu (w edycji pole pokazuje go samo).
+        $('#dvDocNo').toggleClass('d-none', !ro);
         $docNumber.add($docDate).add($recvAt).add($comment).prop('readOnly', ro);
         $currency.prop('disabled', ro);
         $('#dvDocType button').prop('disabled', ro);
@@ -705,17 +724,17 @@ $(document).ready(function () {
         // Pasek jest widoczny dla szkicu (przed zapisem, w odczycie, w edycji);
         // dla zatwierdzonego / anulowanego przyjęcia i do czasu wczytania
         // wznawianego szkicu — ukryty.
-        $('#dvDocFoot').attr('data-mode', mode).toggleClass('d-none', mode === 'closed' || mode === 'wait');
+        // W trybie „locked" stopki nie ma — akcja „Edytuj" i status „Zapisano"
+        // są w nagłówku karty.
+        $('#dvDocFoot').attr('data-mode', mode)
+            .toggleClass('d-none', mode === 'closed' || mode === 'wait' || mode === 'locked');
+        $('#dvDocEditBtn').toggleClass('d-none', mode !== 'locked');
+        $('#dvDocSaved').toggleClass('d-none', mode !== 'locked');
 
         if (mode !== 'new') {
             $('#dvVendorCell').removeClass('is-invalid');
             if (mode === 'locked') {
-                paintDocFoot({
-                    text: 'Dokument zapisany — kliknij „Edytuj dokument dostawcy", aby go zmienić. Dostawcy po założeniu szkicu nie da się zmienić.',
-                    msgIcon: 'bi bi-lock',
-                    label: 'Edytuj dokument dostawcy', btnIcon: 'bi bi-pencil', btnClass: 'btn-outline-primary',
-                    disabled: false
-                });
+                // Stopka ukryta — nic do rysowania.
             } else if (mode === 'editing') {
                 paintDocFoot({
                     text: 'Edycja dokumentu — zmiany zapisują się automatycznie. Gdy skończysz, kliknij „Zakończ edycję".',
@@ -799,6 +818,9 @@ $(document).ready(function () {
         else if (mode === 'locked') startHeaderEdit();
         else if (mode === 'editing') finishHeaderEdit();
     });
+
+    // „Edytuj" w nagłówku karty — to samo działanie co dawny przycisk w stopce.
+    $('#dvDocEditBtn').on('click', function () { startHeaderEdit(); });
 
     $docNumber.on('input', function () {
         refreshDocGate();
