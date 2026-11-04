@@ -28,6 +28,7 @@ class Delivery {
     public ?string $comment;
     public ?string $vendorName;
     public ?string $createdByName;
+    public ?string $postedByName;
     public ?string $defaultSubMagazineName;
 
     public function __construct(array $row) {
@@ -52,6 +53,7 @@ class Delivery {
         $this->comment = $row['comment'] ?? null;
         $this->vendorName = $row['vendorName'] ?? null;
         $this->createdByName = $row['createdByName'] ?? null;
+        $this->postedByName = $row['postedByName'] ?? null;
         $this->defaultSubMagazineName = $row['defaultSubMagazineName'] ?? null;
     }
 }

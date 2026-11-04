@@ -40,10 +40,12 @@ class DeliveryRepository {
                        d.comment,
                        v.name AS vendorName,
                        CONCAT(u.name, ' ', u.surname) AS createdByName,
+                       CONCAT(pu.name, ' ', pu.surname) AS postedByName,
                        m.sub_magazine_name AS defaultSubMagazineName
                 FROM `purchase__delivery` d
                 LEFT JOIN `list__vendor` v    ON d.vendor_id = v.id
                 LEFT JOIN `user` u            ON d.created_by = u.user_id
+                LEFT JOIN `user` pu           ON d.posted_by = pu.user_id
                 LEFT JOIN `magazine__list` m  ON d.default_sub_magazine_id = m.sub_magazine_id";
     }
 

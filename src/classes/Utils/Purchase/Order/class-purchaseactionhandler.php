@@ -2427,6 +2427,7 @@ class PurchaseActionHandler {
                 'transfer_group_id'        => $delivery->transferGroupId,
                 'created_by'               => $delivery->createdBy,
                 'created_by_name'          => $delivery->createdByName,
+                'posted_by_name'           => $delivery->postedByName,
                 'posted_by'                => $delivery->postedBy,
                 'created_at'               => $delivery->createdAt,
                 'posted_at'                => $delivery->postedAt,
