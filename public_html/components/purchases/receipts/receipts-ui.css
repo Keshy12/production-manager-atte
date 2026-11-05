@@ -1556,8 +1556,22 @@ a.rx-timeline-doc { color: var(--rx-accent-ink); }
     box-shadow: inset 0 0 0 1px var(--rx-line);
     font-size: .76rem;
     line-height: 1.5;
+    /* Ciało chipa (kropka, licznik, wolne miejsce) zawęża tabelę do tego
+       jednego zamówienia — stąd kursor. Numer i „⋮" mają własne kursory. */
+    cursor: pointer;
 }
+.vq-pochip:hover { box-shadow: inset 0 0 0 1px #c7d4e3; background: var(--rx-hover); }
 .vq-pochip.is-empty { background: var(--rx-canvas); }
+/* Aktywne zawężenie — chip wygląda jak wciśnięty przycisk filtra. */
+.vq-pochip.is-filtered {
+    background: var(--rx-accent-soft);
+    box-shadow: inset 0 0 0 2px var(--rx-accent);
+}
+.vq-pochip.is-filtered .vq-pochip-no { color: var(--rx-accent-ink); }
+.vq-pochip.is-filtered .vq-pochip-n {
+    background: var(--rx-accent);
+    color: #fff;
+}
 .vq-dot {
     flex-shrink: 0;
     width: .45rem;
@@ -1571,24 +1585,35 @@ a.rx-timeline-doc { color: var(--rx-accent-ink); }
 .vq-dot--amber  { background: #f0ad00; }
 .vq-dot--green  { background: #28a745; }
 .vq-dot--red    { background: #dc3545; }
+/* Numer PO nie jest linkiem — kliknięcie zawęża listę pozycji do tego
+   zamówienia (jak klik w resztę chipa), dlatego nie podkreślamy go
+   przy najechaniu. */
 .vq-pochip-no {
     font-weight: 700;
     color: var(--rx-ink);
     text-decoration: none;
+    cursor: pointer;
 }
 .vq-pochip-no:hover,
-.vq-pochip-no:focus { color: var(--rx-accent-ink); text-decoration: underline; }
+.vq-pochip-no:focus { color: var(--rx-accent-ink); text-decoration: none; }
+.vq-pochip-no:focus { outline: none; box-shadow: var(--rx-ring); }/* Licznik pozycji jest jednocześnie przyciskiem zawężenia (aria-pressed)
+   — dzięki temu filtr jest dostępny z klawiatury bez klikalnego <span>. */
 .vq-pochip-n {
     min-width: 1.15rem;
     padding: 0 .25rem;
+    border: 0;
     border-radius: .2rem;
     background: var(--rx-line-soft);
     color: var(--rx-ink-2);
     font-size: .68rem;
     font-weight: 700;
+    line-height: 1.45;
     text-align: center;
     font-variant-numeric: tabular-nums;
+    cursor: pointer;
 }
+.vq-pochip-n:hover { background: #dbe4ef; color: var(--rx-ink); }
+.vq-pochip-n:focus { outline: none; box-shadow: var(--rx-ring); }
 .vq-pochip.is-empty .vq-pochip-n { color: var(--rx-faint); }
 .vq-pochip-btn {
     display: inline-flex;
@@ -1611,6 +1636,37 @@ a.rx-timeline-doc { color: var(--rx-accent-ink); }
 .vq-action-danger { color: #a71d2a; }
 .vq-action-danger:hover,
 .vq-action-danger:focus { background-color: #fdecee; color: #7d1620; }
+
+/* ---- pasek „Pokazuję tylko PO/…" ---------------------------------- */
+.vq-pofilter {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .25rem .5rem;
+    margin-bottom: .5rem;
+    padding: .3rem .6rem;
+    border-radius: .3rem;
+    background: var(--rx-accent-soft);
+    box-shadow: inset 0 0 0 1px #c9ddf7;
+    color: var(--rx-accent-ink);
+    font-size: .78rem;
+}
+.vq-pofilter .bi-funnel-fill { font-size: .72rem; }
+.vq-pofilter strong { font-weight: 700; }
+.vq-pofilter-n { color: var(--rx-muted); }
+.vq-pofilter-clear {
+    margin-left: auto;
+    padding: 0 .4rem;
+    border: 0;
+    border-radius: .2rem;
+    background: rgba(255, 255, 255, .7);
+    color: var(--rx-accent-ink);
+    font-size: .74rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.vq-pofilter-clear:hover { background: #fff; text-decoration: underline; }
+.vq-pofilter-clear:focus { outline: none; box-shadow: var(--rx-ring); }
 
 /* ---- tabela pozycji ------------------------------------------------ */
 .vq-itbl {

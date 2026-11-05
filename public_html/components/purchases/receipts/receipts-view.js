@@ -271,8 +271,32 @@ $(document).ready(function () {
     // (ręczny) układ z vendorOpen.
     let searchOpen = {};
 
+    // Zawężenie karty do JEDNEGO zamówienia: vendorKey => poId. Ustawia je
+    // klik w chip zamówienia w pasku (patrz poChipHtml / handler
+    // „.vq-pochip"). Mapa żyje tak jak vendorOpen — przeżywa „Odśwież" i
+    // przerysowanie karty; czyści ją tylko ponowny klik w ten sam chip,
+    // przycisk „Pokaż wszystkie" w karcie, globalne „Wyczyść filtry" oraz
+    // zniknięcie zamówienia z paska (walidacja w applyQueueFilters).
+    //
+    // Zwinięcie karty NIE kasuje zawężenia — jest częścią stanu karty tak
+    // samo jak jej rozwinięcie, a po ponownym rozwinięciu widać i aktywny
+    // chip, i pasek „Pokazuję tylko …" z przyciskiem czyszczącym, więc
+    // operator nie zgubi kontekstu.
+    const vendorPoFilter = {};
+
     function vendorKey(p) {
         return p.vendorId ? 'v' + p.vendorId : 'n:' + (p.vendorName || '');
+    }
+
+    function poFilterOf(key) { return intOf(vendorPoFilter[key]); }
+
+    function setPoFilter(key, poId) {
+        if (poId) vendorPoFilter[key] = poId;
+        else delete vendorPoFilter[key];
+    }
+
+    function anyPoFilter() {
+        return Object.keys(vendorPoFilter).length > 0;
     }
 
     function searchActive() {
@@ -534,10 +558,11 @@ $(document).ready(function () {
             html += '<div class="vq-vbody' + (isOpen ? '' : ' vq-vbody--collapsed') + '"'
                   + ' id="vqGroup' + g.index + '" data-vg="' + g.index + '" role="region"'
                   + ' aria-label="' + escAttr('Pozycje do przyjęcia: ' + g.vendorName) + '">'
-                  + poStripHtml(g, g.pos, countByPo(g.items))
+                  + poStripHtml(g, g.pos, countByPo(g.items), 0)
+                  + poFilterBarHtml(g, g.pos, 0, 0)
                   + itemsTableHtml(g.items)
                   + '<div class="vq-itempty' + (g.items.length > 0 ? ' d-none' : '') + '">'
-                  +   emptyItemsText(g.items.length === 0 && g.pos.length > 0)
+                  +   emptyItemsText(g.items.length === 0 && g.pos.length > 0, 0)
                   + '</div>'
                   + '</div>';
         });
@@ -546,10 +571,21 @@ $(document).ready(function () {
         applyQueueFilters();
     }
 
-    function emptyItemsText(noOpenAtAll) {
-        return noOpenAtAll
-            ? 'Nie ma tu otwartych pozycji — wszystko zostało przyjęte. Zamówienie zamkniesz z menu „⋮" przy jego numerze.'
-            : 'Żadna pozycja nie pasuje do filtrów.';
+    function emptyItemsText(noOpenAtAll, poFiltered, poHasNoOpenItems) {
+        if (noOpenAtAll) {
+            return 'Nie ma tu otwartych pozycji — wszystko zostało przyjęte.'
+                 + ' Zamówienie zamkniesz z menu „⋮" przy jego numerze.';
+        }
+        if (poHasNoOpenItems) {
+            return 'To zamówienie nie ma otwartych pozycji — wszystko zostało przyjęte.'
+                 + ' Zamkniesz je z menu „⋮" przy numerze albo kliknij „Pokaż wszystkie",'
+                 + ' żeby wrócić do pozostałych zamówień dostawcy.';
+        }
+        if (poFiltered) {
+            return 'To zamówienie nie ma pozycji pasujących do pozostałych filtrów.'
+                 + ' Kliknij „Pokaż wszystkie", żeby zobaczyć pozostałe zamówienia dostawcy.';
+        }
+        return 'Żadna pozycja nie pasuje do filtrów.';
     }
 
     function countByPo(items) {
@@ -650,13 +686,22 @@ $(document).ready(function () {
     // handler w close-po.js (ten sam kontrakt co wcześniejszy kosz w
     // wierszu); close-po.js robi stopPropagation, więc klik w pozycję menu
     // nie zwija karty.
+    //
+    // Klik w SAM CHIP (kropka stanu, numer PO, licznik, wolne miejsce
+    // wokół numeru) zawęża tabelę poniżej do tego jednego zamówienia;
+    // ponowny klik zawężenie zdejmuje. Numer PO NIE jest linkiem —
+    // kliknięcie go filtruje tak samo jak resztę chipa; ekran zamówienia
+    // otwiera pozycja „Edytuj" w menu „⋮".
+    // Klawiaturowym punktem wejścia do filtra są: numer PO (role=button +
+    // Enter/Space) oraz licznik pozycji (prawdziwy <button aria-pressed>).
 
-    function poChipHtml(p, nItems) {
+    function poChipHtml(p, nItems, vkey, activePoId) {
         const poId   = intOf(p.poId);
         const label  = p.poNumber || ('#' + poId);
         const meta   = stateMeta(p.state);
         const canRx  = p.canReceive !== false;
         const empty  = nItems === 0;
+        const active = activePoId === poId;
 
         let menu = '<a class="dropdown-item" href="' + escAttr(editUrl(poId)) + '">'
                  + '<i class="bi bi-pencil-square"></i> Edytuj</a>';
@@ -684,13 +729,23 @@ $(document).ready(function () {
 
         const vendorNo = p.vendorPoNumber ? ' · nr u dostawcy ' + p.vendorPoNumber : '';
         const chipTitle = label + ' — ' + meta.label + vendorNo
-            + ' · ' + (empty ? 'brak otwartych pozycji' : nItems + ' ' + pozWord(nItems) + ' do przyjęcia');
+            + ' · ' + (empty ? 'brak otwartych pozycji' : nItems + ' ' + pozWord(nItems) + ' do przyjęcia')
+            + ' · ' + (active ? 'kliknij, aby pokazać wszystkie zamówienia'
+                              : 'kliknij, aby pokazać tylko to zamówienie');
+        const pickTitle = active
+            ? 'Pokaż z powrotem pozycje wszystkich zamówień'
+            : 'Pokaż tylko pozycje z zamówienia ' + label;
 
-        return '<span class="vq-pochip dropdown' + (empty ? ' is-empty' : '') + '" title="' + escAttr(chipTitle) + '">'
+        return '<span class="vq-pochip dropdown' + (empty ? ' is-empty' : '') + (active ? ' is-filtered' : '') + '"'
+             +   ' data-vkey="' + escAttr(vkey) + '" data-po-id="' + poId + '"'
+             +   ' title="' + escAttr(chipTitle) + '">'
              + '<span class="vq-dot vq-dot--' + meta.tone + '" aria-hidden="true"></span>'
-             + '<a class="vq-pochip-no" href="' + escAttr(editUrl(poId)) + '">' + esc(label) + '</a>'
+             + '<a class="vq-pochip-no" role="button" tabindex="0"'
+             +   ' title="' + escAttr(pickTitle) + '">' + esc(label) + '</a>'
              + '<span class="sr-only">' + esc(meta.label) + '</span>'
-             + '<span class="vq-pochip-n">' + nItems + '</span>'
+             + '<button type="button" class="vq-pochip-n" aria-pressed="' + (active ? 'true' : 'false') + '"'
+             +   ' title="' + escAttr(pickTitle) + '">' + nItems
+             +   '<span class="sr-only"> ' + pozWord(nItems) + ' — ' + esc(pickTitle) + '</span></button>'
              + '<button type="button" class="vq-pochip-btn dropdown-toggle" data-toggle="dropdown"'
              +   ' aria-haspopup="true" aria-expanded="false"'
              +   ' aria-label="' + escAttr('Akcje zamówienia ' + label) + '">'
@@ -699,13 +754,39 @@ $(document).ready(function () {
              + '</span>';
     }
 
-    function poStripHtml(g, pos, byPo) {
+    // Pasek zamówień pokazuje ZAWSZE wszystkie zamówienia, które przeszły
+    // filtry globalne — także wtedy, gdy karta jest zawężona do jednego
+    // z nich. Inaczej nie dałoby się przełączyć na inne zamówienie ani
+    // zdjąć zawężenia. Z tego samego powodu liczniki na chipach liczą
+    // pozycje SPRZED zawężenia.
+    function poStripHtml(g, pos, byPo, activePoId) {
         if (pos.length === 0) return '<div class="vq-postrip"></div>';
         let chips = '';
-        pos.forEach(function (p) { chips += poChipHtml(p, byPo[intOf(p.poId)] || 0); });
+        pos.forEach(function (p) {
+            chips += poChipHtml(p, byPo[intOf(p.poId)] || 0, g.key, activePoId);
+        });
         return '<div class="vq-postrip">'
              + '<span class="vq-postrip-lbl">' + plural(pos.length, 'Zamówienie', 'Zamówienia', 'Zamówienia') + '</span>'
              + chips + '</div>';
+    }
+
+    // Pasek „Pokazuję tylko PO/… (N pozycji)" + wyjście z zawężenia.
+    // Renderujemy go ZAWSZE (pusty i ukryty, gdy zawężenia nie ma), żeby
+    // applyQueueFilters mógł go podmienić jednym replaceWith.
+    function poFilterBarHtml(g, pos, activePoId, nShown) {
+        if (!activePoId) return '<div class="vq-pofilter d-none"></div>';
+        let label = '#' + activePoId;
+        pos.forEach(function (p) {
+            if (intOf(p.poId) === activePoId) label = p.poNumber || label;
+        });
+        return '<div class="vq-pofilter" data-vkey="' + escAttr(g.key) + '">'
+             + '<i class="bi bi-funnel-fill" aria-hidden="true"></i> '
+             + 'Pokazuję tylko <strong>' + esc(label) + '</strong> '
+             + '<span class="vq-pofilter-n">(' + nShown + ' ' + pozWord(nShown) + ')</span>'
+             + '<button type="button" class="vq-pofilter-clear js-po-filter-clear"'
+             +   ' data-vkey="' + escAttr(g.key) + '">'
+             +   '<i class="bi bi-x-circle" aria-hidden="true"></i> Pokaż wszystkie</button>'
+             + '</div>';
     }
 
     // ---- karta dostawcy: tabela pozycji --------------------------------
@@ -864,14 +945,20 @@ $(document).ready(function () {
             .attr('aria-pressed', f.overdue ? 'true' : 'false');
     }
 
+    // Dwa przebiegi:
+    //   1. filtry GLOBALNE (dostawca, status, po terminie, szukaj) — ich
+    //      wynik buduje pasek zamówień i liczniki na chipach,
+    //   2. zawężenie karty do jednego zamówienia (klik w chip) — zabiera
+    //      tylko wiersze tabeli, nagłówek karty i postęp; paska zamówień
+    //      NIE rusza, żeby dało się przełączyć na inne zamówienie.
     function applyQueueFilters() {
         const f = queueFilters();
         syncQueueFilterUi();
         if (queueItems.length === 0 && queueData.length === 0) { syncExpandAllBtn(); return; }
 
-        const matched = {};
-        let shown = 0;
-        let shownEmptyPos = 0;   // zamówienia bez otwartych pozycji, które zostają w pasku
+        const matched = {};        // vg => pozycje po filtrach globalnych
+        const rowsByGroup = {};    // vg => elementy DOM (do drugiego przebiegu)
+        let shownEmptyPos = 0;     // zamówienia bez otwartych pozycji, które zostają w pasku
 
         $queueBody.find('.vq-itrow').each(function () {
             const $row = $(this);
@@ -879,21 +966,22 @@ $(document).ready(function () {
             if (!r) { $row.addClass('d-none'); return; }
             const hit = itemHit(r, f);
             $row.toggleClass('d-none', !hit);
-            if (hit) {
-                shown++;
-                if (!matched[r.g.index]) matched[r.g.index] = [];
-                matched[r.g.index].push(r);
-            }
+            if (!hit) return;
+            if (!matched[r.g.index]) { matched[r.g.index] = []; rowsByGroup[r.g.index] = []; }
+            matched[r.g.index].push(r);
+            rowsByGroup[r.g.index].push($row);
         });
 
         // Karta dostawcy znika razem z ostatnią widoczną pozycją (chyba że
         // zostaje w niej zamówienie bez otwartych pozycji). Liczniki nagłówka
         // i pasek zamówień PRZELICZAMY na tym, co przeszło filtry.
+        let shown = 0;
+        let visibleGroups = 0;
         queueGroups.forEach(function (g) {
-            const items  = matched[g.index] || [];
-            const byPo   = countByPo(items);
-            const seen   = {};
-            items.forEach(function (r) { seen[intOf(r.p.poId)] = true; });
+            const base = matched[g.index] || [];
+            const byPo = countByPo(base);
+            const seen = {};
+            base.forEach(function (r) { seen[intOf(r.p.poId)] = true; });
 
             const pos = [];
             g.pos.forEach(function (p) {
@@ -904,24 +992,58 @@ $(document).ready(function () {
             const $head = $queueBody.find('.dv-vhead[data-vg="' + g.index + '"]');
             const $body = $queueBody.find('.vq-vbody[data-vg="' + g.index + '"]');
 
-            if (items.length === 0 && pos.length === 0) {
+            if (base.length === 0 && pos.length === 0) {
                 $head.addClass('d-none');
                 $body.addClass('d-none');
                 return;
             }
+            visibleGroups++;
+
+            // Zawężenie do jednego zamówienia obowiązuje tylko dopóki ten
+            // chip jest w pasku — inaczej filtr globalny mógłby go ukryć
+            // i karta zostałaby pusta bez widocznego sposobu wyjścia.
+            let activePo = poFilterOf(g.key);
+            if (activePo && !pos.some(function (p) { return intOf(p.poId) === activePo; })) {
+                setPoFilter(g.key, 0);
+                activePo = 0;
+            }
+
+            let items = base;
+            let activeIsEmptyPo = false;
+            if (activePo) {
+                items = base.filter(function (r) { return intOf(r.p.poId) === activePo; });
+                (rowsByGroup[g.index] || []).forEach(function ($row) {
+                    if (intOf($row.attr('data-po-id')) !== activePo) $row.addClass('d-none');
+                });
+                activeIsEmptyPo = pos.some(function (p) {
+                    return intOf(p.poId) === activePo && openItemsOf(p).length === 0;
+                });
+            }
+            shown += items.length;
+
+            // Postęp i liczniki nagłówka liczymy na zawężonym zestawie —
+            // tak samo jak dla pozostałych filtrów.
+            const headPos = activePo
+                ? pos.filter(function (p) { return intOf(p.poId) === activePo; })
+                : pos;
 
             const isOpen = groupOpen(g.key, true);
-            $head.replaceWith(vendorHeadHtml(g, items, pos, isOpen));
+            $head.replaceWith(vendorHeadHtml(g, items, headPos, isOpen));
             $body.removeClass('d-none').toggleClass('vq-vbody--collapsed', !isOpen);
-            $body.find('> .vq-postrip').replaceWith(poStripHtml(g, pos, byPo));
+            $body.find('> .vq-postrip').replaceWith(poStripHtml(g, pos, byPo, activePo));
+            $body.find('> .vq-pofilter').replaceWith(poFilterBarHtml(g, pos, activePo, items.length));
             $body.find('> .vq-itbl').toggleClass('d-none', items.length === 0);
             $body.find('> .vq-itempty')
                 .toggleClass('d-none', items.length > 0)
-                .text(emptyItemsText(g.items.length === 0));
+                .text(emptyItemsText(g.items.length === 0, activePo !== 0, activeIsEmptyPo));
         });
         syncExpandAllBtn();
 
-        if (shown === 0 && shownEmptyPos === 0) {
+        // Pusty stan całej listy TYLKO wtedy, gdy nie została ani jedna
+        // karta. Przy zawężeniu do zamówienia bez trafień karta zostaje
+        // (z paskiem zamówień i „Pokaż wszystkie"), więc nie podmieniamy
+        // listy na komunikat — operator musi mieć jak wrócić.
+        if (visibleGroups === 0) {
             showQueueState(emptyStateHtml(
                 'bi-funnel', '',
                 'Brak pozycji dla wybranych filtrów',
@@ -952,7 +1074,10 @@ $(document).ready(function () {
             return;
         }
 
-        if (shown === total) {
+        // anyPoFilter(): przy zawężeniu karty do jednego zamówienia nawet
+        // „wszystko widoczne" jest wynikiem filtrowania, więc nie pokazujemy
+        // podsumowania pełnej kolejki.
+        if (shown === total && !anyPoFilter()) {
             // Ile zamówień ma spóźnione pozycje — liczymy po lateLines,
             // nie po dacie nagłówka.
             let latePos = 0;
@@ -975,6 +1100,9 @@ $(document).ready(function () {
         $queueSearch.val('');
         $queueOverdue.prop('checked', false);
         searchOpen = {};
+        // „Wyczyść filtry" zdejmuje też zawężenia kart do pojedynczych
+        // zamówień — to również filtr, tyle że lokalny.
+        Object.keys(vendorPoFilter).forEach(function (k) { delete vendorPoFilter[k]; });
         setPicker($queueVendor, []);
         setPicker($queueStates, []);
         applyQueueFilters();
@@ -1020,6 +1148,43 @@ $(document).ready(function () {
         if ($t.closest('a, button').length && !$t.closest('.vq-vtoggle').length) return;
         const $head = $(this);
         toggleGroup($head, !$head.hasClass('is-open'));
+    });
+
+    // Klik w chip zamówienia = zawęź kartę do tego zamówienia (ponowny
+    // klik zdejmuje zawężenie, klik w inny chip przełącza). Pomijamy:
+    //   - „⋮" i pozycje menu — mają otwierać menu i swoje akcje
+    //     (data-action="close-po" / "cancel-po" czyta close-po.js),
+    // a bierzemy wszystko inne: kropkę stanu, numer PO, licznik
+    // (prawdziwy <button aria-pressed> — wejście z klawiatury) i wolne
+    // miejsce chipa.
+    $(document).on('click', '.vq-pochip', function (e) {
+        const $t = $(e.target);
+        if ($t.closest('.vq-pochip-btn, .dropdown-menu').length) return;
+        e.preventDefault();
+        e.stopPropagation();
+
+        const $chip = $(this);
+        const vkey  = $chip.attr('data-vkey');
+        const poId  = intOf($chip.attr('data-po-id'));
+        if (!vkey || !poId) return;
+
+        setPoFilter(vkey, poFilterOf(vkey) === poId ? 0 : poId);
+        applyQueueFilters();
+    });
+
+    // Numer PO to role="button" (nie link) — Enter/Space filtrują tak samo
+    // jak klik myszką.
+    $(document).on('keydown', '.vq-pochip-no', function (e) {
+        if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+        e.preventDefault();
+        $(this).closest('.vq-pochip').trigger('click');
+    });
+
+    $(document).on('click', '.js-po-filter-clear', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        setPoFilter($(this).attr('data-vkey'), 0);
+        applyQueueFilters();
     });
 
     $(document).on('click', '#queueExpandAll', function () {
