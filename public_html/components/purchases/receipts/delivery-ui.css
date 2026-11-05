@@ -752,9 +752,12 @@ a.dv-alloc-po { text-decoration: none; }
     top: 0;
     z-index: 2;
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    justify-content: space-between;
-    gap: .5rem;
+    /* Nie „space-between" — przy zawijaniu meta do drugiej linii numer
+       zamówienia musi zostać przy strzałce, a nie uciec w prawo. */
+    justify-content: flex-start;
+    gap: .15rem .5rem;
     padding: .5rem .85rem;
     background: #fbfcfd;
     border-bottom: 1px solid var(--rx-line-soft);
@@ -784,8 +787,20 @@ a.dv-alloc-po { text-decoration: none; }
 .dv-side-chip-x:focus-visible { outline: 2px solid var(--rx-accent-ink); outline-offset: 1px; }
 .dv-po-no { font-weight: 700; font-size: .88rem; color: var(--rx-ink); }
 a.dv-po-no:hover { color: var(--rx-accent-ink); }
-.dv-po-meta { font-size: .72rem; color: var(--rx-muted); white-space: nowrap; }
+/* Meta nagłówka: kawałki (filtr / terminy / licznik) łamią się całością,
+   nigdy w środku. Przy ciasnym panelu meta spada do drugiej linii. */
+.dv-po-meta { font-size: .72rem; color: var(--rx-muted); text-align: right; white-space: normal; }
+.dv-po-chunk { display: inline-block; white-space: nowrap; }
+.dv-po-sep { color: var(--rx-faint); }
 .dv-po-meta .is-late { color: #b21f2d; font-weight: 700; }
+
+/* Terminy pozycji — wspólne tony dla panelu i edytora przydziału. */
+.dv-due { font-variant-numeric: tabular-nums; }
+.dv-due.is-late { color: #b21f2d; font-weight: 700; }
+.dv-due.is-today { color: #8a5a00; font-weight: 700; }
+.dv-due.is-none { color: var(--rx-faint); font-style: italic; }
+.dv-due > .bi { font-size: .9em; }
+
 .dv-poi {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
@@ -799,8 +814,18 @@ a.dv-po-no:hover { color: var(--rx-accent-ink); }
 .dv-poi.is-clickable { cursor: pointer; }
 .dv-poi.is-clickable:hover { background: var(--rx-hover); }
 .dv-poi.is-touched { background: #f3fbf5; box-shadow: inset 3px 0 0 var(--dv-green); }
+/* Pierwsza linia wiersza: numer u dostawcy + własny termin tej pozycji. */
+.dv-poi-top { grid-column: 1; grid-row: 1; display: flex; flex-wrap: wrap; align-items: baseline; gap: .1rem .4rem; min-width: 0; }
 .dv-poi-no { font-family: var(--dv-mono); font-weight: 700; font-size: .76rem; overflow-wrap: anywhere; }
-.dv-poi-name { grid-column: 1; color: var(--rx-muted); font-size: .74rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dv-poi-due { font-size: .7rem; color: var(--rx-muted); white-space: nowrap; }
+.dv-poi-due.is-late { padding: 0 .25rem; border-radius: 3px; background: var(--dv-red-soft); }
+.dv-poi-due.is-today { padding: 0 .25rem; border-radius: 3px; background: var(--dv-amber-soft); }
+/* Wszystkie pozycje zamówienia mają ten sam termin — nagłówek go już podał,
+   w wierszu zostaje tylko ciche potwierdzenie samą datą. */
+.dv-poi-due.is-echo { padding: 0; background: none; font-weight: 500; color: var(--rx-faint); }
+.dv-poi-due.is-echo.is-late { color: #b21f2d; font-weight: 600; }
+.dv-poi-due.is-echo.is-today { color: #8a5a00; font-weight: 600; }
+.dv-poi-name { grid-column: 1; grid-row: 2; color: var(--rx-muted); font-size: .74rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dv-poi-rem { grid-column: 2; grid-row: 1 / span 2; align-self: center; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .dv-poi-rem b { font-size: .92rem; }
 .dv-poi-arrow { margin: 0 .2rem; color: var(--rx-faint); }

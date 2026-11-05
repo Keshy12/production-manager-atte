@@ -3,8 +3,13 @@
  * Przyjęcia towaru — /purchase/receipts.
  *
  * Lista w trzech zakładkach:
- *   „Do przyjęcia"     — kolejka zamówień czekających na towar,
- *                        pogrupowana wg DOSTAWCY; jedna akcja na
+ *   „Do przyjęcia"     — kolejka POZYCJI czekających na towar,
+ *                        pogrupowana wg DOSTAWCY. Karta dostawcy jest
+ *                        domyślnie zwinięta i pokazuje tylko nazwę,
+ *                        sygnał spóźnienia, liczbę otwartych pozycji i
+ *                        postęp; po rozwinięciu — pasek zamówień
+ *                        (chipy z menu) i płaską tabelę wszystkich
+ *                        otwartych pozycji wg terminu. Jedna akcja na
  *                        dostawcę: „Przyjmij dostawę"
  *                        (/purchase/receipts/new?vendor_id=N —
  *                        delivery-page.php). Dane z receipts-queue.php,
@@ -100,16 +105,23 @@ include __DIR__ . '/close-po-modal.php';
                     title="Pokaż zamówienia gotowe do przyjęcia">
                 <span class="rx-stat-value" id="statReady">–</span>
                 <span class="rx-stat-label">Gotowe do przyjęcia</span>
+                <span class="rx-stat-sub">potwierdzone przez dostawcę</span>
             </button>
+            <!-- „Po terminie" liczy ZAMÓWIENIA, które mają co najmniej jedną
+                 otwartą pozycję po terminie (receipts-queue.php → lateLines).
+                 Podpis pod wartością pokazuje, ile to łącznie pozycji i jak
+                 długie jest największe spóźnienie. -->
             <button type="button" class="rx-stat rx-stat--overdue" data-stat="overdue"
-                    title="Pokaż tylko dostawy po terminie">
+                    title="Pokaż tylko zamówienia z pozycjami po terminie">
                 <span class="rx-stat-value" id="statOverdue">–</span>
-                <span class="rx-stat-label">Po terminie</span>
+                <span class="rx-stat-label">Zamówienia po terminie</span>
+                <span class="rx-stat-sub" id="statOverdueSub">&nbsp;</span>
             </button>
             <button type="button" class="rx-stat rx-stat--pending" data-stat="pending"
                     title="Pokaż zamówienia czekające na potwierdzenie dostawcy">
                 <span class="rx-stat-value" id="statPending">–</span>
                 <span class="rx-stat-label">Czeka na potwierdzenie</span>
+                <span class="rx-stat-sub">wysłane, bez odpowiedzi</span>
             </button>
         </div>
     </header>
@@ -150,7 +162,7 @@ include __DIR__ . '/close-po-modal.php';
                 <div class="rx-search">
                     <i class="bi bi-search" aria-hidden="true"></i>
                     <input type="search" id="queueSearch" class="form-control form-control-sm"
-                           placeholder="Szukaj: nr zamówienia, nr u dostawcy, dostawca"
+                           placeholder="Szukaj: symbol, nazwa, nr zamówienia, dostawca"
                            aria-label="Szukaj w kolejce" autocomplete="off">
                 </div>
 
@@ -191,11 +203,21 @@ include __DIR__ . '/close-po-modal.php';
                 </div>
 
                 <input type="checkbox" class="rx-chip-input" id="queueOverdueOnly">
-                <label class="rx-chip rx-chip--danger" for="queueOverdueOnly">
+                <label class="rx-chip rx-chip--danger" for="queueOverdueOnly"
+                       title="Tylko pozycje, których termin dostawy już minął">
                     <i class="bi bi-exclamation-triangle rx-chip-off" aria-hidden="true"></i><i class="bi bi-exclamation-triangle-fill rx-chip-on" aria-hidden="true"></i> Tylko po terminie
                 </label>
 
                 <div class="rx-toolbar-end">
+                    <!-- Grupy dostawców są domyślnie ZWINIĘTE (patrz
+                         receipts-view.js → vendorOpen). Ten przycisk rozwija
+                         / zwija wszystkie widoczne po filtrach grupy; jego
+                         etykietę przestawia syncExpandAllBtn(). -->
+                    <button type="button" id="queueExpandAll" class="btn btn-sm rx-btn-quiet"
+                            aria-pressed="false" title="Rozwiń wszystkich dostawców">
+                        <i class="bi bi-chevron-bar-expand vq-ea-icon" aria-hidden="true"></i>
+                        <span class="d-none d-sm-inline vq-ea-label">Rozwiń wszystkie</span>
+                    </button>
                     <button type="button" id="queueRefreshBtn" class="btn btn-sm rx-btn-quiet"
                             title="Wczytaj kolejkę ponownie">
                         <i class="bi bi-arrow-clockwise rx-spin-icon"></i>
@@ -214,14 +236,11 @@ include __DIR__ . '/close-po-modal.php';
             <div class="rx-panel">
                 <div id="queueStatus" aria-live="polite"></div>
 
-                <div id="queueTableWrap" class="d-none dv-byvendor">
-                    <div class="rx-qhead" aria-hidden="true">
-                        <div>Zamówienie</div>
-                        <div>Dostawa</div>
-                        <div>Postęp</div>
-                        <div>Status</div>
-                        <div class="text-right">Akcja</div>
-                    </div>
+                <!-- Lista nie ma globalnego nagłówka kolumn: jednostką jest
+                     POZYCJA, a kolumny opisuje nagłówek tabeli wewnątrz
+                     rozwiniętej karty dostawcy (receipts-view.js →
+                     itemsTableHtml). Zwinięta lista to same karty. -->
+                <div id="queueTableWrap" class="d-none dv-byvendor vq-queue">
                     <div id="queueBody" class="rx-qlist dv-qlist"></div>
                 </div>
             </div>

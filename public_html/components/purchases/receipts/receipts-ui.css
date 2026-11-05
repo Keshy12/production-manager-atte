@@ -1377,3 +1377,406 @@ a.rx-timeline-doc { color: var(--rx-accent-ink); }
         justify-content: flex-end;
     }
 }
+
+
+/* =====================================================================
+   Kolejka „Do przyjęcia" — karty dostawców i tabela pozycji (.vq-*)
+   =====================================================================
+
+   Klasy vq- należą WYŁĄCZNIE do kolejki przyjęć (/purchase/receipts,
+   zakładka „Do przyjęcia"). Nie dotykamy tu wspólnych .dv-* z
+   delivery-ui.css (ten plik ładuje się PO receipts-ui.css, więc i tak
+   by wygrał) — nadpisania robimy złożonym selektorem
+   `.dv-vhead.vq-vhead`, który bije samo `.dv-vhead` specyficznością.
+
+   Jednostką listy jest POZYCJA zamówienia. Karta dostawcy (zwinięta)
+   to jedna linia: nazwa, czerwony sygnał spóźnienia, liczba otwartych
+   pozycji, zbiorczy postęp, szkice, akcja. Po rozwinięciu: pasek
+   zamówień (.vq-postrip) i płaska tabela pozycji (.vq-itbl).  */
+
+/* ---- podpis pod licznikiem w kafelku nagłówka strony --------------- */
+.rx-stat-sub {
+    margin-top: .15rem;
+    font-size: .68rem;
+    font-weight: 600;
+    color: var(--rx-faint);
+    line-height: 1.25;
+}
+.rx-stat--overdue.has-value .rx-stat-sub { color: #c0392f; }
+
+/* ---- karta dostawcy: nagłówek (jedna linia) ----------------------- */
+/* Siatka zamiast flexa: nazwa / sygnał / licznik / postęp / szkice /
+   akcja stoją w tych samych kolumnach we WSZYSTKICH kartach, więc listę
+   dostawców da się skanować w pionie. Puste komórki (brak spóźnień, brak
+   szkiców) i tak zajmują swoje miejsce — render zawsze emituje element. */
+.rx-page .dv-vhead.vq-vhead {
+    position: relative;
+    display: grid;
+    grid-template-columns:
+        minmax(10rem, 1fr)   /* nazwa + chevron */
+        14rem                /* sygnał „po terminie" */
+        6rem                 /* otwarte pozycje */
+        8rem                 /* postęp */
+        6.5rem               /* szkice */
+        auto;                /* akcja */
+    align-items: center;
+    gap: .4rem .9rem;
+    padding: .5rem 1.1rem .5rem 1.3rem;
+    cursor: pointer;
+    transition: background-color .12s ease;
+}
+.rx-page .dv-vhead.vq-vhead:hover { background: linear-gradient(180deg, #fff 0%, #eef3f9 100%); }
+/* Czerwona krawędź tylko wtedy, gdy coś jest po terminie — reszta kart
+   zostaje spokojna. */
+.rx-page .dv-vhead.vq-vhead.is-late::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: #dc3545;
+}
+
+.vq-vtoggle {
+    flex: 1 1 14rem;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    margin: 0;
+    padding: 0;
+    background: none;
+    border: 0;
+    text-align: left;
+    color: inherit;
+    cursor: pointer;
+}
+.vq-vtoggle:focus { outline: none; }
+.vq-vtoggle:focus-visible { outline: 2px solid var(--rx-accent-ink); outline-offset: 3px; border-radius: .3rem; }
+
+.vq-chev {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 1.35rem;
+    height: 1.35rem;
+    border-radius: .25rem;
+    color: var(--rx-muted);
+    font-size: .78rem;
+    transition: transform .15s ease, background-color .12s ease, color .12s ease;
+}
+.vq-vhead:hover .vq-chev { background: #fff; color: var(--rx-ink); box-shadow: 0 0 0 1px var(--rx-line); }
+.vq-vhead.is-open .vq-chev { transform: rotate(90deg); }
+
+.vq-vname {
+    min-width: 0;
+    font-size: .98rem;
+    font-weight: 700;
+    color: var(--rx-ink);
+    line-height: 1.25;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Jedyny mocny sygnał w nagłówku. */
+.vq-flag {
+    justify-self: start;
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    padding: .12rem .5rem;
+    border-radius: 999px;
+    background: #fdecee;
+    box-shadow: inset 0 0 0 1px #f3b4bb;
+    color: #a71d2a;
+    font-size: .75rem;
+    font-weight: 600;
+    line-height: 1.4;
+    white-space: nowrap;
+}
+.vq-flag strong { font-weight: 800; }
+/* Pusta komórka trzyma kolumnę, ale nic nie rysuje. */
+.vq-flag--none { padding: 0; background: none; box-shadow: none; }
+
+.vq-vcount {
+    justify-self: end;
+    font-size: .8rem;
+    color: var(--rx-muted);
+    white-space: nowrap;
+}
+.vq-vcount strong { color: var(--rx-ink-2); font-weight: 700; }
+.vq-vcount--none { color: var(--rx-faint); font-style: italic; font-size: .74rem; }
+
+.vq-vprog {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    cursor: help;
+}
+.vq-vprog .rx-bar { flex: 1 1 auto; margin: 0; }
+.vq-pct {
+    font-size: .72rem;
+    font-weight: 700;
+    color: var(--rx-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+/* ---- karta dostawcy: ciało ---------------------------------------- */
+.vq-vbody {
+    padding: 0 1.1rem .9rem 1.3rem;
+    background: #fff;
+    border-bottom: 1px solid var(--rx-line-soft);
+}
+.vq-vbody--collapsed { display: none; }
+
+/* ---- pasek zamówień ------------------------------------------------ */
+.vq-postrip {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .35rem;
+    padding: .55rem 0 .65rem;
+}
+.vq-postrip-lbl {
+    margin-right: .2rem;
+    font-size: .65rem;
+    font-weight: 700;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: var(--rx-faint);
+}
+.vq-pochip {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    padding: .1rem .15rem .1rem .5rem;
+    border-radius: .3rem;
+    background: #fff;
+    box-shadow: inset 0 0 0 1px var(--rx-line);
+    font-size: .76rem;
+    line-height: 1.5;
+}
+.vq-pochip.is-empty { background: var(--rx-canvas); }
+.vq-dot {
+    flex-shrink: 0;
+    width: .45rem;
+    height: .45rem;
+    border-radius: 50%;
+    background: #9aa5b1;
+}
+.vq-dot--violet { background: #6f42c1; }
+.vq-dot--blue   { background: #007bff; }
+.vq-dot--cyan   { background: #17a2b8; }
+.vq-dot--amber  { background: #f0ad00; }
+.vq-dot--green  { background: #28a745; }
+.vq-dot--red    { background: #dc3545; }
+.vq-pochip-no {
+    font-weight: 700;
+    color: var(--rx-ink);
+    text-decoration: none;
+}
+.vq-pochip-no:hover,
+.vq-pochip-no:focus { color: var(--rx-accent-ink); text-decoration: underline; }
+.vq-pochip-n {
+    min-width: 1.15rem;
+    padding: 0 .25rem;
+    border-radius: .2rem;
+    background: var(--rx-line-soft);
+    color: var(--rx-ink-2);
+    font-size: .68rem;
+    font-weight: 700;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+.vq-pochip.is-empty .vq-pochip-n { color: var(--rx-faint); }
+.vq-pochip-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.35rem;
+    height: 1.35rem;
+    padding: 0;
+    border: 0;
+    border-radius: .2rem;
+    background: none;
+    color: var(--rx-muted);
+    font-size: .8rem;
+    line-height: 1;
+}
+.vq-pochip-btn:hover { background: var(--rx-line-soft); color: var(--rx-ink); }
+.vq-pochip-btn:focus { outline: none; box-shadow: var(--rx-ring); }
+/* Bootstrap dokleja trójkącik do .dropdown-toggle — mamy własną ikonę. */
+.vq-pochip-btn.dropdown-toggle::after { display: none; }
+.vq-action-danger { color: #a71d2a; }
+.vq-action-danger:hover,
+.vq-action-danger:focus { background-color: #fdecee; color: #7d1620; }
+
+/* ---- tabela pozycji ------------------------------------------------ */
+.vq-itbl {
+    border: 1px solid var(--rx-line);
+    border-radius: .4rem;
+    overflow: hidden;
+    background: #fff;
+}
+/* .vq-ithead i .vq-itrow to OSOBNE kontenery grid — ich kolumny muszą
+   być zdefiniowane identycznie i deterministycznie (żadnego `auto`,
+   bo wtedy nagłówek i wiersze policzyłyby inne szerokości). */
+.vq-ithead,
+.vq-itrow {
+    display: grid;
+    grid-template-columns:
+        minmax(12rem, 2.6fr)
+        minmax(8rem, 1fr)
+        minmax(8rem, 1.05fr)
+        minmax(8rem, 1fr);
+    column-gap: 1.25rem;
+    align-items: center;
+}
+.vq-ithead {
+    padding: .35rem .75rem;
+    background: var(--rx-canvas);
+    border-bottom: 1px solid var(--rx-line);
+    font-size: .64rem;
+    font-weight: 700;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: var(--rx-muted);
+}
+.vq-itrow {
+    position: relative;
+    min-height: 2.9rem;   /* równy rytm, mimo że nie każdy wiersz ma plakietkę terminu */
+    padding: .35rem .75rem;
+    border-top: 1px solid var(--rx-line-soft);
+    font-size: .82rem;
+}
+.vq-itbl > .vq-itrow:first-child { border-top: 0; }
+/* Spóźnione: spokojna czerwona krawędź, nie cały czerwony wiersz. */
+.vq-itrow.is-late { background: #fffbfb; box-shadow: inset 2px 0 0 #dc3545; }
+/* Pozycje z zamówienia, którego dostawca jeszcze nie potwierdził —
+   ich termin jest orientacyjny. Delikatne kreskowanie, jak dawny
+   .queue-row-pending. */
+.vq-itrow.is-wait {
+    background-image: repeating-linear-gradient(-45deg, transparent 0 9px, rgba(111, 66, 193, .035) 9px 18px);
+}
+.vq-itcell { min-width: 0; }
+
+.vq-it-top { display: flex; align-items: baseline; gap: .4rem; min-width: 0; }
+.vq-it-no {
+    font-family: var(--dv-mono, monospace);
+    font-weight: 700;
+    color: var(--rx-ink);
+    overflow-wrap: anywhere;
+}
+.vq-it-prod {
+    font-family: var(--dv-mono, monospace);
+    font-size: .7rem;
+    color: var(--rx-faint);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.vq-it-name {
+    display: block;
+    font-size: .76rem;
+    color: var(--rx-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.vq-it-name--none { font-style: italic; color: var(--rx-faint); }
+
+.vq-it-polink { display: block; font-size: .78rem; font-weight: 600; white-space: nowrap; }
+
+/* Data i plakietka ZAWSZE jedna pod drugą — inaczej wiersze z ikonką ⓘ
+   łamią się inaczej niż te bez niej i kolumna traci rytm. */
+.vq-it-due { display: flex; flex-direction: column; align-items: flex-start; }
+.vq-it-date { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.vq-it-due .rx-when { margin-top: .15rem; }
+.vq-hint { color: var(--rx-faint); font-size: .74rem; cursor: help; }
+
+.vq-it-qty { text-align: right; }
+.vq-it-rem { font-weight: 700; color: var(--rx-ink); font-variant-numeric: tabular-nums; }
+.vq-it-of  { color: var(--rx-muted); font-variant-numeric: tabular-nums; }
+.vq-it-sub { font-size: .7rem; color: var(--rx-faint); }
+
+.vq-it-wait {
+    display: inline-flex;
+    align-items: center;
+    gap: .25rem;
+    font-size: .7rem;
+    font-weight: 600;
+    color: #5b3a9e;
+    white-space: nowrap;
+}
+
+.vq-cell-label {
+    display: none;
+    margin-bottom: .1rem;
+    font-size: .62rem;
+    font-weight: 700;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: var(--rx-faint);
+}
+
+.vq-itempty {
+    padding: .3rem .1rem .5rem;
+    font-size: .8rem;
+    font-style: italic;
+    color: var(--rx-muted);
+}
+
+/* ---- szkielet ładowania + podsumowanie ---------------------------- */
+.vq-skel-head {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: .85rem 1.3rem;
+    border-top: 1px solid var(--rx-line-soft);
+}
+.vq-skel-head:first-of-type { border-top: 0; }
+.vq-skel-head .rx-skel + .rx-skel { margin-top: 0; }
+.vq-sum-late { color: #a71d2a; font-weight: 700; }
+.vq-sum-late .bi { font-size: .78rem; }
+
+/* ---- wąskie ekrany -------------------------------------------------- */
+@media (max-width: 1279.98px) {
+    /* Przy węższej kolumnie siatka nagłówka przestaje się mieścić —
+       wracamy do zawijanego flexa. */
+    .rx-page .dv-vhead.vq-vhead {
+        display: flex;
+        flex-wrap: wrap;
+        padding-right: 1rem;
+    }
+    .vq-vtoggle { flex: 1 1 14rem; }
+    .vq-flag, .vq-vcount { justify-self: auto; }
+    .vq-flag--none { display: none; }
+    .vq-vprog   { width: 7rem; }
+}
+@media (max-width: 991.98px) {
+    .vq-vtoggle { flex: 1 1 100%; }
+    .vq-vprog   { flex: 1 1 6rem; width: auto; }
+    .vq-vbody   { padding-left: 1rem; padding-right: .8rem; }
+
+    .vq-ithead { display: none; }
+    .vq-itrow {
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-areas:
+            "part part"
+            "po   due"
+            "qty  qty";
+        row-gap: .35rem;
+        padding: .6rem .7rem;
+    }
+    .vq-it-part  { grid-area: part; }
+    .vq-it-po    { grid-area: po; }
+    .vq-it-due   { grid-area: due; justify-self: end; text-align: right; }
+    .vq-it-qty   { grid-area: qty; text-align: left; }
+    .vq-cell-label { display: block; }
+    .vq-it-name { white-space: normal; }
+}
+@media (max-width: 575.98px) {
+    .vq-flag { white-space: normal; }
+    .vq-vcount { font-size: .76rem; }
+}

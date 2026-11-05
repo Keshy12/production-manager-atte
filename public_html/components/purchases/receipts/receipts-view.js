@@ -112,11 +112,6 @@ $(document).ready(function () {
         return STATE_META[state] || { label: String(state || '—'), tone: 'neutral' };
     }
 
-    function stateBadge(state) {
-        const m = stateMeta(state);
-        return '<span class="rx-badge rx-badge--' + m.tone + '">' + esc(m.label) + '</span>';
-    }
-
     function hasSelectpicker() { return typeof $.fn.selectpicker === 'function'; }
 
     function setPicker($el, values) {
@@ -227,6 +222,23 @@ $(document).ready(function () {
 
     // =====================================================================
     // ZAKŁADKA 1 — kolejka „Do przyjęcia"
+    //
+    // Jednostką tej listy jest POZYCJA ZAMÓWIENIA, nie zamówienie.
+    // Operator pyta „co ma przyjechać i co się spóźnia", a nie „które PO
+    // jest w jakim stanie" — więc:
+    //
+    //   • karta dostawcy (domyślnie ZWINIĘTA) niesie tylko to, co da się
+    //     ocenić rzutem oka: nazwę, jeden czerwony sygnał spóźnienia,
+    //     liczbę otwartych pozycji i zbiorczy postęp,
+    //   • po rozwinięciu: pasek zamówień (chipy z menu Edytuj / Zamknij /
+    //     Anuluj / Potwierdź odpowiedź) + PŁASKA tabela wszystkich
+    //     otwartych pozycji dostawcy, posortowana wg terminu —
+    //     spóźnione najpierw (od najstarszych), bez terminu na końcu.
+    //
+    // Terminy liczy receipts-queue.php per POZYCJA
+    // (purchase__order_item.expected_delivery_date z fallbackiem na termin
+    // nagłówka PO) i tylko dla pozycji otwartych. `daysLate` pozycji:
+    // >0 = dni po terminie, 0 = dzisiaj, <0 = dni do terminu, null = brak.
     // =====================================================================
 
     const $queueStatus    = $('#queueStatus');
@@ -238,38 +250,114 @@ $(document).ready(function () {
     const $queueOverdue   = $('#queueOverdueOnly');
     const $refreshBtn     = $('#queueRefreshBtn');
 
-    // Ostatnio wczytany payload. Filtry pracują na danych, nie na
-    // tekście wiersza — „Dostawca" dopasowuje dokładną nazwę.
-    let queueData = [];
+    // Ostatnio wczytany payload (zamówienia) + spłaszczona lista pozycji,
+    // na której pracują filtry. Filtry pracują na danych, nie na tekście
+    // wiersza — „Dostawca" dopasowuje dokładną nazwę.
+    let queueData  = [];
+    let queueItems = [];   // [{ it, p, g, idx }]
+    let queueGroups = [];  // grupy dostawców ostatniego renderu
 
-    // vendor_id => liczba szkiców (z zakładki „Robocze") — chip w nagłówku grupy.
+    // vendor_id => liczba szkiców (z zakładki „Robocze") — chip w karcie dostawcy.
     let draftsByVendor = {};
 
-    function daysOverdue(p) {
-        return (p.daysOverdue === null || p.daysOverdue === undefined)
-            ? null : parseInt(p.daysOverdue, 10);
+    // Karty dostawców: rozwinięte/zwinięte. Domyślnie WSZYSTKO zwinięte —
+    // kolejka to 200+ pozycji u 25 dostawców, więc na wejściu operator ma
+    // dostać listę dostawców, a nie ścianę wierszy. Stan trzymamy w pamięci
+    // (klucz = vendorKey), więc „Odśwież" i doczytanie szkiców go nie kasują.
+    const vendorOpen = {};
+    // Nadpisania na czas szukania: przy niepustej frazie karty z trafieniami
+    // rozwijają się same, ale operator może je ręcznie zwinąć. Czyścimy je
+    // przy każdej zmianie frazy — po wyczyszczeniu pola wraca jego własny
+    // (ręczny) układ z vendorOpen.
+    let searchOpen = {};
+
+    function vendorKey(p) {
+        return p.vendorId ? 'v' + p.vendorId : 'n:' + (p.vendorName || '');
     }
 
-    function queueGroup(p) {
-        const od = daysOverdue(p);
-        if (od === null || !p.expectedDeliveryDate) return 'nodate';
-        if (od > 0)   return 'overdue';
-        if (od === 0) return 'today';
-        if (od >= -7) return 'week';
-        return 'later';
+    function searchActive() {
+        return String($queueSearch.val() || '').trim() !== '';
+    }
+
+    function groupOpen(key, hasHits) {
+        if (searchActive()) {
+            return Object.prototype.hasOwnProperty.call(searchOpen, key)
+                ? !!searchOpen[key] : !!hasHits;
+        }
+        return !!vendorOpen[key];
+    }
+
+    function setGroupOpen(key, open) {
+        if (searchActive()) searchOpen[key] = open;
+        else vendorOpen[key] = open;
+    }
+
+    // ---- drobiazgi na danych kolejki ------------------------------------
+
+    function intOf(v) {
+        const n = parseInt(v, 10);
+        return isNaN(n) ? 0 : n;
+    }
+
+    function openItemsOf(p) { return Array.isArray(p.openItems) ? p.openItems : []; }
+    function lateItemsOf(p) { return Array.isArray(p.lateItems) ? p.lateItems : []; }
+    function lateLines(p)   { return intOf(p.lateLines); }
+    function isLatePo(p)    { return lateLines(p) > 0; }
+
+    function daysLateOf(it) {
+        return (it.daysLate === null || it.daysLate === undefined)
+            ? null : parseInt(it.daysLate, 10);
+    }
+
+    // Najdłuższe spóźnienie w zamówieniu (dla kafelka „po terminie").
+    function maxDaysLateOfPo(p) {
+        let mx = 0;
+        lateItemsOf(p).forEach(function (it) {
+            const d = daysLateOf(it);
+            if (d !== null && d > mx) mx = d;
+        });
+        if (mx === 0 && p.daysOverdue !== null && p.daysOverdue !== undefined) {
+            mx = Math.max(0, intOf(p.daysOverdue));
+        }
+        return mx;
+    }
+
+    function pozWord(n) { return plural(n, 'pozycja', 'pozycje', 'pozycji'); }
+
+    // Ton terminu pozycji — steruje plakietką i czerwoną krawędzią wiersza.
+    function dueTone(d) {
+        if (d === null) return 'none';
+        if (d > 0)  return 'late';
+        if (d === 0) return 'today';
+        return d >= -7 ? 'soon' : 'far';
+    }
+
+    function dueLabel(d) {
+        if (d === null) return 'bez terminu';
+        if (d > 0)   return d + ' ' + dayWord(d) + ' po terminie';
+        if (d === 0) return 'dzisiaj';
+        const n = Math.abs(d);
+        if (n === 1) return 'jutro';
+        if (n === 2) return 'pojutrze';
+        return 'za ' + n + ' ' + dayWord(n);
+    }
+
+    // Kolejność pozycji w tabeli dostawcy: termin rosnąco (czyli spóźnione
+    // od najstarszych), bez terminu na końcu, potem wg zamówienia i pozycji.
+    function itemSortKey(r) {
+        const due = r.it.dueDate ? String(r.it.dueDate).substring(0, 10) : '9999-99-99';
+        return due + '|' + (1e9 + intOf(r.p.poId)) + '|' + (1e9 + intOf(r.it.itemId));
     }
 
     // ---- stany panelu (ładowanie / pusto / brak wyników / błąd) --------
 
     function skeletonHtml() {
         let html = '';
-        for (let i = 0; i < 4; i++) {
-            html += '<div class="rx-qrow rx-skel-row" aria-hidden="true">'
-                  + '<div><span class="rx-skel" style="width:70%"></span><span class="rx-skel rx-skel--sm" style="width:45%"></span></div>'
-                  + '<div><span class="rx-skel" style="width:60%"></span><span class="rx-skel rx-skel--sm" style="width:40%"></span></div>'
-                  + '<div><span class="rx-skel" style="width:90%"></span><span class="rx-skel rx-skel--bar"></span></div>'
-                  + '<div><span class="rx-skel rx-skel--pill"></span></div>'
-                  + '<div><span class="rx-skel rx-skel--btn"></span></div>'
+        for (let i = 0; i < 5; i++) {
+            html += '<div class="vq-skel-head" aria-hidden="true">'
+                  + '<span class="rx-skel" style="width:14rem"></span>'
+                  + '<span class="rx-skel rx-skel--pill"></span>'
+                  + '<span class="rx-skel rx-skel--btn"></span>'
                   + '</div>';
         }
         return '<span class="sr-only">Ładowanie…</span>' + html;
@@ -322,6 +410,8 @@ $(document).ready(function () {
 
     function queueFailed(message) {
         queueData = [];
+        queueItems = [];
+        queueGroups = [];
         $('#queueCountBadge').text('0');
         updateStats();
         $('#queueFilterSummary').text('Kolejka niedostępna.');
@@ -332,6 +422,7 @@ $(document).ready(function () {
             '<button type="button" class="btn btn-sm btn-primary js-queue-retry">'
           + '<i class="bi bi-arrow-clockwise"></i> Spróbuj ponownie</button>'
         ));
+        syncExpandAllBtn();
     }
 
     // Lista dostawców w filtrze = tylko ci, którzy faktycznie mają coś
@@ -358,19 +449,31 @@ $(document).ready(function () {
     }
 
     // Liczniki w nagłówku strony — zawsze z pełnych danych, nie po filtrach.
+    // Kafelek „Po terminie" liczy ZAMÓWIENIA, które mają co najmniej jedną
+    // otwartą pozycję po terminie (lateLines > 0), a podpis pod wartością —
+    // ile to łącznie pozycji i jak długie jest największe spóźnienie.
     function updateStats() {
-        let ready = 0, overdue = 0, pending = 0;
+        let ready = 0, overdue = 0, pending = 0, lateItemsTotal = 0, maxLate = 0;
         queueData.forEach(function (p) {
             if (p.canReceive !== false) ready++;
             else pending++;
-            const od = daysOverdue(p);
-            if (od !== null && od > 0) overdue++;
+            if (isLatePo(p)) {
+                overdue++;
+                lateItemsTotal += lateLines(p);
+                maxLate = Math.max(maxLate, maxDaysLateOfPo(p));
+            }
         });
         $('#statReady').text(ready);
         $('#statOverdue').text(overdue);
         $('#statPending').text(pending);
+        $('#statOverdueSub').text(overdue > 0
+            ? lateItemsTotal + ' ' + pozWord(lateItemsTotal)
+                + (maxLate > 0 ? ' · do ' + maxLate + ' ' + dayWord(maxLate) : '')
+            : 'wszystko w terminie');
         $('.rx-stat--overdue').toggleClass('has-value', overdue > 0);
     }
+
+    // ---- render ---------------------------------------------------------
 
     function renderQueue() {
         $('#queueCountBadge').text(queueData.length);
@@ -379,6 +482,8 @@ $(document).ready(function () {
 
         if (queueData.length === 0) {
             $queueBody.empty();
+            queueItems = [];
+            queueGroups = [];
             showQueueState(emptyStateHtml(
                 'bi-check2-all', 'ok',
                 'Nic nie czeka na przyjęcie',
@@ -386,62 +491,128 @@ $(document).ready(function () {
             ));
             updateQueueSummary(0, 0);
             syncQueueFilterUi();
+            syncExpandAllBtn();
             return;
         }
 
-        // Grupowanie wg dostawcy. Kolejność grup = kolejność pierwszego
-        // wiersza danego dostawcy (serwer sortuje po terminie dostawy, więc
-        // na górze lądują ci, którzy mają coś najpilniejszego).
+        // Grupowanie wg dostawcy. Kolejność kart = kolejność pierwszego
+        // zamówienia danego dostawcy (serwer sortuje po najwcześniejszym
+        // terminie otwartej pozycji, więc na górze lądują ci, którzy mają
+        // coś najpilniejszego).
         const groups = [];
         const byKey = {};
-        queueData.forEach(function (p, idx) {
-            const key = (p.vendorId ? 'v' + p.vendorId : 'n:' + (p.vendorName || ''));
+        queueItems = [];
+        queueData.forEach(function (p) {
+            const key = vendorKey(p);
             if (!byKey[key]) {
-                byKey[key] = { key: key, vendorId: p.vendorId || 0, vendorName: p.vendorName || '—', rows: [] };
+                byKey[key] = { key: key, vendorId: p.vendorId || 0, vendorName: p.vendorName || '—', pos: [], items: [] };
                 groups.push(byKey[key]);
             }
-            byKey[key].rows.push({ p: p, idx: idx });
+            const g = byKey[key];
+            g.pos.push(p);
+            openItemsOf(p).forEach(function (it) {
+                const rec = { it: it, p: p, g: g, idx: queueItems.length };
+                queueItems.push(rec);
+                g.items.push(rec);
+            });
         });
-
-        let html = '';
         groups.forEach(function (g, gi) {
             g.index = gi;
-            html += vendorHeadHtml(g);
-            g.rows.forEach(function (r) {
-                html += queueRowHtml(r.p, r.idx, queueGroup(r.p), gi);
+            g.items.sort(function (a, b) {
+                const ka = itemSortKey(a), kb = itemSortKey(b);
+                return ka < kb ? -1 : (ka > kb ? 1 : 0);
             });
+        });
+        queueGroups = groups;
+
+        // Pozycje dostawcy siedzą we WŁASNYM kontenerze .vq-vbody — to on
+        // jest celem aria-controls nagłówka i to jego zwijamy jednym ruchem.
+        let html = '';
+        groups.forEach(function (g) {
+            const isOpen = groupOpen(g.key, false);
+            html += vendorHeadHtml(g, g.items, g.pos, isOpen);
+            html += '<div class="vq-vbody' + (isOpen ? '' : ' vq-vbody--collapsed') + '"'
+                  + ' id="vqGroup' + g.index + '" data-vg="' + g.index + '" role="region"'
+                  + ' aria-label="' + escAttr('Pozycje do przyjęcia: ' + g.vendorName) + '">'
+                  + poStripHtml(g, g.pos, countByPo(g.items))
+                  + itemsTableHtml(g.items)
+                  + '<div class="vq-itempty' + (g.items.length > 0 ? ' d-none' : '') + '">'
+                  +   emptyItemsText(g.items.length === 0 && g.pos.length > 0)
+                  + '</div>'
+                  + '</div>';
         });
         $queueBody.html(html);
         showQueueList();
         applyQueueFilters();
     }
 
-    // Nagłówek grupy dostawcy: nazwa, podsumowanie, szkice i JEDEN
-    // przycisk akcji „Przyjmij dostawę".
-    function vendorHeadHtml(g) {
-        let ready = 0, openLines = 0, overdue = 0, waiting = 0;
-        g.rows.forEach(function (r) {
-            const p = r.p;
-            if (p.canReceive === false) { waiting++; return; }
-            ready++;
-            openLines += Math.max(0, (parseInt(p.lineCount, 10) || 0) - (parseInt(p.linesFullyReceived, 10) || 0));
-            const od = daysOverdue(p);
-            if (od !== null && od > 0) overdue++;
+    function emptyItemsText(noOpenAtAll) {
+        return noOpenAtAll
+            ? 'Nie ma tu otwartych pozycji — wszystko zostało przyjęte. Zamówienie zamkniesz z menu „⋮" przy jego numerze.'
+            : 'Żadna pozycja nie pasuje do filtrów.';
+    }
+
+    function countByPo(items) {
+        const map = {};
+        items.forEach(function (r) {
+            const k = intOf(r.p.poId);
+            map[k] = (map[k] || 0) + 1;
+        });
+        return map;
+    }
+
+    // ---- karta dostawcy: nagłówek --------------------------------------
+    //
+    // Zwinięty nagłówek to JEDNA linia i tylko cztery informacje:
+    //   [>] NAZWA DOSTAWCY   [⚠ 6 po terminie · do 23 dni]   15 pozycji   [■■□ 36%]   [2 robocze]  [Przyjmij dostawę]
+    // Reszta (które pozycje, które zamówienia, stany) jest w rozwinięciu —
+    // nagłówek ma być skanowalny, nie wyczerpujący.
+
+    function vendorHeadHtml(g, items, pos, isOpen) {
+        let late = 0, maxLate = 0;
+        items.forEach(function (r) {
+            const d = daysLateOf(r.it);
+            if (d !== null && d > 0) {
+                late++;
+                if (d > maxLate) maxLate = d;
+            }
         });
 
-        const initials = String(g.vendorName || '?').replace(/[^A-Za-zĄĆĘŁŃÓŚŹŻąćęłńóśźż0-9 ]/g, '').trim()
-            .split(/\s+/).slice(0, 2).map(function (w) { return w.substring(0, 1); }).join('').toUpperCase() || '?';
+        let ordered = 0, received = 0, ready = 0, waiting = 0;
+        pos.forEach(function (p) {
+            ordered  += num(p.orderedQty);
+            received += num(p.receivedQty);
+            if (p.canReceive === false) waiting++; else ready++;
+        });
+        const pct = ordered > 0 ? Math.max(0, Math.min(100, (received / ordered) * 100)) : 0;
 
-        const meta = [];
-        if (ready > 0) {
-            meta.push('<strong>' + ready + '</strong> ' + plural(ready, 'zamówienie', 'zamówienia', 'zamówień')
-                + ' do przyjęcia · <strong>' + openLines + '</strong> ' + plural(openLines, 'otwarta pozycja', 'otwarte pozycje', 'otwartych pozycji'));
-        }
-        if (overdue > 0) meta.push('<span class="text-danger font-weight-bold">' + overdue + ' po terminie</span>');
-        if (waiting > 0) meta.push(waiting + ' czeka na potwierdzenie dostawcy');
+        // Plakietkę renderujemy ZAWSZE (pustą, gdy nic nie jest spóźnione) —
+        // nagłówki stoją na siatce, więc brakujący element przesunąłby
+        // kolumny sąsiednich kart i cała lista przestałaby się skanować.
+        const flag = late > 0
+            ? '<span class="vq-flag" title="' + escAttr('Pozycje po terminie: ' + late
+                + '. Najstarsza spóźniona jest o ' + maxLate + ' ' + dayWord(maxLate) + '.') + '">'
+              + '<i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i> '
+              + '<strong>' + late + '</strong> po terminie · do <strong>' + maxLate + '</strong> ' + dayWord(maxLate)
+              + '</span>'
+            : '<span class="vq-flag vq-flag--none" aria-hidden="true"></span>';
+
+        const count = items.length > 0
+            ? '<span class="vq-vcount"><strong>' + items.length + '</strong> ' + pozWord(items.length) + '</span>'
+            : '<span class="vq-vcount vq-vcount--none">0 pozycji otwartych</span>';
+
+        const prog = '<span class="vq-vprog" title="'
+                   + escAttr('Przyjęto ' + fmtQty(received) + ' z ' + fmtQty(ordered)
+                       + ' zamówionych (' + pos.length + ' ' + plural(pos.length, 'zamówienie', 'zamówienia', 'zamówień') + ')') + '">'
+                   + '<span class="rx-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"'
+                   +   ' aria-valuenow="' + Math.round(pct) + '">'
+                   +   '<span class="' + (pct >= 100 ? 'is-done' : '') + '" style="width:' + pct.toFixed(1) + '%"></span>'
+                   + '</span>'
+                   + '<span class="vq-pct">' + Math.round(pct) + '%</span>'
+                   + '</span>';
 
         const drafts = draftsByVendor[g.vendorId] || 0;
-        const chips = drafts > 0
+        const draftChip = drafts > 0
             ? '<a class="dv-vchip js-goto-drafts" href="' + DRAFTS_HASH + '" title="Przejdź do roboczych przyjęć">'
               + '<i class="bi bi-pencil-square"></i> ' + drafts + ' ' + plural(drafts, 'robocze', 'robocze', 'roboczych') + '</a>'
             : '';
@@ -451,205 +622,186 @@ $(document).ready(function () {
               + '<i class="bi bi-box-arrow-in-down"></i> Przyjmij dostawę</a>'
             : '<span class="dv-vwait">' + (waiting > 0 ? 'czeka na potwierdzenie' : 'brak zamówień do przyjęcia') + '</span>';
 
-        return '<div class="dv-vhead" data-vg="' + g.index + '">'
-             + '<span class="dv-vmark" aria-hidden="true">' + esc(initials) + '</span>'
-             + '<div class="dv-vmain"><div class="dv-vname">' + esc(g.vendorName) + '</div>'
-             +   '<div class="dv-vmeta">' + meta.join(' · ') + '</div></div>'
-             + '<div class="dv-vchips">' + chips + '</div>'
-             + '<div class="dv-vgo">' + action + '</div>'
+        return '<div class="dv-vhead vq-vhead' + (late > 0 ? ' is-late' : '') + (isOpen ? ' is-open' : '') + '"'
+             +   ' data-vg="' + g.index + '" data-vkey="' + escAttr(g.key) + '">'
+             + '<button type="button" class="vq-vtoggle" aria-expanded="' + (isOpen ? 'true' : 'false') + '"'
+             +   ' aria-controls="vqGroup' + g.index + '">'
+             +   '<span class="vq-chev" aria-hidden="true"><i class="bi bi-chevron-right"></i></span>'
+             +   '<span class="vq-vname">' + esc(g.vendorName) + '</span>'
+             +   '<span class="sr-only">' + (isOpen ? 'Zwiń' : 'Rozwiń') + ' ' + items.length + ' ' + pozWord(items.length) + '</span>'
+             + '</button>'
+             + flag
+             + count
+             + prog
+             + '<span class="dv-vchips">' + draftChip + '</span>'
+             + '<span class="dv-vgo">' + action + '</span>'
              + '</div>';
     }
 
-    // ---- komórki wiersza ------------------------------------------------
-
-    function deliveryCellHtml(p) {
-        if (!p.expectedDeliveryDate) {
-            return '<div class="rx-date-main text-muted">—</div>'
-                 + '<span class="rx-when">brak terminu</span>';
-        }
-        const od = daysOverdue(p);
-        let when = '';
-        if (od !== null && od > 0) {
-            when = '<span class="rx-when rx-when--late"><i class="bi bi-exclamation-triangle-fill"></i> '
-                 + od + ' ' + dayWord(od) + ' po terminie</span>';
-        } else if (od === 0) {
-            when = '<span class="rx-when rx-when--today">dzisiaj</span>';
-        } else if (od === -1) {
-            when = '<span class="rx-when rx-when--soon">jutro</span>';
-        } else if (od !== null && od >= -7) {
-            when = '<span class="rx-when rx-when--soon">za ' + Math.abs(od) + ' ' + dayWord(od) + '</span>';
-        } else if (od !== null) {
-            when = '<span class="rx-when">za ' + Math.abs(od) + ' ' + dayWord(od) + '</span>';
-        }
-        return '<div class="rx-date-main">' + esc(fmtDate(p.expectedDeliveryDate)) + '</div>' + when;
-    }
-
-    function progressCellHtml(p) {
-        const full     = parseInt(p.linesFullyReceived, 10) || 0;
-        const total    = parseInt(p.lineCount, 10) || 0;
-        const ordered  = num(p.orderedQty);
-        const received = num(p.receivedQty);
-        if (total === 0) {
-            return '<span class="rx-sub">Zamówienie bez pozycji</span>';
-        }
-        const pct = ordered > 0 ? Math.max(0, Math.min(100, (received / ordered) * 100)) : 0;
-        const barCls = pct >= 100 ? 'is-done' : '';
-
-        return '<div class="rx-progress-top">'
-             +   '<span><strong>' + full + '</strong> z ' + total + ' pozycji</span>'
-             +   '<span class="rx-pct">' + Math.round(pct) + '%</span>'
-             + '</div>'
-             + '<div class="rx-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"'
-             +   ' aria-valuenow="' + Math.round(pct) + '"'
-             +   ' title="' + escAttr('Przyjęto ' + fmtQty(received) + ' z ' + fmtQty(ordered)) + '">'
-             +   '<span class="' + barCls + '" style="width:' + pct.toFixed(1) + '%"></span>'
-             + '</div>'
-             + '<div class="rx-sub">przyjęto ' + esc(fmtQty(received)) + ' z ' + esc(fmtQty(ordered)) + '</div>';
-    }
-
-    // Pozycje menu pod caretem split-buttona Edytuj w wierszu kolejki.
-    // Kolejka ma tylko PO, więc gałąz jest krótsza niż odpowiednik
-    // w documents-view.js:
-    //   - sent (canRx === false) → „Potwierdź odpowiedź" jako
-    //     <a href> do dedykowanej strony odpowiedzi
-    //     /admin/purchase/documents/respond?id=POID&type=po (operator
-    //     wpisuje tam wynegocjowane ceny dostawcy per pozycja).
-    //     Item jest zielony (.rx-action-success) — potwierdzenie
-    //     odpowiedzi dostawcy zamyka etap „czeka na odpowiedź",
-    //     więc zielony.
-    //   - confirmed             → „Potwierdź odbiór"
-    //   - in_progress           → „Dokończ przyjęcie"
-    //   - partially_received    → „Przyjmij towar"
-    //     Itemy są niebieskie (.rx-action-primary) — akcja, która zabiera
-    //     operatora do dalszej pracy z towarem (formularz przyjęcia).
+    // ---- karta dostawcy: pasek zamówień --------------------------------
     //
-    // Odcienie celowo NIE odzwierciedlają klasy przycisku na stronie
-    // edycji (tam „Potwierdź odbiór" / „Przyjmij towar" są zielone).
-    // To decyzja produktowa, nie Follow the Edit Page: w menu kolor
-    // rozróżnia rodzaj akcji, a nie dokładnie ten sam przycisk.
-    // Item to <a> dla receive i dla confirm — zachowujemy
-    // dotychczasowe typy elementów (BS4 dropdown sam dopilnuje pozycjonowania).
-    // Klasy kolorów są współdzielone z documents-view.js (actionMenuItemsHtml)
-    // — ich definicja siedzi w receipts-ui.css, który obie strony wczytują,
-    // więc odcień nie może się rozjechać między listami.
+    // Jeden chip = jedno zamówienie: kropka stanu, numer (link do ekranu
+    // zamówienia), licznik otwartych pozycji i menu „⋮" z akcjami.
+    // Zamówienie bez otwartych pozycji (wszystko przyjęte, ale PO wciąż
+    // otwarte) NIE ma wierszy w tabeli — chip jest jedynym miejscem, z
+    // którego da się je zamknąć, więc zostaje w pasku zawsze.
     //
-    // Przyjmowanie towaru NIE jest już akcją wiersza zamówienia — robi się
-    // to z nagłówka dostawcy („Przyjmij dostawę", nagłówek grupy), więc dla
-    // zamówień gotowych do przyjęcia menu jest puste (zostaje sam link
-    // Edytuj). Menu zostaje tylko dla `sent` („Potwierdź odpowiedź").
-    function queueActionMenuHtml(p, poId, poLabel) {
-        if (p.canReceive === false) {
-            return '<a class="dropdown-item rx-action-success"'
-                + ' href="' + escAttr(respondPoUrl(poId)) + '">'
-                + '<i class="bi bi-reply"></i> Potwierdź odpowiedź</a>';
-        }
-        return '';
-    }
+    // data-action="close-po" / "cancel-po" + data-po-* czyta delegowany
+    // handler w close-po.js (ten sam kontrakt co wcześniejszy kosz w
+    // wierszu); close-po.js robi stopPropagation, więc klik w pozycję menu
+    // nie zwija karty.
 
-    function queueRowHtml(p, idx, group, vg) {
-        const poId  = parseInt(p.poId, 10);
-        // canReceive === false tylko dla `sent` (czeka na odpowiedź
-        // dostawcy). Taki wiersz nie prowadzi do formularza — akcję niesie
-        // link „Potwierdź odpowiedź" do strony respond?id=N&type=po.
-        const canRx = p.canReceive !== false;
-        const poLabel = p.poNumber || ('#' + poId);
+    function poChipHtml(p, nItems) {
+        const poId   = intOf(p.poId);
+        const label  = p.poNumber || ('#' + poId);
+        const meta   = stateMeta(p.state);
+        const canRx  = p.canReceive !== false;
+        const empty  = nItems === 0;
 
-        // Numer PO jest JAWNYM linkiem do ekranu zamówienia — jedynym
-        // klikalnym fragmentem wiersza. Bez tego (kiedy klik w cały wiersz
-        // prowadził do formularza) operator nie miał jak dostać się do
-        // zamówienia, a wyjątek „sent" blokował nawigację w ogóle.
-        // Zwykły <a href> zamiast delegacji na .queue-row: działa z
-        // Ctrl/Cmd (nowa karta), nie interceptujemy zaznaczania tekstu,
-        // a focus klawiaturowy i kopia w kontekstowym dostaje za darmo.
-        let numberCell = '<a class="rx-po-number rx-po-number--link" href="'
-                       + escAttr(editUrl(poId)) + '">' + esc(poLabel) + '</a>';
-        numberCell += p.vendorPoNumber
-            ? '<div class="rx-sub">Nr u dostawcy: ' + esc(p.vendorPoNumber) + '</div>'
-            : '<div class="rx-sub text-faint">brak nr u dostawcy</div>';
-
-        let stateCell = stateBadge(p.state);
+        let menu = '<a class="dropdown-item" href="' + escAttr(editUrl(poId)) + '">'
+                 + '<i class="bi bi-pencil-square"></i> Edytuj</a>';
         if (!canRx) {
-            stateCell += '<div class="rx-sub"><i class="bi bi-hourglass-split"></i> czeka na odpowiedź dostawcy</div>';
+            menu += '<a class="dropdown-item rx-action-success" href="' + escAttr(respondPoUrl(poId)) + '">'
+                  + '<i class="bi bi-reply"></i> Potwierdź odpowiedź</a>';
+        }
+        menu += '<div class="dropdown-divider"></div>';
+        if (canRx) {
+            menu += '<button type="button" class="dropdown-item vq-action-danger"'
+                  + ' data-action="close-po"'
+                  + ' data-po-id="' + poId + '"'
+                  + ' data-po-number="' + escAttr(label) + '"'
+                  + ' data-ordered-qty="' + escAttr(num(p.orderedQty)) + '"'
+                  + ' data-received-qty="' + escAttr(num(p.receivedQty)) + '"'
+                  + ' data-line-count="' + escAttr(intOf(p.lineCount)) + '">'
+                  + '<i class="bi bi-x-square"></i> Zamknij zamówienie</button>';
+        } else {
+            menu += '<button type="button" class="dropdown-item vq-action-danger"'
+                  + ' data-action="cancel-po"'
+                  + ' data-po-id="' + poId + '"'
+                  + ' data-po-number="' + escAttr(label) + '">'
+                  + '<i class="bi bi-x-square"></i> Anuluj zamówienie</button>';
         }
 
-        // Drugi przycisk w komórce akcji — mały, tylko ikona kosza:
-        //   - canReceive === true (confirmed/in_progress/partially_received)
-        //     → data-action="close-po": otwiera modal z wyborem stanu
-        //       (received / cancelled).
-        //   - canReceive === false (sent): closePoFromReceive() tego
-        //     stanu nie przyjmuje, więc jedyną legalną opcją jest
-        //     anulowanie → data-action="cancel-po" → prosty modal
-        //     #receiveCancelPoModal.
-        //
-        // Agregaty (ordered/received/lineCount) przekazujemy w data-*,
-        // żeby modal mógł pokazać podsumowanie bez okrągłego zapytania
-        // po pozycje (kolejka ich nie ma).
-        const orderedQty  = num(p.orderedQty);
-        const receivedQty = num(p.receivedQty);
-        const lineCount   = parseInt(p.lineCount, 10) || 0;
-        const trashBtn = canRx
-            ? '<button type="button" class="btn btn-sm btn-outline-danger rx-close-po-btn" '
-              + 'data-action="close-po" '
-              + 'data-po-id="' + poId + '" '
-              + 'data-po-number="' + escAttr(poLabel) + '" '
-              + 'data-ordered-qty="' + escAttr(orderedQty) + '" '
-              + 'data-received-qty="' + escAttr(receivedQty) + '" '
-              + 'data-line-count="' + escAttr(lineCount) + '" '
-              + 'title="Zamknij zamówienie (odebrane / anulowane)" '
-              + 'aria-label="Zamknij zamówienie">'
-              + '<i class="bi bi-x-square"></i>'
-              + '</button>'
-            : '<button type="button" class="btn btn-sm btn-outline-danger rx-close-po-btn" '
-              + 'data-action="cancel-po" '
-              + 'data-po-id="' + poId + '" '
-              + 'data-po-number="' + escAttr(poLabel) + '" '
-              + 'title="Anuluj zamówienie" '
-              + 'aria-label="Anuluj zamówienie">'
-              + '<i class="bi bi-x-square"></i>'
-              + '</button>';
+        const vendorNo = p.vendorPoNumber ? ' · nr u dostawcy ' + p.vendorPoNumber : '';
+        const chipTitle = label + ' — ' + meta.label + vendorNo
+            + ' · ' + (empty ? 'brak otwartych pozycji' : nItems + ' ' + pozWord(nItems) + ' do przyjęcia');
 
-        // Edytuj/Podgląd jako split-button (ten sam wzorzec co
-        // documents-view.js → editControlHtml): etykieta Edytuj jest
-        // zwykłym linkiem do ekranu zamówienia, a caret otwiera menu
-        // z kolejnym krokiem (Potwierdź odbiór / Dokończ przyjęcie /
-        // Przyjmij towar / Potwierdź odpowiedź). Kosz stoi przed split-buttonem, żeby
-        // „mniej kuszący" przycisk nie wyglądał jak wizualne
-        // następstwo Edytuj. Każdy wiersz kolejki ma co najmniej
-        // jedną pozycję menu; gdyby kiedyś tak nie było, editControl
-        // zwraca sam link bez careta (dokumenty robią tak samo).
-        const editLink = '<a class="btn btn-sm rx-btn-quiet" href="'
-                       + escAttr(editUrl(poId)) + '" title="Edytuj dokument">'
-                       + '<i class="bi bi-pencil-square"></i> Edytuj</a>';
-        const menu = queueActionMenuHtml(p, poId, poLabel);
-        const editControl = menu
-            ? '<div class="btn-group btn-group-sm">'
-              + editLink
-              + '<button type="button"'
-              +   ' class="btn btn-sm rx-btn-quiet dropdown-toggle dropdown-toggle-split"'
-              +   ' data-toggle="dropdown" aria-haspopup="true" aria-expanded="false"'
-              +   ' aria-label="Więcej akcji dla zamówienia">'
-              +   '<span class="sr-only">Więcej akcji dla zamówienia</span>'
-              + '</button>'
-              + '<div class="dropdown-menu dropdown-menu-right">' + menu + '</div>'
-              + '</div>'
-            : editLink;
+        return '<span class="vq-pochip dropdown' + (empty ? ' is-empty' : '') + '" title="' + escAttr(chipTitle) + '">'
+             + '<span class="vq-dot vq-dot--' + meta.tone + '" aria-hidden="true"></span>'
+             + '<a class="vq-pochip-no" href="' + escAttr(editUrl(poId)) + '">' + esc(label) + '</a>'
+             + '<span class="sr-only">' + esc(meta.label) + '</span>'
+             + '<span class="vq-pochip-n">' + nItems + '</span>'
+             + '<button type="button" class="vq-pochip-btn dropdown-toggle" data-toggle="dropdown"'
+             +   ' aria-haspopup="true" aria-expanded="false"'
+             +   ' aria-label="' + escAttr('Akcje zamówienia ' + label) + '">'
+             +   '<i class="bi bi-three-dots-vertical" aria-hidden="true"></i></button>'
+             + '<span class="dropdown-menu dropdown-menu-right">' + menu + '</span>'
+             + '</span>';
+    }
 
-        const actionCell = '<div class="rx-action-cell d-flex align-items-center justify-content-end">'
-                         + trashBtn
-                         + editControl
-                         + '</div>';
+    function poStripHtml(g, pos, byPo) {
+        if (pos.length === 0) return '<div class="vq-postrip"></div>';
+        let chips = '';
+        pos.forEach(function (p) { chips += poChipHtml(p, byPo[intOf(p.poId)] || 0); });
+        return '<div class="vq-postrip">'
+             + '<span class="vq-postrip-lbl">' + plural(pos.length, 'Zamówienie', 'Zamówienia', 'Zamówienia') + '</span>'
+             + chips + '</div>';
+    }
 
-        return '<div class="rx-qrow queue-row is-' + group + (canRx ? '' : ' queue-row-pending') + '"'
-             +   ' data-po-id="' + poId + '" data-idx="' + idx + '" data-group="' + group + '" data-vg="' + vg + '">'
-             + '<div class="rx-qcell rx-qcell--po">' + numberCell + '</div>'
-             + '<div class="rx-qcell rx-qcell--delivery"><span class="rx-cell-label">Dostawa</span>' + deliveryCellHtml(p) + '</div>'
-             + '<div class="rx-qcell rx-qcell--progress"><span class="rx-cell-label">Postęp</span>' + progressCellHtml(p) + '</div>'
-             + '<div class="rx-qcell rx-qcell--status">' + stateCell + '</div>'
-             + '<div class="rx-qcell rx-qcell--action">' + actionCell + '</div>'
+    // ---- karta dostawcy: tabela pozycji --------------------------------
+
+    function itemsTableHtml(items) {
+        if (items.length === 0) return '';
+        let rows = '';
+        items.forEach(function (r) { rows += itemRowHtml(r); });
+        return '<div class="vq-itbl">'
+             + '<div class="vq-ithead" aria-hidden="true">'
+             +   '<div>Pozycja</div>'
+             +   '<div>Zamówienie</div>'
+             +   '<div>Termin</div>'
+             +   '<div class="text-right">Pozostało</div>'
+             + '</div>'
+             + rows
+             + '</div>';
+    }
+
+    function itemRowHtml(r) {
+        const it = r.it;
+        const p  = r.p;
+        const d    = daysLateOf(it);
+        const tone = dueTone(d);
+        const canRx = p.canReceive !== false;
+        const poId  = intOf(p.poId);
+
+        const prod = (it.producerPartNo && it.producerPartNo !== it.vendorPartNo)
+            ? '<span class="vq-it-prod">' + esc(it.producerPartNo) + '</span>' : '';
+        const name = it.partName
+            ? '<span class="vq-it-name" title="' + escAttr(it.partName) + '">' + esc(it.partName) + '</span>'
+            : '<span class="vq-it-name vq-it-name--none">bez nazwy w kartotece</span>';
+
+        // Ilość: pozostało / zamówiono + jednostka; „przyjęto N" tylko
+        // wtedy, gdy część już przyszła (inaczej to zerowy szum).
+        const remaining = num(it.remainingQty);
+        const quantity  = num(it.quantity);
+        const got       = num(it.quantityReceived);
+        const unit      = it.unit ? ' ' + esc(it.unit) : '';
+        const qtyMain = '<span class="vq-it-rem">' + esc(fmtQty(remaining)) + '</span>'
+                      + '<span class="vq-it-of"> / ' + esc(fmtQty(quantity)) + unit + '</span>';
+        const qtySub = got > 0
+            ? '<div class="vq-it-sub">przyjęto ' + esc(fmtQty(got)) + '</div>' : '';
+
+        // ⓘ = termin odziedziczony z nagłówka zamówienia (pozycja nie ma
+        // własnego). Subtelnie, bo na razie dotyczy to większości danych.
+        const hint = (it.dueDate && !it.hasRowDate)
+            ? ' <i class="bi bi-info-circle vq-hint" title="'
+              + escAttr('Termin z nagłówka zamówienia — pozycja nie ma własnego terminu')
+              + '" aria-hidden="true"></i>'
+            : '';
+
+        // Przy terminach dalszych niż tydzień sama data mówi wszystko —
+        // plakietka tylko dokładałaby szumu.
+        const whenMod = tone === 'late' ? ' rx-when--late'
+                      : (tone === 'today' ? ' rx-when--today'
+                      : (tone === 'soon' ? ' rx-when--soon' : ''));
+        const when = (tone === 'far')
+            ? ''
+            : '<span class="rx-when' + whenMod + '">' + esc(dueLabel(d)) + '</span>';
+
+        // Stan pozycji to w praktyce stan jej zamówienia, więc stoi pod
+        // numerem PO, a nie w osobnej kolumnie (ta u większości dostawców
+        // byłaby pusta). Liczy się jedno: `sent` = dostawca nie potwierdził,
+        // więc termin jest orientacyjny.
+        const waitNote = canRx
+            ? ''
+            : '<span class="vq-it-wait" title="Zamówienie czeka na potwierdzenie dostawcy — termin jest orientacyjny">'
+              + '<i class="bi bi-hourglass-split" aria-hidden="true"></i> czeka na potwierdzenie</span>';
+
+        return '<div class="vq-itrow' + (tone === 'late' ? ' is-late' : '') + (canRx ? '' : ' is-wait') + '"'
+             +   ' data-idx="' + r.idx + '" data-vg="' + r.g.index + '" data-po-id="' + poId + '">'
+             + '<div class="vq-itcell vq-it-part"><span class="vq-cell-label">Pozycja</span>'
+             +   '<span class="vq-it-top"><span class="vq-it-no">' + esc(it.vendorPartNo || '—') + '</span>' + prod + '</span>'
+             +   name
+             + '</div>'
+             + '<div class="vq-itcell vq-it-po"><span class="vq-cell-label">Zamówienie</span>'
+             +   '<a class="vq-it-polink" href="' + escAttr(editUrl(poId)) + '"'
+             +     ' title="Otwórz zamówienie">' + esc(p.poNumber || ('#' + poId)) + '</a>'
+             +   waitNote
+             + '</div>'
+             + '<div class="vq-itcell vq-it-due"><span class="vq-cell-label">Termin</span>'
+             +   '<span class="vq-it-date">' + esc(it.dueDate ? fmtDate(it.dueDate) : '—') + hint + '</span>'
+             +   when
+             + '</div>'
+             + '<div class="vq-itcell vq-it-qty"><span class="vq-cell-label">Pozostało</span>'
+             +   qtyMain + qtySub
+             + '</div>'
              + '</div>';
     }
 
     // ---- filtry kolejki -------------------------------------------------
+    //
+    // Filtry działają na POZYCJACH. Zamówienie bez otwartych pozycji nie ma
+    // czego dopasować, więc jego chip oceniamy osobno (emptyPoHit) — inaczej
+    // zniknęłoby z paska i nie dałoby się go zamknąć.
 
     function queueFilters() {
         return {
@@ -662,6 +814,39 @@ $(document).ready(function () {
 
     function queueFiltersActive(f) {
         return f.search !== '' || f.vendors.length > 0 || f.states.length > 0 || f.overdue;
+    }
+
+    function haystack(parts) {
+        return parts.map(function (x) { return String(x == null ? '' : x); })
+            .join(' ').toLowerCase();
+    }
+
+    function itemHit(r, f) {
+        const it = r.it, p = r.p;
+        if (f.vendors.length && f.vendors.indexOf(p.vendorName || '') === -1) return false;
+        if (f.states.length && f.states.indexOf(p.state || '') === -1) return false;
+        if (f.overdue) {
+            const d = daysLateOf(it);
+            if (d === null || d <= 0) return false;
+        }
+        if (f.search !== '') {
+            const hay = haystack([it.vendorPartNo, it.producerPartNo, it.partName,
+                                  p.poNumber, p.vendorPoNumber, p.vendorName]);
+            if (hay.indexOf(f.search) === -1) return false;
+        }
+        return true;
+    }
+
+    function emptyPoHit(p, f) {
+        if (f.vendors.length && f.vendors.indexOf(p.vendorName || '') === -1) return false;
+        if (f.states.length && f.states.indexOf(p.state || '') === -1) return false;
+        // Zamówienie bez otwartych pozycji nie może być „po terminie".
+        if (f.overdue) return false;
+        if (f.search !== '') {
+            const hay = haystack([p.poNumber, p.vendorPoNumber, p.vendorName]);
+            if (hay.indexOf(f.search) === -1) return false;
+        }
+        return true;
     }
 
     // Podświetlenie aktywnych filtrów + stan kafelków w nagłówku.
@@ -682,49 +867,64 @@ $(document).ready(function () {
     function applyQueueFilters() {
         const f = queueFilters();
         syncQueueFilterUi();
-        if (queueData.length === 0) return;
+        if (queueItems.length === 0 && queueData.length === 0) { syncExpandAllBtn(); return; }
 
-        const perGroup = {};
+        const matched = {};
         let shown = 0;
+        let shownEmptyPos = 0;   // zamówienia bez otwartych pozycji, które zostają w pasku
 
-        $queueBody.find('.queue-row').each(function () {
+        $queueBody.find('.vq-itrow').each(function () {
             const $row = $(this);
-            const p = queueData[parseInt($row.attr('data-idx'), 10)];
-            if (!p) { $row.addClass('d-none'); return; }
-
-            let hit = true;
-            if (f.vendors.length && f.vendors.indexOf(p.vendorName || '') === -1) hit = false;
-            if (hit && f.states.length && f.states.indexOf(p.state || '') === -1) hit = false;
-            if (hit && f.overdue) {
-                const od = daysOverdue(p);
-                if (od === null || od <= 0) hit = false;
-            }
-            if (hit && f.search !== '') {
-                const hay = [p.poNumber, p.vendorPoNumber, p.vendorName]
-                    .map(function (x) { return String(x == null ? '' : x); })
-                    .join(' ')
-                    .toLowerCase();
-                if (hay.indexOf(f.search) === -1) hit = false;
-            }
-
+            const r = queueItems[parseInt($row.attr('data-idx'), 10)];
+            if (!r) { $row.addClass('d-none'); return; }
+            const hit = itemHit(r, f);
             $row.toggleClass('d-none', !hit);
             if (hit) {
                 shown++;
-                const g = $row.attr('data-vg');
-                perGroup[g] = (perGroup[g] || 0) + 1;
+                if (!matched[r.g.index]) matched[r.g.index] = [];
+                matched[r.g.index].push(r);
             }
         });
 
-        // Nagłówek dostawcy znika razem z ostatnim widocznym wierszem.
-        $queueBody.find('.dv-vhead').each(function () {
-            const n = perGroup[$(this).attr('data-vg')] || 0;
-            $(this).toggleClass('d-none', n === 0);
-        });
+        // Karta dostawcy znika razem z ostatnią widoczną pozycją (chyba że
+        // zostaje w niej zamówienie bez otwartych pozycji). Liczniki nagłówka
+        // i pasek zamówień PRZELICZAMY na tym, co przeszło filtry.
+        queueGroups.forEach(function (g) {
+            const items  = matched[g.index] || [];
+            const byPo   = countByPo(items);
+            const seen   = {};
+            items.forEach(function (r) { seen[intOf(r.p.poId)] = true; });
 
-        if (shown === 0) {
+            const pos = [];
+            g.pos.forEach(function (p) {
+                if (seen[intOf(p.poId)]) { pos.push(p); return; }
+                if (openItemsOf(p).length === 0 && emptyPoHit(p, f)) { pos.push(p); shownEmptyPos++; }
+            });
+
+            const $head = $queueBody.find('.dv-vhead[data-vg="' + g.index + '"]');
+            const $body = $queueBody.find('.vq-vbody[data-vg="' + g.index + '"]');
+
+            if (items.length === 0 && pos.length === 0) {
+                $head.addClass('d-none');
+                $body.addClass('d-none');
+                return;
+            }
+
+            const isOpen = groupOpen(g.key, true);
+            $head.replaceWith(vendorHeadHtml(g, items, pos, isOpen));
+            $body.removeClass('d-none').toggleClass('vq-vbody--collapsed', !isOpen);
+            $body.find('> .vq-postrip').replaceWith(poStripHtml(g, pos, byPo));
+            $body.find('> .vq-itbl').toggleClass('d-none', items.length === 0);
+            $body.find('> .vq-itempty')
+                .toggleClass('d-none', items.length > 0)
+                .text(emptyItemsText(g.items.length === 0));
+        });
+        syncExpandAllBtn();
+
+        if (shown === 0 && shownEmptyPos === 0) {
             showQueueState(emptyStateHtml(
                 'bi-funnel', '',
-                'Brak zamówień dla wybranych filtrów',
+                'Brak pozycji dla wybranych filtrów',
                 'Zmień kryteria albo wyczyść filtry, żeby zobaczyć całą kolejkę.',
                 '<button type="button" class="btn btn-sm rx-btn-quiet js-clear-queue-filters">'
               + '<i class="bi bi-x-circle"></i> Wyczyść filtry</button>'
@@ -733,33 +933,109 @@ $(document).ready(function () {
             showQueueList();
         }
 
-        updateQueueSummary(shown, queueData.length);
+        updateQueueSummary(shown, queueItems.length, shownEmptyPos);
     }
 
-    function updateQueueSummary(shown, total) {
+    function updateQueueSummary(shown, total, emptyPos) {
         const $el = $('#queueFilterSummary');
-        if (total === 0) {
+        if (queueData.length === 0) {
             $el.text('Kolejka jest pusta.');
             return;
         }
+
+        // Same zamówienia bez otwartych pozycji — „0 z 223 pozycji" byłoby
+        // mylące, bo na liście coś jednak widać.
+        if (shown === 0 && emptyPos > 0) {
+            $el.html('<i class="bi bi-funnel-fill"></i> Brak pozycji do przyjęcia · <strong>' + emptyPos
+                + '</strong> ' + plural(emptyPos, 'zamówienie', 'zamówienia', 'zamówień')
+                + ' bez otwartych pozycji (do zamknięcia)');
+            return;
+        }
+
         if (shown === total) {
-            $el.html('<strong>' + total + '</strong> ' + plural(total, 'zamówienie', 'zamówienia', 'zamówień')
-                + ' w kolejce · towar przyjmujesz przyciskiem „Przyjmij dostawę" przy dostawcy');
+            // Ile zamówień ma spóźnione pozycje — liczymy po lateLines,
+            // nie po dacie nagłówka.
+            let latePos = 0;
+            queueData.forEach(function (p) { if (isLatePo(p)) latePos++; });
+            const lateNote = latePos > 0
+                ? ' · <span class="vq-sum-late"><i class="bi bi-exclamation-triangle-fill"></i> '
+                  + latePos + ' ' + plural(latePos, 'zamówienie ma', 'zamówienia mają', 'zamówień ma')
+                  + ' pozycje po terminie</span>'
+                : '';
+            $el.html('<strong>' + total + '</strong> ' + pozWord(total) + ' do przyjęcia w <strong>'
+                + queueData.length + '</strong> ' + plural(queueData.length, 'zamówieniu', 'zamówieniach', 'zamówieniach')
+                + lateNote + ' · kliknij dostawcę, żeby zobaczyć pozycje');
             return;
         }
         $el.html('<i class="bi bi-funnel-fill"></i> Pokazano <strong>' + shown + '</strong> z <strong>'
-            + total + '</strong> ' + plural(total, 'zamówienia', 'zamówień', 'zamówień'));
+            + total + '</strong> ' + pozWord(total));
     }
 
     function clearQueueFilters() {
         $queueSearch.val('');
         $queueOverdue.prop('checked', false);
+        searchOpen = {};
         setPicker($queueVendor, []);
         setPicker($queueStates, []);
         applyQueueFilters();
     }
 
-    $queueSearch.on('input', applyQueueFilters);
+    // ---- zwijanie kart dostawców ---------------------------------------
+
+    // Etykieta „Rozwiń / Zwiń wszystkie" zależy od tego, czy wszystkie
+    // WIDOCZNE (po filtrach) karty są już rozwinięte.
+    function syncExpandAllBtn() {
+        const $btn = $('#queueExpandAll');
+        if (!$btn.length) return;
+        const $heads = $queueBody.find('.dv-vhead').not('.d-none');
+        const total   = $heads.length;
+        const allOpen = total > 0 && $heads.filter('.is-open').length === total;
+        $btn.prop('disabled', total === 0)
+            .attr('aria-pressed', allOpen ? 'true' : 'false')
+            .attr('title', allOpen ? 'Zwiń wszystkich dostawców' : 'Rozwiń wszystkich dostawców');
+        $btn.find('.vq-ea-label').text(allOpen ? 'Zwiń wszystkie' : 'Rozwiń wszystkie');
+        $btn.find('.vq-ea-icon').attr('class',
+            'bi vq-ea-icon ' + (allOpen ? 'bi-chevron-bar-contract' : 'bi-chevron-bar-expand'));
+    }
+
+    function toggleGroup($head, open) {
+        const vg = $head.attr('data-vg');
+        setGroupOpen($head.attr('data-vkey'), open);
+        $head.toggleClass('is-open', open)
+            .find('.vq-vtoggle').attr('aria-expanded', open ? 'true' : 'false');
+        $queueBody.find('.vq-vbody[data-vg="' + vg + '"]').toggleClass('vq-vbody--collapsed', !open);
+        // sr-only w przycisku mówi, co zrobi następne kliknięcie.
+        const n = $queueBody.find('.vq-vbody[data-vg="' + vg + '"] .vq-itrow').not('.d-none').length;
+        $head.find('.vq-vtoggle .sr-only').text((open ? 'Zwiń ' : 'Rozwiń ') + n + ' ' + pozWord(n));
+        syncExpandAllBtn();
+    }
+
+    // Klik w kartę dostawcy = zwiń/rozwiń. Chevron i nazwa siedzą w
+    // <button class="vq-vtoggle"> (semantyka przycisku + Enter/Space z
+    // klawiatury), ale klikalny jest cały nagłówek — oprócz chipa
+    // „robocze" i przycisku „Przyjmij dostawę", które muszą działać bez
+    // zwijania karty.
+    $(document).on('click', '.vq-vhead', function (e) {
+        const $t = $(e.target);
+        if ($t.closest('a, button').length && !$t.closest('.vq-vtoggle').length) return;
+        const $head = $(this);
+        toggleGroup($head, !$head.hasClass('is-open'));
+    });
+
+    $(document).on('click', '#queueExpandAll', function () {
+        const $heads = $queueBody.find('.dv-vhead').not('.d-none');
+        if ($heads.length === 0) return;
+        const open = $heads.filter('.is-open').length !== $heads.length;
+        $heads.each(function () { setGroupOpen($(this).attr('data-vkey'), open); });
+        applyQueueFilters();
+    });
+
+    // Zmiana frazy = nowy zestaw trafień, więc ręczne zwinięcia z
+    // poprzedniego szukania przestają obowiązywać.
+    $queueSearch.on('input', function () {
+        searchOpen = {};
+        applyQueueFilters();
+    });
     $queueOverdue.on('change', applyQueueFilters);
     $queueVendor.on('changed.bs.select change', applyQueueFilters);
     $queueStates.on('changed.bs.select change', applyQueueFilters);
@@ -783,17 +1059,10 @@ $(document).ready(function () {
         applyQueueFilters();
     });
 
-    // Wiersz kolejki NIE jest klikalny. Kolejka ma w komórce akcji
-    // dwa przyciski („Przyjmij towar" + kosz) i kilka pól do odczytu —
-    // kliknięcie w losowy fragment wiersza nie ma żadnego sensownego
-    // domyślnienia, a przy „niespodziewanej" nawigacji operator traci
-    // formularz, który właśnie wypełniał. Wyjątkiem jest numer PO:
-    // to jawny link do ekranu zamówienia (patrz queueRowHtml), dzięki
-    // któremu da się tam trafić także z wiersza `sent`.
-    //
-    // followRowLink() zostaje, bo nadal zasila klik w wierszach
-    // HISTORII przyjęć — tam klikalność całego wiersza jest w porządku
-    // i została podyktowana inną potrzebą (podgląd przyjęcia).
+    // Wiersz pozycji NIE jest klikalny jako całość — klikalne są numer
+    // zamówienia (link do ekranu PO) i menu „⋮" w pasku zamówień.
+    // followRowLink() zostaje, bo nadal zasila klik w wierszach HISTORII
+    // przyjęć, gdzie klikalność całego wiersza ma sens (podgląd przyjęcia).
 
     // =====================================================================
     // ZAKŁADKA 2 — historia przyjęć

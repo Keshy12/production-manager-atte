@@ -121,10 +121,40 @@ $(document).ready(function () {
         return m ? (m[3] + '.' + m[2] + '.' + m[1]) : String(iso || '');
     }
 
+    // Krótki termin do wąskiego panelu: „12.03" (ten rok) / „12.03.27" (inny rok).
+    function fmtDateShort(iso) {
+        const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''));
+        if (!m) return String(iso || '');
+        return m[3] + '.' + m[2] + (parseInt(m[1], 10) === new Date().getFullYear() ? '' : '.' + m[1].substring(2));
+    }
+
     function todayIso() {
         const d = new Date();
         const p = function (n) { return n < 10 ? '0' + n : String(n); };
         return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+    }
+
+    // „2026-03-12 00:00:00" → „2026-03-12"; cokolwiek innego → ''.
+    function isoDay(v) {
+        const m = /^(\d{4}-\d{2}-\d{2})/.exec(String(v == null ? '' : v));
+        return m ? m[1] : '';
+    }
+
+    // Pełne dni między dwiema datami ISO (a − b); dodatnie = a później niż b.
+    function dayDiff(a, b) {
+        const ms = function (iso) {
+            return Date.UTC(parseInt(iso.substring(0, 4), 10), parseInt(iso.substring(5, 7), 10) - 1, parseInt(iso.substring(8, 10), 10));
+        };
+        if (!a || !b) return 0;
+        return Math.round((ms(a) - ms(b)) / 86400000);
+    }
+
+    function dayWord(n) {
+        return plural(n, 'dzień', 'dni', 'dni');
+    }
+
+    function posWord(n) {
+        return plural(n, 'pozycja', 'pozycje', 'pozycji');
     }
 
     function nowHm() {
@@ -1055,6 +1085,122 @@ $(document).ready(function () {
         return map;
     }
 
+    // Terminy w panelu --------------------------------------------------
+    // Każda pozycja zamówienia ma własny termin (potwierdzenie dostawcy z
+    // maila), więc jedno zamówienie może mieć kilka różnych terminów.
+    // Nagłówek karty streszcza terminy wszystkich otwartych pozycji,
+    // a wiersze pokazują swój własny termin.
+
+    function nowrap(html) {
+        return '<span class="dv-po-chunk">' + html + '</span>';
+    }
+
+    // Streszczenie terminów całego zamówienia (liczone po wszystkich
+    // otwartych pozycjach, nie tylko po tych pasujących do filtra).
+    function poDueSummary(items, today) {
+        const byDate = {};
+        const days = [];
+        let noDate = 0;
+        items.forEach(function (it) {
+            const d = isoDay(it.due_date);
+            if (!d) { noDate++; return; }
+            days.push(d);
+            byDate[d] = (byDate[d] || 0) + 1;
+        });
+        const total = items.length;
+
+        if (days.length === 0) {
+            return {
+                uniform: true,
+                html: nowrap('<span class="dv-due is-none">bez terminu</span>'),
+                title: 'Żadna otwarta pozycja tego zamówienia nie ma potwierdzonego terminu.'
+            };
+        }
+
+        days.sort();
+        const dates = Object.keys(byDate).sort();
+        const min = days[0];
+        const max = days[days.length - 1];
+        const lateCount = days.filter(function (d) { return d < today; }).length;
+        const uniform = dates.length === 1 && noDate === 0;
+
+        // Podpowiedź: rozpisane wszystkie terminy z liczbą pozycji.
+        const tip = dates.map(function (d) {
+            const n = byDate[d];
+            const diff = dayDiff(today, d);
+            let s = fmtDate(d) + ' — ' + n + ' ' + posWord(n);
+            if (diff > 0) s += ', po terminie ' + diff + ' ' + dayWord(diff);
+            else if (diff === 0) s += ', dzisiaj';
+            return s;
+        });
+        if (noDate > 0) tip.push('bez terminu — ' + noDate + ' ' + posWord(noDate));
+
+        const tailHtml = noDate > 0
+            ? ' · ' + nowrap('<span class="dv-due is-none">' + noDate + ' bez terminu</span>')
+            : '';
+
+        let html;
+        if (lateCount === 0) {
+            // Wszystko w terminie: jedna data albo zakres najbliższa–najdalsza.
+            const txt = uniform
+                ? (min === today ? 'dostawa dzisiaj' : 'dostawa ' + fmtDateShort(min))
+                : (min === max ? 'dostawa ' + fmtDateShort(min)
+                               : 'dostawa ' + fmtDateShort(min) + '\u2013' + fmtDateShort(max));
+            html = nowrap('<span class="dv-due' + (min === today ? ' is-today' : '') + '">' + esc(txt) + '</span>') + tailHtml;
+        } else if (lateCount === days.length && noDate === 0) {
+            // Po terminie są wszystkie pozycje.
+            let txt;
+            if (dates.length === 1) {
+                const d = dayDiff(today, min);
+                txt = 'po terminie ' + fmtDateShort(min) + (d > 0 ? ' (' + d + ' ' + dayWord(d) + ')' : '');
+            } else {
+                txt = 'po terminie ' + fmtDateShort(min) + '\u2013' + fmtDateShort(max);
+            }
+            html = nowrap('<span class="dv-due is-late">' + esc(txt) + '</span>');
+        } else {
+            // Część pozycji po terminie — reszta wciąż przed terminem.
+            const next = days.filter(function (d) { return d >= today; })[0] || '';
+            html = nowrap('<span class="dv-due is-late">' + lateCount + ' z ' + total + ' poz. po terminie</span>')
+                 + (next
+                     ? ' · ' + nowrap('<span class="dv-due' + (next === today ? ' is-today' : '') + '">'
+                         + (next === today ? 'najbliższa dzisiaj' : 'najbliższa ' + esc(fmtDateShort(next))) + '</span>')
+                     : '')
+                 + tailHtml;
+        }
+        return { uniform: uniform, html: html, title: 'Terminy pozycji:\n' + tip.join('\n') };
+    }
+
+    // Termin jednej pozycji zamówienia (wiersz panelu). `echo` = wszystkie
+    // pozycje zamówienia mają ten sam termin, więc nagłówek już go pokazał —
+    // w wierszu zostaje wtedy tylko delikatne powtórzenie.
+    function poiDueHtml(iso, today, echo) {
+        const d = isoDay(iso);
+        if (!d) {
+            return '<span class="dv-poi-due dv-due is-none" title="Ta pozycja nie ma potwierdzonego terminu dostawy.">bez terminu</span>';
+        }
+        const diff = dayDiff(today, d);
+        const tone = diff > 0 ? ' is-late' : (diff === 0 ? ' is-today' : '');
+        if (echo) {
+            // Nagłówek podał już ten termin za całe zamówienie — w wierszu
+            // zostawiamy samą datę, żeby lista pozostała gęsta.
+            return '<span class="dv-poi-due dv-due is-echo' + tone + '" title="Termin tej pozycji: ' + esc(fmtDate(d))
+                 + (diff > 0 ? ' — po terminie ' + diff + ' ' + dayWord(diff) : (diff === 0 ? ' — dzisiaj' : ''))
+                 + ' (tak samo jak pozostałe pozycje tego zamówienia).">' + esc(fmtDateShort(d)) + '</span>';
+        }
+        if (diff > 0) {
+            return '<span class="dv-poi-due dv-due is-late" title="Termin tej pozycji: ' + esc(fmtDate(d))
+                 + ' — po terminie ' + diff + ' ' + dayWord(diff) + '."><i class="bi bi-exclamation-circle-fill" aria-hidden="true"></i> '
+                 + esc(fmtDateShort(d)) + ' · ' + diff + ' ' + dayWord(diff) + ' po terminie</span>';
+        }
+        if (diff === 0) {
+            return '<span class="dv-poi-due dv-due is-today" title="Termin tej pozycji: ' + esc(fmtDate(d))
+                 + ' — dzisiaj."><i class="bi bi-calendar-check" aria-hidden="true"></i> dzisiaj</span>';
+        }
+        return '<span class="dv-poi-due dv-due" title="Termin tej pozycji: ' + esc(fmtDate(d))
+             + ' — za ' + (-diff) + ' ' + dayWord(-diff) + '."><i class="bi bi-calendar3" aria-hidden="true"></i> '
+             + esc(fmtDateShort(d)) + '</span>';
+    }
+
     function renderSide() {
         const st = S.state;
         const mode = st ? st.delivery.state : 'draft';
@@ -1084,13 +1230,12 @@ $(document).ready(function () {
         const order = [];
         S.openItems.forEach(function (it) {
             if (!groups[it.po_id]) {
-                groups[it.po_id] = { po_id: it.po_id, po_number: it.po_number, po_state: it.po_state, due: it.due_date, items: [], touched: 0 };
+                groups[it.po_id] = { po_id: it.po_id, po_number: it.po_number, po_state: it.po_state, items: [], touched: 0 };
                 order.push(it.po_id);
             }
             const g = groups[it.po_id];
             g.items.push(it);
             if (touched[it.po_item_id]) g.touched++;
-            if (it.due_date && (!g.due || it.due_date < g.due)) g.due = it.due_date;
         });
 
         const list = order.map(function (id) { return groups[id]; });
@@ -1114,28 +1259,30 @@ $(document).ready(function () {
             });
             if (items.length === 0) return;
             shown++;
-            const late = g.due && String(g.due).substring(0, 10) < today;
-            const dueHtml = g.due
-                ? '<span class="' + (late ? 'is-late' : '') + '">' + (late ? 'po terminie ' : 'dostawa ') + esc(fmtDate(g.due)) + '</span>'
-                : 'bez terminu';
+            // Terminy liczymy po wszystkich otwartych pozycjach zamówienia,
+            // także gdy filtr pokazuje tylko część z nich.
+            const due = poDueSummary(g.items, today);
             // Grupa zwijana — domyślnie zamknięta; stan trzymamy w S.sideOpenPoIds,
             // żeby przeżył przerysowanie panelu. Przy aktywnym filtrze zwijanie
             // nie ma sensu — pokazujemy pozycje od razu (grupa jest wymuszona
             // rozwinięta, przycisk zwijania nie jest wtedy renderowany).
             const isOpen = filtered ? true : !!S.sideOpenPoIds[g.po_id];
             const bodyId = 'dvPoBody' + parseInt(g.po_id, 10);
-            const countHtml = filtered
-                ? '<span class="dv-po-match" title="Pozycje pasujące do filtra">' + items.length + ' z ' + g.items.length + ' poz.</span> · '
-                : '';
+            const metaParts = [];
+            if (filtered) {
+                metaParts.push('<span class="dv-po-chunk dv-po-match" title="Pozycje pasujące do filtra">' + items.length + ' z ' + g.items.length + ' poz.</span>');
+            }
+            metaParts.push(due.html);
+            if (g.touched) {
+                metaParts.push('<span class="dv-po-chunk dv-po-hit" title="Pozycje tego zamówienia w tej dostawie">' + g.touched + '/' + g.items.length + '</span>');
+            }
             const toggleHtml = filtered ? '' : '<button type="button" class="dv-po-toggle" aria-expanded="' + (isOpen ? 'true' : 'false') + '" aria-controls="' + bodyId + '" title="Rozwiń / zwiń pozycje">'
                   +     '<i class="bi bi-chevron-right dv-po-caret" aria-hidden="true"></i></button>';
             html += '<div class="dv-po' + (g.touched ? ' is-touched' : '') + (isOpen ? ' is-open' : '') + (filtered ? ' is-forced' : '') + '" data-po-id="' + parseInt(g.po_id, 10) + '">'
                   + '<div class="dv-po-head">'
                   +   toggleHtml
                   +   '<a class="dv-po-no" href="' + esc(poEditUrl(g.po_id)) + '" target="_blank" rel="noopener" title="Otwórz zamówienie">' + esc(g.po_number || ('#' + g.po_id)) + '</a>'
-                  +   '<span class="dv-po-meta">' + countHtml + dueHtml
-                  +     (g.touched ? ' · <span class="dv-po-hit" title="Pozycje tego zamówienia w tej dostawie">' + g.touched + '/' + g.items.length + '</span>' : '')
-                  +   '</span>'
+                  +   '<span class="dv-po-meta" title="' + esc(due.title) + '">' + metaParts.join(' <span class="dv-po-sep">·</span> ') + '</span>'
                   + '</div>'
                   + '<div class="dv-po-body" id="' + bodyId + '">';
             items.forEach(function (it) {
@@ -1152,7 +1299,10 @@ $(document).ready(function () {
                 const clickable = !!S.deliveryId;
                 html += '<div class="dv-poi' + (clickable ? ' is-clickable' : '') + (alloc > EPS ? ' is-touched' : '') + '" data-po-item-id="' + it.po_item_id + '"'
                       + (clickable ? ' title="Kliknij, aby wpisać tę pozycję"' : '') + '>'
-                      +   '<div class="dv-poi-no">' + esc(it.vendor_part_no || '—') + '</div>'
+                      +   '<div class="dv-poi-top">'
+                      +     '<span class="dv-poi-no">' + esc(it.vendor_part_no || '—') + '</span>'
+                      +     poiDueHtml(it.due_date, today, due.uniform)
+                      +   '</div>'
                       +   '<div class="dv-poi-rem" title="pozostało przed → po tej dostawie">' + remHtml + '</div>'
                       +   '<div class="dv-poi-name" title="' + esc(it.part_name || '') + '">' + esc(it.part_name || '') + '</div>'
                       + '</div>';
@@ -2080,13 +2230,14 @@ $(document).ready(function () {
         } else {
             html += '<div class="dv-alloc-row dv-alloc-rowhead" style="border:0;padding-top:0;padding-bottom:.2rem">'
                   + '<div>Zamówienie</div><div>Termin / cena</div><div>Pozostało</div><div class="text-right">Przydziel</div></div>';
+            const today = todayIso();
             items.forEach(function (it) {
                 const cap = Math.max(0, it.remaining - (others[it.po_item_id] || 0));
                 const val = cur[it.po_item_id] ? inputNum(cur[it.po_item_id]) : '';
                 html += '<div class="dv-alloc-row" data-po-item-id="' + it.po_item_id + '" data-cap="' + cap + '">'
                       + '<div><a class="dv-alloc-po" href="' + esc(poEditUrl(it.po_id)) + '" target="_blank" rel="noopener">' + esc(it.po_number || ('#' + it.po_id)) + '</a>'
                       +   '<div class="dv-sub">' + stateBadgeText(it.po_state) + '</div></div>'
-                      + '<div><div>' + (it.due_date ? esc(fmtDate(it.due_date)) : 'bez terminu') + '</div>'
+                      + '<div><div>' + allocDueHtml(it.due_date, today) + '</div>'
                       +   '<div class="dv-sub">' + (it.unit_price !== null && it.unit_price !== undefined && it.unit_price !== ''
                               ? esc(fmtPrice(it.unit_price)) + ' ' + esc(it.currency || '') : 'cena nieustalona') + '</div></div>'
                       + '<div><strong>' + esc(fmtQty(cap)) + '</strong>'
@@ -2101,6 +2252,20 @@ $(document).ready(function () {
         $('#dvAllocSave').prop('disabled', items.length === 0);
         updateAllocSum();
         $('#dvAllocModal').modal('show');
+    }
+
+    // Termin pozycji w edytorze przydziału — pełna data + ten sam znacznik
+    // spóźnienia, co w panelu po prawej.
+    function allocDueHtml(iso, today) {
+        const d = isoDay(iso);
+        if (!d) return '<span class="dv-due is-none">bez terminu</span>';
+        const diff = dayDiff(today, d);
+        if (diff > 0) {
+            return '<span class="dv-due is-late"><i class="bi bi-exclamation-circle-fill" aria-hidden="true"></i> '
+                 + esc(fmtDate(d)) + '</span><div class="dv-sub dv-due is-late">po terminie ' + diff + ' ' + dayWord(diff) + '</div>';
+        }
+        if (diff === 0) return '<span class="dv-due is-today">' + esc(fmtDate(d)) + ' · dzisiaj</span>';
+        return '<span class="dv-due">' + esc(fmtDate(d)) + '</span>';
     }
 
     function stateBadgeText(st) {
