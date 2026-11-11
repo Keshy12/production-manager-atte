@@ -5,9 +5,9 @@
 //                        pogrupowana wg dostawcy; jeden przycisk
 //                        „Przyjmij dostawę" na dostawcę,
 //   „Robocze"          — szkice przyjęć (delivery-list.php?state=draft),
-//   „Historia przyjęć" — zatwierdzone dostawy (delivery-list.php?state=posted)
-//                        + starsze przyjęcia wg zamówień (receipts-history.php,
-//                        legacy_only=1, paginacja po stronie serwera).
+//   „Historia przyjęć" — zatwierdzone dostawy (delivery-list.php?state=posted);
+//                        wiersze renderuje JS z pobranej listy, filtr
+//                        (szukajka + zakres dat) działa po stronie klienta.
 //
 // Nawigacja (konwencja z cart-view.js → docEditUrl()):
 //   window.location.origin + ROOT_DIR + '/purchase/receipts/new?vendor_id=N'
@@ -19,10 +19,9 @@
 // Zakładki mają hashe #robocze i #historia (strona szczegółów linkuje
 // z powrotem właśnie tam).
 //
-// Po zapisie przyjęcia receive-page.js przekierowuje tu z
-//   ?saved=<doc>&n=<items>&po=<po>&po_state=<state>
-// — pokazujemy komunikat sukcesu i podświetlamy nowy wiersz historii
-// (klasa .receipt-row-new, wiersz szukany po data-doc).
+// Wiersze historii (dostawy) renderuje JS z listy pobranej przez
+// delivery-list.php — filtr po szukajce i zakresie dat działa lokalnie
+// na tej liście.
 //
 // Potwierdzenie zamówienia (stan `sent`) ma własną stronę:
 // /admin/purchase/documents/respond?id=POID&type=po — operator wpisuje
@@ -32,11 +31,32 @@
 $(document).ready(function () {
     const ajaxBase = COMPONENTS_PATH + '/purchases/receipts/';
 
-    const HISTORY_PER_PAGE = 25;
     const HISTORY_HASH = '#historia';
     const DRAFTS_HASH = '#robocze';
-    const DELIVERIES_PAGE = 25;
-    const READY_STATES = ['confirmed', 'in_progress', 'partially_received'];
+    // Krok przycisku „Pokaż więcej" w tabeli dostaw. Po podłączeniu starego
+    // GRN-ów do warstwy dostaw (2026-11-11) historia ma ~3 800 pozycji —
+    // przy kroku 25 trzeba by było klikać 150 razy, stąd 500.
+    const DELIVERIES_PAGE = 500;
+
+    // Karty filtrujące w kolejce → zestawy statusów (wartości opcji
+    // #queueStates). Ten sam wzorzec co /purchase/documents
+    // (documents-view.js → STAT_STATES): karta „Przyjęcie w toku"
+    // obejmuje dwa stany — in_progress + partially_received.
+    //
+    // Karta „Po terminie" jest OSOBNA i WYŁĄCZNA z kartami statusu —
+    // ten sam wzorzec co dwie grupy kafelków na /admin/purchase/vendors
+    // (tam: grupa „Status" z zasadą „co najmniej jeden" i osobna grupa
+    // niezależnych kafelków). Włączenie „Po terminie" czyści wybór
+    // statusów i blokuje karty statusu (są wyłączone do czasu jej
+    // wyłączenia).
+    const QUEUE_STAT_STATES = {
+        sent:        ['sent'],
+        confirmed:   ['confirmed'],
+        in_progress: ['in_progress', 'partially_received']
+    };
+
+    // Tooltip kart zablokowanych (karta „Po terminie" jest włączona).
+    const LATE_LOCK_TITLE = 'Karta „Po terminie" jest włączona — karty statusu są wyłączone';
 
     // Ta sama mapa co rx_state_meta() w receipts-helpers.php.
     const STATE_META = {
@@ -123,11 +143,6 @@ $(document).ready(function () {
         }
     }
 
-    function sameSet(a, b) {
-        if (a.length !== b.length) return false;
-        return a.every(function (x) { return b.indexOf(x) !== -1; });
-    }
-
     // Przyjęcie dostawy wg faktury / WZ (delivery-page.php).
     function newDeliveryUrl(vendorId) {
         return window.location.origin + ROOT_DIR + '/purchase/receipts/new'
@@ -175,11 +190,6 @@ $(document).ready(function () {
             ? '<span class="dv-docno">' + esc(d.vendor_document_number) + '</span>'
             : '<span class="dv-docno dv-docno--none">bez numeru</span>';
         return '<span class="dv-type">' + type + '</span>' + nr;
-    }
-
-    function detailUrl(id) {
-        return window.location.origin + ROOT_DIR
-            + '/purchase/receipts/view?id=' + encodeURIComponent(id);
     }
 
     // Ekran zamówienia (formularz PO) — cel kliknięcia w numer PO na
@@ -472,29 +482,51 @@ $(document).ready(function () {
         setPicker($queueVendor, keep);
     }
 
-    // Liczniki w nagłówku strony — zawsze z pełnych danych, nie po filtrach.
-    // Kafelek „Po terminie" liczy ZAMÓWIENIA, które mają co najmniej jedną
-    // otwartą pozycję po terminie (lateLines > 0), a podpis pod wartością —
-    // ile to łącznie pozycji i jak długie jest największe spóźnienie.
+    // Liczniki na kartach filtrujących. Licznik karty = ile zamówień
+    // zostało w kolejce po zastosowaniu pozostałych filtrów (dostawca,
+    // szukanie) — własnej osy karty nie liczymy (status przy karcie
+    // statusu, termin przy karcie „Po terminie"), bo włączenie karty
+    // zerowałoby jej własny licznik.
+    //
+    // Karta „Po terminie" liczy ZAMÓWIENIA, które mają co najmniej jedną
+    // otwartą pozycję po terminie (receipts-queue.php → lateLines).
+    // Podpis pod wartością pokazuje, ile to łącznie pozycji i jak
+    // długie jest największe spóźnienie.
     function updateStats() {
-        let ready = 0, overdue = 0, pending = 0, lateItemsTotal = 0, maxLate = 0;
+        const f = queueFilters();
+        let sent = 0, confirmed = 0, inProgress = 0, overdue = 0;
+        let lateItemsTotal = 0, maxLate = 0;
+
         queueData.forEach(function (p) {
-            if (p.canReceive !== false) ready++;
-            else pending++;
+            if (!poInScope(p, f)) return;
+            const state = p.state || '';
+            if (state === 'sent') sent++;
+            else if (state === 'confirmed') confirmed++;
+            else if (state === 'in_progress' || state === 'partially_received') inProgress++;
             if (isLatePo(p)) {
                 overdue++;
                 lateItemsTotal += lateLines(p);
                 maxLate = Math.max(maxLate, maxDaysLateOfPo(p));
             }
         });
-        $('#statReady').text(ready);
-        $('#statOverdue').text(overdue);
-        $('#statPending').text(pending);
-        $('#statOverdueSub').text(overdue > 0
+
+        setStatValue('sent', sent);
+        setStatValue('confirmed', confirmed);
+        setStatValue('in_progress', inProgress);
+        setStatValue('overdue', overdue);
+
+        $('[data-stat="overdue"] [data-stat-sub]').text(overdue > 0
             ? lateItemsTotal + ' ' + pozWord(lateItemsTotal)
                 + (maxLate > 0 ? ' · do ' + maxLate + ' ' + dayWord(maxLate) : '')
             : 'wszystko w terminie');
         $('.rx-stat--overdue').toggleClass('has-value', overdue > 0);
+    }
+
+    // Wpis licznika do karty + stan „zero" (bledna wartość).
+    function setStatValue(key, n) {
+        const $tile = $('.rx-stats--filter .rx-stat[data-stat="' + key + '"]');
+        $tile.find('[data-stat-value]').text(n);
+        $tile.toggleClass('is-zero', n === 0);
     }
 
     // ---- render ---------------------------------------------------------
@@ -888,7 +920,9 @@ $(document).ready(function () {
         return {
             search:  String($queueSearch.val() || '').toLowerCase().trim(),
             vendors: $queueVendor.val() || [],
-            states:  $queueStates.val() || [],
+            states:  ($queueStates.val() || []).map(String),
+            // overdue: karta „Po terminie" (a razem z chipem „Tylko po
+            // terminie" w pasku filtrów) — filtr po terminie.
             overdue: $queueOverdue.is(':checked')
         };
     }
@@ -901,6 +935,19 @@ $(document).ready(function () {
         return parts.map(function (x) { return String(x == null ? '' : x); })
             .join(' ').toLowerCase();
     }
+
+    // ---- filtry kolejki -------------------------------------------------
+    //
+    // Dwie osie filtra:
+    //   1) STATUS — karty „Wysłane" / „Potwierdzone" / „Przyjęcie w toku"
+    //      sterują pickerem #queueStates; kilka kart może być włączonych
+    //      naraz (filtr to suma ich statusów),
+    //   2) TERMIN — karta „Po terminie" (a razem z chipem „Tylko po
+    //      terminie" w pasku filtrów) steruje #queueOverdueOnly.
+    //
+    // Karta „Po terminie" jest WYŁĄCZNA z kartami statusu: włączenie
+    // czyści wybór statusów i blokuje karty statusu (jak zablokowany
+    // kafelek na /admin/purchase/vendors). Patrz toggleQueueStat.
 
     function itemHit(r, f) {
         const it = r.it, p = r.p;
@@ -930,19 +977,100 @@ $(document).ready(function () {
         return true;
     }
 
-    // Podświetlenie aktywnych filtrów + stan kafelków w nagłówku.
+    // Zamówienie w zakresie pozostałych filtrów (dostawca, szukanie) —
+    // bez względu na wybór statusów i bez filtra terminu. Używane do
+    // liczników kart: każda karta liczy „co by było widać, gdyby włączyć
+    // TĘ kartę".
+    function poInScope(p, f) {
+        if (f.vendors.length && f.vendors.indexOf(p.vendorName || '') === -1) return false;
+        if (f.search !== '') {
+            const hay = haystack([p.poNumber, p.vendorPoNumber, p.vendorName]);
+            if (hay.indexOf(f.search) === -1) return false;
+        }
+        return true;
+    }
+
+    // Podświetlenie aktywnych filtrów + stan kart filtra.
     function syncQueueFilterUi() {
         const f = queueFilters();
         $('#queueVendorCell').toggleClass('is-active', f.vendors.length > 0);
         $('#queueStatesCell').toggleClass('is-active', f.states.length > 0);
         $('#clearQueueFilters').toggleClass('d-none', !queueFiltersActive(f));
 
-        $('.rx-stat[data-stat="ready"]').toggleClass('is-active', sameSet(f.states, READY_STATES))
-            .attr('aria-pressed', sameSet(f.states, READY_STATES) ? 'true' : 'false');
-        $('.rx-stat[data-stat="pending"]').toggleClass('is-active', sameSet(f.states, ['sent']))
-            .attr('aria-pressed', sameSet(f.states, ['sent']) ? 'true' : 'false');
-        $('.rx-stat[data-stat="overdue"]').toggleClass('is-active', f.overdue)
-            .attr('aria-pressed', f.overdue ? 'true' : 'false');
+        // Karty filtra. Karta „Po terminie" jest WYŁĄCZNA z kartami
+        // statusu: gdy jest włączona, karty statusu są zablokowane
+        // (przygaszone, aria-disabled, tooltip tłumaczy dlaczego; klik
+        // nic nie robi) — ten sam wzorzec co zablokowany kafelek na
+        // /admin/purchase/vendors.
+        const locked = f.overdue;
+        $('.rx-stats--filter .rx-stat[data-stat]').each(function () {
+            const $tile = $(this);
+            const key = $tile.attr('data-stat');
+            const isLate = key === 'overdue';
+            const on = isLate ? f.overdue : queueStatActive(key, f.states);
+            const isLocked = locked && !isLate;
+
+            if ($tile.attr('data-orig-title') === undefined) {
+                $tile.attr('data-orig-title', $tile.attr('title') || '');
+            }
+            const title = isLocked ? LATE_LOCK_TITLE : $tile.attr('data-orig-title');
+            if (title) { $tile.attr('title', title); } else { $tile.removeAttr('title'); }
+
+            $tile.toggleClass('is-active', on && !isLocked)
+                 .toggleClass('is-locked', isLocked)
+                 .attr('aria-pressed', (on && !isLocked) ? 'true' : 'false')
+                 .attr('aria-disabled', isLocked ? 'true' : 'false');
+        });
+
+        // Podpis grupy statusu mówi wprost, że karty są wyłączone.
+        $('[data-status-hint]').text(locked
+            ? 'wyłączone przez „Po terminie"'
+            : 'włącz, aby filtrować');
+    }
+
+    // Karta statusu jest włączona, gdy wybrany jest którykolwiek z jej
+    // statusów (karta „Przyjęcie w toku" obejmuje dwa).
+    function queueStatActive(key, states) {
+        const set = QUEUE_STAT_STATES[key] || [];
+        for (let i = 0; i < set.length; i++) {
+            if (states.indexOf(set[i]) !== -1) return true;
+        }
+        return false;
+    }
+
+    // Przełączenie karty.
+    //
+    // Karta statusu: włączona → zdejmuje swoje statusy z filtra, wyłączona
+    // → dodaje je (brakujące). Wybór pozostałych kart nietknięty, więc kilka
+    // kart może być włączonych naraz, a filtr to suma ich statusów.
+    //
+    // Karta „Po terminie": włączenie czyści wybór statusów (karty statusu
+    // są wtedy wyłączone) — dlatego te dwie osie nie działają razem.
+    function toggleQueueStat(key) {
+        if (key === 'overdue') {
+            const on = !$queueOverdue.is(':checked');
+            $queueOverdue.prop('checked', on);
+            if (on) clearStates();            // wyklucza karty statusu
+            applyQueueFilters();
+            return;
+        }
+        // Karty statusu są zablokowane, gdy włączona jest „Po terminie".
+        if ($queueOverdue.is(':checked')) return;
+        const set = QUEUE_STAT_STATES[key] || [];
+        if (!set.length) return;
+        const current = ($queueStates.val() || []).map(String);
+        const allOn = set.every(function (s) { return current.indexOf(s) !== -1; });
+        let next;
+        if (allOn) {
+            next = current.filter(function (s) { return set.indexOf(s) === -1; });
+        } else {
+            next = current.slice();
+            set.forEach(function (s) {
+                if (next.indexOf(s) === -1) next.push(s);
+            });
+        }
+        setPicker($queueStates, next);
+        applyQueueFilters();
     }
 
     // Dwa przebiegi:
@@ -954,6 +1082,9 @@ $(document).ready(function () {
     function applyQueueFilters() {
         const f = queueFilters();
         syncQueueFilterUi();
+        // Liczniki na kartach zależą od pozostałych filtrów (dostawca,
+        // szukanie) — przeliczamy je przy każdej zmianie filtrów.
+        updateStats();
         if (queueItems.length === 0 && queueData.length === 0) { syncExpandAllBtn(); return; }
 
         const matched = {};        // vg => pozycje po filtrach globalnych
@@ -1201,58 +1332,66 @@ $(document).ready(function () {
         searchOpen = {};
         applyQueueFilters();
     });
-    $queueOverdue.on('change', applyQueueFilters);
+    // ---- Ustawianie filtra statusów (bez zapętlenia) --------------------
+    //
+    // setPicker() wywołuje 'changed.bs.select', a handler potrafi znowu
+    // ustawiać picker (karta „Po terminie" czyści statusy, a ręczna
+    // zmiana w pickerze ma je przywrócić). Bez strażnika wywołania
+    // zapętlają się — klik w „Po terminie" generował 449 zdarzeń
+    // i ~3 s zawieszenia. `statesLock` przerywa rekurencję.
+    let statesLock = false;
+
+    // Czyści wybór statusów (karty statusu są wyłączone, gdy włączone
+    // jest „Po terminie"). Nic nie robi, gdy picker jest już pusty.
+    function clearStates() {
+        const cur = $queueStates.val() || [];
+        if (!cur.length) return;
+        statesLock = true;
+        setPicker($queueStates, []);
+        statesLock = false;
+    }
+
+    // Chip „Tylko po terminie" — to samo wejście co karta „Po terminie":
+    // włączenie czyści wybór statusów (karty statusu są wtedy wyłączone).
+    $queueOverdue.on('change', function () {
+        if ($queueOverdue.is(':checked')) clearStates();
+        applyQueueFilters();
+    });
     $queueVendor.on('changed.bs.select change', applyQueueFilters);
-    $queueStates.on('changed.bs.select change', applyQueueFilters);
+    $queueStates.on('changed.bs.select change', function () {
+        if (statesLock) return;              // wywołanie z clearStates()
+        // Karty statusu są wyłączone, gdy włączone jest „Po terminie" —
+        // ręczna zmiana w pickerze nie może tego obejść.
+        if ($queueOverdue.is(':checked')) clearStates();
+        applyQueueFilters();
+    });
     $refreshBtn.on('click', loadQueue);
     $(document).on('click', '.js-clear-queue-filters', clearQueueFilters);
     $(document).on('click', '.js-queue-retry', loadQueue);
 
-    // Kafelki w nagłówku = skróty do filtrów. Drugi klik zdejmuje filtr.
-    $('.rx-stat').on('click', function () {
-        const kind = $(this).attr('data-stat');
-        const states = $queueStates.val() || [];
-
-        if (kind === 'overdue') {
-            $queueOverdue.prop('checked', !$queueOverdue.is(':checked'));
-        } else if (kind === 'ready') {
-            setPicker($queueStates, sameSet(states, READY_STATES) ? [] : READY_STATES.slice());
-        } else if (kind === 'pending') {
-            setPicker($queueStates, sameSet(states, ['sent']) ? [] : ['sent']);
-        }
-        $('#queueTabLink').tab('show');
-        applyQueueFilters();
+    // Karty filtrujące: klik włącza albo wyłącza własne wiadro filtra
+    // (status albo „po terminie"), a wybór pozostałych kart zostaje.
+    // Kilka kart może być włączonych naraz — filtr jest sumą wiader.
+    $('.rx-stats--filter').on('click', '.rx-stat', function () {
+        toggleQueueStat($(this).attr('data-stat'));
     });
 
     // Wiersz pozycji NIE jest klikalny jako całość — klikalne są numer
     // zamówienia (link do ekranu PO) i menu „⋮" w pasku zamówień.
     // followRowLink() zostaje, bo nadal zasila klik w wierszach HISTORII
-    // przyjęć, gdzie klikalność całego wiersza ma sens (podgląd przyjęcia).
+    // przyjęć, gdzie klikalność całego wiersza ma sens (podgląd dostawy).
 
     // =====================================================================
     // ZAKŁADKA 2 — historia przyjęć
     //
-    // Wiersze NIE renderują się już po stronie PHP — receipts-history.php
-    // (AJAX POST) zwraca 25 rekordów na stronę, a pager kieruje klienta
-    // z powrotem do endpointu z innym `page`. Filtry (search + zakres
-    // dat) wysyłamy do endpointu, żeby SQL filtrował po wszystkich
-    // rekordach, nie tylko po tych aktualnie wyrenderowanych w DOM
-    // (poprzednio filtr był lokalny i przy 25 wierszach w DOM nie
-    // miałoby to sensu).
+    // Wiersze dostaw lecą z delivery-list.php (AJAX POST, stan „posted"),
+    // a filtr (szukajka + zakres dat) działa lokalnie na pobranej
+    // liście — stąd deliveriesAll / deliveriesFiltered.
     // =====================================================================
 
-    const $historyBody   = $('#historyBody');
     const $historySearch = $('#historySearch');
     const $dateFrom      = $('#historyDateFrom');
     const $dateTo        = $('#historyDateTo');
-    const $historyPane   = $('#historyPane');
-    const $historyPager  = $('#historyPagination');
-
-    let historyPage     = 1;
-    let historyPages    = 1;
-    let historyTotal    = 0;
-    let historyLoaded   = false;  // czy któraś strona została już pobrana
-    let historyLoading  = false;  // czy request jest w toku (blokada double-fetch)
 
     function historyFiltersActive() {
         return String($historySearch.val() || '').trim() !== ''
@@ -1260,19 +1399,8 @@ $(document).ready(function () {
             || String($dateTo.val() || '') !== '';
     }
 
-    function historyFiltersParams() {
-        return {
-            search:    String($historySearch.val() || '').trim(),
-            date_from: String($dateFrom.val() || ''),
-            date_to:   String($dateTo.val() || ''),
-            // Dostawy (purchase__delivery) mają własną tabelę powyżej —
-            // tu zostają tylko przyjęcia sprzed dostaw.
-            legacy_only: 1
-        };
-    }
-
     // Serwerowe mirroring helperów rx_fmt_date / rx_fmt_time /
-    // rx_relative_day / rx_initials / rx_fmt_qty (PHP → JS). Formatowanie
+    // rx_relative_day / rx_initials (PHP → JS). Formatowanie
     // widocznych w komórkach, żeby warstwa widoku nie musiała odpytywać
     // PHP o szczegóły. Zasady formatowania pokrywają się 1:1 ze swoimi
     // odpowiednikami w receipts-helpers.php — patrz też kolejka (tamten
@@ -1303,221 +1431,17 @@ $(document).ready(function () {
         }
         return out.toUpperCase();
     }
-    function hxFmtQty(n) {
-        const v = parseFloat(n);
-        if (isNaN(v)) return '—';
-        // toLocaleString PL: ',' dziesiętny + spacje niełamliwe od 10 000,
-        // max 4 miejsca. Rx_fmt_qty tnie zera końcowe i zamienia ',-0'/'-.'
-        // na '0'; tu robimy odpowiednik regexem, żeby wynik pasował 1:1.
-        const s = v.toLocaleString('pl-PL', { maximumFractionDigits: 4 });
-        const trimmed = s
-            .replace(/,0+$/, '')           // 1,2300 → 1,23
-            .replace(/(\.\d*?)0+$/, '$1'); // 1.2300 → 1.23 (styl pl-PL nie używa kropki,
-                                            // ale zostawiamy na wszelki wypadek)
-        return trimmed === '' || trimmed === '-0' ? '0' : trimmed;
-    }
-    function historyEditOrderUrl(poId) {
-        return window.location.origin + ROOT_DIR
-            + '/admin/purchase/documents/edit?id=' + encodeURIComponent(poId) + '&type=po';
-    }
-    function historyViewUrl(id) {
-        return window.location.origin + ROOT_DIR
-            + '/purchase/receipts/view?id=' + encodeURIComponent(id);
-    }
 
-    // Buduje jeden wiersz historii. Klasy, atrybuty data-* i struktura
-    // komórek są 1:1 z wcześniejszym renderem PHP (receipts-view.php,
-    // szablon $r wiersza) — klik-nawigacja (history-row click →
-    // followRowLink → detailUrl), highlight .receipt-row-new (saved),
-    // oraz podgląd „Zobacz" (.view-receipt-btn) zależą od tych
-    // identyfikatorów.
-    function historyRowHtml(r) {
-        const receivedFull = r.receivedAt || '';
-        const receivedDate = receivedFull.substring(0, 10);
-        const relDay = hxRelativeDay(receivedFull);
-        const time   = hxFmtTime(receivedFull);
-        const receiver = r.receivedByName || ('#' + r.receivedBy);
-
-        let docCell = '';
-        if (r.documentNumber) {
-            docCell = '<div class="rx-doc">' + esc(r.documentNumber) + '</div>';
-        } else {
-            docCell = '<div class="rx-doc rx-doc--none"'
-                    + ' title="Zapisany sam nagłówek — numer GRN nadawany jest przy zapisie ilości">'
-                    + 'bez numeru GRN</div>';
-        }
-        docCell += '<div class="rx-sub">ID ' + parseInt(r.id, 10) + '</div>';
-
-        let rawSub = relDay + (relDay && time ? ', ' : '') + time;
-        rawSub = rawSub.trim();
-        const subLabel = rawSub !== '' ? esc(rawSub) : '&nbsp;';
-
-        let poCell;
-        if (r.poNumber) {
-            poCell = '<a class="rx-po-link" href="'
-                   + escAttr(historyEditOrderUrl(r.poId))
-                   + '" title="Otwórz zamówienie">' + esc(r.poNumber) + '</a>';
-        } else {
-            poCell = '<span class="text-muted">#' + parseInt(r.poId, 10) + '</span>';
-        }
-
-        const itemCell = r.itemCount > 0
-            ? '<span class="rx-pill">' + r.itemCount + '</span>'
-            : '<span class="rx-pill rx-pill--empty"'
-              + ' title="Zapisany sam nagłówek dokumentu">bez pozycji</span>';
-
-        return '<tr class="receipt-row" data-id="' + parseInt(r.id, 10) + '"'
-             + ' data-doc="' + escAttr(r.documentNumber || '') + '"'
-             + ' data-received-at="' + escAttr(receivedDate) + '"'
-             + ' data-received-full="' + escAttr(receivedFull) + '">'
-             +   '<td>' + docCell + '</td>'
-             +   '<td class="text-nowrap">'
-             +     '<div class="rx-date-main">' + esc(fmtDate(receivedFull)) + '</div>'
-             +     '<div class="rx-sub">' + subLabel + '</div>'
-             +   '</td>'
-             +   '<td class="text-nowrap">' + poCell + '</td>'
-             +   '<td class="rx-vendor">' + esc(r.vendorName || '—') + '</td>'
-             +   '<td class="rx-num">' + itemCell + '</td>'
-             +   '<td class="rx-num d-none d-md-table-cell">'
-             +       esc(hxFmtQty(r.totalQty))
-             +   '</td>'
-             +   '<td class="d-none d-lg-table-cell">'
-             +     '<span class="rx-person">'
-             +       '<span class="rx-avatar" aria-hidden="true">'
-             +           esc(hxInitials(r.receivedByName))
-             +       '</span>'
-             +       esc(receiver)
-             +     '</span>'
-             +   '</td>'
-             +   '<td class="text-right text-nowrap">'
-             +     '<a class="btn btn-sm rx-btn-quiet view-receipt-btn" href="'
-             +         escAttr(historyViewUrl(r.id))
-             +     '">Zobacz <i class="bi bi-chevron-right rx-go"></i></a>'
-             +   '</td>'
-             + '</tr>';
-    }
-
-    function historyPlaceholderHtml(message) {
-        return '<tr class="rx-history-placeholder" aria-hidden="true">'
-             +   '<td colspan="8" class="text-center text-muted py-4">'
-             +     '<span class="spinner-border spinner-border-sm align-middle" role="status"></span>'
-             +     '<span class="ml-2 align-middle">' + esc(message) + '</span>'
-             +   '</td>'
-             + '</tr>';
-    }
-
-    // Ładowanie strony. Zwraca jqXHR (przydatne dla revealHistoryRow,
-    // gdzie chcemy podświetlić wiersz po zakończeniu requestu). Druga
-    // próba wywołania w trakcie requestu jest ignorowana — podwójne
-    // kliknięcia w pager nie powinny generować zduplikowanych requestów.
-    function loadHistoryPage(page) {
-        if (historyLoading) return $.Deferred().resolve().promise();
-        historyLoading = true;
-
-        const params = Object.assign({
-            page: page,
-            per_page: HISTORY_PER_PAGE
-        }, historyFiltersParams());
-
-        $historyBody.html(historyPlaceholderHtml('Ładowanie…'));
-        $historyPager.empty();
-
-        const req = getAjax('receipts-history.php', params);
-        req.done(function (r) {
-            if (!r || !r.success) {
-                historyFailed((r && r.error) || 'Nie udało się pobrać historii.');
-                return;
-            }
-            renderHistoryPage(r);
-        });
-        req.fail(function (xhr, status) {
-            historyFailed((xhr && xhr.responseJSON && xhr.responseJSON.error)
-                       || 'Błąd komunikacji z serwerem (' + status + ').');
-        });
-        req.always(function () {
-            historyLoading = false;
-        });
-        return req;
-    }
-
-    function historyFailed(message) {
-        $historyBody.empty();
-        $('#receiptsTableWrap').addClass('d-none');
-        $('#receiptsEmptyAlert').removeClass('d-none').html(emptyStateHtml(
-            'bi-exclamation-octagon', 'danger',
-            'Nie udało się wczytać historii',
-            message,
-            '<button type="button" class="btn btn-sm btn-primary js-history-retry">'
-                + '<i class="bi bi-arrow-clockwise"></i> Spróbuj ponownie</button>'
-        ));
-        $historyPager.empty();
-        historyTotal = 0;
-        updateHistoryBadge();
-    }
-
-    function renderHistoryPage(r) {
-        const receipts = r.receipts || [];
-        historyTotal  = r.total || 0;
-        historyPages  = r.pages || 1;
-        historyPage   = r.page || 1;
-        historyLoaded = true;
-
-        if (historyTotal === 0) {
-            $historyBody.empty();
-            $('#receiptsTableWrap').addClass('d-none');
-            const $empty = $('#receiptsEmptyAlert');
-            if (historyFiltersActive()) {
-                $empty.removeClass('d-none').html(emptyStateHtml(
-                    'bi-funnel', '',
-                    'Brak przyjęć dla wybranych filtrów',
-                    'Zmień wyszukiwaną frazę lub zakres dat.',
-                    '<button type="button" class="btn btn-sm rx-btn-quiet js-clear-history-filters">'
-                        + '<i class="bi bi-x-circle"></i> Wyczyść filtry</button>'
-                ));
-            } else {
-                $empty.removeClass('d-none').html(emptyStateHtml(
-                    'bi-archive', '',
-                    'Brak starszych przyjęć',
-                    'Przyjęcia zapisane przed wprowadzeniem dostaw wg faktur pojawiają się tutaj.'
-                ));
-            }
-            $historyPager.empty();
-            // Bez filtrów i bez starszych przyjęć panel byłby pustym szumem.
-            $('#legacyPanel').toggleClass('d-none', !historyFiltersActive());
-            updateHistoryBadge();
-            syncHistoryFilterUi(String($dateFrom.val() || ''), String($dateTo.val() || ''));
-            maybeHighlightSavedReceipt();
-            return;
-        }
-
-        let html = '';
-        receipts.forEach(function (rcpt) { html += historyRowHtml(rcpt); });
-        $historyBody.html(html);
-        $('#receiptsTableWrap').removeClass('d-none');
-        $('#receiptsEmptyAlert').addClass('d-none');
-        $('#legacyPanel').removeClass('d-none');
-
-        renderHistoryPagination(historyTotal);
-        updateHistoryBadge();
-        syncHistoryFilterUi(String($dateFrom.val() || ''), String($dateTo.val() || ''));
-
-        maybeHighlightSavedReceipt();
-    }
-
-    // Licznik zakładki i linijka podsumowania łączą oba źródła:
-    // dostawy wg faktur + starsze przyjęcia wg zamówień.
+    // Licznik zakładki i linijka podsumowania — źródłem jest jedna
+    // tabela: dostawy wg faktur / WZ.
     function updateHistoryBadge() {
         const nd = deliveriesFiltered.length;
-        $('#historyCountBadge').text(nd + historyTotal);
-        $('#legacySecInfo').text(historyTotal > 0 ? '· ' + historyTotal : '');
+        $('#historyCountBadge').text(nd);
 
         const $el = $('#historyFilterSummary');
-        if (nd + historyTotal === 0) { $el.text(''); return; }
+        if (nd === 0) { $el.text(''); return; }
         const parts = [];
         parts.push('<strong>' + nd + '</strong> ' + plural(nd, 'dostawa', 'dostawy', 'dostaw'));
-        if (historyTotal > 0) {
-            parts.push('<strong>' + historyTotal + '</strong> ' + plural(historyTotal, 'starsze przyjęcie', 'starsze przyjęcia', 'starszych przyjęć'));
-        }
         $el.html((historyFiltersActive() ? '<i class="bi bi-funnel-fill"></i> Znaleziono ' : '') + parts.join(' · ') + ' · od najnowszych');
     }
 
@@ -1528,6 +1452,7 @@ $(document).ready(function () {
     let deliveriesShown     = DELIVERIES_PAGE;
     let deliveriesLoaded    = false;
     let deliveriesLoading   = false;
+    let deliveriesTotal     = 0;   // liczba wszystkich dostaw (z endpointu)
 
     function deliveryDay(d) {
         return String(d.received_at || d.posted_at || '').substring(0, 10);
@@ -1582,7 +1507,17 @@ $(document).ready(function () {
         filterDeliveries();
         const $status = $('#deliveriesStatus');
         const $wrap = $('#deliveriesTableWrap');
-        $('#deliveriesSecInfo').text(deliveriesFiltered.length > 0 ? '· ' + deliveriesFiltered.length : '');
+
+        // Linijka przy nagłówku: liczba dostaw po filtrze + liczba
+        // wszystkich (z endpointu), np. „· 25 z 3800".
+        const nd = deliveriesFiltered.length;
+        const total = deliveriesTotal;
+        let secInfo = '';
+        if (nd > 0 || total > 0) {
+            secInfo = '· ' + nd;
+            if (total > nd) secInfo += ' z ' + total;
+        }
+        $('#deliveriesSecInfo').text(secInfo);
 
         if (deliveriesFiltered.length === 0) {
             $wrap.addClass('d-none');
@@ -1613,11 +1548,13 @@ $(document).ready(function () {
             + '<span class="ml-2 align-middle">Ładowanie dostaw…</span></div>');
         return fetchJson('delivery-list.php', { state: 'posted' }).then(function (r) {
             deliveriesAll = r.deliveries || [];
+            deliveriesTotal = r.total || deliveriesAll.length;
             deliveriesLoaded = true;
             deliveriesShown = DELIVERIES_PAGE;
             renderDeliveries();
         }).catch(function (err) {
             deliveriesAll = [];
+            deliveriesTotal = 0;
             $('#deliveriesTableWrap').addClass('d-none');
             $('#deliveriesStatus').removeClass('d-none').html(emptyStateHtml(
                 'bi-exclamation-octagon', 'danger', 'Nie udało się wczytać dostaw', err.message,
@@ -1635,12 +1572,10 @@ $(document).ready(function () {
         followRowLink(e, deliveryUrl(parseInt($(this).attr('data-delivery-id'), 10)));
     });
 
-    // Filtry historii działają na obu tabelach.
+    // Filtry historii działają na tabeli dostaw.
     function reloadHistory() {
-        historyPage = 1;
         deliveriesShown = DELIVERIES_PAGE;
         if (deliveriesLoaded) renderDeliveries();
-        loadHistoryPage(1);
     }
 
     // ---- szkice (delivery-list.php?state=draft) --------------------------
@@ -1749,67 +1684,6 @@ $(document).ready(function () {
         });
     }
 
-    function renderHistoryPagination(total) {
-        $historyPager.empty();
-        if (total === 0) return;
-
-        const first = (historyPage - 1) * HISTORY_PER_PAGE + 1;
-        const last  = Math.min(historyPage * HISTORY_PER_PAGE, total);
-
-        let html = '<div class="rx-pager">'
-                 + '<div class="rx-pager-info">Wyświetlanie <strong>' + first + '–' + last + '</strong> z <strong>'
-                 + total + '</strong> ' + plural(total, 'przyjęcia', 'przyjęć', 'przyjęć') + '</div>';
-
-        if (historyPages > 1) {
-            let items = '';
-            for (let p = 1; p <= historyPages; p++) {
-                items += '<a class="dropdown-item history-page-item' + (p === historyPage ? ' active' : '')
-                       + '" href="#" data-page="' + p + '">Strona ' + p + '</a>';
-            }
-            const atStart = historyPage === 1;
-            const atEnd   = historyPage >= historyPages;
-            html += '<div class="btn-group btn-group-sm rx-pager-nav" role="group" aria-label="Strony historii">'
-                  + '<button type="button" class="btn rx-btn-quiet history-page-btn" data-action="first" title="Pierwsza strona"'
-                  +   (atStart ? ' disabled' : '') + '><i class="bi bi-chevron-double-left"></i></button>'
-                  + '<button type="button" class="btn rx-btn-quiet history-page-btn" data-action="prev" title="Poprzednia strona"'
-                  +   (atStart ? ' disabled' : '') + '><i class="bi bi-chevron-left"></i></button>'
-                  + '<div class="btn-group btn-group-sm dropup">'
-                  +   '<button type="button" class="btn rx-btn-quiet dropdown-toggle rx-pager-current" data-toggle="dropdown">'
-                  +     'Strona ' + historyPage + ' z ' + historyPages + '</button>'
-                  +   '<div class="dropdown-menu dropdown-menu-right rx-pager-menu">' + items + '</div>'
-                  + '</div>'
-                  + '<button type="button" class="btn rx-btn-quiet history-page-btn" data-action="next" title="Następna strona"'
-                  +   (atEnd ? ' disabled' : '') + '><i class="bi bi-chevron-right"></i></button>'
-                  + '<button type="button" class="btn rx-btn-quiet history-page-btn" data-action="last" title="Ostatnia strona"'
-                  +   (atEnd ? ' disabled' : '') + '><i class="bi bi-chevron-double-right"></i></button>'
-                  + '</div>';
-        }
-        html += '</div>';
-        $historyPager.html(html);
-    }
-
-    function goToHistoryPage(page) {
-        loadHistoryPage(page);
-        // Pager stoi pod tabelą — po zmianie strony wracamy na górę listy.
-        const top = $historyPane.offset().top - 16;
-        if ($(window).scrollTop() > top) {
-            $('html, body').animate({ scrollTop: top }, 200);
-        }
-    }
-
-    $(document).on('click', '.history-page-btn', function () {
-        const act = $(this).attr('data-action');
-        if (act === 'first')     goToHistoryPage(1);
-        else if (act === 'prev') goToHistoryPage(Math.max(1, historyPage - 1));
-        else if (act === 'next') goToHistoryPage(Math.min(historyPages, historyPage + 1));
-        else if (act === 'last') goToHistoryPage(historyPages);
-    });
-
-    $(document).on('click', '.history-page-item', function (e) {
-        e.preventDefault();
-        goToHistoryPage(parseInt($(this).attr('data-page'), 10) || 1);
-    });
-
     function clearHistoryFilters() {
         $historySearch.val('');
         $dateFrom.val('');
@@ -1820,7 +1694,6 @@ $(document).ready(function () {
     $historySearch.on('input', reloadHistory);
     $dateFrom.add($dateTo).on('change', reloadHistory);
     $(document).on('click', '.js-clear-history-filters', clearHistoryFilters);
-    $(document).on('click', '.js-history-retry', function () { loadHistoryPage(historyPage); });
 
     $('.rx-seg [data-preset]').on('click', function () {
         const days = parseInt($(this).attr('data-preset'), 10);
@@ -1831,14 +1704,6 @@ $(document).ready(function () {
         }
         $dateTo.val('');
         reloadHistory();
-    });
-
-    // Klik w wiersz historii (poza linkami) → strona szczegółów przyjęcia.
-    // Delegowane na #receiptsTable tbody tr.receipt-row — działa też dla
-    // wierszy wstawionych przez AJAX (których nie było przy inicjalizacji).
-    $(document).on('click', '#receiptsTable tbody tr.receipt-row', function (e) {
-        if ($(e.target).closest('a, button').length) return;
-        followRowLink(e, detailUrl(parseInt($(this).attr('data-id'), 10)));
     });
 
     // =====================================================================
@@ -1859,7 +1724,6 @@ $(document).ready(function () {
         // od razu, a tylko wtedy, gdy operator faktycznie zerka w historię.
         if (e.target.id === 'historyTabLink') {
             if (!deliveriesLoaded && !deliveriesLoading) loadDeliveries();
-            if (!historyLoaded && !historyLoading) loadHistoryPage(historyPage);
         }
     });
 
@@ -1867,22 +1731,7 @@ $(document).ready(function () {
     // Start
     // =====================================================================
 
-    // Hoistowane „saved" — podświetlenie wiersza leci dopiero po
-    // doczytaniu historii (komunikatu nie chcemy stracić, on leci
-    // od razu w init niżej).
-    let savedDoc        = null;
-    let savedN          = 0;
-    let savedPo         = null;
-    let savedState      = null;
-    let savedAlertShown = false;  // czy alert „zapisano" już wyświetlono
-    let savedHighlighted = false; // czy .receipt-row-new już nałożono
-
     const successParams = new URLSearchParams(window.location.search);
-    savedDoc   = successParams.get('saved');
-    savedN     = parseInt(successParams.get('n'), 10);
-    savedPo    = successParams.get('po');
-    savedState = successParams.get('po_state');
-    if (isNaN(savedN)) savedN = 0;
 
     if (window.location.hash === HISTORY_HASH) {
         $('#historyTabLink').tab('show');
@@ -1900,79 +1749,13 @@ $(document).ready(function () {
     // odpali się po przełączeniu zakładki. Jeśli nie — pierwsze
     // wejście nie ciągnie nic z bazy dla zakładki historii.
 
-    // ---- powrót z formularza przyjęcia (?saved=…) ----------------------
-    //
-    // Komunikat sukcesu leci zawsze (niezależnie od tego, czy
-    // użytkownik zajrzy do historii). Link „Pokaż w historii"
-    // natomiast kieruje do zakładki i czyści filtry (revealHistoryRow) —
-    // jego obsługa wymaga już doczytanej strony, więc musi poczekać
-    // na pierwszy loadHistoryPage (patrz maybeHighlightSavedReceipt
-    // w renderHistoryPage). Podświetlenie wiersza klasą
-    // .receipt-row-new nakładane jest identycznie jak poprzednio —
-    // po znalezieniu wiersza w DOM (po data-doc).
-
-    if (savedDoc !== null && !savedAlertShown) {
-        // Pusty `?saved=` też pokazuje alert (z placeholder-em „—” w numerze
-        // GRN) — zachowanie identyczne z wersją sprzed refaktora.
-        const displayDoc = (savedDoc && savedDoc !== '') ? savedDoc : '—';
-        const msg = '<i class="bi bi-check-circle-fill"></i> '
-                  + 'Zapisano przyjęcie <strong>' + esc(displayDoc) + '</strong> — przyjęto '
-                  + savedN + ' ' + plural(savedN, 'pozycję', 'pozycje', 'pozycji') + '.'
-                  + (savedPo
-                      ? ' Zamówienie <strong>' + esc(savedPo) + '</strong>'
-                        + (savedState ? ' ma teraz status „' + esc(stateMeta(savedState).label) + '".' : '.')
-                      : '')
-                  + '<span class="rx-alert-actions">'
-                  +   '<a class="alert-link js-reveal-new-receipt" href="' + HISTORY_HASH + '">Pokaż w historii</a>'
-                  + '</span>';
-        showAlert(msg, 'success');
-        savedAlertShown = true;
-
-        // Bez query stringu w pasku adresu F5 nie pokaże komunikatu ponownie.
-        if (window.history && window.history.replaceState) {
-            window.history.replaceState({}, '', window.location.pathname + window.location.hash);
-        }
-    }
-
-    // Po wyrenderowaniu strony przez AJAX szukamy wiersza po data-doc
-    // i nakładamy klasę .receipt-row-new. Wywoływane z renderHistoryPage.
-    // Link „Zobacz przyjęcie" (z URL do strony szczegółów) dodajemy
-    // dopiero gdy wiersz faktycznie siedzi w DOM, bo dopiero wtedy
-    // znamy jego id.
-    function maybeHighlightSavedReceipt() {
-        if (savedDoc === null || savedDoc === '' || savedHighlighted) return;
-        if (historyTotal === 0) return;
-        const $newRow = $('#receiptsTable tbody tr.receipt-row').filter(function () {
-            return $(this).attr('data-doc') === savedDoc;
-        }).first();
-        if (!$newRow.length) return;
-        $newRow.addClass('receipt-row-new');
-        savedHighlighted = true;
-
-        // Doklejamy „Zobacz przyjęcie" obok „Pokaż w historii" w alercie
-        // — tu już mamy id z data-id wiersza, więc URL budujemy śmiało.
-        const $actions = $('#alertContainer .rx-alert-actions').first();
-        if ($actions.length && $actions.find('.js-view-new-receipt').length === 0) {
-            $actions.prepend(
-                '<a class="alert-link js-view-new-receipt" href="'
-                + escAttr(detailUrl($newRow.attr('data-id')))
-                + '">Zobacz przyjęcie</a>'
-            );
-        }
-    }
-
-    $(document).on('click', '.js-reveal-new-receipt', function (e) {
-        e.preventDefault();
-        revealHistoryRow();
-    });
-
     // ---- powrót po zamknięciu PO z formularza przyjęcia (?closed=…) -----
     //
-    // Osobna gałąź od powyższego „saved" — tu NIE było zapisu przyjęcia,
-    // więc nie ma wiersza do podświetlenia ani linku „Pokaż w historii".
-    // Operator wybrał stan wynikowy (received/cancelled) w oknie
-    // „Zamknij zamówienie" na formularzu. Komunikat krótszy, bez akcji,
-    // ale ten sam schemat strip-query po wyrenderowaniu.
+    // Tu NIE było zapisu przyjęcia, więc nie ma wiersza do
+    // podświetlenia ani linku „Pokaż w historii". Operator wybrał stan
+    // wynikowy (received/cancelled) w oknie „Zamknij zamówienie" na
+    // formularzu. Komunikat krótszy, bez akcji, ale ten sam schemat
+    // strip-query po wyrenderowaniu.
 
     const closedState = successParams.get('closed');
     if (closedState !== null && closedState !== '') {
@@ -1988,43 +1771,6 @@ $(document).ready(function () {
 
         if (window.history && window.history.replaceState) {
             window.history.replaceState({}, '', window.location.pathname + window.location.hash);
-        }
-    }
-
-    // Przejście do konkretnego wiersza historii: czyści filtry, przeładowuje
-    // stronę 1 i po doczytaniu szuka wiersza po data-doc, scrolluje do niego
-    // i nakłada .receipt-row-new. Najnowsze przyjęcie zawsze ląduje na
-    // stronie 1 po wyczyszczeniu filtrów — patrz receipts-history.php
-    // (ORDER BY received_at DESC, id DESC), więc „Pokaż w historii"
-    // z powrotu z formularza zawsze znajdzie wiersz po jednym fetchu.
-    function revealHistoryRow() {
-        if (savedDoc === null || savedDoc === '') return;
-        $historySearch.val('');
-        $dateFrom.val('');
-        $dateTo.val('');
-        historyPage = 1;
-        savedHighlighted = false;  // resetujemy, bo clear filtrów to świeży render
-
-        const scrollToRow = function () {
-            const $fresh = $('#receiptsTable tbody tr.receipt-row').filter(function () {
-                return $(this).attr('data-doc') === savedDoc;
-            }).first();
-            if (!$fresh.length) return;
-            $fresh.removeClass('receipt-row-new');
-            void $fresh[0].offsetWidth; // restart animacji
-            $fresh.addClass('receipt-row-new');
-            $('html, body').animate({ scrollTop: $fresh.offset().top - 120 }, 300);
-        };
-
-        const fetchAndShow = function () {
-            loadHistoryPage(1).done(scrollToRow);
-        };
-
-        if ($historyPane.hasClass('active')) {
-            fetchAndShow();
-        } else {
-            $historyPane.one('shown.bs.tab', fetchAndShow);
-            $('#historyTabLink').tab('show');
         }
     }
 });

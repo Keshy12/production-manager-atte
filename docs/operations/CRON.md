@@ -526,6 +526,35 @@ Manual — one-shot. **Dry-run by default**, `--execute` applies the fix.
 
 ---
 
+## Job 11 - `migrate-legacy-receipts-to-deliveries.php`
+
+**File:** `src/cron/migrate-legacy-receipts-to-deliveries.php`
+
+### Purpose
+One-shot CLI migration that gives every **legacy** reception (`purchase__order_receipt.delivery_id IS NULL`) a synthetic `purchase__delivery` document, so the whole reception history appears in the new "Dostawy wg faktur / WZ" list and the legacy panel can be retired.
+
+The receipt tables are **not** dropped — they stay the per-PO projection of the new flow (`postDelivery()` writes one `purchase__order_receipt` per touched PO plus one `purchase__order_receipt_item` per allocation). This script only fills in the missing document layer and back-links the two bridge columns.
+
+### Trigger / Schedule
+Manual — one-shot. **Dry-run by default**, `--execute` applies the migration.
+
+### Behaviour
+- Groups legacy receipts by `(vendor_id, document_number)` → one `purchase__delivery` per group (`state='posted'`, `document_type='invoice'` unless `--document-type=` says otherwise).
+- One `purchase__delivery_line` per `purchase__order_receipt_item`, one `purchase__delivery_allocation` per item.
+- Back-links `purchase__order_receipt.delivery_id` and `purchase__order_receipt_item.delivery_allocation_id`.
+- Commits in chunks of 500 deliveries; **idempotent** — it only touches receipts with `delivery_id IS NULL`, so a second run (or a resume after a crash) is a no-op for finished work.
+- Known limitations of migrated rows: `vendor_document_number` holds the legacy **GRN** number (the old data has no invoice/WZ number), and `transfer_group_id` / `inventory_parts_id` are NULL (the legacy receipts created no transfer group and no matching `inventory__parts` row) → a migrated delivery cannot be cancelled/reversed.
+
+### Locks
+- **Lock file:** `public_html/var/locks/migrate_legacy_receipts_to_deliveries.lock`.
+
+### Side Effects
+- **DB writes (LIVE only):** `purchase__delivery`, `purchase__delivery_line`, `purchase__delivery_allocation`, plus the two bridge columns on `purchase__order_receipt(_item)`.
+- **Does not touch:** `purchase__order_item` (Job 10 owns that), `purchase__order.state`, `inventory__*`, `purchase__number_counter` (the `grn` sequence is shared with the new flow).
+- **Daily log:** `public_html/var/logs/migrate-legacy-receipts-to-deliveries-YYYY-MM-DD.log`.
+
+---
+
 ## Quick Reference Table
 
 | Job | Lock file | DB writes | Google Sheets | Unique behaviour |
@@ -540,6 +569,7 @@ Manual — one-shot. **Dry-run by default**, `--execute` applies the fix.
 | `deactivate-empty-vendors` | *(none)* | `list__vendor.isActive`, `list__vendor.comment` | — | One-shot catalogue clean-up; dry-run by default; never overwrites a comment |
 | `migrate-purchase-delivery-schema` | *(none)* | `purchase__delivery*`, `purchase__order_receipt(_item)`, `ref__transfer_group_types`, `purchase__order.state` (legacy cleanup) | — | One-shot, idempotent, `--dry-run`; schema for invoice-driven reception + legacy `in_progress` cleanup |
 | `fix-order-item-quantity-received` | `fix_order_item_quantity_received.lock` | `purchase__order_item.quantity_received` | — | One-shot counter repair (2× bug from the Sheets importer); dry-run by default; PO state untouched |
+| `migrate-legacy-receipts-to-deliveries` | `migrate_legacy_receipts_to_deliveries.lock` | `purchase__delivery*`, `purchase__order_receipt.delivery_id`, `purchase__order_receipt_item.delivery_allocation_id` | — | One-shot, idempotent, dry-run by default; back-links legacy receipts to synthetic deliveries |
 
 **Spreadsheet IDs:**
 - (1) `1rV1rbLXDdsOxT49sgJNm1Aicldg8ZvBdQo9yaX314QI` — used by `warehouse-data-gs-upload`

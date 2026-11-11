@@ -16,6 +16,15 @@ class DeliveryRepository {
         'default_sub_magazine_id', 'received_at', 'comment',
     ];
 
+    /**
+     * Twardy limit wierszy w listForUi(). Po podłączeniu starszych przyjęć
+     * (purchase__order_receipt → purchase__delivery, 2026-11-11) w tabeli
+     * dostaw jest ~3 800 zatwierdzonych pozycji, a filtr zakładki historii
+     * działa po stronie klienta — endpoint musi dostać całą listę, bo
+     * inaczej wyszukiwanie milcząco pomijałoby większość dostaw.
+     */
+    public const UI_LIST_MAX = 5000;
+
     public function __construct(MsaDB $MsaDB){
         $this->MsaDB = $MsaDB;
     }
@@ -124,41 +133,69 @@ class DeliveryRepository {
     }
 
     /**
+     * Warunek i sortowanie dla stanu listy UI — jedno źródło prawdy dla
+     * listForUi() i countForUi().
+     *
+     * @return array{0: string, 1: string} [WHERE, ORDER BY]
+     */
+    private function uiStateSql(string $state): array {
+        if ($state === 'draft') {
+            return ["d.state = 'draft'", "d.updated_at DESC, d.id DESC"];
+        }
+        if ($state === 'posted') {
+            return ["d.state IN ('posted','cancelled')", "COALESCE(d.received_at, d.created_at) DESC, d.id DESC"];
+        }
+        return ["1=1", "COALESCE(d.posted_at, d.updated_at) DESC, d.id DESC"];
+    }
+
+    /**
+     * Liczba dostaw w danym stanie — odpowiada filter listForUi().
+     * Klient filtruje listę po swojej stronie, więc potrzebuje też łącznej
+     * liczby wierszy.
+     */
+    public function countForUi(string $state): int {
+        [$where] = $this->uiStateSql($state);
+        $stmt = $this->MsaDB->db->prepare(
+            "SELECT COUNT(*) FROM `purchase__delivery` d WHERE {$where}"
+        );
+        $stmt->execute();
+        return (int)$stmt->fetchColumn();
+    }
+
+    /**
      * Lista dostaw dla UI (zakładki Robocze / Historia) — płaskie wiersze
      * z liczbą pozycji i numerami powiązanych PO (z przydziałów).
      *
      * @param string $state 'draft' | 'posted' (zaksięgowane + anulowane) | 'all'
-     * @param int    $limit maks. liczba wierszy (1–500)
+     * @param int    $limit maks. liczba wierszy (1–UI_LIST_MAX)
      * @return array<int, array<string, mixed>>
      */
     public function listForUi(string $state, int $limit = 200): array {
-        $limit = max(1, min(500, $limit));
-        if ($state === 'draft') {
-            $where = "d.state = 'draft'";
-            $order = "d.updated_at DESC, d.id DESC";
-        } elseif ($state === 'posted') {
-            $where = "d.state IN ('posted','cancelled')";
-            $order = "COALESCE(d.received_at, d.created_at) DESC, d.id DESC";
-        } else {
-            $where = "1=1";
-            $order = "COALESCE(d.posted_at, d.updated_at) DESC, d.id DESC";
-        }
+        $limit = max(1, min(self::UI_LIST_MAX, $limit));
+        [$where, $order] = $this->uiStateSql($state);
+        // Jedno przejście JOIN + GROUP BY zamiast dwóch podzapytań
+        // skorelowanych na wiersz. Po podłączeniu ~3 800 starszych dostaw
+        // wariant z podzapytaniami kosztował 25 s na samo zapytanie;
+        // ten sam wynik (zweryfikowany: 0 różnic w line_count / po_numbers
+        // na wszystkich 3 773 dostawach) powstaje w ~100 ms.
         $stmt = $this->MsaDB->db->prepare(
             "SELECT d.id, d.vendor_id, v.name AS vendor_name, d.state, d.document_type,
                     d.vendor_document_number, d.document_date, d.grn_number, d.received_at,
                     d.created_at, d.posted_at,
                     CONCAT(u.name, ' ', u.surname) AS created_by_name,
-                    (SELECT COUNT(*) FROM `purchase__delivery_line` l WHERE l.delivery_id = d.id) AS line_count,
-                    (SELECT GROUP_CONCAT(DISTINCT po.po_number ORDER BY po.po_number SEPARATOR '||')
-                       FROM `purchase__delivery_line` l
-                       JOIN `purchase__delivery_allocation` a ON a.delivery_line_id = l.id
-                       JOIN `purchase__order_item` oi ON oi.id = a.po_item_id
-                       JOIN `purchase__order` po ON po.id = oi.po_id
-                      WHERE l.delivery_id = d.id) AS po_numbers
+                    COUNT(DISTINCT l.id) AS line_count,
+                    GROUP_CONCAT(DISTINCT po.po_number ORDER BY po.po_number SEPARATOR '||') AS po_numbers
                FROM `purchase__delivery` d
                LEFT JOIN `list__vendor` v ON d.vendor_id = v.id
                LEFT JOIN `user` u ON d.created_by = u.user_id
+               LEFT JOIN `purchase__delivery_line` l ON l.delivery_id = d.id
+               LEFT JOIN `purchase__delivery_allocation` a ON a.delivery_line_id = l.id
+               LEFT JOIN `purchase__order_item` oi ON oi.id = a.po_item_id
+               LEFT JOIN `purchase__order` po ON po.id = oi.po_id
               WHERE {$where}
+              GROUP BY d.id, d.vendor_id, v.name, d.state, d.document_type,
+                       d.vendor_document_number, d.document_date, d.grn_number, d.received_at,
+                       d.created_at, d.posted_at, u.name, u.surname
               ORDER BY {$order}
               LIMIT {$limit}"
         );

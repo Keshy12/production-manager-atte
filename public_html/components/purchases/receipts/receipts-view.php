@@ -2,7 +2,12 @@
 /**
  * Przyjęcia towaru — /purchase/receipts.
  *
- * Lista w trzech zakładkach:
+ * Lista w trzech zakładkach (w kolejności na ekranie; domyślna jest
+ * pierwsza — „Robocze"):
+ *   „Robocze"          — szkice przyjęć (delivery-list.php?state=draft),
+ *                        „Kontynuuj" wznawia je na stronie przyjęcia.
+ *                        To zakładka domyślna — pracownik, który przerwał
+ *                        odbiór, wraca tu w pierwszej kolejności.
  *   „Do przyjęcia"     — kolejka POZYCJI czekających na towar,
  *                        pogrupowana wg DOSTAWCY. Karta dostawcy jest
  *                        domyślnie zwinięta i pokazuje tylko nazwę,
@@ -12,21 +17,22 @@
  *                        otwartych pozycji wg terminu. Jedna akcja na
  *                        dostawcę: „Przyjmij dostawę"
  *                        (/purchase/receipts/new?vendor_id=N —
- *                        delivery-page.php). Dane z receipts-queue.php,
- *   „Robocze"          — szkice przyjęć (delivery-list.php?state=draft),
- *                        „Kontynuuj" wznawia je na stronie przyjęcia,
+ *                        delivery-page.php). Dane z receipts-queue.php.
+ *                        Na górze zakładki: karty filtrujące (status
+ *                        zamówienia) — każda karta to przełącznik filtra
+ *                        z widocznym przełącznikiem wł./wył., kilka kart
+ *                        może być włączonych naraz. Ten sam wzorzec co
+ *                        /purchase/documents (patrz documents-view.js →
+ *                        toggleTile).
  *   „Historia przyjęć" — zatwierdzone dostawy (delivery-list.php?
- *                        state=posted) oraz, niżej, starsze przyjęcia
- *                        „per zamówienie" bez dostawy (legacy).
- *                        Wiersze legacy NIE są już
- *                        renderowane po stronie PHP — receipts-history.php
- *                        (AJAX) zwraca jedną stronę (25 wierszy), JS
- *                        dokłada kolejne po kliknięciu w pager. Przed
- *                        refaktorem ta zakładka emitowała 3 700+
- *                        wierszy inline (~9.5 MB) przy każdym wejściu
- *                        na stronę — teraz wiersze lecą 25 na raz,
- *                        a pierwsza strona doczytuje się dopiero po
- *                        aktywacji zakładki.
+ *                        state=posted). Wiersze renderuje JS po
+ *                        pobraniu listy (AJAX, POST), filtr (szukajka
+ *                        + zakres dat) działa po stronie klienta.
+ *                        Starsze przyjęcia „per zamówienie" (bez
+ *                        dostawy) zostały podłączone do dostaw
+ *                        (purchase__delivery), więc osobna tabela
+ *                        z serwerową paginacją (receipts-history.php)
+ *                        nie jest już potrzebna.
  *
  * Nawigacja:
  *   - przyjęcie dostawy: /purchase/receipts/new[?vendor_id=N|?delivery_id=N]
@@ -40,11 +46,6 @@
  *   - zakładka historii ma adres /purchase/receipts#historia, więc
  *     „Wróć" ze strony szczegółów ląduje od razu w historii.
  *
- * Po zapisie formularz przyjęcia wraca tu z
- *   ?saved=<doc>&n=<items>&po=<po>&po_state=<state>
- * a receipts-view.js pokazuje komunikat sukcesu i podświetla nowy wiersz
- * historii (klasa .receipt-row-new — wiersz szukany po data-doc).
- *
  * Wygląd: receipts-ui.css (wspólny z receipt-view.php). receipts.css
  * zostaje dla formularza przyjęcia.
  */
@@ -56,8 +57,8 @@ if(!isset($_SESSION['isAdmin']) || $_SESSION['isAdmin'] !== true) {
 
 require_once __DIR__ . '/receipts-helpers.php';
 
-// Widok NIE odpytuje bazy dla zakładki historii — wiersze latają przez
-// POST receipts-history.php, paginacja/filtrowanie są po stronie JS.
+// Widok NIE odpytuje bazy dla zakładki historii — wiersze lecą przez
+// POST delivery-list.php (stan „posted"), filtrowanie jest po stronie JS.
 // (Klasy OrderReceipt / OrderReceiptRepository ładuje sam endpoint AJAX.)
 
 // Współdzielony modal „Zamknij zamówienie" + (na tej stronie) prosty
@@ -81,7 +82,7 @@ include __DIR__ . '/close-po-modal.php';
 
 <div class="rx-page w-75" id="receiptsListView" data-new-url="<?= htmlspecialchars('http://' . BASEURL . '/purchase/receipts/new', ENT_QUOTES) ?>">
 
-    <!-- ===== Nagłówek strony + liczniki kolejki ===== -->
+    <!-- ===== Nagłówek strony ===== -->
     <header class="rx-head">
         <div class="rx-head-main">
             <div class="rx-eyebrow"><i class="bi bi-box-arrow-in-down"></i> Zamówienia komponentów</div>
@@ -98,32 +99,10 @@ include __DIR__ . '/close-po-modal.php';
             </div>
         </div>
 
-        <!-- Liczniki są jednocześnie skrótami do filtrów kolejki.
-             Wartości wypełnia JS po wczytaniu receipts-queue.php. -->
-        <div class="rx-stats" role="group" aria-label="Podsumowanie kolejki">
-            <button type="button" class="rx-stat rx-stat--ready" data-stat="ready"
-                    title="Pokaż zamówienia gotowe do przyjęcia">
-                <span class="rx-stat-value" id="statReady">–</span>
-                <span class="rx-stat-label">Gotowe do przyjęcia</span>
-                <span class="rx-stat-sub">potwierdzone przez dostawcę</span>
-            </button>
-            <!-- „Po terminie" liczy ZAMÓWIENIA, które mają co najmniej jedną
-                 otwartą pozycję po terminie (receipts-queue.php → lateLines).
-                 Podpis pod wartością pokazuje, ile to łącznie pozycji i jak
-                 długie jest największe spóźnienie. -->
-            <button type="button" class="rx-stat rx-stat--overdue" data-stat="overdue"
-                    title="Pokaż tylko zamówienia z pozycjami po terminie">
-                <span class="rx-stat-value" id="statOverdue">–</span>
-                <span class="rx-stat-label">Zamówienia po terminie</span>
-                <span class="rx-stat-sub" id="statOverdueSub">&nbsp;</span>
-            </button>
-            <button type="button" class="rx-stat rx-stat--pending" data-stat="pending"
-                    title="Pokaż zamówienia czekające na potwierdzenie dostawcy">
-                <span class="rx-stat-value" id="statPending">–</span>
-                <span class="rx-stat-label">Czeka na potwierdzenie</span>
-                <span class="rx-stat-sub">wysłane, bez odpowiedzi</span>
-            </button>
-        </div>
+        <!-- Liczniki kolejki NIE są tutaj — karty filtrujące (przełączniki
+             statusu) stoją w zakładce „Do przyjęcia", tuż nad paskiem
+             filtrów. Liczbę zamówień w kolejce widać z każdej zakładki
+             w badge'u „Do przyjęcia". -->
     </header>
 
     <div id="alertContainer" class="rx-alerts"></div>
@@ -131,17 +110,17 @@ include __DIR__ . '/close-po-modal.php';
     <!-- ===== Zakładki ===== -->
     <ul class="nav rx-tabs" id="receiptsTabs" role="tablist">
         <li class="nav-item">
-            <a class="nav-link active" id="queueTabLink" data-toggle="tab"
-               href="#queuePane" role="tab" aria-controls="queuePane" aria-selected="true">
-                <i class="bi bi-inbox"></i> Do przyjęcia
-                <span class="rx-count" id="queueCountBadge">…</span>
+            <a class="nav-link active" id="draftsTabLink" data-toggle="tab"
+               href="#draftsPane" role="tab" aria-controls="draftsPane" aria-selected="true">
+                <i class="bi bi-pencil-square"></i> Robocze
+                <span class="rx-count" id="draftsCountBadge">…</span>
             </a>
         </li>
         <li class="nav-item">
-            <a class="nav-link" id="draftsTabLink" data-toggle="tab"
-               href="#draftsPane" role="tab" aria-controls="draftsPane" aria-selected="false">
-                <i class="bi bi-pencil-square"></i> Robocze
-                <span class="rx-count" id="draftsCountBadge">…</span>
+            <a class="nav-link" id="queueTabLink" data-toggle="tab"
+               href="#queuePane" role="tab" aria-controls="queuePane" aria-selected="false">
+                <i class="bi bi-inbox"></i> Do przyjęcia
+                <span class="rx-count" id="queueCountBadge">…</span>
             </a>
         </li>
         <li class="nav-item">
@@ -155,8 +134,110 @@ include __DIR__ . '/close-po-modal.php';
 
     <div class="tab-content">
 
-        <!-- ================= ZAKŁADKA 1: kolejka ================= -->
-        <div class="tab-pane fade show active" id="queuePane" role="tabpanel" aria-labelledby="queueTabLink">
+        <!-- ================= ZAKŁADKA 1: robocze ================= -->
+        <div class="tab-pane fade show active" id="draftsPane" role="tabpanel" aria-labelledby="draftsTabLink">
+
+            <div class="rx-filterbar">
+                <span id="draftsSummary">Wczytywanie szkiców…</span>
+                <a class="btn btn-sm btn-primary dv-new-btn" href="<?= htmlspecialchars('http://' . BASEURL . '/purchase/receipts/new', ENT_QUOTES) ?>">
+                    <i class="bi bi-plus-lg"></i> Nowe przyjęcie
+                </a>
+            </div>
+
+            <div class="rx-panel">
+                <div id="draftsStatus" aria-live="polite"></div>
+                <div class="table-responsive d-none" id="draftsTableWrap">
+                    <table class="table rx-table mb-0" id="draftsTable">
+                        <thead>
+                        <tr>
+                            <th scope="col">Dokument dostawcy</th>
+                            <th scope="col">Dostawca</th>
+                            <th scope="col">Zamówienia</th>
+                            <th scope="col" class="text-right">Pozycje</th>
+                            <th scope="col" class="d-none d-lg-table-cell">Założył</th>
+                            <th scope="col" class="text-right"><span class="sr-only">Akcje</span></th>
+                        </tr>
+                        </thead>
+                        <tbody id="draftsBody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= ZAKŁADKA 2: kolejka ================= -->
+        <div class="tab-pane fade" id="queuePane" role="tabpanel" aria-labelledby="queueTabLink">
+
+            <!-- ===== Karty filtrujące =====
+                 Dwie grupy, bo to dwa różne wymiary filtra — ten sam
+                 wzorzec co dwie grupy kafelków na /admin/purchase/vendors
+                 (tam: „Status" z zasadą „co najmniej jeden" i osobna
+                 grupa niezależnych kafelków).
+
+                   1. Status zamówienia — Wysłane / Potwierdzone /
+                      Przyjęcie w toku: karta to PRZEŁĄCZNIK filtra
+                      statusu z widocznym przełącznikiem w prawym górnym
+                      rogu (rysowany w CSS). Kilka kart może być
+                      włączonych naraz — filtr statusu jest wtedy sumą
+                      ich statusów, wybór pozostałych kart zostaje.
+                   2. Termin — Po terminie: OSOBNA oś filtra, WYŁĄCZNA
+                      z kartami statusu. Włączenie czyści wybór statusów
+                      i blokuje karty statusu (przygaszone + tooltip) —
+                      dlatego podpis grupy mówi wprost, że są wyłączone.
+
+                 Karta „Po terminie" steruje tym samym przełącznikiem
+                 „Tylko po terminie" co pasek filtrów (oba to jedno i to
+                 samo wejście).
+
+                 Liczniki liczy JS z pobranej kolejki (receipts-queue.php):
+                 każda karta pokazuje, ile zamówień zostało widać po
+                 włączeniu TEJ karty (pozostałe filtry — dostawca,
+                 szukanie — działają normalnie). -->
+            <div class="rx-stat-groups">
+
+                <div class="rx-stat-group rx-stat-group--status">
+                    <div class="rx-stat-group-head">
+                        <span class="rx-stat-group-label">Status zamówienia</span>
+                        <span class="rx-stat-group-hint" data-status-hint>włącz, aby filtrować</span>
+                    </div>
+
+                    <div class="rx-stats rx-stats--filter" role="group" aria-label="Filtr statusu zamówienia">
+                        <button type="button" class="rx-stat rx-stat--sent" data-stat="sent" aria-pressed="false"
+                                title="Zamówienia wysłane do dostawcy — czekają na potwierdzenie">
+                            <span class="rx-stat-value" data-stat-value>–</span>
+                            <span class="rx-stat-label">Wysłane</span>
+                            <span class="rx-stat-sub">czeka na potwierdzenie</span>
+                        </button>
+                        <button type="button" class="rx-stat rx-stat--confirmed" data-stat="confirmed" aria-pressed="false"
+                                title="Zamówienia potwierdzone przez dostawcę — gotowe do przyjęcia">
+                            <span class="rx-stat-value" data-stat-value>–</span>
+                            <span class="rx-stat-label">Potwierdzone</span>
+                            <span class="rx-stat-sub">gotowe do przyjęcia</span>
+                        </button>
+                        <button type="button" class="rx-stat rx-stat--in_progress" data-stat="in_progress" aria-pressed="false"
+                                title="Zamówienia z odbiorem w toku — część towaru już przyjęta">
+                            <span class="rx-stat-value" data-stat-value>–</span>
+                            <span class="rx-stat-label">Przyjęcie w toku</span>
+                            <span class="rx-stat-sub">częściowo odebrane</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="rx-stat-group rx-stat-group--late">
+                    <div class="rx-stat-group-head">
+                        <span class="rx-stat-group-label">Termin</span>
+                        <span class="rx-stat-group-hint">wyłącza karty statusu</span>
+                    </div>
+
+                    <div class="rx-stats rx-stats--filter" role="group" aria-label="Filtr terminu dostawy">
+                        <button type="button" class="rx-stat rx-stat--overdue" data-stat="overdue" aria-pressed="false"
+                                title="Zamówienia z otwartymi pozycjami po terminie dostawy — włączenie wyłącza karty statusu">
+                            <span class="rx-stat-value" data-stat-value>–</span>
+                            <span class="rx-stat-label">Po terminie</span>
+                            <span class="rx-stat-sub" data-stat-sub>&nbsp;</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
 
             <div class="rx-toolbar" role="search">
                 <div class="rx-search">
@@ -204,7 +285,7 @@ include __DIR__ . '/close-po-modal.php';
 
                 <input type="checkbox" class="rx-chip-input" id="queueOverdueOnly">
                 <label class="rx-chip rx-chip--danger" for="queueOverdueOnly"
-                       title="Tylko pozycje, których termin dostawy już minął">
+                       title="Tylko pozycje, których termin dostawy już minął — tryb wyłączny: zdejmuje karty filtra">
                     <i class="bi bi-exclamation-triangle rx-chip-off" aria-hidden="true"></i><i class="bi bi-exclamation-triangle-fill rx-chip-on" aria-hidden="true"></i> Tylko po terminie
                 </label>
 
@@ -242,36 +323,6 @@ include __DIR__ . '/close-po-modal.php';
                      itemsTableHtml). Zwinięta lista to same karty. -->
                 <div id="queueTableWrap" class="d-none dv-byvendor vq-queue">
                     <div id="queueBody" class="rx-qlist dv-qlist"></div>
-                </div>
-            </div>
-        </div>
-
-        <!-- ================= ZAKŁADKA 2: robocze ================= -->
-        <div class="tab-pane fade" id="draftsPane" role="tabpanel" aria-labelledby="draftsTabLink">
-
-            <div class="rx-filterbar">
-                <span id="draftsSummary">Wczytywanie szkiców…</span>
-                <a class="btn btn-sm btn-primary dv-new-btn" href="<?= htmlspecialchars('http://' . BASEURL . '/purchase/receipts/new', ENT_QUOTES) ?>">
-                    <i class="bi bi-plus-lg"></i> Nowe przyjęcie
-                </a>
-            </div>
-
-            <div class="rx-panel">
-                <div id="draftsStatus" aria-live="polite"></div>
-                <div class="table-responsive d-none" id="draftsTableWrap">
-                    <table class="table rx-table mb-0" id="draftsTable">
-                        <thead>
-                        <tr>
-                            <th scope="col">Dokument dostawcy</th>
-                            <th scope="col">Dostawca</th>
-                            <th scope="col">Zamówienia</th>
-                            <th scope="col" class="text-right">Pozycje</th>
-                            <th scope="col" class="d-none d-lg-table-cell">Założył</th>
-                            <th scope="col" class="text-right"><span class="sr-only">Akcje</span></th>
-                        </tr>
-                        </thead>
-                        <tbody id="draftsBody"></tbody>
-                    </table>
                 </div>
             </div>
         </div>
@@ -334,48 +385,6 @@ include __DIR__ . '/close-po-modal.php';
                     </div>
                 </div>
             </div>
-
-            <!-- Starsze przyjęcia „per zamówienie" (bez dostawy) — dotychczasowa
-                 tabela z paginacją po stronie serwera. -->
-            <div class="rx-panel dv-legacy" id="legacyPanel">
-                <h2 class="dv-table-sec">Starsze przyjęcia — wg zamówień <small id="legacySecInfo"></small></h2>
-                <div id="receiptsEmptyAlert" class="d-none">
-                    <div class="rx-empty">
-                        <div class="rx-empty-icon"><i class="bi bi-archive"></i></div>
-                        <div class="rx-empty-title">Brak starszych przyjęć</div>
-                        <div class="rx-empty-text">
-                            Przyjęcia zapisane przed wprowadzeniem dostaw wg faktur pojawiają się tutaj.
-                        </div>
-                    </div>
-                </div>
-
-                <div class="table-responsive d-none" id="receiptsTableWrap">
-                    <table class="table rx-table mb-0" id="receiptsTable">
-                        <thead>
-                        <tr>
-                            <th scope="col">Dokument</th>
-                            <th scope="col">Data przyjęcia</th>
-                            <th scope="col">Zamówienie</th>
-                            <th scope="col">Dostawca</th>
-                            <th scope="col" class="text-right">Pozycje</th>
-                            <th scope="col" class="text-right d-none d-md-table-cell">Ilość</th>
-                            <th scope="col" class="d-none d-lg-table-cell">Przyjął</th>
-                            <th scope="col" class="text-right"><span class="sr-only">Akcje</span></th>
-                        </tr>
-                        </thead>
-                        <tbody id="historyBody">
-                        <tr class="receipt-row-receipts-placeholder" aria-hidden="true">
-                            <td colspan="8" class="text-center text-muted py-4">
-                                <span class="spinner-border spinner-border-sm align-middle" role="status"></span>
-                                <span class="ml-2 align-middle">Ładowanie…</span>
-                            </td>
-                        </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <div id="historyPagination"></div>
         </div>
 
     </div>

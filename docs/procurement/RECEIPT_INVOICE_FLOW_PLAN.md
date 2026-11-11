@@ -155,12 +155,32 @@ Invariant: `SUM(allocation.quantity) ≤ line.quantity`. The rest is
 
 ### 4.5 Legacy data
 
-- No backfill is required. Old receipts keep `delivery_id = NULL` and still
-  show in history exactly as now.
-- Leftover **draft** receipts (header row with zero items, created by
-  `acceptReceiptMetadata`) get deleted by the migration. POs left in
-  `in_progress` with no posted receipt go back to `confirmed`, and those with
-  receipts go to `partially_received` [Q4].
+> **Superseded on 2026-11-11** — the "no backfill" decision below was reversed.
+> The legacy *reception flow* is retired (its UI was removed in phase 6), but the
+> legacy *rows* were migrated into the delivery layer so that the whole reception
+> history (3772 receipts / 8939 items, 2020-06-18 → 2026-11) appears in the
+> "Dostawy wg faktur / WZ" list and the "Starsze przyjęcia — wg zamówień" panel
+> could be dropped from `/purchase/receipts`.
+>
+> - `src/cron/migrate-legacy-receipts-to-deliveries.php` synthesizes one
+>   `purchase__delivery` per `(vendor_id, document_number)` group, one
+>   `purchase__delivery_line` + `purchase__delivery_allocation` per legacy
+>   receipt item, and back-links `purchase__order_receipt.delivery_id` /
+>   `purchase__order_receipt_item.delivery_allocation_id`.
+> - The receipt tables are **kept** — they remain the per-PO projection that
+>   `postDelivery()` writes (§3). Only the legacy *panel* was retired.
+> - Migrated rows carry the legacy **GRN** number in `vendor_document_number`
+>   (the old data has no invoice/WZ number) and have `transfer_group_id` /
+>   `inventory_parts_id` = NULL (the legacy flow created no transfer group and
+>   no matching `inventory__parts` row), so a migrated delivery cannot be
+>   cancelled/reversed.
+> - Original decision text, kept as the design record:
+>   "- No backfill is required. Old receipts keep `delivery_id = NULL` and still
+>     show in history exactly as now."
+> - Leftover **draft** receipts (header row with zero items, created by
+>   `acceptReceiptMetadata`) get deleted by the migration. POs left in
+>   `in_progress` with no posted receipt go back to `confirmed`, and those with
+>   receipts go to `partially_received` [Q4].
 
 ## 5. Matching algorithm (the core)
 
