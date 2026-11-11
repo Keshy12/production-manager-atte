@@ -1997,9 +1997,9 @@ class PurchaseActionHandler {
     /**
      * Waliduje dane pozycji dostawy (draft). Zwraca znormalizowane wartości.
      *
-     * @return array{vendorPartId:int, quantity:float, unitPrice:?float, subMagazineId:?int, comment:?string}
+     * @return array{vendorPartId:int, quantity:float, unitPrice:?float, subMagazineId:?int, comment:?string, currency:?string}
      */
-    private function normaliseDeliveryLineInput(Delivery $delivery, int $vendorPartId, $quantity, $unitPrice, ?int $subMagazineId, ?string $comment): array {
+    private function normaliseDeliveryLineInput(Delivery $delivery, int $vendorPartId, $quantity, $unitPrice, ?int $subMagazineId, ?string $comment, ?string $currency = null): array {
         $lineRepo = new DeliveryLineRepository($this->MsaDB);
 
         if ($vendorPartId <= 0) {
@@ -2034,12 +2034,24 @@ class PurchaseActionHandler {
             $comment = trim($comment);
             if ($comment === '') $comment = null;
         }
+        // Waluta pozycji: null = dziedziczy walutę dokumentu dostawcy.
+        // Kod trzyliterowy — to samo co kod waluty w nagłówku.
+        $cur = null;
+        if ($currency !== null) {
+            $cur = strtoupper(trim((string)$currency));
+            if ($cur === '') {
+                $cur = null;
+            } elseif (!preg_match('/^[A-Z]{3}$/', $cur)) {
+                throw new \InvalidArgumentException("Waluta pozycji musi być kodem trzyliterowym (np. PLN, USD).");
+            }
+        }
         return [
             'vendorPartId'  => $vendorPartId,
             'quantity'      => $qty,
             'unitPrice'     => $price,
             'subMagazineId' => $subMagazineId,
             'comment'       => $comment,
+            'currency'      => $cur,
         ];
     }
 
@@ -2125,14 +2137,14 @@ class PurchaseActionHandler {
      * $quantity / $unitPrice: liczba lub tekst (dopuszcza przecinek).
      * Ilość w jednostce pozycji PO.
      */
-    public function addDeliveryLine(int $deliveryId, int $vendorPartId, $quantity, $unitPrice = null, ?int $subMagazineId = null, ?string $comment = null): array {
-        return $this->inDeliveryTransaction(function () use ($deliveryId, $vendorPartId, $quantity, $unitPrice, $subMagazineId, $comment) {
+    public function addDeliveryLine(int $deliveryId, int $vendorPartId, $quantity, $unitPrice = null, ?int $subMagazineId = null, ?string $comment = null, ?string $currency = null): array {
+        return $this->inDeliveryTransaction(function () use ($deliveryId, $vendorPartId, $quantity, $unitPrice, $subMagazineId, $comment, $currency) {
             $repo = new DeliveryRepository($this->MsaDB);
             $delivery = $this->lockDraftDelivery($repo, $deliveryId);
-            $in = $this->normaliseDeliveryLineInput($delivery, $vendorPartId, $quantity, $unitPrice, $subMagazineId, $comment);
+            $in = $this->normaliseDeliveryLineInput($delivery, $vendorPartId, $quantity, $unitPrice, $subMagazineId, $comment, $currency);
 
             (new DeliveryLineRepository($this->MsaDB))->create(
-                $deliveryId, $in['vendorPartId'], $in['quantity'], $in['unitPrice'], $in['subMagazineId'], $in['comment']
+                $deliveryId, $in['vendorPartId'], $in['quantity'], $in['unitPrice'], $in['subMagazineId'], $in['comment'], $in['currency']
             );
             $plan = $this->rematchDraft($deliveryId);
             $repo->touch($deliveryId);
@@ -2145,8 +2157,8 @@ class PurchaseActionHandler {
      * artykuł albo ilość spadła poniżej sumy przydziałów ręcznych, ręczne
      * przydziały tej pozycji są kasowane (wraca podział automatyczny).
      */
-    public function updateDeliveryLine(int $lineId, int $vendorPartId, $quantity, $unitPrice = null, ?int $subMagazineId = null, ?string $comment = null): array {
-        return $this->inDeliveryTransaction(function () use ($lineId, $vendorPartId, $quantity, $unitPrice, $subMagazineId, $comment) {
+    public function updateDeliveryLine(int $lineId, int $vendorPartId, $quantity, $unitPrice = null, ?int $subMagazineId = null, ?string $comment = null, ?string $currency = null): array {
+        return $this->inDeliveryTransaction(function () use ($lineId, $vendorPartId, $quantity, $unitPrice, $subMagazineId, $comment, $currency) {
             $repo = new DeliveryRepository($this->MsaDB);
             $lineRepo = new DeliveryLineRepository($this->MsaDB);
 
@@ -2159,13 +2171,13 @@ class PurchaseActionHandler {
             if ($line === null) {
                 throw new \LogicException("Nie znaleziono pozycji dostawy.");
             }
-            $in = $this->normaliseDeliveryLineInput($delivery, $vendorPartId, $quantity, $unitPrice, $subMagazineId, $comment);
+            $in = $this->normaliseDeliveryLineInput($delivery, $vendorPartId, $quantity, $unitPrice, $subMagazineId, $comment, $currency);
 
             $manualSum = 0.0;
             foreach ($line->allocations as $a) {
                 if ($a->isManual) $manualSum += $a->quantity;
             }
-            $lineRepo->update($lineId, $in['vendorPartId'], $in['quantity'], $in['unitPrice'], $in['subMagazineId'], $in['comment']);
+            $lineRepo->update($lineId, $in['vendorPartId'], $in['quantity'], $in['unitPrice'], $in['subMagazineId'], $in['comment'], $in['currency']);
             if ($in['vendorPartId'] !== $line->vendorPartId || $manualSum > $in['quantity'] + 1e-6) {
                 $lineRepo->deleteAllocationsByLine($lineId);
             }
@@ -2362,7 +2374,7 @@ class PurchaseActionHandler {
                 }
                 $surplus = max(0.0, round($l->quantity - $allocated, 10));
             }
-            if (!empty(array_intersect_key($flags, array_flip(['price_mismatch', 'surplus', 'not_on_po', 'currency_mismatch', 'duplicate_line'])))) {
+            if (!empty(array_intersect_key($flags, array_flip(['price_mismatch', 'surplus', 'not_on_po', 'currency_mismatch', 'currency_skipped', 'duplicate_line'])))) {
                 $warningLines++;
             }
             $outLines[] = [
@@ -2375,6 +2387,8 @@ class PurchaseActionHandler {
                 'part_description'         => $l->partDescription,
                 'quantity'                 => $l->quantity,
                 'unit_price'               => $l->unitPrice,
+                'currency'                 => $l->currency,
+                'effective_currency'       => $l->currency ?? $delivery->currency,
                 'sub_magazine_id'          => $l->subMagazineId,
                 'sub_magazine_name'        => $l->subMagazineName,
                 'effective_sub_magazine_id'=> $l->subMagazineId ?? $delivery->defaultSubMagazineId,
@@ -2491,7 +2505,7 @@ class PurchaseActionHandler {
             $flags = $plan['lines'][$l->id]['flags'] ?? [];
             if (!empty($flags['currency_mismatch'])) {
                 $po = $flags['currency_mismatch'][0];
-                $blockers[] = "{$label}: waluta zamówienia {$po['po_number']} ({$po['po_currency']}) różni się od waluty dokumentu ({$po['doc_currency']}).";
+                $blockers[] = "{$label}: waluta zamówienia {$po['po_number']} ({$po['po_currency']}) różni się od waluty pozycji ({$po['line_currency']}).";
             }
             if ((!empty($flags['surplus']) || !empty($flags['not_on_po'])) && ($l->comment === null || trim($l->comment) === '')) {
                 $blockers[] = "{$label}: ilość ponad zamówienie / artykuł spoza zamówień wymaga komentarza.";
@@ -2545,13 +2559,20 @@ class PurchaseActionHandler {
     /**
      * Podsumowanie PO po przyjęciu: stan, zamówiono/przyjęto, braki.
      *
-     * @return array{po_id:int, po_number:?string, new_state:string, ordered:float, received:float, missing_lines:array}
+     * Kompletność liczona PO POZYCJI (nie suma) — nadwyżka na jednej
+     * pozycji nie może maskować braku na innej. `item_count` /
+     * `complete_items` służą do komunikatu „N z M pozycji kompletnych".
+     *
+     * @return array{po_id:int, po_number:?string, new_state:string, ordered:float, received:float, complete:bool, item_count:int, complete_items:int, missing_lines:array}
      */
     private function summariseDeliveryPo(int $poId): array {
         $po = (new PurchaseOrderRepository($this->MsaDB))->getById($poId);
         $totals = $this->poTotals($poId);
         $missing = [];
+        $itemCount = 0;
+        $completeItems = 0;
         foreach ((new PurchaseOrderItemRepository($this->MsaDB))->getByPo($poId) as $it) {
+            $itemCount++;
             $rem = $it->quantity - $it->quantityReceived;
             if ($rem > 1e-6) {
                 $missing[] = [
@@ -2560,6 +2581,8 @@ class PurchaseActionHandler {
                     'part_name'      => $it->partName,
                     'remaining'      => round($rem, 10),
                 ];
+            } else {
+                $completeItems++;
             }
         }
         return [
@@ -2570,6 +2593,8 @@ class PurchaseActionHandler {
             'received'      => $totals['received'],
             // „Kompletne" = każda pozycja przyjęta (nie suma — nadwyżka nie maskuje braków).
             'complete'      => empty($missing),
+            'item_count'    => $itemCount,
+            'complete_items'=> $completeItems,
             'missing_lines' => $missing,
         ];
     }
@@ -2602,15 +2627,177 @@ class PurchaseActionHandler {
     // ── Zatwierdzenie ───────────────────────────────────────────
 
     /**
+     * PODGLĄD zatwierdzenia dostawy — BEZ zapisu.
+     *
+     * Zwraca per zamówienie: ile zamówiono, ile zostanie przyjęte (po tej
+     * dostawie), braki i stan, który obowiązywałby po zatwierdzeniu.
+     * Używane przez okno „Przyjęcie do zatwierdzenia" — operator najpierw
+     * ogląda skutek i decyduje o stanach zamówień, a DOPIERO potem towar
+     * jest księgowany. Dostawa do tego momentu zostaje szkicem.
+     *
+     * @return array{delivery_id:int, pos:array<int,array>}
+     */
+    public function previewDeliveryPost(int $deliveryId): array {
+        if ($deliveryId <= 0) throw new \InvalidArgumentException("deliveryId must be positive.");
+
+        $MsaDB = $this->MsaDB;
+        $deliveryRepo = new DeliveryRepository($MsaDB);
+        $lineRepo     = new DeliveryLineRepository($MsaDB);
+
+        $delivery = $deliveryRepo->getById($deliveryId);
+        if ($delivery === null) {
+            throw new \LogicException("Nie znaleziono dostawy.");
+        }
+        if ($delivery->state !== 'draft') {
+            throw new \LogicException("Ta dostawa jest już zaksięgowana.");
+        }
+
+        $plan  = (new DeliveryMatcher($MsaDB))->match($deliveryId);
+        $lines = $lineRepo->getByDelivery($deliveryId);
+
+        $blockers = $this->collectDeliveryBlockers($delivery, $lines, $plan);
+        if (!empty($blockers)) {
+            throw new \LogicException(implode("\n", $blockers));
+        }
+
+        // Ilość z tej dostawy przydzielona do każdej pozycji zamówienia
+        // oraz lista zamówień, których dotyczy dostawa.
+        $pending = [];
+        $poIds   = [];
+        foreach ($plan['lines'] ?? [] as $entry) {
+            foreach ($entry['allocations'] as $a) {
+                $itemId = (int)$a['po_item_id'];
+                $pending[$itemId] = ($pending[$itemId] ?? 0.0) + (float)$a['quantity'];
+                $poIds[(int)$a['po_id']] = true;
+            }
+        }
+        $poIds = array_keys($poIds);
+        sort($poIds);
+
+        $pos = [];
+        foreach ($poIds as $poId) {
+            $pos[] = $this->previewDeliveryPo((int)$poId, $pending);
+        }
+
+        // Podsumowanie dokumentu — co z niego trafi na stan: pozycje
+        // przydzielone do zamówień i nadwyżka (poza zamówieniami).
+        $linesOut = [];
+        foreach ($lines as $l) {
+            $entry = $plan['lines'][$l->id] ?? [];
+            $linesOut[] = [
+                'line_no'        => $l->lineNo,
+                'vendor_part_no' => $l->vendorPartNo,
+                'part_name'      => $l->partName,
+                'quantity'       => $l->quantity,
+                'unit_price'     => $l->unitPrice,
+                'currency'       => $l->currency ?? $delivery->currency,
+                'allocated'      => (float)($entry['allocated'] ?? 0.0),
+                'surplus'        => (float)($entry['surplus'] ?? 0.0),
+            ];
+        }
+
+        return [
+            'delivery_id' => $deliveryId,
+            'doc_number'  => $delivery->vendorDocumentNumber,
+            'vendor_name' => $delivery->vendorName,
+            'currency'    => $delivery->currency,
+            'lines'       => $linesOut,
+            'pos'         => $pos,
+        ];
+    }
+
+    /**
+     * Podsumowanie PO „po przyjęciu" liczone BEZ zapisu (stan po tej
+     * dostawie, nie stan w bazie).
+     *
+     * Kompletność liczona jest PO POZYCJI (nie sumą): nadwyżka na jednej
+     * pozycji nie może maskować braku na innej — ta sama reguła co w
+     * deriveDeliveryPoState(). Dlatego zwracamy pełną listę pozycji
+     * (zamówiono / przyjęto wcześniej / ta dostawa / brakuje).
+     *
+     * @return array{po_id:int, po_number:?string, new_state:string, current_state:string, ordered:float, received:float, received_now:float, complete:bool, item_count:int, complete_items:int, items:array, missing_lines:array}
+     */
+    private function previewDeliveryPo(int $poId, array $pending): array {
+        $po = (new PurchaseOrderRepository($this->MsaDB))->getById($poId);
+        $totals  = $this->poTotals($poId);
+        $received = (float)$totals['received'];
+        $missing = [];
+        $items   = [];
+        $completeItems = 0;
+        foreach ((new PurchaseOrderItemRepository($this->MsaDB))->getByPo($poId) as $it) {
+            $add = (float)($pending[$it->id] ?? 0.0);
+            $rec = (float)$it->quantityReceived;
+            $received += $add;
+            $rem = (float)$it->quantity - $rec - $add;
+            $rem = round($rem, 10);
+            if ($rem > 1e-6) {
+                $missing[] = [
+                    'po_item_id'     => $it->id,
+                    'vendor_part_no' => $it->vendorPartNo,
+                    'part_name'      => $it->partName,
+                    'remaining'      => $rem,
+                ];
+            } else {
+                $completeItems++;
+            }
+            $items[] = [
+                'po_item_id'     => $it->id,
+                'vendor_part_no' => $it->vendorPartNo,
+                'part_name'      => $it->partName,
+                'unit'           => $it->unitName,
+                'ordered'        => (float)$it->quantity,
+                'received'       => $rec,
+                'this_delivery'  => $add,
+                'missing'        => $rem > 0 ? $rem : 0.0,
+                // Nadwyżka: ta dostawa daje więcej, niż zostało do przyjęcia.
+                'surplus'        => $add - max(0.0, (float)$it->quantity - $rec) > 1e-6
+                    ? round($add - max(0.0, (float)$it->quantity - $rec), 10)
+                    : 0.0,
+            ];
+        }
+        // Stan po zatwierdzeniu — „kompletne" = każda pozycja przyjęta
+        // (nie suma — nadwyżka nie maskuje braków), jak w deriveDeliveryPoState().
+        if (empty($missing)) {
+            $state = 'received';
+        } elseif ($received > 1e-6) {
+            $state = 'partially_received';
+        } else {
+            $state = ($po !== null) ? $po->state : 'confirmed';
+        }
+        return [
+            'po_id'         => $poId,
+            'po_number'     => $po !== null ? $po->poNumber : null,
+            'new_state'     => $state,
+            'current_state' => $po !== null ? $po->state : 'unknown',
+            'ordered'       => (float)$totals['ordered'],
+            'received'      => $received,
+            'received_now'  => (float)$totals['received'],
+            'complete'      => empty($missing),
+            'item_count'    => count($items),
+            'complete_items'=> $completeItems,
+            'items'         => $items,
+            'missing_lines' => $missing,
+        ];
+    }
+
+    /**
      * Księguje szkic dostawy w JEDNEJ transakcji (plan §6.3).
+     *
+     * $poChoices — wybory operatora z okna podglądu: po_id → 'received'
+     * (zamknij zamówienie) albo 'auto' (zostaw otwarte, stan wyliczony
+     * z ilości). Brak wpisu = 'auto'.
      *
      * @return array{delivery_id:int, grn_number:string, pos:array<int,array>}
      */
-    public function postDelivery(int $deliveryId, int $userId): array {
+    public function postDelivery(int $deliveryId, int $userId, array $poChoices = []): array {
         if ($deliveryId <= 0) throw new \InvalidArgumentException("deliveryId must be positive.");
         if ($userId <= 0)     throw new \InvalidArgumentException("userId must be positive.");
 
-        return $this->inDeliveryTransaction(function () use ($deliveryId, $userId) {
+        // CAŁY zapis leci w JEDNEJ transakcji (inDeliveryTransaction): stan
+        // magazynowy, przyjęcia PO, ilości przyjęte, stany zamówień (w tym
+        // wybór operatora z podglądu) i numer GRN. Jeden błąd → rollback
+        // cofa wszystko, nic nie zostaje zapisane w połowie.
+        return $this->inDeliveryTransaction(function () use ($deliveryId, $userId, $poChoices) {
             $MsaDB = $this->MsaDB;
             $deliveryRepo = new DeliveryRepository($MsaDB);
             $lineRepo     = new DeliveryLineRepository($MsaDB);
@@ -2665,7 +2852,14 @@ class PurchaseActionHandler {
                 $magId = (int)($l->subMagazineId ?? $delivery->defaultSubMagazineId);
                 $magByLine[$l->id] = $magId;
 
+                // Waluta pozycji: własna albo dziedziczona z dokumentu. Gdy różni
+                // się od waluty dokumentu, trafia do komentarza (stan magazynowy
+                // nie ma kolumny waluty).
+                $lineCurrency = $l->currency ?? $delivery->currency;
                 $comment = sprintf('Przyjęcie %s / %s %s (%s)', $grn, $docLabel, $delivery->vendorDocumentNumber, $vp['vendorPartNo']);
+                if (strcasecmp((string)$lineCurrency, (string)$delivery->currency) !== 0) {
+                    $comment .= ' [' . $lineCurrency . ']';
+                }
                 if ($l->comment !== null && trim($l->comment) !== '') {
                     $comment .= ' — ' . trim($l->comment);
                 }
@@ -2716,21 +2910,30 @@ class PurchaseActionHandler {
                     );
                     $upd->execute([DeliveryLineRepository::dec($a->quantity), $a->poItemId]);
                     // c) cena z faktury trafia na PO tylko gdy PO nie miało ceny
+                    //    I waluta pozycji zgadza się z walutą zamówienia —
+                    //    inaczej cena w obcej walucie pisałaby się do PO.
                     if ($l->unitPrice !== null) {
-                        $priceStmt = $MsaDB->db->prepare(
-                            "UPDATE `purchase__order_item` SET unit_price = ? WHERE id = ? AND unit_price IS NULL"
-                        );
-                        $priceStmt->execute([DeliveryLineRepository::dec($l->unitPrice), $a->poItemId]);
+                        $poCurrency = (string)($a->poCurrency ?? '');
+                        $lineCurrency = $l->currency ?? $delivery->currency;
+                        if ($poCurrency === '' || strcasecmp($poCurrency, (string)$lineCurrency) === 0) {
+                            $priceStmt = $MsaDB->db->prepare(
+                                "UPDATE `purchase__order_item` SET unit_price = ? WHERE id = ? AND unit_price IS NULL"
+                            );
+                            $priceStmt->execute([DeliveryLineRepository::dec($l->unitPrice), $a->poItemId]);
+                        }
                     }
                 }
             }
 
-            // 8. Stan każdego dotkniętego PO (reguła jak w createReceipt).
+            // 8. Stan każdego dotkniętego PO. Operator mógł w oknie podglądu
+            //    zdecydować, czy zamówienie zamyka (poChoices: po_id → 'received'),
+            //    czy zostaje otwarte w stanie wyliczonym z ilości.
             $summary = [];
             foreach ($touchedPoIds as $poId) {
-                // Po przyjęciu stan to received albo partially_received (confirmed
-                // nie jest możliwy, bo właśnie bumpnęliśmy quantity_received).
-                $poRepo->setState($poId, $this->deriveDeliveryPoState($poId)['state']);
+                $choice = (string)($poChoices[(int)$poId] ?? 'auto');
+                $derived = $this->deriveDeliveryPoState($poId)['state'];
+                $state = ($choice === 'received') ? 'received' : $derived;
+                $poRepo->setState($poId, $state);
                 $summary[] = $this->summariseDeliveryPo($poId);
             }
 

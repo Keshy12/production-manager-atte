@@ -85,7 +85,7 @@ php src/cron/migrate-purchase-delivery-schema.php             # apply
 | Table | Holds |
 |---|---|
 | `purchase__delivery` | the invoice/WZ header — vendor, type, number, dates, currency, magazine, state (`draft` / `posted` / `cancelled`), GRN number, transfer group |
-| `purchase__delivery_line` | one row per invoice line — article, quantity, price, magazine, comment, the stock row it booked |
+| `purchase__delivery_line` | one row per invoice line — article, quantity, price, currency, magazine, comment, the stock row it booked |
 | `purchase__delivery_allocation` | how one line is split across PO lines — quantity and a `is_manual` flag |
 
 **New columns**

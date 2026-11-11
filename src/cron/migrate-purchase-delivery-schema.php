@@ -162,6 +162,7 @@ CREATE TABLE `purchase__delivery_line` (
   `vendor_part_id` int(11) NOT NULL,
   `quantity` decimal(30,10) NOT NULL,
   `unit_price` decimal(30,10) DEFAULT NULL,
+  `currency` varchar(3) DEFAULT NULL,
   `sub_magazine_id` int(11) DEFAULT NULL,
   `inventory_parts_id` int(11) DEFAULT NULL,
   `comment` text DEFAULT NULL,

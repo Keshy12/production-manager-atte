@@ -27,6 +27,7 @@ class DeliveryLineRepository {
                        l.vendor_part_id AS vendorPartId,
                        l.quantity,
                        l.unit_price AS unitPrice,
+                       l.currency,
                        l.sub_magazine_id AS subMagazineId,
                        l.inventory_parts_id AS inventoryPartsId,
                        l.comment,
@@ -102,7 +103,7 @@ class DeliveryLineRepository {
         return $result;
     }
 
-    public function create(int $deliveryId, int $vendorPartId, float $quantity, ?float $unitPrice, ?int $subMagazineId, ?string $comment): int {
+    public function create(int $deliveryId, int $vendorPartId, float $quantity, ?float $unitPrice, ?int $subMagazineId, ?string $comment, ?string $currency = null): int {
         if ($deliveryId <= 0)   throw new \InvalidArgumentException("DeliveryLine deliveryId must be positive.");
         if ($vendorPartId <= 0) throw new \InvalidArgumentException("DeliveryLine vendorPartId must be positive.");
         if ($quantity <= 0)     throw new \InvalidArgumentException("DeliveryLine quantity must be positive.");
@@ -113,26 +114,28 @@ class DeliveryLineRepository {
 
         return (int)$this->MsaDB->insert(
             'purchase__delivery_line',
-            ['delivery_id', 'line_no', 'vendor_part_id', 'quantity', 'unit_price', 'sub_magazine_id', 'comment'],
+            ['delivery_id', 'line_no', 'vendor_part_id', 'quantity', 'unit_price', 'currency', 'sub_magazine_id', 'comment'],
             [
                 $deliveryId, $lineNo, $vendorPartId, self::dec($quantity),
                 $unitPrice !== null ? self::dec($unitPrice) : null,
+                $currency,
                 $subMagazineId, $comment,
             ]
         );
     }
 
-    public function update(int $lineId, int $vendorPartId, float $quantity, ?float $unitPrice, ?int $subMagazineId, ?string $comment): bool {
+    public function update(int $lineId, int $vendorPartId, float $quantity, ?float $unitPrice, ?int $subMagazineId, ?string $comment, ?string $currency = null): bool {
         if ($vendorPartId <= 0) throw new \InvalidArgumentException("DeliveryLine vendorPartId must be positive.");
         if ($quantity <= 0)     throw new \InvalidArgumentException("DeliveryLine quantity must be positive.");
         $stmt = $this->MsaDB->db->prepare(
             "UPDATE `purchase__delivery_line`
-                SET vendor_part_id = ?, quantity = ?, unit_price = ?, sub_magazine_id = ?, comment = ?
+                SET vendor_part_id = ?, quantity = ?, unit_price = ?, currency = ?, sub_magazine_id = ?, comment = ?
               WHERE id = ?"
         );
         return $stmt->execute([
             $vendorPartId, self::dec($quantity),
             $unitPrice !== null ? self::dec($unitPrice) : null,
+            $currency,
             $subMagazineId, $comment, $lineId,
         ]);
     }

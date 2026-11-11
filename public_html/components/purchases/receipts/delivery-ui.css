@@ -468,6 +468,9 @@ kbd.dv-k,
 .dv-qty { font-weight: 700; font-size: .98rem; }
 .dv-price { font-weight: 600; }
 .dv-price--none { color: var(--rx-faint); font-weight: 500; }
+/* Waluta pozycji przy cenie. Różna od waluty dokumentu → wyróżniona. */
+.dv-cur { margin-left: .25rem; font-size: .7rem; font-weight: 700; color: var(--rx-muted); }
+.dv-cur.is-own { padding: 0 .25rem; border-radius: 3px; background: var(--rx-accent-soft); color: var(--rx-accent-ink); }
 
 .dv-field.is-invalid .rx-picker-btn { border-color: #e5818b; box-shadow: 0 0 0 .15rem rgba(220, 53, 69, .12); }
 
@@ -521,19 +524,49 @@ a.dv-alloc-po { text-decoration: none; }
     align-items: center;
     gap: .25rem;
     padding: .12rem .5rem;
+    border: 0;
     border-radius: 999px;
     background: var(--rx-line-soft);
     color: var(--rx-ink-2);
+    font-family: inherit;
     font-size: .7rem;
     font-weight: 700;
     line-height: 1.25;
     white-space: nowrap;
-    cursor: help;
+    cursor: pointer;
 }
+/* Odznaka klikalna: otwiera modal z wyjaśnieniem i poprawką. */
+.dv-flag:hover { filter: brightness(.96); box-shadow: 0 0 0 2px rgba(16, 24, 40, .08); }
+.dv-flag:focus { outline: 2px solid var(--rx-accent); outline-offset: 1px; }
 .dv-flag--warn   { background: var(--dv-amber-soft); color: #775300; }
 .dv-flag--info   { background: #e2f5f8; color: #0d5f6c; }
 .dv-flag--violet { background: var(--dv-violet-soft); color: #4b2a8a; }
 .dv-flag--red    { background: var(--dv-red-soft); color: #a71d2a; }
+
+/* ---- Modal odznaki: co jest nie tak i jak to poprawić --------------- */
+.dv-flag-intro { font-size: .88rem; line-height: 1.5; }
+.dv-flag-intro p:last-child { margin-bottom: 0; }
+.dv-flag-muted { color: var(--rx-muted); font-size: .82rem; }
+.dv-flag-fixes { margin-top: .9rem; display: flex; flex-direction: column; gap: .5rem; }
+.dv-flag-fix {
+    display: flex; align-items: flex-start; gap: .55rem;
+    padding: .6rem .75rem;
+    border: 1px solid var(--rx-line);
+    border-radius: var(--rx-radius);
+    cursor: pointer;
+}
+.dv-flag-fix:hover { background: var(--rx-hover); }
+.dv-flag-fix input { margin-top: .2rem; flex: 0 0 auto; }
+.dv-flag-fix-body { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
+.dv-flag-fix-label { font-size: .86rem; font-weight: 700; }
+.dv-flag-fix-hint { font-size: .78rem; color: var(--rx-muted); }
+.dv-flag-nofix {
+    display: flex; align-items: flex-start; gap: .5rem;
+    padding: .6rem .75rem;
+    border-radius: var(--rx-radius);
+    background: var(--rx-line-soft);
+    font-size: .82rem; color: var(--rx-ink-2);
+}
 
 .dv-actions { display: flex; justify-content: flex-end; gap: .15rem; white-space: nowrap; }
 .dv-icon-btn {
@@ -611,18 +644,23 @@ a.dv-alloc-po { text-decoration: none; }
     display: grid;
     /* Kolumna magazynu: min 9rem (picker ucina długą nazwę wielokropkiem),
        max 14rem — razem z min-width: 0 na komórce i na .bootstrap-select
-       kolumna nie rozpycha się do najdłuższej nazwy magazynu. */
-    grid-template-columns: minmax(12rem, 1fr) 7.5rem 9rem minmax(9rem, 14rem) auto;
+       kolumna nie rozpycha się do najdłuższej nazwy magazynu.
+       Kolumna waluty pozycji (6.5rem) siedzi między ceną a magazynem. */
+    grid-template-columns: minmax(12rem, 1fr) 7.5rem 9rem 6.5rem minmax(9rem, 14rem) auto;
     gap: .6rem;
     align-items: end;
 }
 @media (max-width: 767.98px) {
     .dv-entry-grid { grid-template-columns: 1fr 1fr; }
     .dv-entry-art { grid-column: 1 / -1; }
+    .dv-entry-cur { grid-column: 1 / -1; }
     .dv-entry-mag { grid-column: 1 / -1; }
     .dv-entry-go { grid-column: 1 / -1; }
     .dv-entry-go .btn { width: 100%; }
 }
+/* Waluta pozycji — zwykły select (3 litery), nie picker. */
+.dv-entry-cur { min-width: 0; }
+.dv-entry-cur .custom-select { min-width: 0; }
 /* Picker magazynu pozycji — selectpicker z wyszukiwarką (data-width="100%",
    data-container="#dvEntryMagCell"). AGENTS.md: min-width: 0 na komórce
    siatki ORAZ na .bootstrap-select, który tworzy wtyczka — inaczej minimalna
@@ -709,6 +747,8 @@ a.dv-alloc-po { text-decoration: none; }
 .dv-info-desc { font-size: .74rem; line-height: 1.3; color: var(--rx-muted); margin-bottom: .25rem;
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .dv-info-head { font-size: .74rem; font-weight: 700; }
+.dv-info-head--warn { color: #775300; }
+.dv-info-head--warn i { color: var(--dv-amber); }
 .is-onpo .dv-info-head { color: var(--rx-muted); }
 .is-onpo .dv-info-head i { color: var(--dv-green); }
 .is-nopo .dv-info { border-left: 3px solid #5b3a9e; }
@@ -826,6 +866,13 @@ a.dv-po-no:hover { color: var(--rx-accent-ink); }
 .dv-poi-due.is-echo.is-late { color: #b21f2d; font-weight: 600; }
 .dv-poi-due.is-echo.is-today { color: #8a5a00; font-weight: 600; }
 .dv-poi-name { grid-column: 1; grid-row: 2; color: var(--rx-muted); font-size: .74rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Cena jednostkowa z zamówienia + waluta — pod nazwą artykułu. */
+.dv-poi-price {
+    grid-column: 1; grid-row: 3;
+    font-size: .72rem; color: var(--rx-muted);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .dv-poi-rem { grid-column: 2; grid-row: 1 / span 2; align-self: center; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .dv-poi-rem b { font-size: .92rem; }
 .dv-poi-arrow { margin: 0 .2rem; color: var(--rx-faint); }
@@ -930,13 +977,41 @@ a.dv-po-no:hover { color: var(--rx-accent-ink); }
 .dv-post-po-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem 1rem; }
 .dv-post-po-no { font-weight: 700; font-size: 1.02rem; }
 .dv-post-po-prog { margin-top: .5rem; }
-.dv-post-missing { margin: .55rem 0 0; padding: 0; list-style: none; border: 1px solid var(--rx-line-soft); border-radius: .3rem; }
-.dv-post-missing li { display: grid; grid-template-columns: minmax(6rem, 9rem) minmax(0, 1fr) auto; gap: .6rem; padding: .35rem .65rem; font-size: .82rem; }
-.dv-post-missing li + li { border-top: 1px solid var(--rx-line-soft); }
-.dv-post-missing .n { font-family: var(--dv-mono); font-weight: 700; overflow-wrap: anywhere; }
-.dv-post-missing .nm { color: var(--rx-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dv-post-doc { margin-bottom: .7rem; padding: .55rem .8rem; border-left: 3px solid var(--dv-green); background: var(--rx-canvas); border-radius: .3rem; }
+.dv-post-doc-top { display: flex; flex-wrap: wrap; gap: .2rem .8rem; align-items: baseline; font-family: var(--dv-mono); }
+.dv-post-doc-vendor { font-family: inherit; font-size: .85rem; color: var(--rx-muted); }
+.dv-post-doc-sub { margin-top: .1rem; font-size: .8rem; color: var(--rx-ink-2); }
+.dv-post-over-inline { font-weight: 700; color: #4b2a8a; }
+/* Kompletność w pozycjach (nie w procentach) */
+.dv-post-count { font-size: .95rem; }
+.dv-post-count.is-ok { color: #1a7f43; }
+.dv-post-count.is-short { color: #7f1824; }
+.dv-post-count-short { margin-left: .6rem; font-size: .85rem; font-weight: 700; color: #b21f2d; }
+.dv-post-sum { margin-top: .15rem; font-size: .74rem; color: var(--rx-muted); }
+/* Tabela pozycji: przewijana w obu osiach, kolumny się nie ściskają */
+.dv-post-items-wrap { margin-top: .55rem; max-height: 14rem; overflow: auto; border: 1px solid var(--rx-line-soft); border-radius: .3rem; }
+.dv-post-items { width: 100%; min-width: 36rem; border-collapse: separate; border-spacing: 0; font-size: .82rem; font-variant-numeric: tabular-nums; }
+.dv-post-items th { position: sticky; top: 0; z-index: 1; padding: .3rem .6rem; background: var(--rx-canvas); border-bottom: 1px solid var(--rx-line); font-size: .66rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--rx-muted); white-space: nowrap; text-align: left; }
+.dv-post-items td { padding: .35rem .6rem; border-top: 1px solid var(--rx-line-soft); vertical-align: top; }
+.dv-post-items tbody tr:first-child td { border-top: 0; }
+.dv-post-items .num { text-align: right; white-space: nowrap; }
+.dv-post-items .n { font-family: var(--dv-mono); font-weight: 700; overflow-wrap: anywhere; min-width: 7rem; }
+.dv-post-items .nm { color: var(--rx-muted); min-width: 10rem; }
+.dv-post-items tr.is-short td { background: var(--dv-red-soft); }
+.dv-post-items tr.is-short td:first-child { box-shadow: inset 3px 0 0 #b21f2d; }
+.dv-post-miss { font-weight: 700; color: #b21f2d; }
+.dv-post-tick { color: #1a7f43; }
+.dv-post-over { display: block; font-size: .68rem; font-weight: 600; color: #4b2a8a; }
+.dv-post-toggle { padding: .25rem 0; margin-top: .2rem; font-size: .78rem; }
+/* Skutek wyboru — jedno zdanie */
+.dv-post-consequence { margin-top: .65rem; padding: .45rem .7rem; border-radius: .35rem; background: var(--rx-canvas); font-size: .82rem; color: var(--rx-ink-2); }
+.dv-post-consequence.is-close { background: var(--dv-red-soft); color: #7f1824; font-weight: 600; }
+.dv-post-po .dv-post-consequence + .dv-post-choice { margin-top: .5rem; }
 .dv-post-choice { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-top: .7rem; }
 .dv-post-choice .dv-sub { font-size: .76rem; color: var(--rx-muted); }
+/* Wybrana opcja w oknie podglądu (zamówienie zostaje otwarte / zostaje zamknięte). */
+.dv-post-choice .btn.is-chosen { font-weight: 700; box-shadow: inset 0 0 0 2px rgba(16, 24, 40, .16); }
+.dv-post-choice .btn-danger.is-chosen { box-shadow: inset 0 0 0 2px rgba(167, 28, 42, .38); }
 .dv-post-error { margin-top: .5rem; font-size: .82rem; font-weight: 600; color: #b21f2d; }
 
 /* =====================================================================

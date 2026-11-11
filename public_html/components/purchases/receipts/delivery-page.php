@@ -14,6 +14,13 @@
  * stan dostawy — delivery-page.js renderuje wszystko z tego jednego
  * obiektu i niczego nie łata lokalnie.
  *
+ * START ODBIORU: do zapisania dokumentu wystarczy dostawca + numer
+ * dokumentu (faktury / WZ). „Zapisz dokument dostawcy" zakłada szkic i
+ * odblokowuje wpisywanie pozycji z faktury — dopiero wtedy pozycje można
+ * wpisywać jedna po jednej. Magazyn docelowy, typ dokumentu i waluta mogą
+ * zostać uzupełnione później — brak magazynu blokuje dopiero zatwierdzenie
+ * przyjęcia.
+ *
  * PHP dostarcza tylko szkielet: listę magazynów, nazwę zalogowanego
  * i parametry z adresu. Dane dostawy, dostawców i otwartych zamówień
  * ładuje JS.
@@ -60,6 +67,11 @@ $userMagazineId    = $defaultMagazineId !== null ? (string)$defaultMagazineId : 
 $deliveryId = max(0, (int)($_GET['delivery_id'] ?? 0));
 $vendorId   = max(0, (int)($_GET['vendor_id'] ?? 0));
 
+// Waluty w formularzu przyjęcia. Ta sama lista dla waluty dokumentu
+// (nagłówek) i waluty pozycji (wiersz wpisywania) — jedna faktura może
+// mieć pozycje w różnych walutach (np. większość PLN, jedna USD).
+$currencies = ['PLN', 'EUR', 'USD', 'GBP', 'CZK', 'CHF'];
+
 $listUrl = 'http://' . BASEURL . '/purchase/receipts';
 
 $e = static function ($v): string { return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8'); };
@@ -89,8 +101,8 @@ $e = static function ($v): string { return htmlspecialchars((string)$v, ENT_QUOT
             <div class="rx-eyebrow" id="dvEyebrow"><i class="bi bi-receipt"></i> Przyjęcie wg faktury / WZ</div>
             <h1 class="rx-title" id="dvTitle">Nowe przyjęcie dostawy</h1>
             <p class="rx-lead" id="dvLead">
-                Najpierw uzupełnij dokument dostawcy i zapisz go — dopiero wtedy
-                odblokuje się wpisywanie pozycji z faktury.
+                Wybierz dostawcę, wpisz numer faktury i zapisz dokument — wtedy
+                odblokuje się wpisywanie pozycji. Magazyn docelowy uzupełnisz później.
             </p>
         </div>
         <div class="dv-head-side">
@@ -175,14 +187,11 @@ $e = static function ($v): string { return htmlspecialchars((string)$v, ENT_QUOT
                 </div>
 
                 <div class="dv-field">
-                    <label class="dv-label" for="dvCurrency">Waluta</label>
+                    <label class="dv-label" for="dvCurrency">Waluta dokumentu</label>
                     <select id="dvCurrency" class="custom-select custom-select-sm dv-input">
-                        <option value="PLN">PLN</option>
-                        <option value="EUR">EUR</option>
-                        <option value="USD">USD</option>
-                        <option value="GBP">GBP</option>
-                        <option value="CZK">CZK</option>
-                        <option value="CHF">CHF</option>
+                        <?php foreach ($currencies as $cur): ?>
+                            <option value="<?= $e($cur) ?>"><?= $e($cur) ?></option>
+                        <?php endforeach; ?>
                     </select>
                 </div>
 
@@ -210,7 +219,7 @@ $e = static function ($v): string { return htmlspecialchars((string)$v, ENT_QUOT
                             <option value="<?= (int)$m['sub_magazine_id'] ?>"><?= $e($m['sub_magazine_name']) ?></option>
                         <?php endforeach; ?>
                     </select>
-                    <div class="dv-hint">Domyślny dla wszystkich pozycji; każdą można zmienić osobno.</div>
+                    <div class="dv-hint">Domyślny dla wszystkich pozycji; każdą można zmienić osobno. Możesz uzupełnić go później — wtedy każda pozycja dostanie własny magazyn.</div>
                 </div>
 
             </div>
@@ -227,14 +236,14 @@ $e = static function ($v): string { return htmlspecialchars((string)$v, ENT_QUOT
         <!-- Pasek dokumentu — widoczny dla szkicu, ukryty dla zatwierdzonego /
              anulowanego przyjęcia (patrz .dv-mode-draft w delivery-ui.css).
              Jeden przycisk, trzy działania (delivery-page.js, headerMode()):
-               przed szkicem  „Zapisz dokument dostawcy" — zakłada szkic i odblokowuje pozycje,
+               przed szkicem  „Zapisz dokument dostawcy" — zakłada szkic (wystarczy dostawca + numer dokumentu) i odblokowuje pozycje,
                szkic          „Edytuj dokument dostawcy" — włącza edycję zapisanego nagłówka,
                edycja         „Zakończ edycję" — zapisuje zmiany i blokuje nagłówek.
              Wznawiany szkic startuje ukryty (d-none), aż JS wczyta jego stan. -->
         <div class="dv-doc-foot<?= $deliveryId > 0 ? ' d-none' : '' ?>" id="dvDocFoot" data-mode="new">
             <div class="dv-doc-foot-msg" id="dvDocSubmitMsg" role="status" aria-live="polite">
                 <i class="bi bi-info-circle"></i>
-                <span id="dvDocSubmitMsgText">Zapisanie dokumentu zakłada szkic przyjęcia i odblokowuje wpisywanie pozycji.</span>
+                <span id="dvDocSubmitMsgText">Zapisanie dokumentu zakłada szkic przyjęcia i odblokowuje wpisywanie pozycji z faktury.</span>
             </div>
             <span class="dv-doc-clear-wrap">
                 <button type="button" class="btn rx-btn-quiet dv-doc-clear" id="dvDocClear">
@@ -275,11 +284,11 @@ $e = static function ($v): string { return htmlspecialchars((string)$v, ENT_QUOT
             <div class="dv-gate" id="dvLinesGate">
                 <div class="rx-empty">
                     <div class="rx-empty-icon"><i class="bi bi-file-earmark-check"></i></div>
-                    <div class="rx-empty-title">Najpierw zapisz dokument dostawcy</div>
+                    <div class="rx-empty-title">Wybierz dostawcę i wpisz numer faktury</div>
                     <div class="rx-empty-text">
-                        Uzupełnij numer dokumentu i magazyn docelowy, a potem użyj
-                        „Zapisz dokument dostawcy". Szkic trafi na listę „Robocze",
-                        a tutaj odblokuje się wpisywanie pozycji.
+                        Potem kliknij „Zapisz dokument dostawcy" — szkic przyjęcia
+                        powstanie i odblokuje się wpisywanie pozycji z faktury.
+                        Magazyn docelowy uzupełnisz później.
                     </div>
                 </div>
             </div>
@@ -342,9 +351,21 @@ $e = static function ($v): string { return htmlspecialchars((string)$v, ENT_QUOT
                                autocomplete="off" placeholder="0">
                     </div>
                     <div class="dv-entry-price">
-                        <label class="dv-label" for="dvPrice">Cena netto <span class="dv-label-sub" id="dvPriceCur">PLN</span></label>
+                        <label class="dv-label" for="dvPrice">Cena netto</label>
                         <input type="text" id="dvPrice" class="form-control dv-input text-right" inputmode="decimal"
                                autocomplete="off" placeholder="0,00">
+                    </div>
+                    <!-- Waluta pozycji: domyślnie waluta zamówienia, z którego
+                         wzięliśmy artykuł (gdy artykułu nie ma na PO — waluta
+                         dokumentu). Faktura może mieć pozycje w różnych
+                         walutach, więc to osobne pole. -->
+                    <div class="dv-entry-cur">
+                        <label class="dv-label" for="dvLineCurrency">Waluta pozycji</label>
+                        <select id="dvLineCurrency" class="custom-select custom-select-sm dv-input">
+                            <?php foreach ($currencies as $cur): ?>
+                                <option value="<?= $e($cur) ?>"><?= $e($cur) ?></option>
+                            <?php endforeach; ?>
+                        </select>
                     </div>
                     <!-- Magazyn pozycji: selectpicker z wyszukiwarką, taki sam jak
                          „Magazyn docelowy" w nagłówku. Wybrany jest domyślnie magazyn
@@ -455,26 +476,60 @@ $e = static function ($v): string { return htmlspecialchars((string)$v, ENT_QUOT
     </div>
 </div>
 
-<!-- ===== Podsumowanie po zatwierdzeniu ===== -->
+<!-- ===== Modal: co jest nie tak z pozycją i jak to poprawić ===== -->
+<!-- Otwiera go klik w odznakę (chip) przy pozycji: „cena ≠ PO",
+     „waluta ≠ dokument", „waluta PO: X ≠ Y", „nadwyżka" itd. -->
+<div class="modal fade" id="dvFlagModal" tabindex="-1" role="dialog" aria-labelledby="dvFlagTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="dvFlagTitle">Problem z pozycją</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Zamknij"><span aria-hidden="true">&times;</span></button>
+            </div>
+            <div class="modal-body">
+                <div id="dvFlagIntro" class="dv-flag-intro"></div>
+                <div id="dvFlagFixes" class="dv-flag-fixes"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn rx-btn-quiet mr-auto" data-dismiss="modal">Zamknij</button>
+                <button type="button" class="btn btn-primary" id="dvFlagApply">
+                    <i class="bi bi-check2"></i> Zastosuj poprawkę
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== Podgląd i zatwierdzenie przyjęcia =====
+     Dwa kroki w jednym oknie:
+       1. PODGLĄD (bez zapisu) — dostawa jest jeszcze szkicem; operator
+          widzi, co trafi na stan, i decyduje per zamówienie, czy zostaje
+          otwarte, czy ma być zamknięte,
+       2. ZATWIERDZENIE — towar idzie na stan, powstaje GRN, zamówienia
+          dostają stany. Dopiero teraz przyjęcie jest „Zatwierdzone". -->
 <div class="modal fade" id="dvPostModal" tabindex="-1" role="dialog" aria-labelledby="dvPostTitle"
      aria-hidden="true" data-backdrop="static" data-keyboard="false">
     <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
         <div class="modal-content">
             <div class="modal-header dv-post-head">
                 <div>
-                    <div class="rx-eyebrow">Przyjęcie zatwierdzone</div>
-                    <h5 class="modal-title" id="dvPostTitle">GRN</h5>
+                    <div class="rx-eyebrow" id="dvPostEyebrow">Przyjęcie do zatwierdzenia</div>
+                    <h5 class="modal-title" id="dvPostTitle">Przyjęcie dostawy</h5>
                 </div>
             </div>
             <div class="modal-body">
-                <p class="dv-post-lead">
-                    Towar jest na stanie. Zdecyduj, co dalej z zamówieniami, których dotyczyła dostawa:
+                <p class="dv-post-lead" id="dvPostLead">
+                    Sprawdź, co trafi na stan, i zdecyduj o stanach zamówień.
                 </p>
                 <div id="dvPostPos" class="dv-post-pos"></div>
             </div>
             <div class="modal-footer">
-                <a href="<?= $e($listUrl) ?>" class="btn rx-btn-quiet mr-auto"><i class="bi bi-list-ul"></i> Lista przyjęć</a>
-                <button type="button" class="btn btn-primary" id="dvPostDone">
+                <a href="<?= $e($listUrl) ?>" class="btn rx-btn-quiet mr-auto d-none" id="dvPostListBtn"><i class="bi bi-list-ul"></i> Lista przyjęć</a>
+                <button type="button" class="btn rx-btn-quiet d-none" id="dvPostCancel">Anuluj</button>
+                <button type="button" class="btn btn-primary d-none" id="dvPostCommit">
+                    <i class="bi bi-check2-circle"></i> Zatwierdź przyjęcie
+                </button>
+                <button type="button" class="btn btn-primary d-none" id="dvPostDone">
                     <i class="bi bi-check2"></i> Gotowe
                 </button>
             </div>

@@ -247,6 +247,17 @@ $(document).ready(function () {
         return inPicker ? USER_MAGAZINE : null;
     }
 
+    // Magazyn zastępczy, gdy dostawa nie ma magazynu domyślnego (można go
+    // uzupełnić później) — najpierw magazyn domyślny operatora, potem
+    // pierwszy aktywny. Trafia do wiersza wpisywania, żeby każda pozycja
+    // miała gdzie trafić (blokada przed zatwierdzeniem: „nie wybrano
+    // magazynu").
+    function fallbackMag() {
+        const u = userDefaultMagazine();
+        if (u !== null) return String(u);
+        return MAGAZINES.length ? String(MAGAZINES[0].id) : '';
+    }
+
     function hasPicker() { return typeof $.fn.selectpicker === 'function'; }
 
     // =====================================================================
@@ -574,7 +585,7 @@ $(document).ready(function () {
 
             ensureCurrencyOption(d.currency);
             if (!$currency.is(document.activeElement)) $currency.val(d.currency || 'PLN');
-            $('#dvPriceCur').text(d.currency || 'PLN');
+            lastDocCurrency = docCurrency();
 
             setPickerVal($magazine, d.default_sub_magazine_id);
         }
@@ -725,16 +736,35 @@ $(document).ready(function () {
     //
     // Dopóki szkic nie istnieje, nagłówek nie autozapisuje się i nie da się
     // wpisywać pozycji. Przycisk „Zapisz dokument dostawcy" tworzy szkic
-    // (delivery-create.php) — wymaga dostawcy, numeru dokumentu i magazynu.
+    // (delivery-create.php) — wymaga dostawcy i numeru dokumentu.
 
+    // Warunek ZAPISU dokumentu dostawcy: dostawca + numer faktury / WZ.
+    // Magazyn docelowy NIE jest wymagany — pracownik uzupełnia go później
+    // (albo każda pozycja dostaje własny magazyn). Brak magazynu blokuje
+    // dopiero zatwierdzenie (walidacja serwerowa: „nie wybrano magazynu").
     function docGateMissing() {
         const miss = [];
         if (!S.vendorId) miss.push({ key: 'vendor', label: 'dostawca' });
         if ($.trim($docNumber.val()) === '') miss.push({ key: 'doc', label: 'numer dokumentu' });
+        return miss;
+    }
+
+    // Magazyn docelowy pusty? To informacja, nie blokada zapisu dokumentu.
+    function defaultMagMissing() {
         const mv = $magazine.val();
         // Magazyn „0" jest prawidłowy — pusty to tylko null / undefined / ''.
-        if (mv === null || mv === undefined || mv === '') miss.push({ key: 'mag', label: 'magazyn docelowy' });
-        return miss;
+        return mv === null || mv === undefined || mv === '';
+    }
+
+    // Wiersz wpisywania pozycji odblokowuje się dopiero po założeniu
+    // szkicu, czyli po kliknięciu „Zapisz dokument dostawcy". Do tego czasu
+    // panel pozycji pokazuje komunikat „Wybierz dostawcę i wpisz numer
+    // faktury" — pracownik najpierw wskazuje, czyją fakturę przyjmuje.
+    function refreshCanEnter() {
+        const draftOk = !S.state || S.state.delivery.state === 'draft';
+        const canEnter = !!S.deliveryId && !!S.vendorId && draftOk;
+        $('#dvEntry').toggleClass('d-none', !canEnter);
+        return canEnter;
     }
 
     // Pasek pod dokumentem: komunikat + jeden przycisk, którego etykieta,
@@ -795,12 +825,15 @@ $(document).ready(function () {
 
         $('#dvVendorCell').toggleClass('is-invalid', showErr && !!lack.vendor);
         $docNumber.toggleClass('is-invalid', showErr && !!lack.doc);
-        $('#dvMagazineCell').toggleClass('is-invalid', showErr && !!lack.mag);
+        // Magazyn nie bramkuje zapisu dokumentu — podświetlenie zostaje wyłączone.
+        $('#dvMagazineCell').toggleClass('is-invalid', false);
 
         let text;
         let icon;
         if (miss.length === 0) {
-            text = 'Wszystko gotowe — zapisz dokument, aby odblokować wpisywanie pozycji.';
+            text = defaultMagMissing()
+                ? 'Dostawca i numer faktury gotowe — zapisz dokument, aby odblokować wpisywanie pozycji. Magazyn docelowy uzupełnisz później.'
+                : 'Gotowe — zapisz dokument dostawcy, aby odblokować wpisywanie pozycji.';
             icon = 'bi bi-check2-circle';
         } else {
             text = 'Do zapisania brakuje: ' + miss.map(function (m) { return m.label; }).join(', ') + '.';
@@ -827,7 +860,8 @@ $(document).ready(function () {
         $recvAt.val(TODAY);
         $comment.val('');
         $currency.val('PLN');
-        $('#dvPriceCur').text('PLN');
+        lastDocCurrency = 'PLN';
+        setLineCurrency('PLN');
         setPickerVal($magazine, userDefaultMagazine(), true);
         // Komunikat o brakach wraca do neutralnego (bez czerwonego błędu).
         S.docAttempted = false;
@@ -882,6 +916,7 @@ $(document).ready(function () {
 
     $docNumber.on('input', function () {
         refreshDocGate();
+        refreshCanEnter();
         scheduleHeaderSave(false);
     });
     $docNumber.on('blur', function () {
@@ -899,7 +934,11 @@ $(document).ready(function () {
         scheduleHeaderSave(true);
     });
     $currency.on('change', function () {
-        $('#dvPriceCur').text($currency.val());
+        // Pozycja, która dziedziczyła walutę dokumentu, dostaje nową
+        // walutę dokumentu (pozycja z własną walutą zostaje nietknięta).
+        const now = docCurrency();
+        if (lineCurrencyValue() === lastDocCurrency) setLineCurrency(now);
+        lastDocCurrency = now;
         scheduleHeaderSave(true);
     });
     $magazine.on('changed.bs.select', function () {
@@ -1020,7 +1059,7 @@ $(document).ready(function () {
         if (userPicked && v && v.default_currency_code && !S.deliveryId) {
             ensureCurrencyOption(v.default_currency_code);
             $currency.val(v.default_currency_code);
-            $('#dvPriceCur').text(v.default_currency_code);
+            lastDocCurrency = String(v.default_currency_code).toUpperCase();
         }
         updateVendorHint();
         $('#dvTitle').text(v ? ('Przyjęcie od: ' + v.name) : 'Nowe przyjęcie dostawy');
@@ -1201,6 +1240,19 @@ $(document).ready(function () {
              + esc(fmtDateShort(d)) + '</span>';
     }
 
+    // Cena jednostkowa w zamówieniu + waluta („12,50 PLN"). PO bez ceny →
+    // nic nie pokazujemy (cena bywa ustalana dopiero przy odbiorze).
+    function poiPriceHtml(it) {
+        const raw = it.unit_price;
+        if (raw === null || raw === undefined || raw === '') return '';
+        const p = fmtPrice(raw);
+        if (p === '') return '';
+        const cur = it.currency ? String(it.currency).toUpperCase() : '';
+        return '<span class="dv-poi-price" title="Cena jednostkowa w zamówieniu'
+             + (cur ? ' (' + esc(cur) + ')' : '') + '">'
+             + esc(p) + (cur ? ' ' + esc(cur) : '') + '</span>';
+    }
+
     function renderSide() {
         const st = S.state;
         const mode = st ? st.delivery.state : 'draft';
@@ -1305,6 +1357,7 @@ $(document).ready(function () {
                       +   '</div>'
                       +   '<div class="dv-poi-rem" title="pozostało przed → po tej dostawie">' + remHtml + '</div>'
                       +   '<div class="dv-poi-name" title="' + esc(it.part_name || '') + '">' + esc(it.part_name || '') + '</div>'
+                      +   poiPriceHtml(it)
                       + '</div>';
             });
             html += '</div></div>';
@@ -1366,6 +1419,7 @@ $(document).ready(function () {
             part_name: it.part_name,
             part_description: it.part_description || '',
             suggested_price: it.unit_price,
+            suggested_currency: it.currency,
             on_open_po: true
         });
         $('#dvQty').val(inputNum(left > EPS ? left : it.remaining)).trigger('focus').trigger('select');
@@ -1425,38 +1479,255 @@ $(document).ready(function () {
     // Pozycje dostawy
     // =====================================================================
 
-    function flagsHtml(l) {
+    // Odznaka (chip) na pozycji dostawy. Klikalna — otwiera modal
+    // z wyjaśnieniem problemu i sugerowaną poprawką.
+    function flagChip(cls, icon, text, title, kind, idx, lineId) {
+        return '<button type="button" class="dv-flag ' + cls + ' js-flag" title="' + esc(title) + '"'
+             + ' data-line-id="' + lineId + '" data-flag="' + kind + '" data-idx="' + (idx || 0) + '">'
+             + '<i class="bi ' + icon + '" aria-hidden="true"></i> ' + esc(text) + '</button>';
+    }
+
+    function flagsHtml(l, st) {
         const f = l.flags || {};
+        const lid = l.id;
         let html = '';
-        (f.price_mismatch || []).forEach(function (m) {
+        (f.price_mismatch || []).forEach(function (m, i) {
             const d = m.delta_pct;
             const dTxt = (d === null || d === undefined) ? '' : (' ' + (d > 0 ? '+' : '') + String(d).replace('.', ',') + '%');
-            html += '<span class="dv-flag dv-flag--warn" title="' + esc((m.po_number || 'PO') + ': cena w zamówieniu ' + fmtPrice(m.po_price)
-                + ', na dokumencie ' + fmtPrice(m.line_price) + '. To tylko ostrzeżenie — przyjęcie można zatwierdzić.') + '">'
-                + '<i class="bi bi-currency-exchange"></i> cena ≠ PO' + esc(dTxt) + '</span>';
+            html += flagChip('dv-flag--warn', 'bi-currency-exchange', 'cena ≠ PO' + dTxt,
+                (m.po_number || 'PO') + ': cena w zamówieniu ' + fmtPrice(m.po_price)
+                + ', na dokumencie ' + fmtPrice(m.line_price) + '. To tylko ostrzeżenie — przyjęcie można zatwierdzić.',
+                'price_mismatch', i, lid);
         });
         if ((f.price_missing_on_po || []).length) {
-            html += '<span class="dv-flag dv-flag--info" title="Zamówienie nie ma ceny dla tej pozycji — cena z dokumentu zostanie w nim zapisana.">'
-                  + '<i class="bi bi-tag"></i> cena brak w PO</span>';
+            html += flagChip('dv-flag--info', 'bi-tag', 'cena brak w PO',
+                'Zamówienie nie ma ceny dla tej pozycji — cena z dokumentu zostanie w nim zapisana.',
+                'price_missing_on_po', 0, lid);
+        }
+        // Waluta pozycji inna niż waluta dokumentu (domyślna) — faktura może
+        // mieć pozycje w różnych walutach, więc to informacja, nie błąd.
+        const docCur = (st && st.delivery && st.delivery.currency) ? String(st.delivery.currency).toUpperCase() : 'PLN';
+        const lineCur = String(l.effective_currency || l.currency || docCur).toUpperCase();
+        if (lineCur !== docCur) {
+            html += flagChip('dv-flag--warn', 'bi-cash-coin', 'waluta ≠ dokument: ' + lineCur,
+                'Pozycja jest w walucie ' + lineCur + ', a dokument dostawcy w ' + docCur
+                + '. To tylko ostrzeżenie — przyjęcie można zatwierdzić.',
+                'currency_document', 0, lid);
         }
         if (num(f.surplus) > EPS && !f.not_on_po) {
-            html += '<span class="dv-flag dv-flag--violet" title="Ilość ponad otwarte zamówienia — trafi na stan jako nadwyżka. Wymaga komentarza.">'
-                  + '<i class="bi bi-plus-circle"></i> nadwyżka ' + esc(fmtQty(f.surplus)) + '</span>';
+            html += flagChip('dv-flag--violet', 'bi-plus-circle', 'nadwyżka ' + fmtQty(f.surplus),
+                'Ilość ponad otwarte zamówienia — trafi na stan jako nadwyżka. Wymaga komentarza.',
+                'surplus', 0, lid);
         }
         if (f.not_on_po) {
-            html += '<span class="dv-flag dv-flag--violet" title="Artykuł nie występuje na żadnym otwartym zamówieniu tego dostawcy. Wymaga komentarza.">'
-                  + '<i class="bi bi-question-circle"></i> brak w zamówieniach</span>';
+            html += flagChip('dv-flag--violet', 'bi-question-circle', 'brak w zamówieniach',
+                'Artykuł nie występuje na żadnym otwartym zamówieniu tego dostawcy. Wymaga komentarza.',
+                'not_on_po', 0, lid);
         }
-        (f.currency_mismatch || []).forEach(function (m) {
-            html += '<span class="dv-flag dv-flag--red" title="' + esc((m.po_number || 'PO') + ' jest w ' + m.po_currency
-                + ', dokument w ' + m.doc_currency + '. Zmień walutę dokumentu — inaczej nie da się zatwierdzić.') + '">'
-                + '<i class="bi bi-cash-coin"></i> waluta PO: ' + esc(m.po_currency) + '</span>';
+        (f.currency_mismatch || []).forEach(function (m, i) {
+            const lineCurrency = m.line_currency || m.doc_currency;
+            html += flagChip('dv-flag--red', 'bi-cash-coin', 'waluta PO: ' + m.po_currency + ' ≠ ' + lineCurrency,
+                (m.po_number || 'PO') + ' jest w ' + m.po_currency + ', pozycja w ' + lineCurrency
+                + '. Zmień walutę pozycji — inaczej nie da się zatwierdzić.',
+                'currency_mismatch', i, lid);
+        });
+        (f.currency_skipped || []).forEach(function (m, i) {
+            html += flagChip('dv-flag--warn', 'bi-cash-coin', 'PO w ' + m.po_currency + ' — pominięte',
+                'Zamówienie ' + (m.po_number || 'PO') + ' jest w ' + m.po_currency
+                + ', a pozycja w innej walucie — nie przydzielono jej do tego zamówienia (cena w obcej walucie nie może trafić do PO).',
+                'currency_skipped', i, lid);
         });
         if (f.duplicate_line && f.duplicate_line.length) {
-            html += '<span class="dv-flag" title="Ten artykuł występuje na dokumencie więcej niż raz.">'
-                  + '<i class="bi bi-files"></i> duplikat</span>';
+            html += flagChip('', 'bi-files', 'duplikat',
+                'Ten artykuł występuje na dokumencie więcej niż raz.',
+                'duplicate_line', 0, lid);
         }
         return html;
+    }
+
+    // ── Modal: co jest nie tak z pozycją i jak to poprawić ─────────
+    //
+    // Każda odznaka na pozycji dostawy jest klikalna i otwiera okno
+    // z opisem problemu oraz listą sugerowanych poprawek (jedna do
+    // wyboru). Poprawki są automatyczne: operator klika „Zastosuj"
+    // i pozycja (albo dokument) poprawia się sama.
+
+    let flagPlan = null;
+
+    // Waluta do zapisu: taka sama jak waluta dokumentu → pusta = dziedziczy.
+    function flagCurParam(code, docCur) {
+        return (!code || code === docCur) ? '' : code;
+    }
+
+    // Sugerowany komentarz do pozycji (nadwyżka / artykuł spoza zamówień).
+    function suggestLineComment(l, f) {
+        const q = num(f.surplus);
+        if (f.not_on_po && !q) return 'Przyjęto artykuł spoza zamówień.';
+        if (f.not_on_po) return 'Przyjęto artykuł spoza zamówień (' + fmtQty(q) + ' ponad zamówienie).';
+        return 'Przyjęto ' + fmtQty(q) + ' ponad zamówienie.';
+    }
+
+    function flagFixPlan(l, st, kind, idx) {
+        const f = l.flags || {};
+        const arr = Array.isArray(f[kind]) ? f[kind] : [];
+        const m = arr[idx] || null;
+        const docCur = (st && st.delivery && st.delivery.currency) ? String(st.delivery.currency).toUpperCase() : 'PLN';
+        const lineCur = String(l.effective_currency || l.currency || docCur).toUpperCase();
+        const label = 'Pozycja ' + l.line_no + (l.vendor_part_no ? ' (' + l.vendor_part_no + ')' : '');
+        const setDocCurrency = function (code) {
+            ensureCurrencyOption(code);
+            return write('delivery-header-save.php', { delivery_id: S.deliveryId, currency: code });
+        };
+        const openComment = function (text) {
+            // Komentarz zapisujemy od razu — poprawić go można potem w wierszu
+            // pozycji (ikona „Komentarz").
+            return applyLinePatch(l, { comment: text });
+        };
+
+        if (kind === 'price_mismatch' && m) {
+            const delta = (m.delta_pct === null || m.delta_pct === undefined)
+                ? '' : ' (różnica ' + (m.delta_pct > 0 ? '+' : '') + String(m.delta_pct).replace('.', ',') + '%)';
+            return {
+                title: 'Cena pozycji różni się od ceny w zamówieniu',
+                intro: '<p><b>' + esc(label) + '</b> — cena na dokumencie to <b>' + esc(fmtPrice(m.line_price))
+                     + '</b>, a w zamówieniu <b>' + esc(m.po_number || 'PO') + '</b> cena wynosi <b>'
+                     + esc(fmtPrice(m.po_price)) + '</b>' + esc(delta) + '.</p>'
+                     + '<p class="dv-flag-muted">To ostrzeżenie — przyjęcie można zatwierdzić także bez zmian.</p>',
+                fixes: [{
+                    label: 'Ustaw cenę pozycji na cenę z zamówienia (' + fmtPrice(m.po_price) + ')',
+                    hint: 'Pozycja dostanie cenę z zamówienia, a odznaka zniknie.',
+                    apply: function () { return applyLinePatch(l, { unit_price: m.po_price }); }
+                }]
+            };
+        }
+
+        if (kind === 'price_missing_on_po') {
+            return {
+                title: 'Zamówienie nie ma ceny dla tej pozycji',
+                intro: '<p><b>' + esc(label) + '</b> — w zamówieniu nie ma ceny dla tej pozycji. '
+                     + 'Cena z dokumentu zostanie wpisana do zamówienia przy zatwierdzeniu przyjęcia.</p>',
+                fixes: [],
+                noFix: 'Tu nie da się nic zmienić — cena uzupełni się sama przy zatwierdzeniu.'
+            };
+        }
+
+        if (kind === 'currency_document') {
+            return {
+                title: 'Waluta pozycji różni się od waluty dokumentu',
+                intro: '<p><b>' + esc(label) + '</b> jest w walucie <b>' + esc(lineCur) + '</b>, a dokument dostawcy '
+                     + 'w <b>' + esc(docCur) + '</b>. Jedna faktura może mieć pozycje w różnych walutach — '
+                     + 'to tylko ostrzeżenie, przyjęcie można zatwierdzić.</p>',
+                fixes: [{
+                    label: 'Ustaw walutę pozycji na walutę dokumentu (' + docCur + ')',
+                    hint: 'Pozycja znów będzie dziedziczyć walutę dokumentu.',
+                    apply: function () { return applyLinePatch(l, { currency: '' }); }
+                }, {
+                    label: 'Zmień walutę dokumentu na ' + lineCur,
+                    hint: 'Wszystkie pozycje bez własnej waluty dostaną ' + lineCur + '.',
+                    apply: function () { return setDocCurrency(lineCur); }
+                }]
+            };
+        }
+
+        if (kind === 'currency_mismatch' && m) {
+            const poCur = String(m.po_currency || '').toUpperCase();
+            return {
+                title: 'Waluta pozycji różni się od waluty zamówienia',
+                intro: '<p><b>' + esc(label) + '</b> jest przydzielona do zamówienia <b>' + esc(m.po_number || 'PO')
+                     + '</b> w walucie <b>' + esc(poCur) + '</b>, a sama pozycja jest w walucie <b>' + esc(lineCur)
+                     + '</b>. Taki przydział <b>blokuje zatwierdzenie</b> przyjęcia — cena w jednej walucie nie może trafić do zamówienia w innej.</p>',
+                fixes: [{
+                    label: 'Ustaw walutę pozycji na walutę zamówienia (' + poCur + ')',
+                    hint: 'Pozycja będzie zgodna z zamówieniem — odznaka zniknie.',
+                    apply: function () { return applyLinePatch(l, { currency: flagCurParam(poCur, docCur) }); }
+                }]
+            };
+        }
+
+        if (kind === 'currency_skipped' && m) {
+            const poCur = String(m.po_currency || '').toUpperCase();
+            return {
+                title: 'Zamówienie pominięte z powodu waluty',
+                intro: '<p>Zamówienie <b>' + esc(m.po_number || 'PO') + '</b> jest w walucie <b>' + esc(poCur)
+                     + '</b>, a <b>' + esc(label) + '</b> w walucie <b>' + esc(lineCur) + '</b>. Pozycja nie została '
+                     + 'przydzielona do tego zamówienia (cena w obcej walucie nie może zapisać się w PO), więc ilość '
+                     + 'trafia na stan jako nadwyżka.</p>',
+                fixes: [{
+                    label: 'Ustaw walutę pozycji na walutę zamówienia (' + poCur + ')',
+                    hint: 'Pozycja przydzieli się do zamówienia automatycznie.',
+                    apply: function () { return applyLinePatch(l, { currency: flagCurParam(poCur, docCur) }); }
+                }]
+            };
+        }
+
+        if (kind === 'surplus' || kind === 'not_on_po') {
+            const isSurplus = kind === 'surplus';
+            return {
+                title: isSurplus ? 'Ilość ponad zamówienie' : 'Artykuł spoza zamówień',
+                intro: isSurplus
+                    ? '<p><b>' + esc(label) + '</b> — ilość pozycji jest większa niż otwarte zamówienia. Nadwyżka '
+                      + '<b>' + esc(fmtQty(num(f.surplus))) + '</b> trafi na stan magazynowy, a pozycja wymaga komentarza.</p>'
+                    : '<p><b>' + esc(label) + '</b> — artykuł nie występuje na żadnym otwartym zamówieniu tego dostawcy. '
+                      + 'Pozycja wymaga komentarza.</p>',
+                fixes: [{
+                    label: 'Dodaj komentarz wyjaśniający',
+                    hint: 'Komentarz zostanie zapisany — możesz go poprawić potem w wierszu pozycji.',
+                    apply: function () { return openComment(suggestLineComment(l, f)); }
+                }]
+            };
+        }
+
+        if (kind === 'duplicate_line' && m) {
+            const other = findLine(parseInt(m, 10));
+            return {
+                title: 'Artykuł występuje na dokumencie więcej niż raz',
+                intro: '<p><b>' + esc(label) + '</b> — ten sam artykuł jest już na dokumencie'
+                     + (other ? ' (pozycja ' + other.line_no + ')' : '') + '. Dwie pozycje tego samego artykułu '
+                     + 'rozdzielają ilość na dwa przydziały.</p>',
+                fixes: [],
+                noFix: 'Scal pozycje ręcznie (usuń jedną i popisz drugą) albo zostaw — przyjęcie można zatwierdzić.'
+            };
+        }
+
+        return null;
+    }
+
+    function openFlagModal(lineId, kind, idx) {
+        const l = findLine(parseInt(lineId, 10));
+        if (!l) return;
+        const plan = flagFixPlan(l, S.state, kind, idx);
+        if (!plan) return;
+        flagPlan = plan;
+        $('#dvFlagTitle').text(plan.title);
+        $('#dvFlagIntro').html(plan.intro);
+        const $fixes = $('#dvFlagFixes');
+        if (!plan.fixes.length) {
+            $fixes.html('<div class="dv-flag-nofix"><i class="bi bi-info-circle"></i> '
+                + esc(plan.noFix || 'Tu nie da się nic zmienić automatycznie.') + '</div>');
+            $('#dvFlagApply').addClass('d-none');
+        } else {
+            $fixes.html(plan.fixes.map(function (fx, i) {
+                return '<label class="dv-flag-fix">'
+                     + '<input type="radio" name="dvFlagFix" value="' + i + '"' + (i === 0 ? ' checked' : '') + '>'
+                     + '<span class="dv-flag-fix-body">'
+                     + '<span class="dv-flag-fix-label">' + esc(fx.label) + '</span>'
+                     + (fx.hint ? '<span class="dv-flag-fix-hint">' + esc(fx.hint) + '</span>' : '')
+                     + '</span></label>';
+            }).join(''));
+            $('#dvFlagApply').removeClass('d-none');
+        }
+        $('#dvFlagModal').modal('show');
+    }
+
+    // Waluta przy cenie pozycji. Różna od waluty dokumentu → wyróżniona
+    // (faktura może mieć pozycje w różnych walutach).
+    function lineCurrencyHtml(l, st) {
+        const doc = (st && st.delivery && st.delivery.currency) ? String(st.delivery.currency).toUpperCase() : 'PLN';
+        const cur = String(l.effective_currency || l.currency || doc).toUpperCase();
+        const own = cur !== doc;
+        return '<span class="dv-cur' + (own ? ' is-own' : '') + '" title="'
+             + (own ? 'Waluta pozycji (waluta dokumentu: ' + doc + ')' : 'Waluta pozycji (z dokumentu dostawcy)') + '">'
+             + esc(cur) + '</span>';
     }
 
     function allocCellHtml(l, st, ro) {
@@ -1491,7 +1762,7 @@ $(document).ready(function () {
         }
         html += '</div>';
         if (!ro) {
-            html += '<div class="dv-flags">' + flagsHtml(l);
+            html += '<div class="dv-flags">' + flagsHtml(l, st);
             if (manual) {
                 html += '<button type="button" class="rx-link-btn js-line-auto" data-line-id="' + l.id + '" title="Wróć do automatycznego podziału">'
                       + '<i class="bi bi-arrow-counterclockwise"></i> przywróć automatyczny</button>';
@@ -1562,7 +1833,8 @@ $(document).ready(function () {
                  + '<td class="dv-c-qty"><span class="dv-qty">' + esc(fmtQty(l.quantity)) + '</span>' + unit + '</td>'
                  + '<td class="dv-c-price">' + (l.unit_price === null || l.unit_price === undefined || l.unit_price === ''
                         ? '<span class="dv-price--none">—</span>'
-                        : '<span class="dv-price">' + esc(fmtPrice(l.unit_price)) + '</span>') + '</td>'
+                        : '<span class="dv-price">' + esc(fmtPrice(l.unit_price)) + '</span>')
+                        + lineCurrencyHtml(l, st) + '</td>'
                  + '<td>' + allocCellHtml(l, st, ro) + '</td>';
 
         if (ro) {
@@ -1635,21 +1907,41 @@ $(document).ready(function () {
     }
 
     // Zapis pól pozycji (magazyn / komentarz) — API wymaga kompletu pól.
-    function saveLineFields(line, patch) {
+    // Pełny ładunek pozycji do zapisu (komentarz, ilość, cena, magazyn).
+    function linePayload(line, patch) {
         const payload = {
             delivery_id: S.deliveryId,
             line_id: line.id,
             vendor_part_id: line.vendor_part_id,
             quantity: line.quantity,
             unit_price: (line.unit_price === null || line.unit_price === undefined) ? '' : line.unit_price,
+            // Waluta pozycji — pusta = dziedziczy walutę dokumentu.
+            currency: line.currency || '',
             sub_magazine_id: magParam(line.sub_magazine_id),
             comment: line.comment || ''
         };
-        $.extend(payload, patch);
-        return write('delivery-line-save.php', payload).catch(function (err) { showError(err.message); });
+        return $.extend(payload, patch || {});
+    }
+
+    // Zapis pozycji z poprawką — błąd zgłasza komunikat (bez rethrow).
+    function saveLineFields(line, patch) {
+        return write('delivery-line-save.php', linePayload(line, patch)).catch(function (err) { showError(err.message); });
+    }
+
+    // Zapis pozycji z poprawką dla modala odznaki — błąd idzie do promise,
+    // żeby modal mógł go pokazać i się nie zamknął.
+    function applyLinePatch(line, patch) {
+        return write('delivery-line-save.php', linePayload(line, patch));
     }
 
     $('#dvLinesBody')
+        .on('click', '.js-flag', function (e) {
+            // Odznaka (chip) — klik otwiera modal z wyjaśnieniem i poprawką.
+            e.preventDefault();
+            e.stopPropagation();
+            const $f = $(this);
+            openFlagModal($f.attr('data-line-id'), $f.attr('data-flag'), parseInt($f.attr('data-idx'), 10) || 0);
+        })
         .on('click', '.js-line-del', function () {
             const id = parseInt($(this).attr('data-line-id'), 10);
             if (S.editLineId === id) resetEntry();
@@ -1685,6 +1977,25 @@ $(document).ready(function () {
             if (e.key === 'Enter') { e.preventDefault(); $(this).trigger('blur'); $('#dvArt').trigger('focus'); }
         });
 
+    // ── Modal odznaki: „Zastosuj" wykonuje wybraną poprawkę ─────────
+    $('#dvFlagApply').on('click', function () {
+        if (!flagPlan || !flagPlan.fixes.length) return;
+        const idx = parseInt($('#dvFlagFixes input[name="dvFlagFix"]:checked').val(), 10) || 0;
+        const fix = flagPlan.fixes[idx];
+        if (!fix) return;
+        const $b = $(this).prop('disabled', true);
+        Promise.resolve()
+            .then(function () { return fix.apply(); })
+            .then(function () {
+                $('#dvFlagModal').modal('hide');
+                showOk('<i class="bi bi-check-circle-fill"></i> ' + esc(fix.label));
+            })
+            .catch(function (err) {
+                showError(err.message);
+            })
+            .then(function () { $b.prop('disabled', false); });
+    });
+
     // =====================================================================
     // Wiersz wpisywania + wyszukiwanie artykułu
     // =====================================================================
@@ -1693,11 +2004,57 @@ $(document).ready(function () {
     const $qty = $('#dvQty');
     const $price = $('#dvPrice');
     const $entryMag = $('#dvMag');
+    const $lineCurrency = $('#dvLineCurrency');
     const $dd = $('#dvArtList');
     let ddItems = [];
     let ddActive = -1;
     let ddSeq = 0;
     let ddTimer = null;
+
+    // ── Waluta pozycji ─────────────────────────────────────────
+    //
+    // Dokument dostawcy ma jedną walutę (nagłówek), ale jedna faktura może
+    // mieć pozycje w różnych walutach (np. większość PLN, jedna USD).
+    // Waluta pozycji:
+    //   - domyślnie = waluta zamówienia, z którego bierzemy artykuł,
+    //     a gdy artykułu nie ma na PO — waluta dokumentu,
+    //   - pusta w bazie = dziedziczy walutę dokumentu (zmiana waluty
+    //     dokumentu przesuwa wtedy pozycję za sobą),
+    //   - inna niż dokument = zapisana jawnie na pozycji.
+    let lastDocCurrency = 'PLN';
+
+    function docCurrency() {
+        const c = $currency.val();
+        return c ? String(c).toUpperCase() : 'PLN';
+    }
+
+    // Efektywna waluta pozycji w formularzu (zawsze ma wartość).
+    function lineCurrencyValue() {
+        const v = $lineCurrency.val();
+        return v ? String(v).toUpperCase() : docCurrency();
+    }
+
+    // Ustawia walutę w polu (dodaje brakującą opcję, np. walutę z PO).
+    function setLineCurrency(code) {
+        const c = code ? String(code).toUpperCase() : docCurrency();
+        if (!$lineCurrency.find('option').filter(function () { return $(this).val() === c; }).length) {
+            $lineCurrency.append('<option value="' + esc(c) + '">' + esc(c) + '</option>');
+        }
+        $lineCurrency.val(c);
+        return c;
+    }
+
+    // Waluta do zapisu: pusty string = pozycja dziedziczy walutę dokumentu.
+    function lineCurrencyParam() {
+        const v = lineCurrencyValue();
+        const d = docCurrency();
+        return (v && v !== d) ? v : '';
+    }
+
+    // Zmiana waluty pozycji odświeża ostrzeżenie o różnicy z walutą PO.
+    $lineCurrency.on('change', function () {
+        updateEntryHint();
+    });
 
     function hl(text, q) {
         text = String(text == null ? '' : text);
@@ -1837,6 +2194,9 @@ $(document).ready(function () {
         if (p !== null && p !== undefined && p !== '' && !isNaN(parseFloat(p)) && $.trim($price.val()) === '') {
             $price.val(inputNum(p));
         }
+        // Waluta pozycji: z zamówienia, z którego wzięliśmy artykuł; gdy
+        // artykułu nie ma na PO — waluta dokumentu dostawcy.
+        setLineCurrency(r.suggested_currency || r.currency || docCurrency());
         entryError('');
         updateEntryHint();
         renderSide(); // panel „Otwarte zamówienia" filtruje się po wybranej części
@@ -1883,13 +2243,31 @@ $(document).ready(function () {
             g.qty += Math.max(0, num(it.remaining) - (taken[it.po_item_id] || 0));
             g.count++;
             if (!g.unit && it.unit) g.unit = it.unit;
+            // Walutę zbieramy zawsze — cena w PO bywa pusta, a waluta nie.
+            if (it.currency && g.cur.indexOf(it.currency) === -1) g.cur.push(it.currency);
             if (it.unit_price !== null && it.unit_price !== undefined && it.unit_price !== '' && !isNaN(parseFloat(it.unit_price))) {
                 const p = fmtPrice(it.unit_price);
                 if (g.prices.indexOf(p) === -1) g.prices.push(p);
-                if (it.currency && g.cur.indexOf(it.currency) === -1) g.cur.push(it.currency);
             }
         });
         order.sort(function (a, b) { return a.localeCompare(b, 'pl', { numeric: true }); });
+
+        // Waluta pozycji vs waluta zamówienia — różnica blokuje zatwierdzenie
+        // przyjęcia, więc ostrzegamy od razu przy wpisywaniu.
+        const rowCur = lineCurrencyValue();
+        const poCurs = [];
+        order.forEach(function (key) {
+            (groups[key].cur || []).forEach(function (c) {
+                const cc = String(c).toUpperCase();
+                if (poCurs.indexOf(cc) === -1) poCurs.push(cc);
+            });
+        });
+        const diffCurs = poCurs.filter(function (c) { return c !== rowCur; });
+        const curWarnHtml = diffCurs.length
+            ? '<div class="dv-info-head dv-info-head--warn"><i class="bi bi-exclamation-triangle-fill"></i> '
+              + 'Waluta pozycji (' + esc(rowCur) + ') różni się od waluty zamówienia ('
+              + esc(diffCurs.join(', ')) + ') — takiej pozycji nie da się zatwierdzić.</div>'
+            : '';
 
         const rows = order.map(function (key) {
             const g = groups[key];
@@ -1907,6 +2285,7 @@ $(document).ready(function () {
         });
         $h.addClass('is-onpo has-panel').html('<div class="dv-info">' + descHtml
             + '<div class="dv-info-head"><i class="bi bi-check2-circle"></i> Na zamówieniach</div>'
+            + curWarnHtml
             + '<div class="dv-info-list">' + rows.join('') + '</div></div>');
     }
 
@@ -1950,7 +2329,12 @@ $(document).ready(function () {
     function entryMagParam() {
         const v = $entryMag.val();
         if (!hasMag(v)) return '';
-        return String(v) === currentDefaultMag() ? '' : String(v);
+        const def = currentDefaultMag();
+        // Dostawa bez magazynu domyślnego → pozycja musi dostać własny
+        // magazyn, bo „dziedziczenie" nic nie wniesie (blokada przed
+        // zatwierdzeniem: „nie wybrano magazynu").
+        if (!hasMag(def)) return String(v);
+        return String(v) === def ? '' : String(v);
     }
 
     // Lista magazynów w pasku wpisywania (selectpicker z wyszukiwarką).
@@ -1966,7 +2350,7 @@ $(document).ready(function () {
         // ruszamy (przebudowa zgasiłaby listę i skasowała wpisaną frazę).
         // Jawne ustawienie (reset / edycja pozycji) przebudowuje zawsze.
         if (selected === undefined && entryMagBusy()) return;
-        const def = currentDefaultMag();
+        const def = currentDefaultMag() || fallbackMag();
         let pick;
         if (selected === undefined) {
             const cur = $entryMag.val();
@@ -2007,6 +2391,7 @@ $(document).ready(function () {
         $art.val('');
         $qty.val('');
         $price.val('');
+        setLineCurrency(docCurrency());
         fillEntryMag('');
         $('.dv-art-wrap').removeClass('is-picked');
         $('#dvArtClear').addClass('d-none');
@@ -2037,6 +2422,8 @@ $(document).ready(function () {
         $('#dvArtClear').removeClass('d-none');
         $qty.val(inputNum(l.quantity));
         $price.val(l.unit_price === null || l.unit_price === undefined ? '' : inputNum(l.unit_price));
+        // Waluta pozycji: zapisana własna albo dziedziczona z dokumentu.
+        setLineCurrency(l.effective_currency || l.currency || docCurrency());
         // Magazyn: nadpisanie pozycji (w tym 0) albo magazyn domyślny dostawy,
         // gdy pozycja dziedziczy — zapis wyśle wtedy '' (entryMagParam), więc
         // zwykła poprawka ilości/ceny nie zamienia odziedziczonego magazynu
@@ -2179,6 +2566,8 @@ $(document).ready(function () {
                 vendor_part_id: S.picked.vendor_part_id,
                 quantity: qty,
                 unit_price: price,
+                // Waluta pozycji — pusta = dziedziczy walutę dokumentu.
+                currency: lineCurrencyParam(),
                 // '' = bez nadpisania (magazyn domyślny dostawy → NULL),
                 // liczba (także "0") różna od domyślnej = konkretny magazyn.
                 sub_magazine_id: entryMagParam()
@@ -2392,7 +2781,7 @@ $(document).ready(function () {
 
         const canPost = !!(st && mode === 'draft' && sum.can_post && (sum.blockers || []).length === 0);
         $('#dvPostBtn').prop('disabled', !canPost || S.posting)
-            .attr('title', canPost ? '' : (S.deliveryId ? 'Usuń blokady wymienione nad paskiem.' : 'Najpierw zapisz dokument dostawcy.'));
+            .attr('title', canPost ? '' : (S.deliveryId ? 'Usuń blokady wymienione nad paskiem.' : 'Najpierw wpisz pozycje z faktury.'));
         $('#dvDiscardBtn').prop('disabled', !S.deliveryId).toggleClass('d-none', !S.deliveryId);
         $('#dvCancelDeliveryBtn').toggleClass('d-none', mode !== 'posted');
         $('#dvBackBtn').toggleClass('d-none', mode === 'draft');
@@ -2433,26 +2822,52 @@ $(document).ready(function () {
     $('#dvPostBtn').on('click', async function () {
         if ($(this).prop('disabled') || S.posting) return;
         S.posting = true;
-        const $b = $(this).prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Zatwierdzanie…');
+        const $b = $(this).prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Sprawdzam…');
         try {
             await flushHeader();
-            const r = await write('delivery-post.php', { delivery_id: S.deliveryId });
-            if (!stateOf(r)) {
-                const g = await call('delivery-get.php', { delivery_id: S.deliveryId });
-                render(stateOf(g));
-            }
-            openPostSummary(r.result || {});
+            // KROK 1: PODGLĄD — bez zapisu. Dostawa zostaje szkicem, towar nie
+            // idzie na stan. Operator w oknie decyduje o stanach zamówień i
+            // dopiero potem zatwierdza (KROK 2 → delivery-post.php).
+            const p = await call('delivery-post-preview.php', { delivery_id: S.deliveryId });
+            openPostSummary(p.preview || {}, 'preview');
         } catch (err) {
             showError(err.message);
-            try {
-                const g = await call('delivery-get.php', { delivery_id: S.deliveryId });
-                render(stateOf(g));
-            } catch (e) { /* zostaje poprzedni stan */ }
         } finally {
             S.posting = false;
             $b.html('<i class="bi bi-check2-circle"></i> Zatwierdź przyjęcie');
             renderBar(S.state);
         }
+    });
+
+    // KROK 2: zatwierdzenie — księguje towar, nadaje GRN, ustawia stany
+    // zamówień zgodnie z wyborami operatora.
+    $('#dvPostCommit').on('click', async function () {
+        if (S.posting) return;
+        const $b = $(this).prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Zatwierdzanie…');
+        S.posting = true;
+        try {
+            await flushHeader();
+            const choices = {};
+            Object.keys(postPoChoices).forEach(function (poId) { choices[poId] = postPoChoices[poId]; });
+            const r = await write('delivery-post.php', { delivery_id: S.deliveryId, po_choices: choices });
+            const res = r.result || {};
+            if (!stateOf(r)) {
+                const g = await call('delivery-get.php', { delivery_id: S.deliveryId });
+                render(stateOf(g));
+            }
+            openPostSummary(res || {}, 'result');
+        } catch (err) {
+            showError(err.message);
+        } finally {
+            S.posting = false;
+            $b.prop('disabled', false).html('<i class="bi bi-check2-circle"></i> Zatwierdź przyjęcie');
+            renderBar(S.state);
+        }
+    });
+
+    // Anulowanie podglądu — nic nie zostało zapisane, dostawa zostaje szkicem.
+    $('#dvPostCancel').on('click', function () {
+        $('#dvPostModal').modal('hide');
     });
 
     // =====================================================================
@@ -2461,54 +2876,206 @@ $(document).ready(function () {
     // =====================================================================
 
     function closePoButtonsHtml(p) {
-        return '<div class="dv-post-choice" data-po-id="' + parseInt(p.po_id, 10) + '" data-po-number="' + esc(p.po_number || '') + '">'
-             + '<button type="button" class="btn btn-sm btn-primary js-po-keep" disabled><i class="bi bi-hourglass-split"></i> Zostaw otwarte</button>'
-             + '<button type="button" class="btn btn-sm btn-outline-secondary js-po-close"><i class="bi bi-check2-all"></i> Zamknij zamówienie</button>'
+        // „Zostaw otwarte" to nie akcja, tylko miejsce na „Wróć" (po kliknięciu
+        // „Zamknij zamówienie"). Dlatego startuje wyłączony — domyślnie
+        // zamówienie zostaje otwarte. Akcją jest „Zamknij zamówienie", więc to
+        // ona dostaje wygląd główny.
+        // Tryb „live" = zaksięgowane przyjęcie (przycisk zamyka PO od razu).
+        return '<div class="dv-post-choice" data-mode="live" data-po-id="' + parseInt(p.po_id, 10) + '" data-po-number="' + esc(p.po_number || '') + '">'
+             + '<button type="button" class="btn btn-sm btn-outline-secondary js-po-keep" disabled'
+             +   ' title="Domyślnie zamówienie zostaje otwarte — brakujące pozycje przyjmiesz przy kolejnej dostawie.">'
+             +   '<i class="bi bi-hourglass-split"></i> Zostaw otwarte</button>'
+             + '<button type="button" class="btn btn-sm btn-primary js-po-close"><i class="bi bi-check2-all"></i> Zamknij zamówienie</button>'
              + '<span class="dv-sub">Brakujące pozycje przyjmiesz przy kolejnej dostawie.</span>'
              + '</div>';
     }
 
-    function openPostSummary(result) {
-        $('#dvPostTitle').text(result.grn_number || (S.state && S.state.delivery.grn_number) || 'Przyjęcie');
-        const pos = result.pos || [];
+    // Wybór w oknie PODGLĄDU (przed zatwierdzeniem): zamówienie zostaje
+    // otwarte albo zostaje zamknięte. Wybór zapisujemy lokalnie i wysyłamy
+    // razem z zatwierdzeniem (delivery-post.php → po_choices).
+    function postChoiceHtml(p) {
+        const poId = parseInt(p.po_id, 10);
+        const choice = postPoChoices[poId] || 'auto';
+        const keepOn = choice === 'auto';
+        const closeOn = choice === 'received';
+        return '<div class="dv-post-choice" data-mode="preview" data-po-id="' + poId + '">'
+             + '<button type="button" class="btn btn-sm js-po-keep' + (keepOn ? ' btn-outline-secondary is-chosen' : ' btn-outline-secondary') + '">'
+             +   '<i class="bi bi-hourglass-split"></i> Zostaw otwarte</button>'
+             + '<button type="button" class="btn btn-sm js-po-close' + (closeOn ? ' btn-danger is-chosen' : ' btn-outline-secondary') + '">'
+             +   '<i class="bi bi-check2-all"></i> Zamknij zamówienie</button>'
+             + '</div>';
+    }
+
+    // Wybory operatora w oknie PODGLĄDU: po_id → 'auto' | 'received'.
+    let postPoChoices = {};
+    let postPreviewPos = [];   // ostatni podgląd (do przerysowania wyborów)
+
+    let postData = {};         // ostatnie dane okna (nagłówek dostawy + pos)
+
+    function openPostSummary(data, mode) {
+        const preview = (mode === 'preview');
+        const grn = (data || {}).grn_number;
+        postData = data || {};
+        postPreviewPos = postData.pos || [];
+        if (preview) { postPoChoices = {}; postItemsOpen = {}; }
+        $('#dvPostEyebrow').text(preview ? 'Przyjęcie do zatwierdzenia' : 'Przyjęcie zatwierdzone');
+        $('#dvPostTitle').text(preview
+            ? 'Przyjęcie dostawy'
+            : (grn || (S.state && S.state.delivery.grn_number) || 'Przyjęcie'));
+        $('#dvPostLead').text(preview
+            ? 'Sprawdź, co trafi na stan, i zdecyduj o stanach zamówień. Zatwierdzenie zaksięguje towar i nada numer GRN.'
+            : 'Towar jest na stanie. Przyjęcie zostało zatwierdzone.');
+        $('#dvPostCancel').toggleClass('d-none', !preview);
+        $('#dvPostCommit').toggleClass('d-none', !preview);
+        $('#dvPostDone').toggleClass('d-none', preview);
+        $('#dvPostListBtn').toggleClass('d-none', preview);
+        renderPostCards(preview);
+        $('#dvPostModal').modal('show');
+    }
+
+    let postItemsOpen = {};    // po_id → true, gdy rozwinięto wszystkie pozycje
+
+    // „pozycja / pozycje / pozycji"; genitive = forma po „z" (np. „z 6 pozycji").
+    function plPositions(n, genitive) {
+        if (genitive) return 'pozycji';
+        const m10 = n % 10, m100 = n % 100;
+        if (n === 1) return 'pozycja';
+        return (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) ? 'pozycje' : 'pozycji';
+    }
+
+    $(document).on('click', '.js-post-items-toggle', function () {
+        const id = parseInt($(this).attr('data-po-id'), 10);
+        const wasOpen = !!postItemsOpen[id];
+        postItemsOpen[id] = !wasOpen;
+        renderPostCards(true);
+    });
+
+    // Karty zamówień w oknie zatwierdzenia (podgląd albo wynik).
+    function renderPostCards(preview) {
+        const pos = postPreviewPos;
         let html = '';
+        if (preview) {
+            const lines = postData.lines || [];
+            if (lines.length || postData.doc_number || postData.vendor_name) {
+                // Trzy wiaderka — suma zawsze = liczba pozycji z dokumentu
+                // (pozycja częściowa nie może dostać się do dwóch naraz).
+                let toPo = 0, partly = 0, extra = 0;
+                lines.forEach(function (l) {
+                    const a = num(l.allocated), s = num(l.surplus);
+                    if (a > 0 && s > 0) partly++;
+                    else if (a > 0) toPo++;
+                    else if (s > 0) extra++;
+                });
+                html += '<div class="dv-post-doc">'
+                      + '<div class="dv-post-doc-top"><strong>' + esc(postData.doc_number || 'Dokument dostawy') + '</strong>'
+                      + (postData.vendor_name ? '<span class="dv-post-doc-vendor">' + esc(postData.vendor_name) + '</span>' : '') + '</div>'
+                      + '<div class="dv-post-doc-sub">' + lines.length + ' ' + plPositions(lines.length) + ' z dokumentu'
+                      + (toPo ? ' · ' + toPo + ' do zamówień' : '')
+                      + (partly ? ' · ' + partly + ' częściowo do zamówień' : '')
+                      + (extra ? ' · <span class="dv-post-over-inline">' + extra + ' nadwyżka na stan</span>' : '')
+                      + '</div>'
+                      + '</div>';
+            }
+        }
         if (pos.length === 0) {
             html = '<div class="dv-side-empty">Dostawa nie dotyczyła żadnego zamówienia — cała ilość trafiła na stan jako nadwyżka.</div>';
         }
         pos.forEach(function (p) {
+            const poId = parseInt(p.po_id, 10);
             const ordered = num(p.ordered);
             const received = num(p.received);
-            const pct = ordered > 0 ? Math.max(0, Math.min(100, received / ordered * 100)) : 0;
             const open = ['confirmed', 'in_progress', 'partially_received'].indexOf(p.new_state) !== -1;
-            html += '<div class="dv-post-po' + (open ? '' : ' is-closed') + '" data-po-id="' + parseInt(p.po_id, 10) + '">'
+            const items = p.items || [];
+            const itemCount = parseInt(p.item_count, 10) || items.length;
+            const completeItems = parseInt(p.complete_items, 10) || 0;
+            const shortItems = items.filter(function (it) { return num(it.missing) > 0; });
+            const shortCount = Math.max(itemCount - completeItems, shortItems.length);
+            html += '<div class="dv-post-po' + (open ? '' : ' is-closed') + '" data-po-id="' + poId + '">'
                   + '<div class="dv-post-po-top">'
                   +   '<a class="dv-post-po-no" href="' + esc(poEditUrl(p.po_id)) + '" target="_blank" rel="noopener">' + esc(p.po_number || ('#' + p.po_id)) + '</a>'
                   +   '<span class="js-po-badge">' + stateBadge(p.new_state) + '</span>'
-                  + '</div>'
-                  + '<div class="dv-post-po-prog">'
-                  +   '<div class="rx-progress-top"><span>przyjęto <strong>' + esc(fmtQty(received)) + '</strong> z ' + esc(fmtQty(ordered)) + '</span>'
-                  +   '<span class="rx-pct">' + Math.round(pct) + '%</span></div>'
-                  +   '<div class="rx-bar"><span class="' + (pct >= 100 ? 'is-done' : '') + '" style="width:' + pct.toFixed(1) + '%"></span></div>'
                   + '</div>';
-            const missing = p.missing_lines || [];
-            if (missing.length) {
-                html += '<ul class="dv-post-missing">';
-                missing.slice(0, 5).forEach(function (m) {
-                    html += '<li><span class="n">' + esc(m.vendor_part_no || '—') + '</span><span class="nm" title="' + esc(m.part_name || '') + '">' + esc(m.part_name || '') + '</span>'
-                          + '<span>brakuje ' + esc(fmtQty(m.remaining)) + '</span></li>';
-                });
-                if (missing.length > 5) html += '<li><span></span><span class="text-muted">+ ' + (missing.length - 5) + ' więcej</span><span></span></li>';
-                html += '</ul>';
+
+            if (!preview) {
+                // WYNIK: kompaktowo — stan końcowy i liczba kompletnych pozycji.
+                html += '<div class="dv-post-po-prog"><span class="dv-post-count' + (shortCount ? ' is-short' : ' is-ok') + '">'
+                      + (shortCount ? '' : '<i class="bi bi-check-circle-fill"></i> ')
+                      + completeItems + ' z ' + itemCount + ' ' + plPositions(itemCount, true) + ' kompletnych</span></div>'
+                      + '<div class="dv-post-choice"><span class="dv-sub">' + (open
+                          ? '<i class="bi bi-hourglass-split"></i> Zamówienie zostaje otwarte — brakujące pozycje przyjmiesz przy kolejnej dostawie.'
+                          : '<i class="bi bi-check-circle-fill text-success"></i> Zamówienie zamknięte — nie ma już nic do dostarczenia.') + '</span></div>'
+                      + '<div class="dv-post-error d-none"></div></div>';
+                return;
             }
+
+            // Nagłówek kompletności: w POZYCJACH, nigdy jako procent.
+            html += '<div class="dv-post-po-prog">'
+                  + '<span class="dv-post-count' + (shortCount ? ' is-short' : ' is-ok') + '">'
+                  +   (shortCount ? '<i class="bi bi-exclamation-triangle-fill"></i> ' : '<i class="bi bi-check-circle-fill"></i> ')
+                  +   '<strong>' + completeItems + ' z ' + itemCount + '</strong> ' + plPositions(itemCount, true) + ' kompletnych</span>'
+                  + (shortCount ? '<span class="dv-post-count-short">' + shortCount + ' ' + plPositions(shortCount) + ' ' + (shortCount === 1 ? 'pozostanie' : 'pozostaną') + ' nieprzyjęte</span>' : '')
+                  + '<div class="dv-post-sum">' + esc(fmtQty(received)) + ' z ' + esc(fmtQty(ordered)) + ' zamówionych (suma ilości — nadwyżka na jednej pozycji nie zastępuje braku na innej)</div>'
+                  + '</div>';
+
+            if (items.length) {
+                const expanded = !!postItemsOpen[poId];
+                // Domyślnie tylko brakujące; gdy wszystko komplet — lista zwinięta.
+                const showAll = expanded || (shortItems.length > 0 && shortItems.length === items.length);
+                const rows = showAll ? items : shortItems;
+                if (rows.length) {
+                    html += '<div class="dv-post-items-wrap"><table class="dv-post-items">'
+                          + '<caption class="sr-only">Pozycje zamówienia ' + esc(p.po_number || ('#' + p.po_id)) + '</caption>'
+                          + '<thead><tr><th scope="col">Symbol</th><th scope="col">Nazwa</th>'
+                          + '<th scope="col" class="num">Zamówiono</th><th scope="col" class="num">Przyjęto wcześniej</th>'
+                          + '<th scope="col" class="num">Ta dostawa</th><th scope="col" class="num">Brakuje</th></tr></thead><tbody>';
+                    rows.forEach(function (it) {
+                        const miss = num(it.missing);
+                        const thisQty = num(it.this_delivery);
+                        const remainBefore = Math.max(0, num(it.ordered) - num(it.received));
+                        const over = thisQty > remainBefore + 1e-9 ? thisQty - remainBefore : 0;
+                        const unit = it.unit ? ' ' + esc(it.unit) : '';
+                        html += '<tr class="' + (miss > 0 ? 'is-short' : 'is-ok') + '">'
+                              + '<td class="n">' + esc(it.vendor_part_no || '—') + '</td>'
+                              + '<td class="nm" title="' + esc(it.part_name || '') + '">' + esc(it.part_name || '') + '</td>'
+                              + '<td class="num">' + esc(fmtQty(it.ordered)) + '</td>'
+                              + '<td class="num">' + esc(fmtQty(it.received)) + '</td>'
+                              + '<td class="num">' + (thisQty > 0 ? '<strong>+' + esc(fmtQty(thisQty)) + '</strong>' : '<span class="text-muted">0</span>')
+                              +   (over > 0 ? '<span class="dv-post-over">nadwyżka ' + esc(fmtQty(over)) + unit + '</span>' : '') + '</td>'
+                              + '<td class="num">' + (miss > 0
+                                    ? '<span class="dv-post-miss">' + esc(fmtQty(miss)) + unit + '</span>'
+                                    : '<i class="bi bi-check2 dv-post-tick" aria-label="komplet"></i>') + '</td>'
+                              + '</tr>';
+                    });
+                    html += '</tbody></table></div>';
+                }
+                // Przełącznik: krótkie pozycje (domyślnie) / wszystkie.
+                if (items.length > shortItems.length) {
+                    html += '<button type="button" class="btn btn-link btn-sm dv-post-toggle js-post-items-toggle" data-po-id="' + poId + '" aria-expanded="' + (showAll ? 'true' : 'false') + '">'
+                          + '<i class="bi ' + (showAll ? 'bi-chevron-up' : 'bi-chevron-down') + '"></i> '
+                          + (showAll ? (shortItems.length ? 'pokaż tylko brakujące' : 'ukryj pozycje') : 'pokaż wszystkie pozycje (' + items.length + ')') + '</button>';
+                }
+            }
+
             if (open) {
-                html += closePoButtonsHtml(p);
+                // Skutek wyboru — jedno zdanie.
+                const closing = postPoChoices[poId] === 'received';
+                let units = {};
+                let missSum = 0;
+                shortItems.forEach(function (it) { missSum += num(it.missing); units[it.unit || ''] = 1; });
+                const unitKeys = Object.keys(units);
+                const missTxt = (unitKeys.length === 1 && missSum > 0) ? ' (' + fmtQty(missSum) + (unitKeys[0] ? ' ' + unitKeys[0] : '') + ')' : '';
+                html += '<div class="dv-post-consequence' + (closing ? ' is-close' : '') + '" role="status">'
+                      + (closing
+                          ? '<i class="bi bi-exclamation-triangle-fill"></i> Zamknięcie: ' + (shortCount ? shortCount + ' ' + plPositions(shortCount) + esc(missTxt) + ' ' + (shortCount === 1 ? 'zostanie' : 'zostaną') + ' nieprzyjęte na zawsze.' : 'zamówienie zostanie zamknięte.')
+                          : '<i class="bi bi-hourglass-split"></i> Zamówienie zostanie otwarte — brakujące pozycje przyjmiesz przy kolejnej dostawie.')
+                      + '</div>';
+                html += postChoiceHtml(p);
             } else {
                 html += '<div class="dv-post-choice"><span class="dv-sub"><i class="bi bi-check-circle-fill text-success"></i> Zamówienie zamknięte — nie ma już nic do dostarczenia.</span></div>';
             }
             html += '<div class="dv-post-error d-none"></div></div>';
         });
         $('#dvPostPos').html(html);
-        $('#dvPostModal').modal('show');
     }
 
     // Wspólna obsługa przycisków w modalu i w panelu bocznym trybu odczytu.
@@ -2516,9 +3083,23 @@ $(document).ready(function () {
         const $wrap = $(this).closest('.dv-post-choice');
         const $keep = $wrap.find('.js-po-keep');
         const $btn = $(this);
+        if ($wrap.attr('data-mode') === 'preview') {
+            // PODGLĄD: zamknięcie zamówienia jest nieodwracalne → potwierdzenie
+            // w miejscu. Wybór zapisujemy lokalnie; wysyłamy go dopiero przy
+            // zatwierdzeniu przyjęcia.
+            if (!$btn.hasClass('is-confirm')) {
+                $btn.addClass('is-confirm btn-danger').removeClass('btn-outline-secondary')
+                    .html('<i class="bi bi-exclamation-triangle-fill"></i> Na pewno zamknąć?');
+                $keep.removeClass('is-chosen').html('<i class="bi bi-x"></i> Wróć');
+                return;
+            }
+            postPoChoices[parseInt($wrap.attr('data-po-id'), 10)] = 'received';
+            renderPostCards(true);
+            return;
+        }
         if (!$btn.hasClass('is-confirm')) {
             // Krok 1: nieodwracalne → prosimy o potwierdzenie w miejscu.
-            $btn.addClass('is-confirm btn-danger').removeClass('btn-outline-secondary')
+            $btn.addClass('is-confirm btn-danger').removeClass('btn-primary')
                 .html('<i class="bi bi-exclamation-triangle-fill"></i> Na pewno zamknąć?');
             $keep.prop('disabled', false).html('<i class="bi bi-x"></i> Wróć');
             return;
@@ -2543,8 +3124,15 @@ $(document).ready(function () {
 
     $(document).on('click', '.js-po-keep', function () {
         const $wrap = $(this).closest('.dv-post-choice');
+        if ($wrap.attr('data-mode') === 'preview') {
+            // PODGLĄD: wybór „zostaw otwarte" (albo powrót z potwierdzenia
+            // zamknięcia). Wybór zapisujemy lokalnie.
+            postPoChoices[parseInt($wrap.attr('data-po-id'), 10)] = 'auto';
+            renderPostCards(true);
+            return;
+        }
         // Wróć z kroku potwierdzenia.
-        $wrap.find('.js-po-close').removeClass('is-confirm btn-danger').addClass('btn-outline-secondary')
+        $wrap.find('.js-po-close').removeClass('is-confirm btn-danger').addClass('btn-primary')
             .html('<i class="bi bi-check2-all"></i> Zamknij zamówienie');
         $(this).prop('disabled', true).html('<i class="bi bi-hourglass-split"></i> Zostaw otwarte');
     });
@@ -2584,9 +3172,9 @@ $(document).ready(function () {
         renderBar(S.state);
         updateVendorHint();
         refreshDocGate();
-        const draftOk = !S.state || S.state.delivery.state === 'draft';
-        // Wiersz wpisywania dopiero po założeniu szkicu (S.deliveryId).
-        $('#dvEntry').toggleClass('d-none', !S.deliveryId || !S.vendorId || !draftOk);
+        // Wiersz wpisywania odblokowuje dopiero szkic, czyli klik w
+        // „Zapisz dokument dostawcy" (refreshCanEnter).
+        refreshCanEnter();
         $('#dvLinesNote').text(headerMode() === 'editing'
             ? 'Dokument dostawcy w edycji — pozycje zablokowane.'
             : (S.state && S.state.delivery.state === 'draft' ? 'Zmiany zapisują się na bieżąco.' : ''));

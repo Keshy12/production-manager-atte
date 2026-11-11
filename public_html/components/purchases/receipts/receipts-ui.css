@@ -146,7 +146,7 @@
 .rx-stat-label { font-size: .75rem; font-weight: 600; color: var(--rx-muted); }
 .rx-stat--overdue { --rx-tone: #dc3545; --rx-tone-soft: #fff4f5; }
 .rx-stat--overdue.has-value .rx-stat-value { color: #c82333; }
-.rx-stat--pending { --rx-tone: #6f42c1; --rx-tone-soft: #f7f3fd; }
+/* (odcienie kart filtra są niżej, w bloku „Karty filtrujące") */
 
 @media (max-width: 575.98px) {
     .rx-stats { width: 100%; }
@@ -1403,6 +1403,105 @@ a.rx-timeline-doc { color: var(--rx-accent-ink); }
     line-height: 1.25;
 }
 .rx-stat--overdue.has-value .rx-stat-sub { color: #c0392f; }
+
+/* ---- Karty filtrujące (zakładka „Do przyjęcia") ---------------------
+   Dwie grupy, bo to dwa różne wymiary filtra — ten sam wzorzec co
+   dwie grupy kafelków na /admin/purchase/vendors:
+     1. „Status zamówienia" — karty statusu, niezależne (kilka naraz),
+     2. „Termin" — karta „Po terminie", WYŁĄCZNA z kartami statusu:
+        gdy jest włączona, karty statusu są zablokowane (przygaszone,
+        kursor „niedostępne", tooltip tłumaczy dlaczego).
+
+   Zakres `.rx-stats--filter` jest celowy: strona przyjęcia
+   (/purchase/receipts/view) ma własne kafelki bez przełącznika, a
+   /purchase/documents wczytuje ten plik jako bazę i rysuje swój
+   przełącznik w documents-ui.css (`.dx-page .dx-stats .rx-stat::after`). */
+.rx-stat-groups {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 1rem 1.75rem;
+    margin-bottom: 1rem;
+}
+.rx-stat-group { min-width: 0; }
+.rx-stat-group--status { flex: 1 1 30rem; }
+.rx-stat-group--late   { flex: 0 0 auto; min-width: 13rem; }
+.rx-stat-group--late .rx-stat { min-width: 11.5rem; }
+
+.rx-stat-group-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: .1rem .5rem;
+    margin: 0 0 .55rem;
+    padding: 0 .15rem .35rem;
+    border-bottom: 1px solid var(--rx-line);
+}
+.rx-stat-group-label {
+    font-size: .68rem;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--rx-muted);
+}
+.rx-stat-group-hint { font-size: .74rem; color: var(--rx-faint); }
+
+/* Flex, nie grid: karty dzielą szerokość równo i rozciągają się na całą
+   szerokość paska niezależnie od ich liczby. */
+.rx-stats--filter .rx-stat { flex: 1 1 0; min-width: 0; }
+.rx-stats--filter .rx-stat.is-zero .rx-stat-value { color: var(--rx-faint); }
+
+/* Karta zablokowana: karta „Po terminie" jest włączona, więc karty
+   statusu są wyłączone. Zostają klikalne/fokusowalne (jak zablokowany
+   kafelek na /admin/purchase/vendors), ale przygaszone i bez efektu —
+   wyjaśnia to ich tooltip. */
+.rx-stats--filter .rx-stat.is-locked {
+    opacity: .4;
+    cursor: not-allowed;
+    filter: grayscale(.6);
+}
+.rx-stats--filter .rx-stat.is-locked:hover {
+    transform: none;
+    box-shadow: none;
+    border-color: var(--rx-line);
+}
+.rx-stats--filter .rx-stat.is-locked::after { opacity: .45; }
+
+/* Pasek tonu na górze kafelka: ściszony, dopiero włączona karta dostaje
+   pełny kolor — stan „włączone" widać od razu (jak na
+   /purchase/documents). */
+.rx-stats--filter .rx-stat::before { opacity: .35; }
+.rx-stats--filter .rx-stat.is-active::before { opacity: 1; }
+
+/* Przełącznik wł./wył. w prawym górnym rogu (rysowany w ::after):
+   tor + gałka (radial-gradient przesuwany background-position).
+   Identyczny z .dx-page .dx-stats .rx-stat::after w documents-ui.css. */
+.rx-stats--filter .rx-stat::after {
+    content: "";
+    position: absolute;
+    top: .8rem;
+    right: .7rem;
+    width: 1.7rem;
+    height: .95rem;
+    border-radius: 999px;
+    background-color: #d5dbe3;
+    background-image: radial-gradient(circle, #fff 0 .3rem, transparent .32rem);
+    background-size: .95rem .95rem;
+    background-repeat: no-repeat;
+    background-position: left center;
+    transition: background-color .15s ease, background-position .15s ease;
+}
+.rx-stats--filter .rx-stat.is-active::after {
+    background-color: var(--rx-tone);
+    background-position: right center;
+}
+
+/* Odcienie kart — takie same, jak na /purchase/documents
+   (STATE_META w documents-view.js): wysłane = fiolet, potwierdzone =
+   niebieski, przyjęcie w toku = cyjan, po terminie = czerwień. */
+.rx-stat--sent        { --rx-tone: #6f42c1; --rx-tone-soft: #f7f3fd; }
+.rx-stat--confirmed   { --rx-tone: #007bff; --rx-tone-soft: #edf4ff; }
+.rx-stat--in_progress { --rx-tone: #17a2b8; --rx-tone-soft: #eef9fb; }
 
 /* ---- karta dostawcy: nagłówek (jedna linia) ----------------------- */
 /* Siatka zamiast flexa: nazwa / sygnał / licznik / postęp / szkice /

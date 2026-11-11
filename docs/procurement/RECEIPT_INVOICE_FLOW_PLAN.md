@@ -124,6 +124,7 @@ Recommended: a soft warning, not a hard UNIQUE, because corrections reuse the nu
 | `vendor_part_id` | INT FK→`list__vendor_part` (RESTRICT) | must belong to `delivery.vendor_id` |
 | `quantity` | DECIMAL(30,10) | in the PO line unit (`quantity_unit_id`) [Q7] |
 | `unit_price` | DECIMAL(30,10) NULL | invoice net price per unit |
+| `currency` | VARCHAR(3) NULL | currency of the line (3 letters). NULL = inherits `delivery.currency`; a value = the line has its own currency (one invoice may mix currencies) |
 | `sub_magazine_id` | INT NULL FK | NULL = header default |
 | `inventory_parts_id` | INT NULL | set on post. It links the line to the stock row it booked (for cancel/reversal) |
 | `comment` | TEXT NULL | |
@@ -217,7 +218,8 @@ result is always consistent.
 | `addDeliveryLine(deliveryId, vendorPartId, qty, price, subMag?, comment?)` | inserts line → runs matcher → rewrites auto allocations → returns full draft state |
 | `updateDeliveryLine(...)` / `removeDeliveryLine(lineId)` | same, then re-match |
 | `setLineAllocation(lineId, [[po_item_id, qty], ...])` | manual override (`is_manual = 1`), validates the PO items' vendor part, vendor, state and capacity |
-| `postDelivery(deliveryId, userId)` | **one transaction**, see 6.3 |
+| `previewDeliveryPost(deliveryId)` | **bez zapisu**: sprawdza blokady i liczy stan zamówień PO TEJ dostawie (zamówiono / przyjęto po dostawie / braki / stan). Podgląd w oknie przed zatwierdzeniem |
+| `postDelivery(deliveryId, userId, poChoices?)` | **one transaction**, see 6.3. `poChoices` (po_id → `'received'` / `'auto'`) to wybór operatora z podglądu: `received` zamyka zamówienie, `auto` zostawia je w stanie wyliczonym z ilości |
 | `discardDeliveryDraft(deliveryId)` | deletes the draft (cascade). Nothing was booked, so nothing needs reversing |
 | `cancelPostedDelivery(deliveryId, userId)` | reversal, see 6.4 [Q8] |
 

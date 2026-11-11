@@ -12,6 +12,8 @@ class DeliveryLine {
     public int $vendorPartId;
     public float $quantity;
     public ?float $unitPrice;
+    /** Waluta pozycji (3 litery); null = dziedziczy walutę dokumentu. */
+    public ?string $currency;
     public ?int $subMagazineId;
     public ?int $inventoryPartsId;
     public ?string $comment;
@@ -31,6 +33,9 @@ class DeliveryLine {
         $this->vendorPartId = (int)$row['vendorPartId'];
         $this->quantity = (float)$row['quantity'];
         $this->unitPrice = isset($row['unitPrice']) && $row['unitPrice'] !== null ? (float)$row['unitPrice'] : null;
+        $this->currency = isset($row['currency']) && $row['currency'] !== null && $row['currency'] !== ''
+            ? strtoupper((string)$row['currency'])
+            : null;
         $this->subMagazineId = isset($row['subMagazineId']) && $row['subMagazineId'] !== null
             ? (int)$row['subMagazineId'] : null;
         $this->inventoryPartsId = isset($row['inventoryPartsId']) && $row['inventoryPartsId'] !== null

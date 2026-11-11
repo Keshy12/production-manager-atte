@@ -92,6 +92,7 @@ class DeliveryMatcher {
 
         // ── 1. Przydziały ręczne ─────────────────────────────────
         foreach ($lines as $l) {
+            $lineCur = $this->lineCurrency($l, $delivery->currency);
             $manualSum = 0.0;
             foreach ($l->allocations as $a) {
                 if (!$a->isManual) continue;
@@ -101,6 +102,16 @@ class DeliveryMatcher {
                     $plan['errors'][] = [
                         'line_id' => $l->id, 'po_item_id' => $itemId,
                         'message' => "Pozycja {$l->lineNo}: ręczny przydział wskazuje pozycję zamówienia, która nie jest już dostępna do przyjęcia.",
+                    ];
+                    continue;
+                }
+                // Ręczny przydział musi zgadzać się walutą — cena z faktury
+                // (w walucie pozycji) nie może trafić do zamówienia w innej
+                // walucie.
+                if (strcasecmp((string)$items[$itemId]['currency'], (string)$lineCur) !== 0) {
+                    $plan['errors'][] = [
+                        'line_id' => $l->id, 'po_item_id' => $itemId,
+                        'message' => "Pozycja {$l->lineNo}: ręczny przydział wskazuje zamówienie {$items[$itemId]['po_number']} w walucie {$items[$itemId]['currency']}, a pozycja jest w walucie {$lineCur}.",
                     ];
                     continue;
                 }
@@ -125,11 +136,16 @@ class DeliveryMatcher {
         // ── 2. Przydziały automatyczne (dwa przebiegi) ───────────
         foreach ([true, false] as $pricePass) {
             foreach ($lines as $l) {
+                $lineCur = $this->lineCurrency($l, $delivery->currency);
                 $need = $l->quantity - $plan['lines'][$l->id]['allocated'];
                 if ($need <= self::EPS) continue;
                 foreach ($items as $itemId => $it) {
                     if ($need <= self::EPS) break;
                     if ($it['vendor_part_id'] !== $l->vendorPartId) continue;
+                    // Inna waluta → inny kandydat: ceny w różnych walutach nie
+                    // są porównywalne, a cena pozycji nie może trafić do
+                    // zamówienia w innej walucie.
+                    if (strcasecmp((string)$it['currency'], (string)$lineCur) !== 0) continue;
                     if ($remaining[$itemId] <= self::EPS) continue;
                     $matches = $this->pricesMatch($it['unit_price'], $l->unitPrice);
                     if ($matches !== $pricePass) continue;
@@ -154,6 +170,7 @@ class DeliveryMatcher {
 
         $touched = [];  // po_id => [po_item_id => allocated]
         foreach ($lines as $l) {
+            $lineCur = $this->lineCurrency($l, $delivery->currency);
             $entry =& $plan['lines'][$l->id];
             $entry['allocated'] = round($entry['allocated'], 10);
             $surplus = round($l->quantity - $entry['allocated'], 10);
@@ -180,11 +197,12 @@ class DeliveryMatcher {
                         ];
                     }
                 }
-                if (strcasecmp((string)$a['currency'], $delivery->currency) !== 0) {
+                if (strcasecmp((string)$a['currency'], (string)$lineCur) !== 0) {
                     $currencyMismatch[] = [
                         'po_item_id'   => $a['po_item_id'],
                         'po_number'    => $a['po_number'],
                         'po_currency'  => $a['currency'],
+                        'line_currency'=> $lineCur,
                         'doc_currency' => $delivery->currency,
                     ];
                 }
@@ -192,6 +210,22 @@ class DeliveryMatcher {
             if ($priceMismatch)    $entry['flags']['price_mismatch'] = $priceMismatch;
             if ($priceMissing)     $entry['flags']['price_missing_on_po'] = array_values($priceMissing);
             if ($currencyMismatch) $entry['flags']['currency_mismatch'] = $currencyMismatch;
+
+            // Kandydaci pominięci WYŁĄCZNIE z powodu waluty — informacja dla
+            // operatora (nie blokada): pozycja w USD nie została przydzielona
+            // do zamówienia w PLN, bo cena w obcej walucie nie może do niego
+            // trafić. Ilość zostaje nadwyżką.
+            $currencySkipped = [];
+            foreach ($items as $it) {
+                if ($it['vendor_part_id'] !== $l->vendorPartId) continue;
+                if (strcasecmp((string)$it['currency'], (string)$lineCur) === 0) continue;
+                $currencySkipped[] = [
+                    'po_item_id'  => $it['id'],
+                    'po_number'   => $it['po_number'],
+                    'po_currency' => $it['currency'],
+                ];
+            }
+            if ($currencySkipped) $entry['flags']['currency_skipped'] = $currencySkipped;
             if ($entry['surplus'] > 0) $entry['flags']['surplus'] = $entry['surplus'];
             if (empty($anyOpenForPart[$l->vendorPartId]) && $entry['allocated'] <= self::EPS) {
                 $entry['flags']['not_on_po'] = true;
@@ -208,6 +242,11 @@ class DeliveryMatcher {
     }
 
     // ── Helpers ────────────────────────────────────────────────
+
+    /** Waluta pozycji: własna albo dziedziczona z dokumentu dostawcy. */
+    private function lineCurrency(DeliveryLine $l, string $docCurrency): string {
+        return ($l->currency !== null && $l->currency !== '') ? $l->currency : $docCurrency;
+    }
 
     private function pricesMatch(?float $poPrice, ?float $linePrice): bool {
         if ($poPrice === null || $linePrice === null) return false;
