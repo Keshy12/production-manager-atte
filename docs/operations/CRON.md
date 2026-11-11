@@ -364,6 +364,8 @@ Anonymous function `$flattenBom` (lines 40–93) — recursive closure with path
 ### Purpose
 One-shot CLI importer that seeds the procurement documents (`purchase__rfq`, `purchase__order`, `purchase__order_receipt` + items) from three Google Sheets into the MSA database. It is a **migration tool**, not a recurring job — meant to be run once (and re-run safely) when history needs to be brought in.
 
+> ⚠️ **Do not re-run this job on a live database.** It re-adds the received quantity to `purchase__order_item.quantity_received` on top of the value the PO step already set, so the counter ends up double-counted — see [Job 10](#job-10---fix-order-item-quantity-receivedphp).
+
 ### Inputs
 | Source | Details |
 |---|---|
@@ -495,6 +497,35 @@ Every object is probed before creation; a second run changes nothing (the cleanu
 
 ---
 
+## Job 10 - `fix-order-item-quantity-received.php`
+
+**File:** `src/cron/fix-order-item-quantity-received.php`
+
+### Purpose
+One-shot CLI repair for a **data corruption** in `purchase__order_item.quantity_received`.
+
+`import-procurement-history-from-gsheet.php` sets the counter from the sheet in its PO step and then **adds the same quantity again** in its GRN step (`UPDATE purchase__order_item SET quantity_received = quantity_received + ?`), so the counter ended up at exactly **2×** the true received sum on 8504 of 8515 items. 8282 items claimed more received than ordered (≈82.9 M units of phantom surplus).
+
+The truth is the sum of the receipt lines — `SUM(purchase__order_receipt_item.quantity_received)` per PO item. That invariant holds for **both** reception mechanisms: `postDelivery()` bumps the counter and inserts one receipt item per allocation, 1:1.
+
+### Trigger / Schedule
+Manual — one-shot. **Dry-run by default**, `--execute` applies the fix.
+
+### Behaviour
+- Recomputes `purchase__order_item.quantity_received` for every item whose value differs from the receipt-line sum (single idempotent UPDATE inside a transaction).
+- Leaves `purchase__order.state` untouched on purpose — the stored PO state is a business fact (a closed PO stays closed) and the "Do przyjęcia" queue filters on it.
+- Touches **only** `purchase__order_item.quantity_received`. No receipt, delivery, inventory or counter rows are modified.
+- Dry-run prints the divergence table, the affected-item counts per PO state, and how many `partially_received` POs become closable after the fix.
+
+### Locks
+- **Lock file:** `public_html/var/locks/fix_order_item_quantity_received.lock`.
+
+### Side Effects
+- **DB writes (LIVE only):** `purchase__order_item.quantity_received`.
+- **Daily log:** `public_html/var/logs/fix-order-item-quantity-received-YYYY-MM-DD.log`.
+
+---
+
 ## Quick Reference Table
 
 | Job | Lock file | DB writes | Google Sheets | Unique behaviour |
@@ -508,6 +539,7 @@ Every object is probed before creation; a second run changes nothing (the cleanu
 | `import-procurement-history-from-gsheet` | `procurement_history_import.lock` | `purchase__*`, `list__vendor.default_currency`, `purchase__number_counter` | — (read-only) | One-shot historical migration; safe re-run |
 | `deactivate-empty-vendors` | *(none)* | `list__vendor.isActive`, `list__vendor.comment` | — | One-shot catalogue clean-up; dry-run by default; never overwrites a comment |
 | `migrate-purchase-delivery-schema` | *(none)* | `purchase__delivery*`, `purchase__order_receipt(_item)`, `ref__transfer_group_types`, `purchase__order.state` (legacy cleanup) | — | One-shot, idempotent, `--dry-run`; schema for invoice-driven reception + legacy `in_progress` cleanup |
+| `fix-order-item-quantity-received` | `fix_order_item_quantity_received.lock` | `purchase__order_item.quantity_received` | — | One-shot counter repair (2× bug from the Sheets importer); dry-run by default; PO state untouched |
 
 **Spreadsheet IDs:**
 - (1) `1rV1rbLXDdsOxT49sgJNm1Aicldg8ZvBdQo9yaX314QI` — used by `warehouse-data-gs-upload`
