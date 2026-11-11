@@ -555,6 +555,52 @@ Manual — one-shot. **Dry-run by default**, `--execute` applies the migration.
 
 ---
 
+## Job 12 - `migrate-production-to-delivery-layer.php`
+
+**File:** `src/cron/migrate-production-to-delivery-layer.php`
+
+### Purpose
+**The production cut-over script.** One command that brings a pre-P10 production database up to the current schema and data model, by running the individually tested scripts in the order that was rehearsed on a dev copy of production, with a backup before and a verification after.
+
+| Step | Script | Effect |
+|---|---|---|
+| S1 | `migrate-po-item-price-nullable.php` | `purchase__order_item.unit_price` → NULLABLE (rows keep their values) |
+| S2 | `migrate-po-item-expected-delivery-date.php` | add `purchase__order_item.expected_delivery_date` (no `--backfill`) |
+| S3 | `migrate-purchase-delivery-schema.php` | delivery tables, bridge columns, FKs, `purchase_delivery` seed; deletes empty draft receipts, re-derives `in_progress` POs |
+| S4 | `migrate-delivery-line-currency.php` | `purchase__delivery_line.currency` (no-op when S3 already created it) |
+| S5 | `fix-order-item-quantity-received.php --execute` | repair the 2× counter (Job 10) |
+| S6 | `migrate-legacy-receipts-to-deliveries.php --execute` | legacy receipts → `document_type='invoice'` deliveries (Job 11) |
+
+It does **not** re-run the Sheets importer, wipe data, or touch `inventory__*`, `purchase__number_counter` or `purchase__order.state` (beyond S3's `in_progress` cleanup).
+
+### Trigger / Schedule
+Manual, once per environment. Idempotent — a second run changes nothing.
+
+### Modes
+- *(default)* **dry-run** — prints the current state, a plan (S3/S5 run their own dry-run), and a size estimate of the receipt migration. Writes nothing.
+- `--execute` — backup → type-`MIGRATE` confirmation → S1…S6 → verification. Stops at the first failing step (earlier steps stay applied; re-run after fixing the cause).
+- `--verify-only` — only the read-only verification block (exit 1 if a check fails).
+- Options: `--yes` (non-interactive confirm), `--skip-backup`, `--backup-dir=PATH` (default `<system temp>/atte_ms_backups`; keep it **outside** `public_html/`), `--mysqldump=PATH`, `--php=PATH`, `--verbose`.
+
+### Production run-book
+1. Freeze writes (nobody posts receipts / creates POs).
+2. Deploy the new code, then `composer dump-autoload` (classmap — the new `Delivery*` classes do not load without it).
+3. `php src/cron/migrate-production-to-delivery-layer.php` — read the dry-run.
+4. `php src/cron/migrate-production-to-delivery-layer.php --execute` — expect `RESULT: all checks passed`.
+5. Smoke-test `/purchase/receipts#historia`, post one test reception, delete the backup once accepted.
+
+Rehearsed on a dev copy of production (3772 receipts / 8939 items / 2690 POs): ~36 s end to end, 3770 deliveries + 8939 lines + 8939 allocations, 8291 counters repaired, final schema identical to `atte_ms_struct.sql`.
+
+### Locks
+- **Lock file:** `public_html/var/locks/migrate_production_to_delivery_layer.lock` (each child script also takes its own lock).
+
+### Side Effects
+- **DB writes (`--execute` only):** everything listed in S1–S6.
+- **Backup file:** full `mysqldump` of `atte_ms` (`atte_ms-pre-delivery-migration-<ts>.sql`) — the rollback: `mysql -u <user> -p atte_ms < <file>`.
+- **Daily log:** `public_html/var/logs/migrate-production-to-delivery-layer-YYYY-MM-DD.log` (plus each child script's own log).
+
+---
+
 ## Quick Reference Table
 
 | Job | Lock file | DB writes | Google Sheets | Unique behaviour |
@@ -570,6 +616,7 @@ Manual — one-shot. **Dry-run by default**, `--execute` applies the migration.
 | `migrate-purchase-delivery-schema` | *(none)* | `purchase__delivery*`, `purchase__order_receipt(_item)`, `ref__transfer_group_types`, `purchase__order.state` (legacy cleanup) | — | One-shot, idempotent, `--dry-run`; schema for invoice-driven reception + legacy `in_progress` cleanup |
 | `fix-order-item-quantity-received` | `fix_order_item_quantity_received.lock` | `purchase__order_item.quantity_received` | — | One-shot counter repair (2× bug from the Sheets importer); dry-run by default; PO state untouched |
 | `migrate-legacy-receipts-to-deliveries` | `migrate_legacy_receipts_to_deliveries.lock` | `purchase__delivery*`, `purchase__order_receipt.delivery_id`, `purchase__order_receipt_item.delivery_allocation_id` | — | One-shot, idempotent, dry-run by default; back-links legacy receipts to synthetic deliveries |
+| `migrate-production-to-delivery-layer` | `migrate_production_to_delivery_layer.lock` | everything in Jobs 9–11 (+ `unit_price` NULL, `expected_delivery_date`) | — | **Production cut-over**: backup → S1…S6 → verify; dry-run by default, `--execute`, `--verify-only` |
 
 **Spreadsheet IDs:**
 - (1) `1rV1rbLXDdsOxT49sgJNm1Aicldg8ZvBdQo9yaX314QI` — used by `warehouse-data-gs-upload`
